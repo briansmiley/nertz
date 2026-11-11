@@ -1362,8 +1362,8 @@ describe('server over real sockets', () => {
   it('(b) a swarm of four bots firing as fast as they can never breaks the table', async () => {
     const { room, players } = await table(4);
     const rnd = seeded(2024);
-    const PER_BOT = 1200;
-    const BURST = 12;
+    const PER_BOT = 3000;
+    const BURST = 4;
     const problems: string[] = [];
     let checks = 0;
     for (const bot of players) {
@@ -1382,7 +1382,12 @@ describe('server over real sockets', () => {
             // Always finish on something well-formed, so the last seq is one the server can ack.
             bot.intent(bot.seq === PER_BOT - 1 ? { k: 'flip' } : botIntent(bot.last.room.game!, bot.seat, rnd));
           }
-          await new Promise((next) => setImmediate(next)); // let snapshots in; the view stays a burst behind
+          // Let snapshots in, and wait for the one that answers the burst before this one: the view stays a burst or two
+          // behind, however fast this loop spins. (Without the wait a busy machine got through all 1200 on the very first
+          // view, the fully redacted deal, and nothing but stock cards ever moved.)
+          const answered = bot.seq - 2 * BURST;
+          do await new Promise((next) => setImmediate(next));
+          while (bot.last.ack < answered);
         }
       }),
     );
