@@ -1,9 +1,9 @@
 // Screens around the table: home, lobby, round results.
-import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { cleanName, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, randomRoomCode, ROOM_CODE_LENGTH } from '../shared/protocol';
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { cleanName, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
-import { join, leave, start, useNet } from './net';
+import { create, join, leave, start, useNet } from './net';
 import { Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the
@@ -31,11 +31,12 @@ function roomInUrl(): string {
   return isRoomCode(code) ? code : '';
 }
 
-function enter(room: string, name: string): void {
+/** Sit down at table `room`, or with null ask the server to open a new one (it picks the code). */
+function enter(room: string | null, name: string): void {
   write('localStorage', name);
   write('sessionStorage', name);
-  history.replaceState(null, '', `/?room=${room}`);
-  join(room, name);
+  if (room) join(room, name);
+  else create(name);
 }
 
 function exit(): void {
@@ -54,12 +55,16 @@ export function resume(): void {
 export function App() {
   const net = useNet();
   const room = net.room;
+  // The address always names the table we are at, so it can be shared and survives a reload.
+  const code = room?.code;
+  useEffect(() => {
+    if (code) history.replaceState(null, '', `/?room=${code}`);
+  }, [code]);
   if (!room) return <Home error={net.error} busy={net.status !== 'idle'} />;
   return (
     <>
-      {room.game && room.phase !== 'lobby' && <Table room={room} frozen={room.phase === 'results'} />}
+      {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
-      {room.phase === 'results' && <Results room={room} />}
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (
@@ -95,14 +100,17 @@ function Mini({ seat, suit, rank, style }: { seat?: number; suit?: 'S' | 'H' | '
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(() => read('localStorage'));
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(invited);
   const clean = cleanName(name);
   const typed = code.trim().toUpperCase();
+  const ready = !!clean && !busy;
 
+  // Enter in the form does the obvious thing: join if a code is filled in, otherwise start a table.
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!clean || busy) return;
-    enter(invited || (isRoomCode(typed) ? typed : randomRoomCode()), clean);
+    if (!ready) return;
+    if (!typed) enter(null, clean);
+    else if (isRoomCode(typed)) enter(typed, clean);
   };
 
   return (
@@ -120,7 +128,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
 
       <Pad>
         <form onSubmit={submit}>
-          <h2>{invited ? `Join table ${invited}` : 'Pull up a chair'}</h2>
+          <h2>Pull up a chair</h2>
           <label>
             Your name
             <input
@@ -132,31 +140,36 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
               autoComplete="nickname"
             />
           </label>
-          {!invited && (
-            <label>
-              Table code <small>leave blank to start a new table</small>
-              <input
-                className="code"
-                value={code}
-                maxLength={ROOM_CODE_LENGTH}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="ABCD"
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
           )}
-          {error && <p className="error">{error}</p>}
-          {!invited && typed && !isRoomCode(typed) && <p className="hint">A table code is {ROOM_CODE_LENGTH} letters.</p>}
-          <button className="go" disabled={!clean || busy || (!invited && !!typed && !isRoomCode(typed))}>
-            {busy ? 'Connecting…' : invited || typed ? 'Join table' : 'Start a new table'}
-          </button>
-          {invited && (
-            <a className="quiet" href="/">
-              Start a new table instead
-            </a>
-          )}
+          <div className="ways">
+            <div className="way">
+              <label htmlFor="code">Join a table with its code</label>
+              <div className="pair">
+                <input
+                  id="code"
+                  className="code"
+                  value={code}
+                  maxLength={ROOM_CODE_LENGTH}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  placeholder="ABCD"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button type="button" className={typed ? 'go' : 'plain'} disabled={!ready || !isRoomCode(typed)} onClick={() => enter(typed, clean)}>
+                  {busy && typed ? 'Connecting…' : 'Join table'}
+                </button>
+              </div>
+              {typed && !isRoomCode(typed) && <p className="hint">A table code is {ROOM_CODE_LENGTH} letters.</p>}
+            </div>
+            <button type="button" className={typed ? 'plain' : 'go'} disabled={!ready} onClick={() => enter(null, clean)}>
+              {busy && !typed ? 'Connecting…' : 'Start a new table'}
+            </button>
+          </div>
         </form>
       </Pad>
     </main>
@@ -221,10 +234,9 @@ function Results({ room }: { room: RoomView }) {
   const round = room.lastRound;
   const me = room.players.find((p) => p.seat === room.you);
   const host = room.players.find((p) => p.isHost);
-  const caller = room.players.find((p) => p.seat === round?.calledBy);
-  const rows = (round?.scores ?? [])
-    .map((s) => ({ s, p: room.players.find((p) => p.seat === s.seat) }))
-    .sort((a, b) => (b.p?.score ?? 0) - (a.p?.score ?? 0) || b.s.delta - a.s.delta);
+  // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
+  const rows = [...(round?.scores ?? [])].sort((a, b) => b.total - a.total || b.delta - a.delta);
+  const caller = rows.find((s) => s.seat === round?.calledBy);
   const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
   return (
@@ -243,16 +255,16 @@ function Results({ room }: { room: RoomView }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ s, p }) => (
+            {rows.map((s) => (
               <tr key={s.seat} className={s.seat === room.you ? 'you' : ''}>
                 <th scope="row">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
-                  {p?.name ?? `Seat ${s.seat + 1}`}
+                  {s.name}
                 </th>
-                <td>{signed(s.foundation)}</td>
+                <td>{signed(s.played)}</td>
                 <td>{s.nertzLeft ? `${s.nertzLeft} left, ${signed(-2 * s.nertzLeft)}` : 'out'}</td>
                 <td>{signed(s.delta)}</td>
-                <td className="total">{p?.score ?? 0}</td>
+                <td className="total">{s.total < 0 ? `−${-s.total}` : s.total}</td>
               </tr>
             ))}
           </tbody>

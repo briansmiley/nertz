@@ -2,7 +2,7 @@
 // visible card sits. Every card is absolutely positioned on one layer and
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
-import { isComplete, isHidden } from '../shared/engine';
+import { isHidden } from '../shared/engine';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -13,7 +13,16 @@ export interface Rect {
   h: number;
 }
 
-export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'foundation';
+export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'slot' | 'tray';
+
+/**
+ * Where the table is in its life. 'live' is a round in play. The others are
+ * the end-of-round sequence: centre piles turn face-down ('flip'), tray piles
+ * turn over and come out ('out'), then the middle's cards leave this layer
+ * altogether and are washed and sorted on a canvas ('wash'), and finally the
+ * score sheet lies on top ('sheet').
+ */
+export type Stage = 'live' | 'flip' | 'out' | 'wash' | 'sheet';
 
 export interface Placed {
   card: AnyCard;
@@ -22,13 +31,13 @@ export interface Placed {
   /** Scale relative to the CARD_W x CARD_H drawing size. */
   s: number;
   z: number;
-  /** Show the face (the card is known and not lying in a stock). */
+  /** Show the face (the card is known and not lying face-down). */
   up: boolean;
   pile: PileKind;
   /** In one of the viewing player's own piles. */
   mine: boolean;
-  /** On a finished foundation. */
-  done: boolean;
+  /** For 'slot' and 'tray' cards: which slot, or which tray pile. */
+  at: number;
 }
 
 export interface Seat {
@@ -37,6 +46,8 @@ export interface Seat {
   /** Where the top card of each pile sits (or would sit, for an empty pile). */
   nertz: Rect;
   work: Rect[];
+  /** Drop area of each work pile: its whole column. Neighbours never touch. */
+  workHit: Rect[];
   stock: Rect;
   waste: Rect;
   /** Bounding box of the whole hand. */
@@ -44,30 +55,62 @@ export interface Seat {
   nertzCount: number;
 }
 
-export interface FoundationSlot extends Rect {
-  /** Foundation id, or null for a slot nothing has been started in yet. */
-  id: string | null;
-  done: boolean;
-}
-
 export interface Layout {
   cards: Placed[];
   me: Seat | null;
   opponents: Seat[];
-  slots: FoundationSlot[];
-  /** Scale of foundation cards. */
+  /** One per centre slot, in slot order. */
+  slots: Rect[];
+  /** Drop area of each slot: the slot plus a margin smaller than half the gap, so neighbours never touch. */
+  slotHit: Rect[];
+  /** The side area for completed piles. */
+  tray: Rect;
+  /** Where each tray pile stands once it has come out onto the table at the end of a round. */
+  out: Rect[];
+  /** The free felt between the opponents and your hand. */
+  middle: Rect;
+  /** Scale of cards in the middle. */
   fs: number;
-  /** Pointer above this line while dragging means "to the foundations". */
-  horizon: number;
 }
 
 const RATIO = CARD_H / CARD_W;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
+export const inside = (r: Rect, x: number, y: number): boolean => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+/**
+ * The one drop area a release counts for: the area under the pointer, and
+ * only if the pointer is over none, the area under the centre of the grabbed
+ * card. A card picked up by its corner is aimed with the pointer; one flung
+ * with the pointer trailing off the pile still lands by where it lies. Either
+ * way it is one specific pile, and areas never overlap.
+ */
+export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: { x: number; y: number }, centre: { x: number; y: number } | null): T | undefined {
+  return targets.find((t) => inside(t.hit, pointer.x, pointer.y)) ?? (centre ? targets.find((t) => inside(t.hit, centre.x, centre.y)) : undefined);
+}
+
+/** Room the grace countdown is given on the table: its greatest width, its height, and its distance from the right edge. */
+export const COUNTDOWN = { w: 168, h: 44, right: 14 };
+
+/**
+ * Where the grace countdown goes: the top-right corner, or if an opponent
+ * sits there, the first place down the right edge that is clear of every
+ * opponent's hand and name (beside a shorter second row, or just under them).
+ */
+export function countdownTop(L: Layout, W: number): number {
+  const x = W - COUNTDOWN.right - COUNTDOWN.w;
+  const hands = L.opponents.map((o) => ({ ...o.box, y: o.box.y - 28, h: o.box.h + 28 })); // with the name above it
+  const clear = (y: number) => !hands.some((r) => r.x + r.w > x && r.y < y + COUNTDOWN.h && y < r.y + r.h);
+  return [12, ...hands.flatMap((r) => [r.y, r.y + r.h + 6]).filter((y) => y > 12)].sort((a, b) => a - b).find(clear) ?? 12;
+}
+
 /** Faces narrower than this on screen use the large-print rendition. */
 export const MINI_BELOW = 52;
 
 const STOCK_SHOWN = 4;
 const WASTE_SHOWN = 4;
+/** A face-down card in a work pile shows this much of the strip a face-up card shows. */
+const DOWN_STEP = 0.45;
 
 interface HandSpec {
   x: number;
@@ -78,8 +121,36 @@ interface HandSpec {
   fan: number; // waste fan offset; 0 = stacked
   workFan: number; // preferred vertical offset in a work pile
   workRoom: number; // height available to a work pile below its first card
+  workRise: number; // how far above the row a pile too long for that may start instead (free felt above the hand)
+  minStrip: number; // the least a face-up card may show while there is room: its whole rank. 0 = squeeze all alike
   z: number;
   mine: boolean;
+}
+
+/**
+ * How far below a fanned pile's first card each card sits. `show[j]` is how
+ * much of card j shows relative to a face-up card. Every card shows `fan` if
+ * that fits in `room`. If not, all are squeezed alike while a face-up card
+ * still shows `min` (its whole rank). Past that only the oldest cards give
+ * way, down to slivers, and the newest keep `min`: they are the ones in play.
+ */
+export function fanOut(show: readonly number[], fan: number, min: number, room: number): number[] {
+  const covered = show.slice(0, -1); // the top card lies open
+  const total = covered.reduce((a, b) => a + b, 0);
+  const even = Math.min(fan, total > 0 ? room / total : fan);
+  const sliver = min * 0.4;
+  let steps = covered.map((w) => w * even);
+  if (even < min && room > total * sliver) {
+    let spare = room - total * sliver;
+    steps = covered.map((w) => w * sliver);
+    for (let j = steps.length - 1; j >= 0 && spare > 0; j--) {
+      const more = Math.min(spare, covered[j]! * (min - sliver));
+      steps[j]! += more;
+      spare -= more;
+    }
+  }
+  let y = 0;
+  return [0, ...steps.map((s) => (y += s))];
 }
 
 function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
@@ -87,18 +158,27 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const ch = h.w * RATIO;
   const rect = (x: number, y: number): Rect => ({ x, y, w: h.w, h: ch });
   const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind) =>
-    out.push({ card, x, y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock', pile, mine: h.mine, done: false });
+    out.push({ card, x, y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock', pile, mine: h.mine, at: 0 });
 
   // Nertz pile: lower cards peek out underneath so the pile shows its thickness.
   const lean = 0.55 * s;
   p.nertz.forEach((c, i) => put(c, h.x, h.y + (p.nertz.length - 1 - i) * lean, i, 'nertz'));
 
+  // Work piles fan downwards; the face-down cards at the bottom of the pile take a narrower strip each.
   const workX = h.x + h.w + h.wide;
+  const margin = h.gap * 0.4;
+  const workHit: Rect[] = [];
   const work = p.work.map((pile, i) => {
     const x = workX + i * (h.w + h.gap);
-    const step = pile.length > 1 ? Math.min(h.workFan, h.workRoom / (pile.length - 1)) : 0;
-    pile.forEach((c, j) => put(c, x, h.y + j * step, 40 + i * 20 + j, 'work'));
-    return rect(x, h.y + Math.max(0, pile.length - 1) * step);
+    const down = p.down[i] ?? 0;
+    const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
+    // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
+    const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
+    const rise = clamp(wanted - h.workRoom, 0, h.workRise);
+    const at = fanOut(show, h.workFan, h.minStrip, h.workRoom + rise);
+    pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work'));
+    workHit.push({ x: x - margin, y: h.y - rise - margin, w: h.w + 2 * margin, h: ch + h.workRoom + rise + 2 * margin });
+    return rect(x, h.y - rise + (at.at(-1) ?? 0));
   });
 
   const stockX = workX + 4 * h.w + 3 * h.gap + h.wide;
@@ -119,6 +199,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     s,
     nertz: rect(h.x, h.y),
     work,
+    workHit,
     stock: rect(stockX, h.y),
     waste: rect(wasteX + Math.max(0, fanned - 1) * h.fan, h.y),
     box: { x: h.x, y: h.y, w: right - h.x, h: ch + h.workRoom },
@@ -131,8 +212,13 @@ const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
 const OPP = { gap: 0.14, wide: 0.42 };
 const OPP_UNITS = 7 + 4 * OPP.gap + 2 * OPP.wide;
+/** The tray: one card wide plus padding, standing this far to the right of the slot grid. */
+const TRAY_PAD = 0.12;
+const TRAY_UNITS = 1 + 2 * TRAY_PAD;
+const TRAY_GAP = 22;
+const SLOT_GAP = 10;
 
-export function computeLayout(W: number, H: number, game: GameState, you: number): Layout {
+export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live'): Layout {
   const cards: Placed[] = [];
   const mine = game.players.find((p) => p.seat === you);
   // Opponents in seat order starting after you, so the table reads as a circle.
@@ -144,33 +230,14 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const ow = mine ? clamp(Math.min((W - 2 * edge) / (OWN_UNITS + 0.4), H * 0.132), 34, 104) : 0;
   const oh = ow * RATIO;
   const ownTop = mine ? H - 12 - oh * 2.2 : H - 12;
-  const me = mine
-    ? placeHand(
-        mine,
-        {
-          x: (W - OWN_UNITS * ow) / 2,
-          y: ownTop,
-          w: ow,
-          gap: ow * OWN.gap,
-          wide: ow * OWN.wide,
-          fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan), // large-print faces need a wider fan to show the rank
-          workFan: oh * 0.3,
-          workRoom: H - 8 - ownTop - oh,
-          z: 3000,
-          mine: true,
-        },
-        cards,
-      )
-    : null;
-
   // Opponents: compact hands along the top - in two rows when one row would
   // make them tiny and the window is tall enough to keep the middle roomy.
-  // Foundations: a grid in the middle with room for every pile that could
-  // ever exist (4 per player).
+  // The middle: a grid with one cell per slot (4 per player), and the tray
+  // standing to its right.
   const n = others.length;
   const labelH = 28;
-  const count = 4 * game.players.length;
-  const gap = 10;
+  const count = game.slots.length;
+  const gap = SLOT_GAP;
   const bottom = ownTop - 22;
   const plan = (oppRows: number) => {
     const perRow = Math.ceil(n / oppRows) || 1;
@@ -183,7 +250,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       const cols = Math.ceil(count / rows);
       const fw = Math.min(
         mine ? ow * 0.92 : 90,
-        (W * 0.94 - (cols - 1) * gap) / cols,
+        (W * 0.94 - (cols - 1) * gap - TRAY_GAP) / (cols + TRAY_UNITS),
         (bottom - top - (rows - 1) * gap) / rows / RATIO,
       );
       if (fw > grid.fw + 0.5) grid = { fw, cols, rows };
@@ -208,6 +275,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
         fan: 0,
         workFan: mh * 0.4,
         workRoom: mh * 0.85,
+        workRise: 0,
+        minStrip: 0,
         z: 1000 + i * 200,
         mine: false,
       },
@@ -218,22 +287,61 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const fw = Math.max(16, best.fw);
   const fh = fw * RATIO;
   const fs = fw / CARD_W;
+  const middle: Rect = { x: edge, y: top, w: W - 2 * edge, h: Math.max(fh, bottom - top) };
   const gridW = best.cols * fw + (best.cols - 1) * gap;
   const gridH = best.rows * fh + (best.rows - 1) * gap;
-  const gx = (W - gridW) / 2;
+  const pad = fw * TRAY_PAD;
+  const gx = (W - (gridW + TRAY_GAP + fw * TRAY_UNITS)) / 2;
   const gy = top + Math.max(0, (bottom - top - gridH) / 2);
-  const slots: FoundationSlot[] = [];
-  for (let i = 0; i < Math.max(count, game.foundations.length); i++) {
-    const f = game.foundations[i];
-    const x = gx + (i % best.cols) * (fw + gap);
-    const y = gy + Math.floor(i / best.cols) * (fh + gap);
-    const done = !!f && isComplete(f);
-    slots.push({ x, y, w: fw, h: fh, id: f?.id ?? null, done });
-    // Only the top two cards are drawn: the one underneath stays visible while the next flies in.
-    f?.cards.slice(-2).forEach((card, k) =>
-      cards.push({ card, x, y, s: fs, z: 5000 + i * 4 + k, up: true, pile: 'foundation', mine: false, done }),
-    );
+  const slots = game.slots.map((_, i): Rect => ({ x: gx + (i % best.cols) * (fw + gap), y: gy + Math.floor(i / best.cols) * (fh + gap), w: fw, h: fh }));
+
+  // The tray is as tall as the grid (taller if the grid is a single row and there is room), so piles can cascade down it.
+  const trayH = Math.min(middle.h, Math.max(gridH + 2 * pad, fh * 1.9));
+  const tray: Rect = { x: gx + gridW + TRAY_GAP, y: clamp(gy + gridH / 2 - trayH / 2, top, top + middle.h - trayH), w: fw * TRAY_UNITS, h: trayH };
+  const trays = game.tray.length;
+  const trayStep = trays > 1 ? Math.min(fh * 0.26, (trayH - 2 * pad - fh) / (trays - 1)) : 0;
+  // End of round: the tray piles walk out to a row across the middle of the table.
+  const outStep = trays > 1 ? Math.min(fw * 1.15, (middle.w * 0.8 - fw) / (trays - 1)) : 0;
+  const out = game.tray.map((_, k): Rect => ({ x: W / 2 - (outStep * (trays - 1) + fw) / 2 + k * outStep, y: middle.y + (middle.h - fh) / 2, w: fw, h: fh }));
+
+  // Your hand is placed last: a long work pile may rise into the felt between the row and whatever stands above
+  // its columns (slots, or the tray in a narrow window). The slots never move for it.
+  const handX = (W - OWN_UNITS * ow) / 2;
+  const columns: Rect = { x: handX + ow * (1 + OWN.wide) - ow * OWN.gap, y: 0, w: ow * (4 + 5 * OWN.gap), h: H };
+  const above = Math.max(top, ...[...slots, tray].filter((r) => r.x < columns.x + columns.w && columns.x < r.x + r.w).map((r) => r.y + r.h));
+  const me = mine
+    ? placeHand(
+        mine,
+        {
+          x: handX,
+          y: ownTop,
+          w: ow,
+          gap: ow * OWN.gap,
+          wide: ow * OWN.wide,
+          fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan), // large-print faces need a wider fan to show the rank
+          workFan: oh * 0.3,
+          workRoom: H - 8 - ownTop - oh,
+          // (Not once the wash begins: that felt is where the sorted piles' counts go.)
+          workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 14 - above),
+          minStrip: oh * 0.21,
+          z: 3000,
+          mine: true,
+        },
+        cards,
+      )
+    : null;
+
+  // The middle's cards. Only the top two of a pile are drawn: the one underneath stays visible while the next flies in.
+  // Once the wash starts they are drawn on the finale's canvas instead.
+  if (stage !== 'wash' && stage !== 'sheet') {
+    const put = (pile: readonly AnyCard[], r: Rect, z: number, kind: PileKind, i: number, up: boolean) =>
+      pile.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: fs, z: z + k, up, pile: kind, mine: false, at: i }));
+    game.slots.forEach((pile, i) => put(pile, slots[i]!, 5000 + i * 4, 'slot', i, stage === 'live'));
+    game.tray.forEach((pile, k) => {
+      const home: Rect = { x: tray.x + pad, y: tray.y + pad + k * trayStep, w: fw, h: fh };
+      put(pile, stage === 'out' ? out[k]! : home, 5200 + k * 4, 'tray', k, stage !== 'out');
+    });
   }
 
-  return { cards, me, opponents, slots, fs, horizon: ownTop - oh * 0.22 };
+  return { cards, me, opponents, slots, slotHit: slots.map((r) => grow(r, gap * 0.35)), tray, out, middle, fs };
 }

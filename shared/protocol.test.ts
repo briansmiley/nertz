@@ -11,14 +11,18 @@ describe('parseClientMsg', () => {
       name: 'Ann Lee',
       token: TOKEN,
     });
+    expect(parseClientMsg({ t: 'create', name: ' Ann ', token: TOKEN, room: 'ZZZZ' })).toEqual({ t: 'create', name: 'Ann', token: TOKEN });
     expect(parseClientMsg('{"t":"start","junk":true}')).toEqual({ t: 'start' });
     expect(parseClientMsg({ t: 'leave' })).toEqual({ t: 'leave' });
-    expect(parseClientMsg(JSON.stringify({ t: 'intent', seq: 4, intent: { k: 'move', cardId: 'c1', to: { k: 'work', i: 3, z: 1 } } }))).toEqual({
+    expect(parseClientMsg(JSON.stringify({ t: 'intent', seq: 4, intent: { k: 'move', cardId: 'c1', count: 2, to: { k: 'work', i: 3, z: 1 } } }))).toEqual({
       t: 'intent',
       seq: 4,
-      intent: { k: 'move', cardId: 'c1', to: { k: 'work', i: 3 } },
+      intent: { k: 'move', cardId: 'c1', count: 2, to: { k: 'work', i: 3 } },
     });
     expect(parseClientMsg({ t: 'intent', seq: 0, intent: { k: 'stuck', on: false } })).toEqual({ t: 'intent', seq: 0, intent: { k: 'stuck', on: false } });
+    for (const intent of [{ k: 'move', cardId: 'c1', count: 1, to: { k: 'slot', i: 23 } }, { k: 'hold', cardId: 'c1' }, { k: 'release' }, { k: 'clear', slot: 0 }, { k: 'nertz' }]) {
+      expect(parseClientMsg({ t: 'intent', seq: 1, intent: { ...intent, extra: true } })).toEqual({ t: 'intent', seq: 1, intent });
+    }
   });
 
   it('caps the name length', () => {
@@ -36,7 +40,14 @@ describe('parseClientMsg', () => {
       { t: 'join', room: 'ABCD', name: 'A', token: 'has spaces in it' }, { t: 'join', room: 'ABCD', name: 'A', token: 'x'.repeat(65) },
       { t: 'intent' }, { t: 'intent', seq: 1 }, { t: 'intent', seq: -1, intent: { k: 'flip' } }, { t: 'intent', seq: 1.5, intent: { k: 'flip' } },
       { t: 'intent', seq: '1', intent: { k: 'flip' } }, { t: 'intent', seq: 2 ** 60, intent: { k: 'flip' } }, { t: 'intent', seq: 1, intent: { k: 'jump' } },
-      { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', to: { k: 'work', i: 4 } } },
+      { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'work', i: 4 } } },
+      // a move must say how many cards were lifted: 1 to 13
+      ...[undefined, 0, 14, 1.5, '1'].map((count) => ({ t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count, to: { k: 'work', i: 0 } } })),
+      { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'slot', i: 24 } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'slot' } } },
+      { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'foundation', id: 'f' } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'newFoundation' } } },
+      { t: 'intent', seq: 1, intent: { k: 'hold' } }, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: 'x'.repeat(65) } },
+      { t: 'intent', seq: 1, intent: { k: 'clear' } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: 24 } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: -1 } },
+      { t: 'create' }, { t: 'create', name: 'A' }, { t: 'create', name: '  ', token: TOKEN }, { t: 'create', name: 'A', token: 'short' }, { t: 'create', name: 7, token: TOKEN },
       `{"t":"start","pad":"${'x'.repeat(MAX_MESSAGE_BYTES)}"}`,
     ];
     for (const raw of bad) {
@@ -49,8 +60,11 @@ describe('parseClientMsg', () => {
 describe('small helpers', () => {
   it('parseIntent returns clean copies', () => {
     expect(parseIntent({ k: 'flip', x: 1 })).toEqual({ k: 'flip' });
-    expect(parseIntent({ k: 'move', cardId: 'a', to: { k: 'foundation', id: 'f' } })).toEqual({ k: 'move', cardId: 'a', to: { k: 'foundation', id: 'f' } });
-    expect(parseIntent({ k: 'move', cardId: 'a', to: { k: 'newFoundation' } })).toEqual({ k: 'move', cardId: 'a', to: { k: 'newFoundation' } });
+    expect(parseIntent({ k: 'move', cardId: 'a', count: 13, to: { k: 'slot', i: 7, id: 'f' } })).toEqual({ k: 'move', cardId: 'a', count: 13, to: { k: 'slot', i: 7 } });
+    expect(parseIntent({ k: 'hold', cardId: 'a', to: 1 })).toEqual({ k: 'hold', cardId: 'a' });
+    expect(parseIntent({ k: 'release', cardId: 'a' })).toEqual({ k: 'release' });
+    expect(parseIntent({ k: 'clear', slot: 3, x: 1 })).toEqual({ k: 'clear', slot: 3 });
+    expect(parseIntent({ k: 'move', cardId: 'a', count: 1, to: { k: 'newFoundation' } })).toBeNull(); // the old "anywhere in the middle" target is gone
     expect(parseIntent({ k: 'stuck' })).toBeNull();
   });
 

@@ -4,10 +4,11 @@
 // the intents we have sent that it has not yet acknowledged (`pending`). What
 // is rendered is `predict(server, pending)`: the pending intents replayed over
 // the snapshot with the same reducer the server runs. An intent that no longer
-// applies (someone beat us to a foundation) is skipped, so the card simply
-// animates back - there is no rollback code anywhere.
+// applies (someone beat us to a pile or a slot) is skipped, so the card simply
+// animates back - there is no rollback code anywhere. Picking a card up and
+// putting it back (`hold`, `release`) are intents like any other.
 import { useSyncExternalStore } from 'react';
-import { applyIntent } from '../shared/engine';
+import { applyIntent, refused } from '../shared/engine';
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
 import type { Intent, RoomView } from '../shared/types';
 
@@ -50,9 +51,14 @@ export function predict(sync: Sync): RoomView | null {
   let game = room.game;
   for (const p of sync.pending) {
     const result = applyIntent(game, room.you, p.intent);
-    if (result.ok) game = result.state;
+    game = result.ok ? result.state : refused(game, room.you, p.intent); // as the server will see it
   }
   return game === room.game ? room : { ...room, game };
+}
+
+/** What a socket says first: sit down at the table we know, or ask the server to open one. */
+export function hello(room: string | null, name: string, token: string): ClientMsg {
+  return room ? { t: 'join', room, name, token } : { t: 'create', name, token };
 }
 
 // ---------------------------------------------------------------- store
@@ -72,7 +78,8 @@ const TOKEN_KEY = 'nertz.token';
 
 let state: NetState = { status: 'idle', room: null, error: null };
 const listeners = new Set<() => void>();
-let session: { room: string; name: string } | null = null;
+/** `room` is null until the server has told us the code of the table we asked it to open. */
+let session: { room: string | null; name: string } | null = null;
 let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
 let attempts = 0;
@@ -117,12 +124,11 @@ function stop(error: string | null): void {
 
 function connect(): void {
   if (!session) return;
-  const { room, name } = session;
   const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
   socket = ws;
   sync = freshSync; // seq, pending and rev all belong to the connection
   ws.onopen = () => {
-    if (socket === ws) post({ t: 'join', room, name, token: token() });
+    if (socket === ws && session) post(hello(session.room, session.name, token()));
   };
   ws.onmessage = (e) => {
     if (socket !== ws) return;
@@ -134,10 +140,11 @@ function connect(): void {
     }
     if (msg.t === 'state') {
       attempts = 0;
+      if (session) session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
       sync = onSnapshot(sync, msg);
       set({ status: 'online', room: predict(sync), error: null });
     } else if (msg.t === 'error') {
-      // Before the first snapshot an error means the join was refused; afterwards it is only a complaint.
+      // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
       if (sync.server) set({ error: msg.message });
       else stop(msg.message);
     }
@@ -154,13 +161,19 @@ function connect(): void {
   };
 }
 
-export function join(room: string, name: string): void {
+function open(room: string | null, name: string): void {
   stop(null);
   session = { room, name };
   attempts = 0;
   set({ status: 'connecting' });
   connect();
 }
+
+/** Opens a new table. The server picks its code; it arrives as `room.code` in the first snapshot. */
+export const create = (name: string): void => open(null, name);
+
+/** Sits down at an existing table. A code nobody opened comes back as `error`. */
+export const join = (room: string, name: string): void => open(room, name);
 
 export function leave(): void {
   post({ t: 'leave' });
@@ -174,11 +187,13 @@ export function start(): void {
 /**
  * Plays an intent: applied locally at once, sent to the server, reconciled
  * when its ack comes back. Returns false (and sends nothing) if it is not
- * legal in the state we are looking at.
+ * legal in the state we are looking at, or if this connection has not had its
+ * first snapshot yet (just reconnected: what is on screen is the table as it
+ * was before the drop, and there is nothing to predict over).
  */
 export function send(intent: Intent): boolean {
   const room = state.room;
-  if (socket?.readyState !== WebSocket.OPEN || !room?.game || room.phase !== 'playing') return false;
+  if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
   if (!applyIntent(room.game, room.you, intent).ok) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });
@@ -191,4 +206,7 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 
-export const useNet = (): NetState => useSyncExternalStore(subscribe, () => state);
+/** The store as it is right now (what `useNet` renders). */
+export const current = (): NetState => state;
+
+export const useNet = (): NetState => useSyncExternalStore(subscribe, current);

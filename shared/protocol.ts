@@ -2,6 +2,9 @@
 import type { Intent, PileRef, RoomView } from './types';
 
 export type ClientMsg =
+  /** Open a new table; the server picks the code and answers with the first snapshot (`room.code`). */
+  | { t: 'create'; name: string; token: string }
+  /** Sit down at (or reconnect to) an existing table. An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
   | { t: 'intent'; seq: number; intent: Intent }
@@ -17,6 +20,10 @@ export const MAX_NAME_LENGTH = 20;
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 6;
 export const WORK_PILES = 4;
+/** Centre slots per player in the round. */
+export const SLOTS_PER_PLAYER = 4;
+/** How long a player who was holding a card when Nertz was called has to put it down. */
+export const GRACE_MS = 4000;
 
 /** No I, O (look like 1, 0). */
 export const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -38,20 +45,16 @@ export function randomRoomCode(rng: () => number = Math.random): string {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH;
 
+const isIndex = (v: unknown, below: number): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < below;
+const MAX_SLOTS = SLOTS_PER_PLAYER * MAX_PLAYERS;
+/** The longest run there is: King down to Ace. */
+const MAX_RUN = 13;
+
 function parsePileRef(raw: unknown): PileRef | null {
   if (!isObj(raw)) return null;
-  switch (raw.k) {
-    case 'work':
-      return Number.isInteger(raw.i) && (raw.i as number) >= 0 && (raw.i as number) < WORK_PILES
-        ? { k: 'work', i: raw.i as number }
-        : null;
-    case 'foundation':
-      return isId(raw.id) ? { k: 'foundation', id: raw.id } : null;
-    case 'newFoundation':
-      return { k: 'newFoundation' };
-    default:
-      return null;
-  }
+  if (raw.k === 'work') return isIndex(raw.i, WORK_PILES) ? { k: 'work', i: raw.i } : null;
+  if (raw.k === 'slot') return isIndex(raw.i, MAX_SLOTS) ? { k: 'slot', i: raw.i } : null;
+  return null;
 }
 
 /** Returns a clean copy of a well-formed intent, or null. Never throws. */
@@ -60,7 +63,8 @@ export function parseIntent(raw: unknown): Intent | null {
   switch (raw.k) {
     case 'move': {
       const to = parsePileRef(raw.to);
-      return isId(raw.cardId) && to ? { k: 'move', cardId: raw.cardId, to } : null;
+      const count = raw.count;
+      return isId(raw.cardId) && Number.isInteger(count) && to && isIndex((count as number) - 1, MAX_RUN) ? { k: 'move', cardId: raw.cardId, count: count as number, to } : null;
     }
     case 'flip':
       return { k: 'flip' };
@@ -68,6 +72,12 @@ export function parseIntent(raw: unknown): Intent | null {
       return typeof raw.on === 'boolean' ? { k: 'stuck', on: raw.on } : null;
     case 'nertz':
       return { k: 'nertz' };
+    case 'clear':
+      return isIndex(raw.slot, MAX_SLOTS) ? { k: 'clear', slot: raw.slot } : null;
+    case 'hold':
+      return isId(raw.cardId) ? { k: 'hold', cardId: raw.cardId } : null;
+    case 'release':
+      return { k: 'release' };
     default:
       return null;
   }
@@ -100,13 +110,14 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   }
   if (!isObj(v)) return null;
   switch (v.t) {
+    case 'create':
     case 'join': {
-      if (typeof v.room !== 'string' || typeof v.name !== 'string' || typeof v.token !== 'string') return null;
-      if (v.name.length > 200) return null;
-      const room = v.room.trim().toUpperCase();
+      if (typeof v.name !== 'string' || typeof v.token !== 'string' || v.name.length > 200) return null;
       const name = cleanName(v.name);
-      if (!isRoomCode(room) || !name || !TOKEN_RE.test(v.token)) return null;
-      return { t: 'join', room, name, token: v.token };
+      if (!name || !TOKEN_RE.test(v.token)) return null;
+      if (v.t === 'create') return { t: 'create', name, token: v.token };
+      const room = typeof v.room === 'string' ? v.room.trim().toUpperCase() : '';
+      return isRoomCode(room) ? { t: 'join', room, name, token: v.token } : null;
     }
     case 'start':
       return { t: 'start' };

@@ -5,10 +5,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { MAX_MESSAGE_BYTES, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import { Room, type Conn } from './room';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
+const LOBBY_TTL_MS = 60_000; // ...unless it never dealt a round: an abandoned lobby holds nothing worth keeping
 const SWEEP_MS = 60_000;
 const HEARTBEAT_MS = 30_000;
 const MAX_ROOMS = 2000;
@@ -38,7 +39,7 @@ const MIME: Record<string, string> = {
 export interface NertzServer {
   port: number;
   rooms: Map<string, Room>;
-  /** Deletes rooms that have had no connections for the TTL. Runs on a timer; exposed for tests. */
+  /** Deletes rooms that have had no connections for their TTL (shorter for a table that never dealt). Runs on a timer; exposed for tests. */
   sweep(now?: number): void;
   close(): Promise<void>;
 }
@@ -69,9 +70,17 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
     }
   };
 
+  /** A table code nobody holds. Only the server hands out codes, so two tables can never share one. */
+  const freshCode = (): string => {
+    for (;;) {
+      const code = randomRoomCode();
+      if (!rooms.has(code)) return code;
+    }
+  };
+
   const sweep = (now = Date.now()): void => {
     for (const [room, since] of idleSince) {
-      if (now - since < ROOM_TTL_MS) continue;
+      if (now - since < (room.phase === 'lobby' ? LOBBY_TTL_MS : ROOM_TTL_MS)) continue;
       idleSince.delete(room);
       if (rooms.get(room.code) === room) rooms.delete(room.code);
     }
@@ -117,11 +126,22 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       ws.send(JSON.stringify(msg));
     };
     const conn: Conn = { send, close: () => ws.close(CLOSE_REPLACED, 'Replaced by a newer connection') };
+    /** The socket closed: the seat is kept for a reconnect. */
     const detach = (): void => {
       if (!room) return;
       room.disconnect(conn);
       released(room);
       room = null;
+    };
+    /**
+     * The socket is going to another table. A seat in a lobby is given up (so a
+     * table opened and abandoned this way is forgotten at once, and one
+     * connection can never hold more than one never-started table); a seat in
+     * a game is kept, as for a dropped connection.
+     */
+    const moveOn = (): void => {
+      if (room?.phase === 'lobby') room.handle(conn, { t: 'leave' });
+      detach();
     };
 
     ws.on('pong', () => alive.add(ws));
@@ -135,12 +155,19 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       try {
         const msg = isBinary ? null : parseClientMsg(data.toString());
         if (!msg) return send({ t: 'error', message: 'Malformed message' });
-        if (msg.t === 'join') {
-          detach();
-          const target = rooms.get(msg.room) ?? (rooms.size < MAX_ROOMS ? new Room(msg.room) : null);
-          const refusal = target ? target.join(conn, msg.name, msg.token) : 'The server is full. Try again later.';
-          if (!target || refusal) return send({ t: 'error', message: refusal ?? '' });
-          rooms.set(target.code, target); // joining a code nobody holds creates the room
+        if (msg.t === 'create' || msg.t === 'join') {
+          if (!(msg.t === 'join' && room?.code === msg.room)) moveOn(); // a repeated join to the same table just re-seats
+          let target: Room | undefined;
+          if (msg.t === 'join') {
+            target = rooms.get(msg.room);
+            if (!target) return send({ t: 'error', message: `There is no table ${msg.room}. Check the code, or start a new table.` });
+          } else {
+            if (rooms.size >= MAX_ROOMS) return send({ t: 'error', message: 'The server is full. Try again later.' });
+            target = new Room(freshCode());
+          }
+          const refusal = target.join(conn, msg.name, msg.token);
+          if (refusal) return send({ t: 'error', message: refusal });
+          rooms.set(target.code, target);
           idleSince.delete(target);
           room = target;
         } else if (room) {
