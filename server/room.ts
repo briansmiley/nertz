@@ -13,6 +13,7 @@ import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type Serve
 import type { BotLevel, GameState, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
+import { Social } from './chat';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -58,6 +59,8 @@ export class Room {
   lastRound: RoundResult | null = null;
   /** House rules, read when a round is dealt. */
   settings: TableSettings = { ...DEFAULT_SETTINGS };
+  /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
+  readonly social = new Social();
 
   private players: Player[] = []; // in seat order
   private conns = new Map<Conn, Player>();
@@ -112,6 +115,7 @@ export class Room {
     Object.assign(player, { name, conn, ack: -1, left: false });
     this.conns.set(conn, player);
     this.host ??= player;
+    this.social.joined(player, this.players);
     this.settle();
     this.changed();
     return null;
@@ -134,6 +138,8 @@ export class Room {
         return this.addBot(player, msg.level);
       case 'removeBot':
         return this.removeBot(player, msg.seat);
+      default:
+        return this.social.handle(player, this.players, player === this.dealer, msg);
     }
   }
 
@@ -282,6 +288,7 @@ export class Room {
       player.left = true; // their cards are on the table; the seat is freed when the next round is dealt
     }
     this.letGo(player);
+    this.social.left(player, this.players);
     this.settle(); // the remaining connected players may now all be stuck
     this.changed();
   }

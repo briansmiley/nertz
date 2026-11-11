@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode
 import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
+import { Chat } from './Chat';
 import { addBot, create, join, leave, removeBot, start, useNet } from './net';
 import { Corner, TableRules } from './Settings';
 import { useSounds } from './sound';
@@ -76,6 +77,7 @@ export function App() {
       <Corner />
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
+      <Chat room={room} />
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (

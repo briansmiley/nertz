@@ -898,7 +898,7 @@ class Client {
       this.raw.push(text);
       const msg = JSON.parse(text) as ServerMsg;
       if (msg.t === 'state') this.states.push(msg);
-      else this.errors.push(msg.message);
+      else if (msg.t === 'error') this.errors.push(msg.message);
     });
     ws.on('close', (code) => (this.closeCode = code));
     ws.on('error', () => {});

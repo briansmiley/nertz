@@ -9,6 +9,7 @@
 // putting it back (`hold`, `release`) are intents like any other.
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
+import type { SocialServerMsg } from '../shared/chat';
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
@@ -107,7 +108,12 @@ function token(): string {
   }
 }
 
-function post(msg: ClientMsg): boolean {
+/** Chat and voice messages go to whoever asked for them (client/social.ts); this store only knows the game. */
+const socialListeners = new Set<(msg: SocialServerMsg) => void>();
+export const onSocial = (fn: (msg: SocialServerMsg) => void): void => void socialListeners.add(fn);
+
+/** Sends one message if the socket is open. Game intents go through `send` instead. */
+export function post(msg: ClientMsg): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false;
   socket.send(JSON.stringify(msg));
   return true;
@@ -148,6 +154,8 @@ function connect(): void {
       // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
       if (sync.server) set({ error: msg.message });
       else stop(msg.message);
+    } else {
+      for (const fn of socialListeners) fn(msg);
     }
   };
   ws.onclose = (e) => {
@@ -210,7 +218,7 @@ export function send(intent: Intent): boolean {
   return true;
 }
 
-const subscribe = (l: () => void) => {
+export const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
