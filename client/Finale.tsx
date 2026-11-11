@@ -169,7 +169,10 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     c.setTransform(cos, sin, -sin, cos, (x + w / 2 - plan.area.x) * dpr, (y + h / 2 - plan.area.y) * dpr);
     c.drawImage(sprites.get(mv.owner)!, -w / 2 - pad, -h / 2 - pad, w + 2 * pad, h + 2 * pad);
   };
-  const flying: [Mover, number, number, number][] = [];
+  type Stamp = [Mover, number, number, number];
+  const flying: Stamp[] = [];
+  const resting: Stamp[] = [];
+  const arriving: Stamp[] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
     const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
@@ -177,7 +180,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     const rise = Math.min(0.45, (h * 0.16) / mv.of) * mv.k;
     if (q >= 1) {
       landed[mv.pile]!++;
-      stamp(mv, pile.x - rise * 0.4, pile.y - rise, mv.tilt);
+      resting.push([mv, pile.x - rise * 0.4, pile.y - rise, mv.tilt]);
       continue;
     }
     // In the wash: out from its pile to a spot on the disc, which then turns (the inside faster) and breathes.
@@ -192,9 +195,10 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
       y = lerp(y, pile.y - rise, q);
       rot = lerp(rot, mv.tilt, q);
     }
-    flying.push([mv, x, y, rot]);
+    (q > 0 ? arriving : flying).push([mv, x, y, rot]);
   }
-  for (const f of flying) stamp(...f); // cards in the air pass over the piles
+  // The wash turns underneath; the gathered piles lie on top of it; a card on its way down to its pile is above both.
+  for (const f of [...flying, ...resting, ...arriving]) stamp(...f);
   return landed;
 }
 
@@ -280,15 +284,11 @@ export function Finale({ L, game, scores, name, instant }: Props) {
             style={{ left: p.x + plan.w / 2, top: p.y + plan.h + 8 }}
           >
             <span className="who">{done >= n && delta(p.seat) === best ? `★ ${name(p.seat)} wins the round` : name(p.seat)}</span>
-            <b className="got">{signed(landed[i] ?? 0)}</b>
-            <span className={`fine${left ? '' : ' none'}`}>
-              {left ? (
-                <>
-                  <b>{signed(-2 * left)}</b> {left} nertz left
-                </>
-              ) : (
-                'no nertz left'
-              )}
+            <span className="line got">
+              <b>{signed(landed[i] ?? 0)}</b> played
+            </span>
+            <span className={`line fine${left ? '' : ' none'}`}>
+              <b>{signed(-2 * left)}</b> {left ? `${left} nertz left` : 'no nertz left'}
             </span>
             <b className="net">{signed(delta(p.seat))}</b>
           </div>
