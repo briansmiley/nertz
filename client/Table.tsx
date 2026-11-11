@@ -13,7 +13,7 @@
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
-import { DRAG_HZ, type DragAt } from '../shared/protocol';
+import { DRAG_HZ, STOCK_CARD_MS, type DragAt } from '../shared/protocol';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, sortMs, TIMING } from './Finale';
@@ -480,17 +480,34 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** The table rule for dealing off the stock: drag each card to the waste, or click the stock once per card. */
   const dragDeal = room.settings.stockDeal === 'drag';
 
-  // Where cards are dealt by clicking, Space deals one too. (Where they are dragged, it does nothing.)
+  // Dealing off the stock takes time. One click (or Space) starts a group of three; the cards then come off one at a
+  // time, STOCK_CARD_MS apart, and the next group cannot start sooner than that after the last card. The server
+  // holds everyone to the same pace, so there is nothing to gain by clicking faster.
+  const flipped = useRef(0);
+  const dealNow = useCallback(() => {
+    flipped.current = performance.now();
+    return send({ k: 'flip' });
+  }, []);
+  /** A click on the stock, or Space: starts a group (or turns the waste back over), unless one is still coming off. */
+  const dealGroup = useCallback(() => {
+    if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow();
+  }, [dealNow]);
+  const midGroup = !frozen && !dragDeal && (mine?.dealt ?? 0) > 0 && (mine?.stock.length ?? 0) > 0;
+  useEffect(() => {
+    if (!midGroup) return;
+    const t = setTimeout(dealNow, Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
+    return () => clearTimeout(t);
+  }, [midGroup, mine?.dealt, mine?.stock.length, dealNow]);
   useEffect(() => {
     if (frozen || dragDeal) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return;
       e.preventDefault();
-      send({ k: 'flip' });
+      dealGroup();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [frozen, dragDeal]);
+  }, [frozen, dragDeal, dealGroup]);
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
@@ -636,7 +653,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       // The stock. Empty: a click turns the waste back over. Otherwise one card per action: a click deals it, or
       // (the table rule) it has to be carried to the waste.
       const card = mine?.stock.at(-1)?.id;
-      if (!card || !dragDeal) return void send({ k: 'flip' });
+      if (!card || !dragDeal) return void dealGroup();
       pick = { held: { k: 'stock' }, ids: [card], lead: card, ace: false };
     } else if (placed?.pile === 'slot' && toClear(placed.at)) {
       const ids = L.cards.filter((c) => c.pile === 'slot' && c.at === placed.at).map((c) => c.card.id);

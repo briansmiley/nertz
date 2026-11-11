@@ -136,12 +136,6 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
           Piles go wherever the Ace is put down <small>Off: the middle has a marked place for every pile. On: no marks. An Ace starts its pile wherever you let go of it, as long as it overlaps no other pile.</small>
         </span>
       </label>
-      <label className="check">
-        <input type="checkbox" checked={room.settings.stockDeal === 'drag'} disabled={!mine} onChange={(e) => set({ stockDeal: e.target.checked ? 'drag' : 'click' })} />
-        <span>
-          Deal from the stock by dragging <small>Each card is dragged from the stock onto the waste. Off: one click on the stock (or Space) per card. Three cards make a group either way.</small>
-        </span>
-      </label>
       {children}
       {!mine && <p className="hint">{host?.name ?? 'The host'} sets these.</p>}
     </fieldset>

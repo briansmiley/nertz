@@ -67,6 +67,11 @@ export const SLOTS_PER_PLAYER = 4;
 export const GRACE_MS = 4000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
+/**
+ * Dealing from the stock takes time, as it does with real cards: one click starts a group of three, and the cards
+ * come off the stock one at a time, this far apart. The next group cannot start sooner than this after the last card.
+ */
+export const STOCK_CARD_MS = 250;
 /** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */
 export const START_BEAT_MS = 700;
 export const START_BEATS = 3;

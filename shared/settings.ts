@@ -27,7 +27,7 @@ export interface TableSettings {
 
 export type StockDeal = 'drag' | 'click';
 
-export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true, stockDeal: 'drag', centre: 'spots' };
+export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true, stockDeal: 'click', centre: 'spots' };
 
 /** Players in the round below which `fewerDown` applies. */
 export const SMALL_TABLE = 4;

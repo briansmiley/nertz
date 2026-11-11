@@ -93,11 +93,11 @@ describe('the settings message', () => {
 });
 
 describe('table settings in a room', () => {
-  it('start out as the defaults (small-table rule on, the stock dealt by dragging) and are in every view', () => {
+  it('start out as the defaults (small-table rule on, the stock dealt by clicking) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'drag', centre: 'spots' });
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'drag', centre: 'spots' });
+    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'spots' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'spots' });
   });
 
   it('only the host changes them, and everyone is told', () => {
@@ -111,19 +111,19 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { fewerDown: false } });
     room.flush();
     expect(room.settings.fewerDown).toBe(false);
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'drag', centre: 'spots' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'click', centre: 'spots' });
   });
 
   it('how the stock is dealt is for the host to choose, between rounds: the round on the table keeps the way it was dealt under', () => {
     const { room, conns } = roomWith(2);
     const [host, guest] = conns as [FakeConn, FakeConn];
-    room.handle(guest, { t: 'settings', patch: { stockDeal: 'click' } });
-    expect(room.settings.stockDeal).toBe('drag');
+    room.handle(guest, { t: 'settings', patch: { stockDeal: 'drag' } });
+    expect(room.settings.stockDeal).toBe('click');
     room.handle(host, { t: 'start' });
-    room.handle(host, { t: 'settings', patch: { stockDeal: 'click' } }); // a round is on: not now
+    room.handle(host, { t: 'settings', patch: { stockDeal: 'drag' } }); // a round is on: not now
     room.flush();
-    expect(room.settings.stockDeal).toBe('drag');
-    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', settings: { stockDeal: 'drag' } });
+    expect(room.settings.stockDeal).toBe('click');
+    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', settings: { stockDeal: 'click' } });
 
     // The rule only chooses the gesture. Whatever it says, an intent is one card: a client that sends flips on its own gains nothing.
     const game = room.game!;
@@ -133,12 +133,12 @@ describe('table settings in a room', () => {
 
     room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
-    room.handle(guest, { t: 'settings', patch: { stockDeal: 'click' } }); // still not the guest's
-    expect(room.settings.stockDeal).toBe('drag');
-    room.handle(host, { t: 'settings', patch: { stockDeal: 'click' } });
+    room.handle(guest, { t: 'settings', patch: { stockDeal: 'drag' } }); // still not the guest's
+    expect(room.settings.stockDeal).toBe('click');
+    room.handle(host, { t: 'settings', patch: { stockDeal: 'drag' } });
     room.handle(host, { t: 'start' });
     room.flush();
-    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', round: 2, settings: { fewerDown: true, stockDeal: 'click' } });
+    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', round: 2, settings: { fewerDown: true, stockDeal: 'drag' } });
     room.game = openPlay(startCountdown(finishDeal(room.game!)));
     for (let seq = 4; seq < 8; seq++) room.handle(guest, { t: 'intent', seq, intent: { k: 'flip' } });
     expect(room.game.players[1]).toMatchObject({ waste: { length: 4 }, dealt: 1 }); // the same one card per intent

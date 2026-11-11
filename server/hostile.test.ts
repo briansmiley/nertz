@@ -196,7 +196,7 @@ describe('a hostile client over real sockets', () => {
   beforeAll(async () => {
     dist = mkdtempSync(join(tmpdir(), 'nertz-hostile-'));
     writeFileSync(join(dist, 'index.html'), '<!doctype html><title>nertz</title>');
-    server = await startServer({ port: 0, dist }); // the real rate limit
+    server = await startServer({ port: 0, dist, flipMs: 0 }); // the real rate limit; the stock's pacing has its own test in room.test.ts
   });
   afterAll(async () => {
     await server.close();

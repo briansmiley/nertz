@@ -92,7 +92,7 @@ describe('the host chooses how the middle works', () => {
     expect(next.room.settings.centre).toBe('spots');
     next.room.handle(h2, { t: 'settings', patch: { centre: 'free' } });
     next.room.flush();
-    expect(g2.room.settings).toEqual({ fewerDown: true, stockDeal: 'drag', centre: 'free' });
+    expect(g2.room.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'free' });
     start(next.room, h2);
     next.room.flush();
     expect(next.room.game!.table).toBe('free');
@@ -172,7 +172,7 @@ describe('card positions while dragging', () => {
     expect(room.game!.players[0]!.holding).toBe(held);
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'flip' } });
     room.flush();
-    expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/); // (the table rule `stockDeal: 'drag'` is in there, and is not a position)
+    expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/); // (the table rule `stockDeal: 'click'` is in there, and is not a position)
     room.close();
   });
 

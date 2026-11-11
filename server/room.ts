@@ -37,6 +37,8 @@ interface Player {
   left: boolean;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
+  /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
+  flipped?: number;
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
   bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null; pending: { intent: Intent; memory: BotMemory } | null };
 }
@@ -49,6 +51,8 @@ export interface RoomOptions {
   rng?: Rng;
   /** How to defer the coalesced flush; defaults to once per event-loop turn. */
   schedule?: (flush: () => void) => void;
+  /** The least time between two cards a person deals off their stock (ms). 0, the default here, is no limit. */
+  flipMs?: number;
 }
 
 export class Room {
@@ -80,6 +84,7 @@ export class Room {
   private startEndsAt = 0;
   private readonly rng: Rng;
   private readonly schedule: (flush: () => void) => void;
+  private readonly flipMs: number;
 
   constructor(
     readonly code: string,
@@ -87,6 +92,7 @@ export class Room {
   ) {
     this.rng = options.rng ?? Math.random;
     this.schedule = options.schedule ?? setImmediate;
+    this.flipMs = options.flipMs ?? 0;
   }
 
   /** Number of live connections. */
@@ -250,6 +256,11 @@ export class Room {
     if (seq <= player.ack) return; // duplicate or out of order: already answered
     player.ack = seq;
     if (this.phase !== 'playing' || !this.game) return this.changed(player);
+    if (intent.k === 'flip' && this.flipMs > 0 && !player.bot) {
+      const now = Date.now();
+      if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player); // too soon after their last card: refused
+      player.flipped = now;
+    }
     const result = applyIntent(this.game, player.seat, intent);
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.game, player.seat, intent);

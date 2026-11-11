@@ -41,9 +41,8 @@ Controls:
 | ...or, at a table without spots, let an Ace go anywhere on the felt | start a centre pile right there, if it overlaps no other |
 | Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
-| Drag the top card of your stock onto your waste (on it or anywhere near it) | deal one card, face-down. The third turns the group of three face-up |
 | Click the empty stock | turn the waste back over into the stock |
-| Click the stock, or press Space, where the table deals by clicking (a [table rule](#sound-and-settings)) | deal one card: three clicks for three cards |
+| Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | Press M, or the speaker button bottom left | mute or unmute |
@@ -156,15 +155,17 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   pick anything up since.
 - You can play: the top of your nertz pile or of your waste to a work pile or the middle; the top of a work pile to the
   middle; a run from one work pile to another.
-- **Stock**: cards come off it **one at a time**, each its own action, face-down onto the waste. When the third card
-  of a group lands (or the stock runs out first) the group turns face-up and its last card, the new top of the waste, can
-  be played. Three cards cost three actions, as at a real table. While a group is half-dealt the waste is out of play (its
-  top is face-down, and nobody is shown those cards, their owner included); the nertz pile and the work piles play on, and
-  the group can be finished later. When the stock is empty, one action turns the whole waste back over into the stock.
-- **How a card is dealt** is a table rule the host sets (it applies from the next deal). **Drag** (the default): carry
-  the top card of the stock to the waste and let go on or near it; a click on the stock does nothing unless the stock is
-  empty, and Space does nothing. **Click**: one click on the stock, or one press of Space, per card. Either way the server
-  takes one card per message, so a doctored client gains nothing.
+- **Stock**: one click on the stock (or Space) deals a group of three, and dealing takes time, as it does with real
+  cards: they come off one at a time, a quarter of a second apart (`STOCK_CARD_MS`), face-down onto the waste, and the
+  group turns face-up when the third lands (or the stock runs out first). The next group cannot be started sooner than
+  that after the last card, so going round the stock costs about three quarters of a second a group however fast you
+  click. While a group is coming off the waste is out of play (its top is face-down, and nobody is shown those cards,
+  their owner included); the nertz pile and the work piles play on. When the stock is empty, a click turns the whole
+  waste back over into the stock.
+- **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
+  one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
+  gains nothing. (The old "drag each card" rule still exists as the table setting `stockDeal: 'drag'`, but is no longer
+  offered in the table rules.)
 - **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, each player's waste (a half-dealt
   group included) goes back onto their stock, the top stock card moves to the bottom (so the threes come out differently), and all flags clear. Making any
   move clears your own flag.

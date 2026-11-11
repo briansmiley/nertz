@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
+import { MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import { Room, type Conn } from './room';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
@@ -14,6 +14,7 @@ const SWEEP_MS = 60_000;
 const HEARTBEAT_MS = 30_000;
 const MAX_ROOMS = 2000;
 const MAX_BUFFERED_BYTES = 1 << 20; // a client this far behind on snapshots is dropped
+const FLIP_SLACK_MS = 100; // two cards sent STOCK_CARD_MS apart may arrive a little closer together than that
 const RATE_PER_SECOND = 40; // sustained messages per connection; far above what a hand can do
 const RATE_BURST_SECONDS = 3;
 /** Close code (policy violation) for a connection that floods the server. */
@@ -52,11 +53,14 @@ export interface ServerOptions {
   dist?: string;
   /** Messages per second one connection may sustain before it is closed. */
   rate?: number;
+  /** Least time between two cards one person deals off their stock (ms). Defaults to a little under the client's pace. */
+  flipMs?: number;
 }
 
 export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const dist = resolve(options.dist ?? fileURLToPath(new URL('../dist', import.meta.url)));
   const rate = options.rate ?? RATE_PER_SECOND;
+  const flipMs = options.flipMs ?? STOCK_CARD_MS - FLIP_SLACK_MS;
   const rooms = new Map<string, Room>();
   const idleSince = new Map<Room, number>();
   const forget = (room: Room): void => {
@@ -167,7 +171,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
             if (!target) return send({ t: 'error', message: `There is no table ${msg.room}. Check the code, or start a new table.` });
           } else {
             if (rooms.size >= MAX_ROOMS) return send({ t: 'error', message: 'The server is full. Try again later.' });
-            target = new Room(freshCode());
+            target = new Room(freshCode(), { flipMs });
           }
           const refusal = target.join(conn, msg.name, msg.token);
           if (refusal) return send({ t: 'error', message: refusal });

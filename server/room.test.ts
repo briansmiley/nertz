@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { checkInvariants, deal as dealRound, finishDeal, grab, isComplete, isHidden, legalDrops, openPlay, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { STOCK_CARD_MS } from '../shared/protocol';
 import { DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, type ServerMsg } from '../shared/protocol';
 import type { Card, GameState, Intent, PileRef, Suit } from '../shared/types';
 import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
@@ -1220,7 +1221,7 @@ describe('server over real sockets', () => {
   beforeAll(async () => {
     dist = mkdtempSync(join(tmpdir(), 'nertz-dist-'));
     writeFileSync(join(dist, 'index.html'), '<!doctype html><title>nertz test</title>');
-    server = await startServer({ port: 0, dist, rate: 1e9 }); // the swarm test floods on purpose
+    server = await startServer({ port: 0, dist, rate: 1e9, flipMs: 0 }); // the swarm test floods on purpose, stock included
   });
   afterAll(async () => {
     await server.close();
@@ -1496,8 +1497,34 @@ describe('server over real sockets', () => {
     }
   });
 
+  it('the stock is paced by the server: cards sent in the same instant are refused, and one is dealt again after the pause', async () => {
+    const paced = await startServer({ port: 0, dist });
+    try {
+      const a = await Client.open(paced.port, null, 'P0');
+      const b = await Client.open(paced.port, a.code, 'P1');
+      a.send({ t: 'start' });
+      await vi.waitFor(() => expect(b.last.room.phase).toBe('playing'));
+      const room = paced.rooms.get(a.code)!;
+      room.game = toPlay(room.game!);
+      const stock = room.game.players[1]!.stock.length;
+      let last = 0;
+      for (let i = 0; i < 6; i++) last = b.intent({ k: 'flip' });
+      await vi.waitFor(() => expect(b.last.ack).toBe(last)); // every one is answered...
+      expect(room.game!.players[1]!).toMatchObject({ stock: { length: stock - 1 }, waste: { length: 1 }, dealt: 1 }); // ...but one card moved
+      await new Promise((done) => setTimeout(done, STOCK_CARD_MS));
+      last = b.intent({ k: 'flip' });
+      await vi.waitFor(() => expect(b.last.ack).toBe(last));
+      expect(room.game!.players[1]!).toMatchObject({ stock: { length: stock - 2 }, waste: { length: 2 }, dealt: 2 });
+      expect(checkInvariants(room.game!)).toBeNull();
+      await a.close();
+      await b.close();
+    } finally {
+      await paced.close();
+    }
+  });
+
   it('the default rate limit leaves plenty of room for dealing card by card: three whole laps of the stock in one burst', async () => {
-    const limited = await startServer({ port: 0, dist });
+    const limited = await startServer({ port: 0, dist, flipMs: 0 });
     try {
       const a = await Client.open(limited.port, null, 'P0');
       const b = await Client.open(limited.port, a.code, 'P1');
