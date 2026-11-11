@@ -18,16 +18,17 @@ export interface TableSettings {
    */
   stockDeal: StockDeal;
   /**
-   * The middle of the table: 'spots' gives every centre pile a fixed place
-   * (an Ace goes on an empty one); 'free' has none, and a pile lies wherever
-   * its Ace is put down, as long as it overlaps no other pile.
+   * The middle of the table: on a 'free' one a pile lies wherever its Ace is
+   * put down, as long as it is clear of every other pile; 'spots' gives every
+   * centre pile a marked place (an Ace goes on an empty one). The lobby's
+   * checkbox for 'spots' reads "Use grid for piles".
    */
   centre: TableMode;
 }
 
 export type StockDeal = 'drag' | 'click';
 
-export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true, stockDeal: 'click', centre: 'spots' };
+export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true, stockDeal: 'click', centre: 'free' };
 
 /** Players in the round below which `fewerDown` applies. */
 export const SMALL_TABLE = 4;

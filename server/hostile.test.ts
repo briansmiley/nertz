@@ -169,8 +169,11 @@ describe('a hostile client over real sockets', () => {
     clients.push(c);
     return c;
   };
-  /** A table of `n` people with the cards dealt (stage `dealing`, the deal timer running). */
-  const dealt = async (n: number, settings: Partial<TableSettings> = {}) => {
+  /**
+   * A table of `n` people with the cards dealt (stage `dealing`, the deal timer running). With marked places for the
+   * piles unless a test asks otherwise: most of these aim their Aces at a slot by its number.
+   */
+  const dealt = async (n: number, settings: Partial<TableSettings> = { centre: 'spots' }) => {
     const players = [await open(null, 'P0')];
     for (let i = 1; i < n; i++) players.push(await open(players[0]!.code, `P${i}`));
     if (Object.keys(settings).length > 0) players[0]!.send({ t: 'settings', patch: settings });
@@ -179,7 +182,7 @@ describe('a hostile client over real sockets', () => {
     return { room: server.rooms.get(players[0]!.code)!, players };
   };
   /** The same with play open and the hands rigged; every client has seen the rigged table. */
-  const playing = async (n: number, settings: Partial<TableSettings> = {}, emptyNertzFor: number[] = [], also: (g: GameState) => GameState = (g) => g) => {
+  const playing = async (n: number, settings: Partial<TableSettings> = { centre: 'spots' }, emptyNertzFor: number[] = [], also: (g: GameState) => GameState = (g) => g) => {
     const t = await dealt(n, settings);
     t.room.game = also(rig(toPlay(t.room.game!), emptyNertzFor));
     expect(checkInvariants(t.room.game)).toBeNull();
@@ -238,11 +241,11 @@ describe('a hostile client over real sockets', () => {
       await vi.waitFor(() => [a, b].forEach((p, i) => expect(p.last.ack).toBe(s[i])));
       expect(piles(room.game!)).toHaveLength(2);
       const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.length === 1)!;
-      await loser.did(move(workTop(room.game!, loser.seat, 2), felt(0.5, -0.2)));
+      await loser.did(move(workTop(room.game!, loser.seat, 2), felt(1.2, -0.2)));
       expect(piles(room.game!)).toHaveLength(3);
       // Off the table, on another pile, or not an Ace: refused.
       const c = players[2]!;
-      for (const to of [felt(0.99, 0), felt(0.1, 0.1), felt(1, 1)]) await c.did(move(workTop(room.game!, c.seat, 2), to));
+      for (const to of [felt(2.7, 0), felt(0.1, 0.1), felt(2.6, 0.8)]) await c.did(move(workTop(room.game!, c.seat, 2), to));
       await c.did(move(workTop(room.game!, c.seat, 3), felt(0, -0.6)));
       expect(piles(room.game!)).toHaveLength(3);
     }

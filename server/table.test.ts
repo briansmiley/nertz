@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, feltFree, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, START_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, type DragAt, type ServerMsg } from '../shared/protocol';
-import { openPlace, seatDir, spots, type Spot, type TableMode } from '../shared/table';
+import { cardSize, openPlace, spots, TABLE, type Spot, type TableMode } from '../shared/table';
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
 import { Room, type Conn } from './room';
@@ -74,30 +74,30 @@ const at = (id: string, w = 0.5): { t: 'drag' } & DragAt => ({ t: 'drag', id, w,
 afterEach(() => void vi.useRealTimers());
 
 describe('the host chooses how the middle works', () => {
-  it('spots by default; "free" applies from the next deal, and a round keeps the table it was dealt', () => {
+  it('free placement by default; the grid of marked places applies from the next deal, and a round keeps the table it was dealt', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     const host = conns[0]!;
     start(room, host);
-    expect(room.game!.table).toBe('spots');
-    expect(room.game!.places).toEqual(spots(2));
+    expect(room.game!.table).toBe('free');
+    expect(room.game!.places).toEqual(Array.from({ length: 8 }, () => null));
     // Mid-round the setting stands still, like every table rule.
-    room.handle(host, { t: 'settings', patch: { centre: 'free' } });
-    expect(room.settings.centre).toBe('spots');
+    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
+    expect(room.settings.centre).toBe('free');
 
     const next = roomWith(3);
     room.close();
     const [h2, g2] = next.conns as [FakeConn, FakeConn, FakeConn];
-    next.room.handle(g2, { t: 'settings', patch: { centre: 'free' } }); // not the host: ignored
-    expect(next.room.settings.centre).toBe('spots');
-    next.room.handle(h2, { t: 'settings', patch: { centre: 'free' } });
+    next.room.handle(g2, { t: 'settings', patch: { centre: 'spots' } }); // not the host: ignored
+    expect(next.room.settings.centre).toBe('free');
+    next.room.handle(h2, { t: 'settings', patch: { centre: 'spots' } });
     next.room.flush();
-    expect(g2.room.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'free' });
+    expect(g2.room.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'spots' });
     start(next.room, h2);
     next.room.flush();
-    expect(next.room.game!.table).toBe('free');
-    expect(g2.room.game!.table).toBe('free');
-    expect(g2.room.game!.places).toEqual(Array.from({ length: 12 }, () => null));
+    expect(next.room.game!.table).toBe('spots');
+    expect(g2.room.game!.table).toBe('spots');
+    expect(g2.room.game!.places).toEqual(spots(3));
     next.room.close();
   });
 
@@ -105,8 +105,7 @@ describe('the host chooses how the middle works', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(a, { t: 'settings', patch: { centre: 'free' } });
-    start(room, a);
+    start(room, a); // (free placement is the table's default)
     const [aceA, aceB, aceC] = acesUp(room) as [string, string, string];
     room.handle(a, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceA } });
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceB } });
@@ -125,7 +124,7 @@ describe('the host chooses how the middle works', () => {
     for (const conn of [a, b, c]) expect(conn.room.game!.places[0]).toMatchObject({ x: 0.2, y: 0.1 });
     // A is free to put it somewhere else, and C beside that.
     room.handle(a, { t: 'intent', seq: 3, intent: move(aceA, felt(-0.5, 0)) });
-    room.handle(c, { t: 'intent', seq: 1, intent: move(aceC, felt(0, -0.6)) });
+    room.handle(c, { t: 'intent', seq: 1, intent: move(aceC, felt(1.6, -0.6)) });
     expect(room.game!.slots.filter((s) => s.length > 0)).toHaveLength(3);
     expect(checkInvariants(room.game!)).toBeNull();
     room.close();
@@ -275,13 +274,13 @@ describe('card positions while dragging', () => {
   });
 });
 
-describe('bots on a table without fixed places', () => {
-  /** A free two-seat table where seat `seat` has an Ace on its waste. */
+describe('bots on a table without marked places', () => {
+  /** A free table of `n` where seat `seat` has an Ace on its waste. */
   function withAce(n: number, seat: number, seed = 3): { view: GameState; ace: string } {
     vi.useFakeTimers();
     const { room, conns } = roomWith(n, seed);
-    room.handle(conns[0]!, { t: 'settings', patch: { centre: 'free' } });
     start(room, conns[0]!);
+    expect(room.game!.table).toBe('free');
     const ace = acesUp(room)[seat]!;
     const view = viewFor(room.game!, seat);
     room.close();
@@ -293,35 +292,41 @@ describe('bots on a table without fixed places', () => {
     return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: [[king('w0')], [king('w1')], [king('w2')], [king('w3')]], down: [0, 0, 0, 0] } : p)) };
   };
 
-  it('starts its piles on its own side of the felt, somewhere legal, and differently each time', () => {
+  it('starts its piles anywhere there is room, mostly about the middle, differently each time, and the same way whichever seat it has', () => {
     for (const n of [2, 4, 6]) {
-      for (let seat = 0; seat < n; seat++) {
+      const { w, h } = cardSize(n);
+      for (const seat of [0, n - 1]) {
         const { view, ace } = withAce(n, seat, 3 + n);
         const table = wasteOnly(view, seat);
-        const side = seatDir(seat, n);
-        const picks = new Set<string>();
-        let towards = 0;
-        for (let seed = 1; seed <= 30; seed++) {
+        const picks: { x: number; y: number }[] = [];
+        for (let seed = 1; seed <= 40; seed++) {
           const choice = chooseIntent(table, seat, freshMemory(), seeded(seed));
           const intent = choice!.intent as Extract<Intent, { k: 'move' }>;
           expect(intent).toMatchObject({ k: 'move', cardId: ace, count: 1, to: { k: 'felt' } });
           const to = intent.to as Extract<PileRef, { k: 'felt' }>;
           expect(feltFree(table, to)).toBe(true);
-          if (to.x * side.x + to.y * side.y > 0) towards++;
-          picks.add(`${to.x},${to.y}`);
+          picks.push(to);
         }
-        expect(picks.size).toBeGreaterThan(10);
-        expect(towards).toBeGreaterThan(20); // mostly in its own half
+        expect(new Set(picks.map((p) => `${p.x},${p.y}`)).size).toBeGreaterThan(30);
+        // About the middle: mostly in the inner half of the felt, on every side of it, and not all on one spot.
+        expect(picks.filter((p) => Math.abs(p.x) < TABLE.hw / 2 && Math.abs(p.y) < 0.5).length).toBeGreaterThan(20);
+        for (const side of [(p: { x: number; y: number }) => p.x > 0, (p: { x: number; y: number }) => p.x < 0, (p: { x: number; y: number }) => p.y > 0, (p: { x: number; y: number }) => p.y < 0]) expect(picks.filter(side).length).toBeGreaterThan(8);
+        expect(picks.filter((p) => Math.abs(p.x) > w || Math.abs(p.y) > h / 2).length).toBeGreaterThan(10);
       }
+      // No "own side": the same random numbers give the same place to whoever is asked.
+      const places = [0, n - 1].map((seat) => {
+        const { view } = withAce(n, seat, 3 + n);
+        return (chooseIntent(wasteOnly(view, seat), seat, freshMemory(), seeded(7))!.intent as Extract<Intent, { k: 'move' }>).to;
+      });
+      expect(places[0]).toEqual(places[1]);
     }
   });
 
   it('finds the last free patch of a crowded table, and does not try when there is none', () => {
     const { view, ace } = withAce(2, 0);
-    // Six piles already lie where the bot would like to put its own: crowded round its side of the table.
+    // Six piles already lie where the bot would like to put its own: crowded round the middle of the table.
     const taken: Spot[] = [];
-    const side = seatDir(0, 2);
-    for (let i = 0; i < 6; i++) taken.push({ ...openPlace(taken, 2, 'free', { x: side.x * 0.5, y: side.y * 0.5 })!, r: 0 });
+    for (let i = 0; i < 6; i++) taken.push({ ...openPlace(taken, 2)!, r: 0 });
     expect(taken).toHaveLength(6);
     const pile = (i: number): Card[] => [{ id: `pile${i}`, owner: 1, suit: 'D', rank: 1 }];
     const crowded = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 6 ? pile(i) : s)), places: view.places.map((p, i) => (i < 6 ? taken[i]! : p)) }, 0);
@@ -330,13 +335,18 @@ describe('bots on a table without fixed places', () => {
       expect(intent).toMatchObject({ k: 'move', cardId: ace });
       expect(feltFree(crowded, (intent as Extract<Intent, { k: 'move' }>).to as { x: number; y: number })).toBe(true);
     }
+    // A table so full that a glance or two finds nothing: it still finds the one place there is.
+    const packed: Spot[] = [...taken];
+    for (let at = openPlace(packed, 2); at && packed.length < 7; at = openPlace(packed, 2)) packed.push({ ...at, r: 0 });
+    const seven = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 7 ? pile(i) : s)), places: view.places.map((p, i) => (i < 7 ? packed[i]! : p)) }, 0);
+    expect(chooseIntent(seven, 0, freshMemory(), () => 0.999)!.intent).toMatchObject({ k: 'move', cardId: ace, to: { k: 'felt' } }); // (every glance lands off in a corner)
     // All eight slots in use: the Ace has nowhere to go, so the bot does something else (here: flips).
-    const full = { ...crowded, slots: crowded.slots.map((s, i) => (s.length ? s : pile(i))), places: crowded.places.map((p, i) => p ?? { x: -0.8 + 0.01 * i, y: 0, r: 0 }) };
+    const full = { ...crowded, slots: crowded.slots.map((s, i) => (s.length ? s : pile(i))), places: crowded.places.map((p, i) => p ?? { x: -2 + 0.01 * i, y: 0, r: 0 }) };
     expect(chooseIntent(full, 0, freshMemory(), seeded(1))!.intent).toEqual({ k: 'flip' });
   });
 
   for (const centre of ['spots', 'free'] as TableMode[]) {
-    it(`tables of 2 to 6 bots play rounds out on a table with ${centre === 'free' ? 'no fixed places' : 'spots'}, every pile in a legal place throughout`, () => {
+    it(`tables of 2 to 6 bots play rounds out on a table with ${centre === 'free' ? 'no marked places' : 'the grid of marked places'}, every pile in a legal place throughout`, () => {
       vi.useFakeTimers();
       let finished = 0;
       let dealt = 0;

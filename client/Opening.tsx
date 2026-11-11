@@ -26,7 +26,7 @@ function useBeat(startMs: number | null): number {
   return beat;
 }
 
-/** `at` is the middle of the table (the centre of the disc), in the table's own coordinates. */
+/** `at` is the middle of the table (the centre of the felt), in the table's own coordinates. */
 export function Opening({ room, at }: { room: RoomView; at: { x: number; y: number } }) {
   const stage = room.phase === 'playing' ? room.game?.stage : undefined;
   const dealer = room.players.find((p) => p.isHost);

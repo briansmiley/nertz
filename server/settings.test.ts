@@ -93,11 +93,11 @@ describe('the settings message', () => {
 });
 
 describe('table settings in a room', () => {
-  it('start out as the defaults (small-table rule on, the stock dealt by clicking) and are in every view', () => {
+  it('start out as the defaults (small-table rule on, the stock dealt by clicking, piles wherever their Aces are put down) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'spots' });
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'spots' });
+    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'free' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'free' });
   });
 
   it('only the host changes them, and everyone is told', () => {
@@ -111,7 +111,7 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { fewerDown: false } });
     room.flush();
     expect(room.settings.fewerDown).toBe(false);
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'click', centre: 'spots' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'click', centre: 'free' });
   });
 
   it('how the stock is dealt is for the host to choose, between rounds: the round on the table keeps the way it was dealt under', () => {

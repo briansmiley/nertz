@@ -49,8 +49,9 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * Deals a fresh round: one shuffled 52-card deck per seat, with opaque random
  * card ids. Per seat: 13 in the nertz pile, work piles of 1, 2, 3 and 4 cards
  * (0 to 3 face-down under one face-up), and the other 29 as stock. The middle
- * gets 4 empty slots per seat: with `rules.centre` 'spots' (the default) each
- * has its fixed place on the table, with 'free' none has one yet. The round
+ * gets 4 empty slots per seat: with `rules.centre` 'free' none has a place
+ * yet, with 'spots' (also when it is left out) each has its marked place on the
+ * table. The round
  * starts out in stage `dealing`: closed to every intent and fully redacted
  * until `finishDeal`; see `openPlay`.
  *
@@ -107,11 +108,12 @@ const piled = (state: GameState): Pt[] => state.places.filter((at, i): at is Spo
 
 /**
  * On a 'free' table: may a new pile be started at `at` (table space)? There
- * must be a slot left (4 per player), the card must lie on the disc, and it
- * must not overlap any pile in anybody's view (shared/table.ts).
+ * must be a slot left (4 per player), the whole card must lie on the felt, and
+ * it must keep the gap to every pile that is there (shared/table.ts): exactly
+ * what everyone sees on their screen.
  */
 export const feltFree = (state: GameState, at: Pt): boolean =>
-  state.table === 'free' && state.slots.some((s) => s.length === 0) && roomAt(at, piled(state), state.players.length, 'free');
+  state.table === 'free' && state.slots.some((s) => s.length === 0) && roomAt(at, piled(state), state.players.length);
 
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
@@ -181,7 +183,7 @@ export function legalDrops(state: GameState, seat: number, cardId: string): Pile
   ];
   const drops = targets.filter((to) => typeof planMove(state, seat, cardId, to) !== 'string');
   if (state.table === 'free' && state.slots.some((s) => s.length === 0) && grab(state, seat, cardId)?.cards[0]?.rank === 1) {
-    const at = openPlace(piled(state), state.players.length, 'free');
+    const at = openPlace(piled(state), state.players.length);
     if (at && typeof planMove(state, seat, cardId, { k: 'felt', ...at }) !== 'string') drops.push({ k: 'felt', ...at });
   }
   return drops;
@@ -510,7 +512,7 @@ export function checkInvariants(state: GameState): string | null {
   for (const [i, at] of state.places.entries()) {
     const used = state.slots[i]!.length > 0;
     if (state.table === 'free' ? used !== (at !== null) : at === null) return `slot ${i}: ${at ? 'a place without a pile' : 'no place'}`;
-    if (at && !roomAt(at, state.places.filter((other, j): other is Spot => j < i && other !== null), n, state.table)) return `slot ${i}: off the table or overlapping another pile`;
+    if (at && !roomAt(at, state.places.filter((other, j): other is Spot => j < i && other !== null), n)) return `slot ${i}: off the table or overlapping another pile`;
   }
   const middle: [string, Card[]][] = [...state.slots.map((s, i): [string, Card[]] => [`slot ${i}`, s]), ...state.tray.map((s, i): [string, Card[]] => [`tray ${i}`, s])];
   for (const [name, pile] of middle) {

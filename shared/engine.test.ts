@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardSize, clash, onDisc, spots, toView, type TableMode } from './table';
+import { cardSize, clash, onTable, pileGap, spots, TABLE, type TableMode } from './table';
 import {
   applyIntent,
   canDrop,
@@ -1431,41 +1431,48 @@ describe('a table without fixed places', () => {
     expect(legalDrops(spotted, 0, '0:SA').some((to) => to.k === 'felt')).toBe(false);
   });
 
-  it('refuses a pile off the disc or hanging over its edge, and junk coordinates', () => {
+  it('refuses a pile off the felt or hanging over its edge, and junk coordinates', () => {
     const s = freeGame(two(aces, theirAces));
-    const { h } = cardSize(2, 'free');
+    const { w, h } = cardSize(2);
     ok(applyIntent(s, 0, move('0:SA', felt(0, 1 - h / 2 - 0.02))));
     rejected(applyIntent(s, 0, move('0:SA', felt(0, 1 - h / 2 + 0.02)))); // the card would hang over the edge
-    rejected(applyIntent(s, 0, move('0:SA', felt(0.99, 0))));
-    rejected(applyIntent(s, 0, move('0:SA', felt(1, 1)))); // a corner of the square the disc sits in
-    for (const bad of [NaN, Infinity, 1.5, -7, '0.1', null, undefined]) {
+    ok(applyIntent(s, 0, move('0:SA', felt(-(TABLE.hw - w / 2 - 0.02), 0)))); // right out at the end of the felt
+    rejected(applyIntent(s, 0, move('0:SA', felt(TABLE.hw - w / 2 + 0.02, 0))));
+    rejected(applyIntent(s, 0, move('0:SA', felt(TABLE.hw - w / 2 - 0.02, 1 - h / 2 - 0.02)))); // a rounded-off corner of the felt
+    rejected(applyIntent(s, 0, move('0:SA', felt(TABLE.hw, 1))));
+    for (const bad of [NaN, Infinity, TABLE.hw + 0.5, -7, '0.1', null, undefined]) {
       rejected(applyIntent(s, 0, move('0:SA', { k: 'felt', x: bad, y: 0 } as unknown as PileRef)));
       rejected(applyIntent(s, 0, move('0:SA', { k: 'felt', x: 0, y: bad } as unknown as PileRef)));
     }
+    rejected(applyIntent(s, 0, move('0:SA', { k: 'felt', x: 0, y: 1.5 })));
     rejected(applyIntent(s, 0, move('0:SA', { k: 'felt' } as unknown as PileRef)));
   });
 
-  it('refuses a pile that would overlap another, on anybody\'s screen', () => {
-    const { w, h } = cardSize(2, 'free');
-    const s = freeGame(two(aces, theirAces), [[pile('C3', 1), 0, 0]]);
-    rejected(applyIntent(s, 0, move('0:SA', felt(0, 0))));
-    rejected(applyIntent(s, 0, move('0:SA', felt(w * 0.9, 0)))); // side by side, overlapping
-    rejected(applyIntent(s, 0, move('0:SA', felt(w * 1.05, 0)))); // clear, but closer than the gap
-    rejected(applyIntent(s, 0, move('0:SA', felt(0, -h * 0.9))));
-    const beside = ok(applyIntent(s, 0, move('0:SA', felt(w * 1.2, 0))));
-    expect(ids(beside.slots[1]!)).toEqual(['0:SA']);
-    ok(applyIntent(s, 0, move('0:SA', felt(w * 0.5, h * 1.15)))); // overlapping columns, but one above the other
-
-    // With four at the table the players to your left and right see it turned a quarter: what is side by side for
-    // you is one above the other for them, and a card is much taller than wide in table units. So piles need the
-    // taller clearance in both directions.
-    const four = freeGame([player(0, aces), player(1), player(2), player(3)], [[pile('C3', 1), 0, 0]]);
-    const size = cardSize(4, 'free');
-    const sideways = felt(size.w * 1.3, 0);
-    expect(Math.abs(toView(sideways, 0, 4).x)).toBeGreaterThan(size.w * 1.14); // clear on my own screen...
-    expect(Math.abs(toView(sideways, 1, 4).y)).toBeLessThan(size.h); // ...but on top of it for my neighbour
-    rejected(applyIntent(four, 0, move('0:SA', sideways)));
-    ok(applyIntent(four, 0, move('0:SA', felt(size.h * 1.2, 0))));
+  it('refuses a pile that would overlap another or leave less than the gap, and nothing else: right beside a pile is fine', () => {
+    for (const n of [2, 4, 6]) {
+      const { w, h } = cardSize(n);
+      const gap = pileGap(n);
+      const others = Array.from({ length: n - 1 }, (_, i) => player(i + 1));
+      const s = freeGame([player(0, aces), ...others], [[pile('C3', 1), 0, 0]]);
+      rejected(applyIntent(s, 0, move('0:SA', felt(0, 0))));
+      rejected(applyIntent(s, 0, move('0:SA', felt(w * 0.9, 0)))); // side by side, overlapping
+      rejected(applyIntent(s, 0, move('0:SA', felt(w + gap * 0.5, 0)))); // clear, but closer than the gap
+      rejected(applyIntent(s, 0, move('0:SA', felt(0, -h * 0.9))));
+      rejected(applyIntent(s, 0, move('0:SA', felt(-(w + gap * 0.5), h + gap * 0.5)))); // corner to corner, too close both ways
+      // The gap away, to either side, above or below: there is room. One pile keeps off no more than that.
+      const beside = ok(applyIntent(s, 0, move('0:SA', felt(w + gap + 0.002, 0))));
+      expect(ids(beside.slots[1]!)).toEqual(['0:SA']);
+      wellFormed(beside);
+      ok(applyIntent(s, 0, move('0:SA', felt(-(w + gap + 0.002), h * 0.5))));
+      ok(applyIntent(s, 0, move('0:SA', felt(w * 0.5, h + gap + 0.002)))); // overlapping columns, but one above the other
+      ok(applyIntent(s, 0, move('0:SA', felt(0, -(h + gap + 0.002)))));
+      // It is the same for every player: the felt is not turned for anyone.
+      for (let seat = 1; seat < n; seat++) {
+        const theirs = freeGame([player(0), ...others.map((p) => (p.seat === seat ? player(seat, { work: [cs('SA', seat), [], [], []] }) : p))], [[pile('C3', 0), 0, 0]]);
+        ok(applyIntent(theirs, seat, move(`${seat}:SA`, felt(w + gap + 0.002, 0))));
+        rejected(applyIntent(theirs, seat, move(`${seat}:SA`, felt(w + gap * 0.5, 0))));
+      }
+    }
   });
 
   it('two Aces for the same patch of felt: the first lands, the second goes home; elsewhere there is room for both', () => {
@@ -1507,13 +1514,13 @@ describe('a table without fixed places', () => {
   it('a ninth Ace has nowhere to go while all eight piles lie, and somewhere again once one is cleared', () => {
     const king = pile('SK', 0);
     const piles: [Card[], number, number][] = [[king, 0, 0]];
-    const { h } = cardSize(2, 'free');
-    const spread = [[-0.5, 0], [0.5, 0], [-0.25, h * 1.2], [0.25, h * 1.2], [-0.25, -h * 1.2], [0.25, -h * 1.2], [0.72, 0]] as const;
+    const { h } = cardSize(2);
+    const spread = [[-0.5, 0], [0.5, 0], [-0.25, h * 1.2], [0.25, h * 1.2], [-0.25, -h * 1.2], [0.25, -h * 1.2], [1, 0]] as const;
     spread.forEach(([x, y], i) => piles.push([[{ id: `x${i}`, owner: 1, suit: 'D', rank: 1 }], x, y])); // seven more piles, one card each
     const s = freeGame(two({ nertz: cs('C9'), work: [cs('HA'), [], [], []] }, { nertz: cs('C9', 1) }), piles);
     expect(legalDrops(s, 0, '0:HA').filter((to) => to.k === 'felt')).toEqual([]);
-    rejected(applyIntent(s, 0, move('0:HA', felt(-0.75, 0)))); // bare felt, but the round has its eight piles
-    expect(feltFree(s, { x: -0.75, y: 0 })).toBe(false);
+    rejected(applyIntent(s, 0, move('0:HA', felt(-1.5, 0)))); // bare felt, but the round has its eight piles
+    expect(feltFree(s, { x: -1.5, y: 0 })).toBe(false);
     const cleared = ok(applyIntent(s, 0, { k: 'clear', slot: 0 }));
     expect(cleared.places[0]).toBeNull(); // the felt it lay on is free again
     expect(cleared.tray).toEqual([king]);
@@ -1546,7 +1553,7 @@ describe('a table without fixed places', () => {
     expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 0 ? null : at)) })).toMatch(/slot 0/);
     expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 5 ? { x: -0.5, y: 0, r: 0 } : at)) })).toMatch(/slot 5/);
     expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 1 ? { x: 0.05, y: 0, r: 0 } : at)) })).toMatch(/overlapping/);
-    expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 1 ? { x: 0.98, y: 0, r: 0 } : at)) })).toMatch(/off the table/);
+    expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 1 ? { x: TABLE.hw - 0.05, y: 0, r: 0 } : at)) })).toMatch(/off the table/);
     expect(checkInvariants({ ...s, places: s.places.slice(1) })).toMatch(/places/);
     // A table with spots must have every one of them.
     const spotted = deal([0, 1], mulberry32(5));
@@ -1618,8 +1625,9 @@ function shortDeal(seats: readonly number[], rng: Rng, n = 2): GameState {
 describe('random play keeps every invariant', () => {
   // (Seeds are picked so that the short deals meet a grace window in 4000 intents under all three sets of rules. With
   // one card per flip and clear-first together a grace window comes up about once in five rounds: four seats on seed 3
-  // and six on seed 4 no longer met one; of the seeds tried, 1 of 5 at four seats and 3 of 4 at six do everywhere.)
-  for (const [seed, seatCount, short] of [[1, 2, false], [2, 3, false], [43, 4, true], [14, 6, true], [5, 2, true]] as const) {
+  // and six on seed 4 no longer met one; of the seeds tried, 1 of 5 at four seats and 3 of 4 at six do everywhere.
+  // Re-picked at four seats when the felt stopped being turned for each seat: 41, 42, 47 and 49 do, 43 no longer.)
+  for (const [seed, seatCount, short] of [[1, 2, false], [2, 3, false], [41, 4, true], [14, 6, true], [5, 2, true]] as const) {
     it(`seed ${seed}, ${seatCount} seats, 4000 intents${short ? ', short nertz piles' : ''}`, () => {
       const rng = mulberry32(seed);
       const seats = Array.from({ length: seatCount }, (_, i) => i * 2); // non-contiguous seats on purpose
@@ -1648,8 +1656,8 @@ describe('random play keeps every invariant', () => {
             const place = state.places[i]!;
             expect(place.x).toBeCloseTo(intent.to.x, 3); // (to the thousandth of the table it is kept at)
             expect(place.y).toBeCloseTo(intent.to.y, 3);
-            expect(onDisc(place, seatCount, 'free')).toBe(true);
-            for (const at of before.places) if (at) expect(clash(at, place, seatCount, 'free')).toBe(false);
+            expect(onTable(place, seatCount)).toBe(true);
+            for (const at of before.places) if (at) expect(clash(at, place, seatCount)).toBe(false);
           }
           if (!free) expect(state.places).toBe(before.places); // fixed spots never move
           if (before.nertzCalledBy === null && state.grace.length > 0) seen.graces++;
@@ -1825,8 +1833,9 @@ describe('client prediction on a redacted view agrees with the server', () => {
   it('single intents, grace included: same verdict, same visible result, at most the newly revealed cards unknown', () => {
     let graceIntents = 0;
     // (Seeds re-picked when stock dealing went to one card per intent: a grace window is rarer per 3000 intents now,
-    // about one seed in five meets one. These four meet at least one under each of the three sets of rules.)
-    for (const seed of [21, 26, 27, 28]) {
+    // about one seed in five meets one. These four meet at least one under each of the three sets of rules; seed 50
+    // does under every one of them.)
+    for (const seed of [26, 41, 50, 51]) {
       const rng = mulberry32(seed);
       const seats = [0, 1, 2];
       let state = shortDeal(seats, rng);

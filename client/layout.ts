@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { DEAL_MS, isHidden } from '../shared/engine';
-import { cardSize, fromView, seatDir, tableAspect, toView, type Pt } from '../shared/table';
+import { cardSize, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -49,27 +49,31 @@ export interface SlotRect extends Rect {
 }
 
 /**
- * The middle of the table as this window draws it: the unit disc of table
- * space (shared/table.ts), turned so that player `i` of `n` sits at the bottom
- * and drawn as an ellipse with its centre at (cx, cy).
+ * The middle of the table as this window draws it: where the centre of the
+ * felt (shared/table.ts) is, and how many pixels one unit of table space is.
+ * The felt is the same way up in every window, so that is all there is to it.
  */
-export interface Disc {
+export interface Felt {
   cx: number;
   cy: number;
-  rx: number;
-  ry: number;
-  i: number;
-  n: number;
+  u: number;
 }
 
-/** Where a point of the table is on this screen. Linear, so `toTable` undoes it exactly, on the disc and off it. */
-export function toScreen(d: Disc, p: Pt): Pt {
-  const v = toView(p, d.i, d.n);
-  return { x: d.cx + v.x * d.rx, y: d.cy + v.y * d.ry };
-}
+/** Where a point of the table is on this screen. Linear, so `toTable` undoes it exactly, on the felt and off it. */
+export const toScreen = (f: Felt, p: Pt): Pt => ({ x: f.cx + p.x * f.u, y: f.cy + p.y * f.u });
 
 /** The point of the table that is drawn at (x, y) on this screen. */
-export const toTable = (d: Disc, x: number, y: number): Pt => fromView({ x: (x - d.cx) / d.rx, y: (y - d.cy) / d.ry }, d.i, d.n);
+export const toTable = (f: Felt, x: number, y: number): Pt => ({ x: (x - f.cx) / f.u, y: (y - f.cy) / f.u });
+
+/**
+ * Where the `k`th player round the table from you (clockwise, so 1 is on your
+ * left) sits as you see it, `n` playing: a unit vector from the middle of the
+ * table, (0, 1) being straight down, your own chair.
+ */
+export function seatDir(k: number, n: number): Pt {
+  const a = (2 * Math.PI * k) / Math.max(1, n);
+  return { x: -Math.sin(a), y: Math.cos(a) };
+}
 
 export interface Seat {
   seat: number;
@@ -93,7 +97,7 @@ export interface Layout {
   me: Seat | null;
   opponents: Seat[];
   /** The middle of the table: where table space is on this screen. */
-  disc: Disc;
+  felt: Felt;
   /** One per centre slot, in slot order; null for a slot that has no place (an unused one on a 'free' table). */
   slots: (SlotRect | null)[];
   /** Drop area of each slot: the slot plus a margin smaller than half the gap, so neighbours never touch. */
@@ -104,7 +108,7 @@ export interface Layout {
   trayHit: Rect;
   /** Where each tray pile stands once it has come out onto the table at the end of a round. */
   out: Rect[];
-  /** The box around the disc. */
+  /** The box around the felt. */
   middle: Rect;
   /** The window this was laid out for. */
   window: { w: number; h: number };
@@ -288,18 +292,18 @@ const TRAY_IN = TRAY_SHOW + TRAY_PAD;
 const TRAY_JOG = [0, 0.08, 0.03];
 /** The top corners of the window are kept clear of hands: the chat button's on the left, the grace countdown's on the right. */
 const CORNER = COUNTDOWN.w + COUNTDOWN.right + 8;
-/** Clear felt kept between the disc and every hand. */
+/** Clear cloth kept between the felt and every hand. */
 const CLEAR = 14;
 /** An opponent's card is this share of the window's height wide, by how many opponents there are. */
 const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
 
 /**
- * Where everything is. The players sit around the table at their seat angles,
- * turned so that you are at the bottom (shared/table.ts): your own hand large
- * along the bottom edge, everyone else as a compact hand where their seat is,
- * along the top edge for the seats across from you and at the left and right
- * edges for your neighbours. The middle is the disc, drawn as an ellipse as
- * large as fits between all the hands.
+ * Where everything is. The felt in the middle is the same for everybody
+ * (shared/table.ts); the seating round it is yours: your own hand large along
+ * the bottom edge, everyone else in seat order clockwise from your left as a
+ * compact hand, along the top edge for the seats across from you and at the
+ * left and right edges for your neighbours. The felt is as large as fits
+ * between all the hands.
  */
 export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live'): Layout {
   const cards: Placed[] = [];
@@ -319,7 +323,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
 
   // Everyone else, by the direction their seat lies in as seen from yours: (0, 1) is straight down, towards you.
   const seats = others.map((p) => {
-    const dir = toView(seatDir(game.players.indexOf(p), n), view, n);
+    const dir = seatDir((game.players.indexOf(p) - view + n) % n, n);
     return { p, dir, where: dir.y > 0.9 ? ('bottom' as const) : dir.y < -0.4 ? ('top' as const) : ('side' as const) };
   });
   const tops = seats.filter((s) => s.where === 'top');
@@ -329,7 +333,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       H * OPP_SIZE[Math.min(5, others.length)]!,
       mine ? ow * 0.62 : 64,
       (W - 2 * CORNER - (tops.length - 1) * 18) / (Math.max(1, tops.length) * OPP_UNITS), // the top row fits between the corners
-      sides ? (W * 0.21 - edge) / OPP_UNITS : 64, // two side hands leave most of the width to the disc
+      sides ? (W * 0.21 - edge) / OPP_UNITS : 64, // two side hands leave most of the width to the felt
     ),
     16,
     64,
@@ -338,7 +342,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const handW = OPP_UNITS * mw;
   const handH = mh * 1.85;
   const topY = 10 + TAG_H;
-  // The band of the window the disc may use: under the top row, above your hand.
+  // The band of the window the felt may use: under the top row, above your hand.
   const bandTop = tops.length ? topY + handH + CLEAR : 30;
   const bandBottom = (mine ? ownTop : seats.some((s) => s.where === 'bottom') ? H - 12 - handH - TAG_H : H - 12) - CLEAR - 4;
   const cy = (bandTop + bandBottom) / 2;
@@ -349,7 +353,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const spread = Math.max(Number.isFinite(closest) ? (handW + 18) / closest : 0, Math.min(W * 0.3, (W / 2 - CORNER - handW / 2) / widest));
   const opponents = seats.map(({ p, dir, where }, i) => {
     const x = where === 'side' ? (dir.x < 0 ? edge : W - edge - handW) : W / 2 + (where === 'top' ? dir.x * spread : 0) - handW / 2;
-    // A neighbour sits beside the disc: level with its middle if they are straight to one side, lower down the nearer they are to you.
+    // A neighbour sits beside the felt: level with its middle if they are straight to one side, lower down the nearer they are to you.
     const beside = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - handH / 2, bandTop + TAG_H, bandBottom - handH);
     return placeHand(
       p,
@@ -373,29 +377,19 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
     );
   });
 
-  // The disc: an ellipse `aspect` times as wide as high, centred in the band, as large as fits in the band and
-  // clear of every hand, but no larger than makes its cards the size of your own.
-  const aspect = tableAspect(n);
-  const size = cardSize(n, game.table);
-  /** How far (cx, cy) is from a rectangle, with heights counted `aspect` times: the ellipse just touching it has this rx. */
-  const reach = (r: Rect): number => Math.hypot(Math.max(r.x - W / 2, 0, W / 2 - (r.x + r.w)), Math.max(r.y - cy, 0, cy - (r.y + r.h)) * aspect);
-  const rx = Math.max(
-    40,
-    Math.min(
-      W / 2 - edge,
-      ((bandBottom - bandTop) / 2) * aspect,
-      (mine ? ow * 0.92 : 90) / size.w,
-      ...opponents.map((o) => reach({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H }) - CLEAR),
-    ),
-  );
-  const disc: Disc = { cx: W / 2, cy, rx, ry: rx / aspect, i: view, n };
-  const fw = size.w * rx;
+  // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than
+  // makes its cards the size of your own.
+  const size = cardSize(n);
+  const room = W - 2 * (sides ? edge + handW + CLEAR : edge);
+  const u = Math.max(40, Math.min(room / (2 * TABLE.hw), (bandBottom - bandTop) / 2, (mine ? ow * 0.92 : 90) / size.w));
+  const felt: Felt = { cx: W / 2, cy, u };
+  const fw = size.w * u;
   const fh = fw * RATIO;
   const fs = fw / CARD_W;
-  const middle: Rect = { x: disc.cx - rx, y: cy - disc.ry, w: 2 * rx, h: 2 * disc.ry };
+  const middle: Rect = { x: felt.cx - TABLE.hw * u, y: cy - u, w: 2 * TABLE.hw * u, h: 2 * u };
   const slots = game.places.map((at): SlotRect | null => {
     if (!at) return null;
-    const c = toScreen(disc, at);
+    const c = toScreen(felt, at);
     return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: at.r };
   });
 
@@ -417,7 +411,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const outStep = trays > 1 ? Math.min(fw * 1.15, (middle.w * 0.8 - fw) / (trays - 1)) : 0;
   const out = game.tray.map((_, k): Rect => ({ x: W / 2 - (outStep * (trays - 1) + fw) / 2 + k * outStep, y: middle.y + (middle.h - fh) / 2, w: fw, h: fh }));
 
-  // Your hand is placed last: a long work pile may rise into what felt there is between the row and the disc.
+  // Your hand is placed last: a long work pile may rise into what cloth there is between the row and the felt.
   const me = mine
     ? placeHand(
         mine,
@@ -431,7 +425,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
           workFan: oh * 0.3,
           workRoom: H - 8 - ownTop - oh,
           // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
-          workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 6 - (cy + disc.ry)),
+          workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
           minStrip: oh * 0.21,
           z: 3000,
           mine: true,
@@ -459,7 +453,57 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, disc, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs };
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs };
+}
+
+// ---------------------------------------------------------------- other players' cards in the air
+
+/** Someone else's card that has left their hand for the felt is drawn lifted this many of its own widths out of the hand, until it is known where it is going. */
+const LIFT = 1.2;
+
+/**
+ * Where the middle of a card that another player is carrying is drawn in this
+ * window. The felt is the same on every screen and the hands are not: its
+ * owner carries the card up from the bottom of their screen, and here it has
+ * to come from wherever this window seats them. So it is not simply drawn
+ * where it is. It starts out about its owner's hand: as far along the row and
+ * as far towards the middle from its pile as they have it (`at.h`), in cards
+ * of their hand as drawn here (`hw` wide, the card's home at `home`); once it
+ * has left the hand for the felt, lifted a little way out of the hand towards
+ * the middle. From there:
+ * - a card with a pile to go to (`pile`: the middle of that pile on this
+ *   screen) is as far along the straight line to that pile as its owner has
+ *   carried it of their own way there (`at.w`, 0 to 1);
+ * - and any card comes over to where it really is (`at.p`, its point of the
+ *   felt) as it lingers over the felt (`linger`, 0 to 1): an Ace on its way to
+ *   bare felt has no pile to go by.
+ * Either way it travels a straight line from that hand to its place, whichever
+ * side of the table the hand is on.
+ */
+export function aloftAt(
+  felt: Felt,
+  home: Pt,
+  hw: number,
+  hand: Pick<Seat, 'box' | 'flip'> | undefined,
+  at: { h: readonly [number, number]; p: readonly [number, number]; w: number },
+  pile: Pt | undefined,
+  linger: number,
+): Pt {
+  const there = toScreen(felt, { x: at.p[0], y: at.p[1] });
+  // "Towards the middle" is up the screen for whoever is dragging; for their hand as drawn here it is wherever the felt lies.
+  const to = hand ? { x: felt.cx - (hand.box.x + hand.box.w / 2), y: felt.cy - (hand.box.y + hand.box.h / 2) } : { x: 0, y: -1 };
+  const len = Math.hypot(to.x, to.y) || 1;
+  // Along the row (a hand across the table is drawn the other way round) counts for a card going from pile to pile,
+  // not for one that is on its way out of the hand: which way is sideways on its owner's screen says nothing about
+  // where on the felt it is going.
+  const along = at.h[0] * (hand?.flip ? -1 : 1) * clamp(1 - at.h[1] / 0.8, 0, 1);
+  // Towards the middle: as far as its owner has it, up to a card's width or so out of the hand, and never most of the
+  // way to where it really is. (No further: how far up its owner's screen it is says little about where it is going.)
+  const out = Math.min(at.h[1], LIFT, (0.6 * Math.hypot(there.x - home.x, there.y - home.y)) / hw);
+  let x = home.x + (along + (out * to.x) / len) * hw;
+  let y = home.y + ((out * to.y) / len) * hw;
+  if (pile) [x, y] = [x + (pile.x - x) * at.w, y + (pile.y - y) * at.w];
+  return { x: x + (there.x - x) * linger, y: y + (there.y - y) * linger };
 }
 
 // ---------------------------------------------------------------- the deal

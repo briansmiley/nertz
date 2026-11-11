@@ -4,7 +4,7 @@
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
 import { completedBy, feltFree, isHidden, legalDrops, type Rng } from '../shared/engine';
-import { seatDir, type Pt } from '../shared/table';
+import { TABLE, type Pt } from '../shared/table';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
 /** A level is exactly two numbers: the mean pause between looks, and the chance of noticing a move on one look. */
@@ -74,21 +74,20 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   };
   /**
    * A place in the middle that takes the card. An Ace fits every empty slot:
-   * any of them. On a table without fixed places it starts its pile on its own
-   * side of the felt: of a dozen places it glances at there, the clear one
-   * nearest to itself; and if none of those is clear, wherever there is room.
+   * any of them. On a table without marked places it starts its pile anywhere
+   * there is room: of a handful of places it glances at all over the felt, the
+   * clear one nearest the middle; and if none of those is clear, wherever the
+   * engine says there is room.
    */
   const slotFor = (card: AnyCard): PileRef | undefined => {
     const slots = drops(card).filter((to) => to.k !== 'work');
     const any = slots.length > 1 ? slots[Math.min(slots.length - 1, Math.floor(rng() * slots.length))] : slots[0];
     if (any?.k !== 'felt') return any;
-    const side = seatDir(view.players.indexOf(me), view.players.length);
-    const home: Pt = { x: side.x * 0.5, y: side.y * 0.5 };
     let best: Pt = any;
     let nearest = Infinity;
-    for (let look = 0; look < 12; look++) {
-      const at = { x: home.x + (rng() - 0.5) * 1.1, y: home.y + (rng() - 0.5) * 1.1 };
-      const d = Math.hypot(at.x - home.x, at.y - home.y);
+    for (let look = 0; look < 5; look++) {
+      const at = { x: (rng() * 2 - 1) * TABLE.hw, y: rng() * 2 - 1 };
+      const d = Math.hypot(at.x / TABLE.hw, at.y);
       if (d < nearest && feltFree(view, at)) [best, nearest] = [at, d];
     }
     return { k: 'felt', x: Math.round(best.x * 1000) / 1000, y: Math.round(best.y * 1000) / 1000 };
