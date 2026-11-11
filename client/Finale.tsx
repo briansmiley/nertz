@@ -26,6 +26,30 @@ const RIM = 5;
 const GAP = 6;
 /** How far the cards of the drawn-in wash still stray from the middle line of the disc. */
 const CORE_RY = 5;
+/** A sorted pile leans as it grows, so its thickness shows: up by at most this share of its height, and 0.4 of that to the left. */
+const LEAN = 0.16;
+const LEAN_X = 0.4;
+/** No card of a pile lies quite square: each is turned by up to half of this (radians), one way or the other. */
+export const TILT = 0.14;
+
+/** Where the centre of card `k` of `of` comes to rest in a sorted pile. */
+export function restAt(pile: Rect, k: number, of: number): { x: number; y: number } {
+  const rise = Math.min(0.45, (pile.h * LEAN) / of) * k;
+  return { x: pile.x + pile.w / 2 - rise * LEAN_X, y: pile.y + pile.h / 2 - rise };
+}
+
+/**
+ * What a sorted pile covers once it is drawn, however many cards it gets: more than its own rectangle, up and to the
+ * left by its lean, and all round by the corners of cards that are a little askew. Labels keep off this, not off
+ * the bare rectangle. (They did once, and a label to the left of a tall pile had its last letters under the cards.)
+ */
+export function pileReach(pile: Rect): Rect {
+  const turn = Math.sin(TILT / 2);
+  const ex = (pile.h / 2) * turn;
+  const ey = (pile.w / 2) * turn;
+  const lean = pile.h * LEAN;
+  return { x: pile.x - lean * LEAN_X - ex, y: pile.y - lean - ey, w: pile.w + lean * LEAN_X + 2 * ex, h: pile.h + lean + 2 * ey };
+}
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -128,12 +152,15 @@ export function planFinale(L: Layout, game: GameState): Plan {
   // the drawn-in wash, every pile, the labels placed before it, and the edges of the window.
   const hands: Rect[] = L.opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H }));
   if (L.me) hands.push({ ...L.me.box, h: L.window.h - L.me.box.y });
-  const fixed: Rect[] = [...hands, L.tray, heap, ...spots];
+  const reach = spots.map(pileReach);
+  const fixed: Rect[] = [...hands, L.tray, heap, ...reach];
   const frame: Rect = { x: 4, y: 4, w: L.window.w - 8, h: L.window.h - 8 };
-  const choices = spots.map((pile) => {
+  const choices = spots.map((pile, i) => {
     const mid = { x: pile.x + pw / 2, y: pile.y + ph / 2 };
-    const across = { right: pile.x + pw + GAP, left: pile.x - GAP - LABEL.w };
-    const along = { below: pile.y + ph + GAP, above: pile.y - GAP - LABEL.h };
+    // Beside the pile as it is drawn (it leans up and to the left), not beside its bare rectangle.
+    const drawn = reach[i]!;
+    const across = { right: drawn.x + drawn.w + GAP, left: drawn.x - GAP - LABEL.w };
+    const along = { below: drawn.y + drawn.h + GAP, above: drawn.y - GAP - LABEL.h };
     // In order of preference: the side away from the middle of the table (the right, for a seat straight above or
     // below), the side towards it, then beyond the pile and before it. Level with the pile, or flush with an edge.
     const outer: LabelSide = pile.v.x < -0.2 ? 'left' : 'right';
@@ -149,7 +176,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
       for (const at of side === 'left' || side === 'right' ? ys : xs) {
         const box: Rect = side === 'left' || side === 'right' ? { x: across[side], y: at, ...LABEL } : { x: at, y: along[side], ...LABEL };
         // What it would lie over of the things that do not move, and how much of it would be off the window.
-        const cost = Math.round(LABEL.w * LABEL.h - overlap(box, frame) + fixed.reduce((sum, r) => sum + (r === pile ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
+        const cost = Math.round(LABEL.w * LABEL.h - overlap(box, frame) + fixed.reduce((sum, r) => sum + (r === drawn ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
         options.push({ side, box, cost });
       }
     }
@@ -194,12 +221,12 @@ export function planFinale(L: Layout, game: GameState): Plan {
     mv.radius = Math.sqrt(0.04 + 0.96 * noise(i, 3)); // even over the disc
     mv.spin = (noise(i, 4) - 0.5) * 2.4 * Math.PI;
     mv.delay = noise(i, 5);
-    mv.tilt = (noise(i, 6) - 0.5) * 0.14;
+    mv.tilt = (noise(i, 6) - 0.5) * TILT;
     mv.k = piles[mv.pile]!.total++;
   });
   for (const mv of shuffled) mv.of = piles[mv.pile]!.total;
-  const reach = Math.hypot(w, h) / 2 + 8; // a card turned to any angle, plus its shadow
-  const area: Rect = { x: Math.floor(d.cx - d.rx - reach), y: Math.floor(d.cy - d.ry - reach), w: Math.ceil(2 * (d.rx + reach)), h: Math.ceil(2 * (d.ry + reach)) };
+  const span = Math.hypot(w, h) / 2 + 8; // a card turned to any angle, plus its shadow
+  const area: Rect = { x: Math.floor(d.cx - d.rx - span), y: Math.floor(d.cy - d.ry - span), w: Math.ceil(2 * (d.rx + span)), h: Math.ceil(2 * (d.ry + span)) };
   // The wash keeps to the disc: the centres of its cards stay well inside the rim.
   return { area, movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), core, heap };
 }
@@ -293,9 +320,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     // (The first pile waits for the wash to be drawn in.)
     const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - DRAW_IN_MS * 0.6 - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - DRAW_IN_MS * 0.6 - 150)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
-    const rise = Math.min(0.45, (pile.h * 0.16) / mv.of) * mv.k;
-    const px = pile.x + pile.w / 2 - rise * 0.4;
-    const py = pile.y + pile.h / 2 - rise;
+    const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
       landed[mv.pile]!++;
       resting.push([mv, px, py, mv.tilt, plan.scale]);

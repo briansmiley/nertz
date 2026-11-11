@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
 import { CARD_RATIO, seatDir, toView, type TableMode } from '../shared/table';
 import type { Card, GameState } from '../shared/types';
-import { LABEL, planFinale } from './Finale';
+import { LABEL, planFinale, restAt, TILT } from './Finale';
 import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -348,12 +348,27 @@ describe('table layout', () => {
               // NERTZ! stamp lies across a hand), no name, not the tray, not the wash, no pile, no other label.
               const label = pile.label;
               expect([label.w, label.h], at).toEqual([LABEL.w, LABEL.h]);
-              expect(gap(label), at).toBeLessThan(Math.hypot(pile.w, pile.h) / 2 + 8);
+              expect(gap(label), at).toBeLessThan(Math.hypot(pile.w, pile.h) / 2 + 8 + pile.h * 0.2); // (beside the pile as drawn: it leans up and to the left)
               expect(label.x >= 0 && label.y >= 0 && label.x + label.w <= W && label.y + label.h <= H, at).toBe(true);
               for (const hand of hands) expect(overlap(label, hand), `${at}: label over a hand`).toBe(false);
               expect(overlap(label, L.tray), `${at}: label over the tray`).toBe(false);
               expect(overlap(label, plan.heap), `${at}: label over the wash`).toBe(false);
               for (const other of plan.piles) expect(overlap(label, other), `${at}: label over the pile of seat ${other.seat}`).toBe(false);
+              // ...and no pile as it is DRAWN: a pile leans up and to the left as it grows, and its cards lie a little
+              // askew. Regression: labels kept off the bare rectangle only, and one to the left of a tall pile (or
+              // above it) had the ends of its lines under the cards. Every card of a pile of 5 and of 45, turned
+              // as far as a card is turned either way.
+              for (const other of plan.piles) {
+                for (const of of [5, 45]) {
+                  for (let k = 0; k < of; k++) {
+                    const c = restAt(other, k, of);
+                    const [cos, sin] = [Math.cos(TILT / 2), Math.sin(TILT / 2)];
+                    const hw = (other.w * cos + other.h * sin) / 2;
+                    const hh = (other.h * cos + other.w * sin) / 2;
+                    expect(overlap(label, { x: c.x - hw, y: c.y - hh, w: 2 * hw, h: 2 * hh }), `${at}: label under card ${k} of ${of} of the pile of seat ${other.seat}`).toBe(false);
+                  }
+                }
+              }
               for (const other of plan.piles.slice(i + 1)) expect(overlap(label, other.label), `${at}: label over the label of seat ${other.seat}`).toBe(false);
             }
             // The wash itself stays on the disc.

@@ -113,7 +113,7 @@ What you see around a round:
 Other scripts:
 
 ```sh
-npm test          # vitest: rules engine, protocol, room, real-socket server tests, client prediction
+npm test          # vitest: rules engine, protocol, room, real-socket server tests (a hostile hand-written client among them), client prediction
 npm run typecheck # tsc --noEmit, strict
 npm run build     # builds the client into dist/
 npm start         # production mode: one process serves dist/ and the websocket on PORT (default 8787)
