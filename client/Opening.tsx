@@ -63,14 +63,14 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
       mine ? (
         <button type="button" className="kickoff" onClick={() => go()}>
           Start
-          <small>1, 2, 3, Nertz! · Space</small>
+          <small>3, 2, 1, Nertz! · Space</small>
         </button>
       ) : (
         <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
       )
     ) : stage === 'countdown' && beat ? (
       <b key={beat} className="beat">
-        {beat}
+        {START_BEATS + 1 - beat}
       </b>
     ) : word ? (
       <b className="beat word">Nertz!</b>

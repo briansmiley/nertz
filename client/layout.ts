@@ -128,6 +128,19 @@ export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], point
   return targets.find((t) => inside(t.hit, pointer.x, pointer.y)) ?? (centre ? targets.find((t) => inside(t.hit, centre.x, centre.y)) : undefined);
 }
 
+/**
+ * Where card `j` of finished pile `k` lies when the pile comes out of the tray at the end of a round: the stack leans
+ * up and to the left as it rises, and no card sits quite square on the one below. The same for every frame and for
+ * the wash that starts from it. `w` is the card's width on screen; `rot` is in degrees.
+ */
+export function stackOffset(k: number, j: number, w: number): { x: number; y: number; rot: number } {
+  const wobble = (salt: number) => {
+    const v = Math.sin((k * 31 + j) * 12.9898 + salt * 78.233) * 43758.5453;
+    return (v - Math.floor(v)) * 2 - 1;
+  };
+  return { x: -j * w * 0.012 + wobble(1) * w * 0.035, y: -j * w * 0.018 + wobble(2) * w * 0.03, rot: wobble(3) * 4 };
+}
+
 /** Room the grace countdown is given on the table: its greatest width, its height, and its distance from the right edge. */
 export const COUNTDOWN = { w: 168, h: 44, right: 14 };
 /** Height of the name line above an opponent's hand. */
@@ -435,7 +448,13 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
     game.slots.forEach((pile, i) => slots[i] && put(pile, slots[i], 5000 + i * 4, 'slot', i, stage === 'live', slots[i].rot));
     game.tray.forEach((pile, k) => {
       const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * tw, y: tray.y + pad + k * trayStep, w: tw, h: th };
-      put(pile, stage === 'out' ? out[k]! : home, 5200 + k * 4, 'tray', k, stage !== 'out', 0);
+      // Every card of a finished pile is drawn (squared up in the tray), so that when the pile comes out on the table
+      // at the end of the round it is a stack you can see the size of: each card a little off the last.
+      const r = stage === 'out' ? out[k]! : home;
+      pile.forEach((card, j) => {
+        const o = stage === 'out' ? stackOffset(k, j, r.w) : { x: 0, y: 0, rot: 0 };
+        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5200 + k * 20 + j, up: stage !== 'out', pile: 'tray', mine: false, at: k, rot: o.rot });
+      });
     });
   }
 

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { seatDir, toView } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backColour, CARD_H, CARD_W } from './cards/Face';
-import { TAG_H, type Layout, type Rect } from './layout';
+import { stackOffset, TAG_H, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 800, out: 900, wash: 1500, sortEach: 1500, hold: 6500 };
@@ -78,6 +78,8 @@ interface Mover {
   k: number;
   of: number;
   tilt: number;
+  /** How it lay in its pile before the wash (radians): a finished pile out of the tray is not quite square. */
+  rot0: number;
 }
 
 /** Where a pile's label lies relative to the pile: the text is set against the pile's side. */
@@ -206,11 +208,14 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const piles: SortedPile[] = spots.map((s, i) => ({ seat: s.seat, x: s.x, y: s.y, w: pw, h: ph, total: 0, label: labels[i]!.box, side: labels[i]!.side }));
   const pileOf = new Map(piles.map((p, i) => [p.seat, i]));
 
-  const lying = [...game.slots.map((pile, i) => ({ pile, at: L.slots[i] })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i] }))];
-  const movers = lying.flatMap(({ pile, at }) =>
-    pile.flatMap((card): Mover[] => {
+  const lying = [...game.slots.map((pile, i) => ({ pile, at: L.slots[i], tray: -1 })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i], tray: i }))];
+  const movers = lying.flatMap(({ pile, at, tray }) =>
+    pile.flatMap((card, j): Mover[] => {
       const to = pileOf.get(card.owner);
-      return at && to !== undefined ? [{ owner: card.owner, x: at.x, y: at.y, angle: 0, radius: 0, spin: 0, delay: 0, pile: to, k: 0, of: 0, tilt: 0 }] : [];
+      if (!at || to === undefined) return [];
+      // A finished pile starts the wash as the loose stack it came out of the tray as (see `stackOffset`).
+      const o = tray < 0 ? { x: 0, y: 0, rot: 0 } : stackOffset(tray, j, at.w);
+      return [{ owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, pile: to, k: 0, of: 0, tilt: 0, rot0: (o.rot * Math.PI) / 180 }];
     }),
   );
   // Draw order is shuffled so the colours mix in the wash; a card's place in its sorted pile follows the draw order.
@@ -329,7 +334,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
     let y = lerp(mv.y + h / 2, plan.cy + Math.sin(a) * r * ry, spread);
-    let rot = mv.spin * 0.5 * spread;
+    let rot = lerp(mv.rot0, mv.spin * 0.5, spread);
     let size = 1;
     if (q > 0) {
       x = lerp(x, px, q);
