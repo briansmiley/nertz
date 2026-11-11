@@ -241,6 +241,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const results = room.phase === 'results';
   const [W, H] = useViewport();
   const [stage, skip] = useStage(results, game.tray.length, game.players.length);
+  // A click meant for a card must not throw the end of the round away: only Escape skips it, and only on your own screen.
+  const ending = results && stage !== 'sheet';
+  useEffect(() => {
+    if (!ending) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') skip();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ending]);
   const stageWas = useRef(stage);
   useEffect(() => {
     stageSound(stageWas.current, stage); // the riffle of the wash, the flourish of the score sheet
@@ -373,7 +383,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   });
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (stage === 'flip' || stage === 'out' || stage === 'wash') return skip();
+    if (stage === 'flip' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
     if (frozen || drag.current || e.button !== 0) return;
     const el = (e.target as Element).closest('[data-id],[data-stock]');
     if (!el) return;
@@ -615,7 +625,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       )}
 
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} />}
-      {results && stage !== 'sheet' && <p className="skip">Click anywhere to skip to the scores</p>}
+      {results && stage !== 'sheet' && <p className="skip">Esc skips to the scores</p>}
     </div>
     {stage === 'sheet' && sheet}
     </>
