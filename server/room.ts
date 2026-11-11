@@ -1,13 +1,14 @@
 // One game room. No IO: it is handed parsed messages for opaque connection
-// handles and decides what each connection is sent. Its only clock is the
-// held-card grace timer; every rule about grace lives in the engine.
+// handles and decides what each connection is sent. Its only clocks are the
+// deal timer at the start of a round and the held-card grace timer at its end;
+// every rule about either lives in the engine.
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
-import { GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { GameState, Phase, RoomView, RoundResult } from '../shared/types';
 
 /** A live client connection, as far as a room cares. */
@@ -55,6 +56,9 @@ export class Room {
   /** Running while a called round waits for held cards to land; `graceEndsAt` is its deadline (ms epoch). */
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private graceEndsAt = 0;
+  /** Running while a new round is being dealt out (`game.dealing`); `dealEndsAt` is its deadline (ms epoch). */
+  private dealTimer: ReturnType<typeof setTimeout> | null = null;
+  private dealEndsAt = 0;
   private readonly rng: Rng;
   private readonly schedule: (flush: () => void) => void;
 
@@ -129,6 +133,11 @@ export class Room {
     this.drop(conn, false);
   }
 
+  /** The room is being forgotten: stops its timers. */
+  close(): void {
+    this.stopTimers();
+  }
+
   /** Sends every player who is owed one their latest snapshot. Runs once per event-loop turn. */
   flush(): void {
     this.flushScheduled = false;
@@ -162,7 +171,27 @@ export class Room {
       this.rng,
     );
     this.phase = 'playing';
+    // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
+    this.stopTimers();
+    this.dealEndsAt = Date.now() + DEAL_MS;
+    this.dealTimer = setTimeout(() => this.dealt(), DEAL_MS);
+    this.dealTimer.unref?.();
     this.changed();
+  }
+
+  /** The deal timer fired: play opens, and everyone's next snapshot (one flush) shows their face-up cards. */
+  private dealt(): void {
+    this.dealTimer = null;
+    if (this.phase !== 'playing' || !this.game) return;
+    this.game = finishDeal(this.game);
+    this.settle();
+    this.changed();
+  }
+
+  private stopTimers(): void {
+    if (this.dealTimer) clearTimeout(this.dealTimer);
+    if (this.graceTimer) clearTimeout(this.graceTimer);
+    this.dealTimer = this.graceTimer = null;
   }
 
   private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
@@ -268,6 +297,7 @@ export class Room {
       })),
       game,
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
+      dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
       lastRound: this.lastRound,
     };
   }

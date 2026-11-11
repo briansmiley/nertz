@@ -58,13 +58,17 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const rate = options.rate ?? RATE_PER_SECOND;
   const rooms = new Map<string, Room>();
   const idleSince = new Map<Room, number>();
+  const forget = (room: Room): void => {
+    if (rooms.get(room.code) === room) rooms.delete(room.code);
+    idleSince.delete(room);
+    room.close(); // its deal or grace timer must not outlive it
+  };
 
   /** Call when a connection has gone from `room`: forget it at once if nobody is seated, else start its idle clock. */
   const released = (room: Room): void => {
     if (room.connected > 0) return;
     if (room.empty) {
-      if (rooms.get(room.code) === room) rooms.delete(room.code);
-      idleSince.delete(room);
+      forget(room);
     } else if (!idleSince.has(room)) {
       idleSince.set(room, Date.now());
     }
@@ -81,8 +85,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const sweep = (now = Date.now()): void => {
     for (const [room, since] of idleSince) {
       if (now - since < (room.phase === 'lobby' ? LOBBY_TTL_MS : ROOM_TTL_MS)) continue;
-      idleSince.delete(room);
-      if (rooms.get(room.code) === room) rooms.delete(room.code);
+      forget(room);
     }
   };
 
@@ -203,6 +206,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       clearInterval(heartbeat);
       clearInterval(sweeper);
       for (const ws of wss.clients) ws.terminate();
+      for (const room of rooms.values()) room.close();
       wss.close();
       http.close(() => done());
       http.closeAllConnections();

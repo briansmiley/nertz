@@ -52,6 +52,12 @@ export interface PlayerState {
 export interface GameState {
   players: PlayerState[];
   /**
+   * The cards are still being dealt out: nothing can be played and no face is
+   * shown to anyone (`viewFor` redacts every card). True from `deal` until the
+   * server's deal timer fires and it applies `finishDeal`, for everyone at once.
+   */
+  dealing: boolean;
+  /**
    * The shared middle: a fixed grid of 4 x players slots. Each entry is one
    * centre pile, Ace up to King in one suit; an empty array is an empty slot.
    * A pile of 13 is complete: it takes nothing more and stays in its slot
@@ -146,5 +152,10 @@ export interface RoomView {
    * a timestamp: count it down locally from when the snapshot arrives.
    */
   graceMs: number | null;
+  /**
+   * Milliseconds of the deal left when this snapshot was sent (`game.dealing`);
+   * null otherwise. Like `graceMs`, a duration to count down locally.
+   */
+  dealMs: number | null;
   lastRound: RoundResult | null;
 }

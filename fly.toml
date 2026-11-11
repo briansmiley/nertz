@@ -1,6 +1,6 @@
 # Proposed Fly.io config (see README "Hosting plan"). Nothing has been deployed with it.
 # Replace `app` with a name of your own; pick the region nearest the players.
-app = "nertz-change-me"
+app = "nertz"
 primary_region = "sjc"
 
 [http_service]

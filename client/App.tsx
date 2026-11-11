@@ -123,7 +123,6 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
           <Mini suit="S" rank={1} style={{ '--i': 6 } as CSSProperties} />
         </div>
         <h1>Nertz!</h1>
-        <p>Everybody plays solitaire at the same time, into the same middle. Empty your nertz pile first and shout.</p>
       </div>
 
       <Pad>

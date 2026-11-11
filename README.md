@@ -47,6 +47,11 @@ touch, and a card let go between two piles goes back where it came from.
 
 What you see around a round:
 
+- **The deal.** Every round opens with each player's deck, in their own back colour, lying where their stock goes. The
+  nertz pile and then the four work piles are dealt off it one card after another, everyone's at the same time, yours
+  large and the others' small. It takes about two and a half seconds and nothing can be touched meanwhile. Then the
+  face-up cards (each nertz top and the four work tops) turn over at the same moment on every screen: that is the start.
+  With "reduce motion" switched on the cards simply fade in where they belong; the wait and the turn are the same.
 - **Face-down work cards** lie under each work pile, yours and everyone's, and turn over when the cards above them leave.
 - **A long work pile** of yours starts higher up, into the free felt above its column, rather than being squeezed. When
   there is no felt left, the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
@@ -79,6 +84,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - 2 to 6 players. Each has their own 52-card deck with its own back colour.
 - Deal, per player: a 13-card **nertz pile** (only the top card face up), 4 **work piles** with 0, 1, 2 and 3 face-down
   cards under one face-up card (10 cards), the other 29 cards face down as the **stock**, and an empty **waste**.
+  While the cards are being dealt (2.4 seconds) nobody can play, flip, vote or call, and nobody is shown a face.
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -116,7 +122,7 @@ The whole design is: **the server decides, in arrival order, and clients predict
 
 **One authoritative order.** The server is a single Node process. Each websocket message is handled synchronously, start to
 finish, on Node's one thread. The order in which messages arrive is therefore the order of play. There are no locks, no
-timestamps and no client authority. A move either applies to the current state or is rejected. (`server/room.ts`, about 270
+timestamps and no client authority. A move either applies to the current state or is rejected. (`server/room.ts`, about 300
 lines, is all of it.)
 
 **Intents name cards, not positions.** A client sends `{ k: 'move', cardId, count, to }`, not "move the third card of pile
@@ -164,6 +170,18 @@ The server owns only the clock: when a call leaves someone in grace it starts on
 `expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to `results`. Snapshots carry
 `graceMs`, the milliseconds left when the snapshot was sent (a duration to count down locally, not a timestamp), or `null`.
 
+**The deal is a phase, and it is the same for everyone.** A fresh round from `deal` has `GameState.dealing` set. While it
+is, `applyIntent` refuses every intent from every seat (the sender's `ack` still advances), and `viewFor` redacts every
+card, the face-up ones included, so no layout can be read early, not even off the network tab. Ids are unchanged, so the
+cards on screen are the ones that turn over later. The server owns only the clock, exactly as for grace: one `DEAL_MS`
+(2.4 s) timer per round, and when it fires `finishDeal(state)` clears the flag and every player's ordinary view goes out in
+the same flush. Snapshots carry `dealMs`, the milliseconds of the deal left when the snapshot was sent, or `null`. The
+client animates from it and never decides anything: its input is off because the shared reducer says no, and a window that
+arrives late (a reload or reconnect mid-deal) puts the cards already dealt in place and deals the rest on schedule
+(`dealWait` in `client/layout.ts`). A card is dealt only when its element first appears during a deal, and only once, so
+later snapshots, reconnects, the end of the round and coming back from the score sheet never replay it. Disconnecting during the deal changes nothing: the round opens on time. The timer is stopped when
+the room is forgotten.
+
 **The final table.** During `results` the snapshot still holds the finished round (`game`: slots, tray, hands) next to
 `lastRound` (who called, and per player the name, the cards played, the nertz cards left and the running total), so the
 client can play the end-of-round sequence and draw the score sheet from it, even if a player has left since.
@@ -188,15 +206,15 @@ fill it for about a minute at a time.
 ```
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
-  engine.ts     deal, applyIntent, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, applyIntent, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types, limits, parsing and validation
 server/   Node http + ws
-  room.ts       one table: seats, host, rounds, intent handling, the grace timer, snapshots. No IO.
+  room.ts       one table: seats, host, rounds, intent handling, the deal and grace timers, snapshots. No IO.
   index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
 client/   Vite + React
   net.ts        websocket store and prediction
-  layout.ts     pure geometry: where every card, slot, tray pile, drop area and the countdown goes for a given window size
-  Table.tsx     the table: drag and drop, the Nertz call, the grace countdown, the steps of the end-of-round sequence
+  layout.ts     pure geometry: where every card, slot, tray pile, drop area and the countdown goes for a given window size; the deal's schedule
+  Table.tsx     the table: the deal, drag and drop, the Nertz call, the grace countdown, the steps of the end-of-round sequence
   Finale.tsx    the wash and the sorted piles at the end of a round, drawn on a canvas
   App.tsx       home, lobby and score sheet
   cards/        card faces drawn as SVG in code (original art, see cards/CREDITS.md)
@@ -294,6 +312,11 @@ would still need one of the options above, and serving both from one origin is s
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late
   frames), and draws the moving cards at 1x until they come to rest.
+- **The deal** is drawn from where each stock lies, and only the cards that leave it move (23 per player); the 29 that
+  stay are the stock. Resizing the window during the deal moves each deck, and the cards already out, to the new layout
+  and the deal carries on. In a background tab the browser slows timers, so cards can leave the deck late there. The
+  turn-over arrives with the snapshot that ends the deal, so on a slow connection it is late by that connection's
+  latency.
 - **The grace countdown** avoids every opponent's hand, but with four or five opponents in one row it sits just below
   them and can lie over the top edge of the tray for the (at most four) seconds it is up.
 - **A round nobody ends.** If every card is played and nobody presses NERTZ!, the round just sits there. The call is

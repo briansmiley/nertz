@@ -11,7 +11,7 @@ import { canDrop, completedBy, GRACE_MS, grab, isHidden } from '../shared/engine
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, TIMING } from './Finale';
-import { computeLayout, COUNTDOWN, countdownTop, dropTarget, MINI_BELOW, type Placed, type Rect, type Stage } from './layout';
+import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, MINI_BELOW, type Placed, type Rect, type Stage } from './layout';
 import { send } from './net';
 
 const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -31,6 +31,14 @@ interface Handle {
   z: MotionValue<number>;
   /** Animate to wherever the layout currently wants this card. */
   settle(): void;
+}
+
+/** A card that is still in the deck when it first appears: where the deck is, and how long until it is dealt. */
+interface Dealt {
+  x: number;
+  y: number;
+  z: number;
+  wait: number;
 }
 
 /** Lets the drag code move card elements directly, without re-rendering React on every pointer event. */
@@ -53,21 +61,25 @@ interface CardProps {
   slow: boolean;
   cls: string;
   reg: Registry;
+  /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
+  deal: Dealt | undefined;
 }
 
 const CardView = memo(function CardView(p: CardProps) {
-  const x = useMotionValue(p.x);
-  const y = useMotionValue(p.y);
+  const dealt = useRef(p.deal).current;
+  const x = useMotionValue(dealt?.x ?? p.x);
+  const y = useMotionValue(dealt?.y ?? p.y);
   const s = useMotionValue(p.s);
-  const z = useMotionValue(p.z);
+  const z = useMotionValue(dealt?.z ?? p.z);
   const goal = useRef({ x: p.x, y: p.y, s: p.s, z: p.z });
   const flight = useRef(0);
-  const flying = useRef(false);
+  const flying = useRef(!!dealt); // a card waiting in the deck keeps the deck's stacking until it has landed
+  /** When this card leaves the deck (performance clock). 0 once it has, or if it was never in one: it is dealt once. */
+  const leaves = useRef(dealt ? performance.now() + dealt.wait : 0);
 
-  const fly = useCallback(() => {
+  const fly = useCallback((move: { duration: number } = p.slow ? TURN : MOVE) => {
     const g = goal.current;
     const n = ++flight.current;
-    const move = p.slow ? TURN : MOVE;
     flying.current = true;
     z.set(g.z + Z_FLYING); // travel above everything that is lying still
     animate(x, g.x, move);
@@ -84,12 +96,27 @@ const CardView = memo(function CardView(p: CardProps) {
     const was = goal.current;
     goal.current = { x: p.x, y: p.y, s: p.s, z: p.z };
     if (p.reg.held.has(p.id)) return; // in the player's hand; settles on drop
+    if (leaves.current) {
+      // Still in the deck. If the window was resized it stays with the deck, and is dealt to its new place in its turn.
+      if (p.deal) [x, y, s].forEach((v, i) => v.set([p.deal!.x, p.deal!.y, p.s][i]!));
+      return;
+    }
     if (was.x !== p.x || was.y !== p.y || was.s !== p.s) fly();
     else if (!flying.current) z.set(p.z);
-  }, [p.x, p.y, p.s, p.z, p.id, p.reg, fly, z]);
+  }, [p.x, p.y, p.s, p.z, p.id, p.reg, p.deal?.x, p.deal?.y, fly, x, y, s, z]);
+
+  // Its turn to be dealt: out of the deck, to its place in the layout.
+  useEffect(() => {
+    if (!leaves.current) return;
+    const turn = setTimeout(() => {
+      leaves.current = 0;
+      fly(DEAL);
+    }, leaves.current - performance.now());
+    return () => clearTimeout(turn);
+  }, [fly]);
 
   useEffect(() => {
-    p.reg.handles.set(p.id, { x, y, z, settle: fly });
+    p.reg.handles.set(p.id, { x, y, z, settle: () => fly() });
     return () => void p.reg.handles.delete(p.id);
   }, [p.id, p.reg, x, y, z, fly]);
 
@@ -220,8 +247,29 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const mine = game.players.find((p) => p.seat === you);
   const called = game.nertzCalledBy !== null;
-  /** Nothing new can be started: Nertz has been called. (A card already in hand may still land during grace.) */
-  const frozen = called || results;
+  const dealing = game.dealing;
+  /** Nothing can be started: the cards are still being dealt, or Nertz has been called. (A card already in hand may still land during grace.) */
+  const frozen = dealing || called || results;
+
+  // The deal. Every player's cards start as one deck where their stock lies, and the nertz pile and the work piles
+  // are dealt off it one card after another, everyone's at once. `dealMs` says how far along the server is: in a
+  // window that arrives late (a reload) the cards already dealt are simply in place and the rest follow on time.
+  const dealMs = room.dealMs;
+  const deck = useMemo(() => {
+    const plan = new Map<string, Dealt>();
+    if (!dealing || dealMs === null || calm) return plan;
+    for (const p of game.players) {
+      const hand = p.seat === you ? L.me : L.opponents.find((o) => o.seat === p.seat);
+      if (!hand) continue;
+      const out = [...p.nertz, ...p.work.flat()];
+      out.forEach((c, i) => {
+        const wait = dealWait(i, dealMs);
+        const under = out.length - i; // cards of the deck beneath this one that are also on their way out
+        if (wait !== null) plan.set(c.id, { x: hand.stock.x, y: hand.stock.y - under * 0.3 * hand.s, z: Z_FLYING + under, wait });
+      });
+    }
+    return plan;
+  }, [dealing, dealMs, game.players, L, you]);
   const inGrace = called && !results && game.grace.length > 0;
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
   /** This seat's line of the round just scored. The finished table goes by it: whoever played the round may have left since. */
@@ -371,7 +419,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   };
 
   const cardClass = (c: Placed): string => {
-    let cls = 'card';
+    let cls = dealing && calm ? 'card dealt' : 'card';
     if (c.pile === 'tray' && stage !== 'out') cls += ' shelved';
     if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ' grab' : stage === 'live' ? ' done' : '';
     if (c.mine && !frozen) {
@@ -424,9 +472,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             {[o.nertz, ...o.work.map((w) => ({ ...w, y: o.nertz.y })), o.stock, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
             ))}
-            <b className="count" style={{ left: o.nertz.x + o.nertz.w - 9, top: o.nertz.y + o.nertz.h - 6 }}>
-              {o.nertzCount}
-            </b>
+            {!dealing && (
+              <b className="count" style={{ left: o.nertz.x + o.nertz.w - 9, top: o.nertz.y + o.nertz.h - 6 }}>
+                {o.nertzCount}
+              </b>
+            )}
           </div>
         );
       })}
@@ -445,7 +495,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <div className="slot" style={box({ ...me.waste, x: me.stock.x + me.stock.w * 1.2 })} />
 
           <div className="mine" style={{ right: W - (me.nertz.x + me.nertz.w), top: me.nertz.y + oh + 14 }}>
-            <span className="left" style={{ visibility: me.nertzCount ? 'visible' : 'hidden' }}>
+            <span className="left" style={{ visibility: me.nertzCount && !dealing ? 'visible' : 'hidden' }}>
               <b>{me.nertzCount}</b> in your nertz pile
             </span>
             <span className="who">
@@ -510,6 +560,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             cls={cardClass(c)}
             reg={reg}
+            deal={deck.get(c.card.id)}
           />
         );
       })}

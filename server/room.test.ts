@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { checkInvariants, deal, grab, isComplete, legalDrops, viewFor, type Rng } from '../shared/engine';
-import { GRACE_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, type ServerMsg } from '../shared/protocol';
+import { checkInvariants, deal as dealRound, finishDeal, grab, isComplete, legalDrops, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, GRACE_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, type ServerMsg } from '../shared/protocol';
 import type { Card, GameState, Intent, PileRef, Suit } from '../shared/types';
 import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
@@ -13,6 +13,9 @@ import { Room, type Conn } from './room';
 type StateMsg = Extract<ServerMsg, { t: 'state' }>;
 
 // ---------------------------------------------------------------- helpers
+
+/** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
+const deal = (seats: readonly number[], rng: () => number): GameState => finishDeal(dealRound(seats, rng));
 
 function seeded(seed: number): Rng {
   let a = seed >>> 0;
@@ -51,6 +54,15 @@ function roomWith(n: number, seed = 1): { room: Room; conns: FakeConn[] } {
     return conn;
   });
   return { room, conns };
+}
+
+/** Starts a round and sits through the deal: play is open, and no timer is left running. */
+function startRound(room: Room, dealer: Conn): void {
+  const faked = vi.isFakeTimers();
+  if (!faked) vi.useFakeTimers();
+  room.handle(dealer, { t: 'start' });
+  vi.advanceTimersByTime(DEAL_MS);
+  if (!faked) vi.useRealTimers();
 }
 
 const move = (cardId: string, to: PileRef, count = 1): Intent => ({ k: 'move', cardId, count, to });
@@ -165,7 +177,7 @@ describe('Room', () => {
   it('coalesces a burst into one snapshot per player, and tells only the sender about a rejection', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
+    startRound(room, a);
     room.flush();
     const [sentA, sentB, rev] = [a.sent.length, b.sent.length, room.rev];
 
@@ -232,7 +244,7 @@ describe('Room', () => {
   it('resumes the same seat and hand on reconnect, refuses strangers mid-round, and lets the newest socket win', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
+    startRound(room, a);
     sendIntent(room, b, 9, { k: 'flip' });
     room.flush();
     const hand = b.last.room.game;
@@ -330,7 +342,7 @@ describe('Room', () => {
   it('unsticks the table when every connected player is stuck, re-checking when someone disconnects', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
+    startRound(room, a);
     const firstTop = room.game!.players[0]!.stock.at(-1)!.id;
     sendIntent(room, a, 0, { k: 'flip' });
     sendIntent(room, a, 1, { k: 'stuck', on: true });
@@ -353,7 +365,7 @@ describe('Room', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
+    startRound(room, a);
     sendIntent(room, a, 0, { k: 'nertz' }); // 13 cards left: refused
     expect(room.phase).toBe('playing');
     room.game = rigged([0, 1, 2], [1]);
@@ -442,13 +454,146 @@ describe('Room', () => {
     expect(checkInvariants(room.game)).toBeNull();
   });
 
+  describe('the deal', () => {
+    const faces = (msg: StateMsg) => /"suit"|"rank"/.test(JSON.stringify(msg));
+    const cardIds = (g: GameState) => g.players.flatMap((p) => [...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste].map((c) => c.id));
+    function table() {
+      vi.useFakeTimers();
+      const { room, conns } = roomWith(3);
+      const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+      room.handle(a, { t: 'start' });
+      room.flush();
+      return { room, conns, a, b, c };
+    }
+
+    it('is a phase of its own: no faces on the wire, every intent refused and acked, then play opens for everyone in one flush', () => {
+      const { room, conns, a } = table();
+      const dealt = room.game!;
+      expect(vi.getTimerCount()).toBe(1);
+      for (const conn of conns) {
+        expect(conn.last.room).toMatchObject({ phase: 'playing', round: 1, dealMs: DEAL_MS, graceMs: null, game: { dealing: true } });
+        expect(faces(conn.last)).toBe(false);
+        expect(cardIds(conn.last.room.game!)).toEqual(cardIds(dealt));
+      }
+
+      // Everything a client could try, from every seat, on real card ids.
+      vi.advanceTimersByTime(900);
+      for (const [seat, conn] of conns.entries()) {
+        const p = dealt.players[seat]!;
+        const top = p.nertz.at(-1)!.id;
+        const tries: Intent[] = [{ k: 'stuck', on: true }, { k: 'flip' }, hold(top), move(top, { k: 'work', i: 0 }), move(p.work[0]![0]!.id, slot(0)), { k: 'release' }, { k: 'nertz' }, { k: 'clear', slot: 0 }];
+        const others = conns.filter((x) => x !== conn).map((x) => x.sent.length);
+        tries.forEach((intent, seq) => sendIntent(room, conn, seq, intent));
+        room.flush();
+        expect(room.game).toBe(dealt); // nothing happened
+        expect(conn.last).toMatchObject({ ack: tries.length - 1, room: { dealMs: DEAL_MS - 900, game: { dealing: true } } }); // acked all the same
+        expect(faces(conn.last)).toBe(false);
+        expect(conns.filter((x) => x !== conn).map((x) => x.sent.length)).toEqual(others); // only the sender hears of a refusal
+      }
+      expect(a.last.room.players.map((p) => p.stuck)).toEqual([false, false, false]);
+
+      vi.advanceTimersByTime(DEAL_MS - 901);
+      expect(room.game).toBe(dealt);
+      const sent = conns.map((x) => x.sent.length);
+      const anyFaceBefore = conns.some((x) => x.sent.some(faces));
+      expect(anyFaceBefore).toBe(false);
+
+      vi.advanceTimersByTime(1); // the deal timer
+      expect(vi.getTimerCount()).toBe(0);
+      expect(conns.map((x) => x.sent.length)).toEqual(sent); // nobody has been told yet...
+      room.flush(); // ...and everybody is told in the same flush
+      expect(conns.map((x) => x.sent.length)).toEqual(sent.map((n) => n + 1));
+      for (const conn of conns) {
+        expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, game: { dealing: false } });
+        expect(conn.last.rev).toBe(a.last.rev);
+        expect(conn.last.room.game).toEqual(wire(viewFor(finishDeal(dealt), 0)));
+        expect(cardIds(conn.last.room.game!)).toEqual(cardIds(dealt)); // the same cards, turned over
+      }
+      sendIntent(room, a, 100, { k: 'flip' });
+      expect(room.game!.players[0]!.waste).toHaveLength(3);
+      expect(checkInvariants(room.game!)).toBeNull();
+    });
+
+    it('a reconnect mid-deal gets the remainder as a duration and still no faces; disconnects do not hold up the start', () => {
+      const { room, a, b, c } = table();
+      vi.advanceTimersByTime(1000);
+      room.disconnect(b);
+      const b2 = new FakeConn();
+      expect(room.join(b2, 'P1', 'tok-0001')).toBeNull();
+      room.flush();
+      expect(b2.last.room).toMatchObject({ you: 1, dealMs: DEAL_MS - 1000, game: { dealing: true } });
+      expect(faces(b2.last)).toBe(false);
+      expect(faces(a.last)).toBe(false);
+      expect(vi.getTimerCount()).toBe(1); // one deal, not restarted
+
+      // Everyone drops before the cards are down: the round still opens on time, and whoever returns can play.
+      room.disconnect(a);
+      room.disconnect(b2);
+      room.disconnect(c);
+      vi.advanceTimersByTime(DEAL_MS - 1000);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(room).toMatchObject({ phase: 'playing', game: { dealing: false, nertzCalledBy: null } });
+      const a2 = new FakeConn();
+      room.join(a2, 'P0', 'tok-0000');
+      room.flush();
+      expect(a2.last.room).toMatchObject({ dealMs: null, game: { dealing: false } });
+      expect(faces(a2.last)).toBe(true);
+      sendIntent(room, a2, 0, { k: 'flip' });
+      expect(room.game!.players[0]!.waste).toHaveLength(3);
+    });
+
+    it('someone sitting the round out sees the same redacted deal', () => {
+      vi.useFakeTimers();
+      const { room, conns } = roomWith(3);
+      const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
+      room.disconnect(c);
+      room.handle(a, { t: 'start' });
+      vi.advanceTimersByTime(600);
+      const c2 = new FakeConn();
+      room.join(c2, 'P2', 'tok-0002');
+      room.flush();
+      expect(c2.last.room).toMatchObject({ you: 2, dealMs: DEAL_MS - 600, game: { dealing: true } });
+      expect(c2.last.room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+      expect(faces(c2.last)).toBe(false);
+      sendIntent(room, c2, 0, { k: 'flip' }); // not in the round at all
+      vi.advanceTimersByTime(DEAL_MS);
+      room.flush();
+      expect(faces(c2.last)).toBe(true);
+    });
+
+    it('stops its timer when the room is closed, and every later round is dealt the same way', () => {
+      const { room } = table();
+      room.close();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(DEAL_MS * 2);
+      expect(room.game!.dealing).toBe(true); // nothing fired on a forgotten room
+
+      // A second round on a live room: scored round 1, then a fresh deal with its own timer.
+      const next = roomWith(2);
+      const [x, y] = next.conns as [FakeConn, FakeConn];
+      startRound(next.room, x);
+      next.room.game = rigged([0, 1], [0]);
+      sendIntent(next.room, x, 0, { k: 'nertz' });
+      expect(next.room.phase).toBe('results');
+      expect(vi.getTimerCount()).toBe(0);
+      next.room.handle(x, { t: 'start' });
+      next.room.flush();
+      expect(vi.getTimerCount()).toBe(1);
+      expect(y.last.room).toMatchObject({ phase: 'playing', round: 2, dealMs: DEAL_MS, game: { dealing: true } });
+      expect(faces(y.last)).toBe(false);
+      vi.advanceTimersByTime(DEAL_MS);
+      next.room.flush();
+      expect(y.last.room).toMatchObject({ dealMs: null, game: { dealing: false } });
+    });
+  });
+
   describe('held-card grace', () => {
     /** Three players on the rigged deal; seat 1's nertz pile is empty, so `b` can call. */
     function table() {
       vi.useFakeTimers();
       const { room, conns } = roomWith(3);
       const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-      room.handle(a, { t: 'start' });
+      startRound(room, a);
       room.game = rigged([0, 1, 2], [1]);
       const g = room.game;
       const cards = (seat: number) => ({ aceS: workTop(g, seat, 0), twoS: workTop(g, seat, 1), aceH: workTop(g, seat, 2), fiveD: workTop(g, seat, 3) });
@@ -707,7 +852,7 @@ describe('Room', () => {
 
   it('keeps every invariant through thousands of random intents decided on stale views', () => {
     const { room, conns } = roomWith(4, 42);
-    room.handle(conns[0]!, { t: 'start' });
+    startRound(room, conns[0]!);
     room.flush();
     const rnd = seeded(99);
     const seqs = [0, 0, 0, 0];
@@ -807,7 +952,9 @@ describe('server over real sockets', () => {
     for (let i = 1; i < n; i++) players.push(await open(code, `P${i}`));
     players[0]!.send({ t: 'start' });
     await vi.waitFor(() => players.forEach((p) => expect(p.last.room.phase).toBe('playing')));
-    return { room: server.rooms.get(code)!, code, players };
+    const room = server.rooms.get(code)!;
+    room.game = finishDeal(room.game!); // these tests are about play: skip the deal (its timer then finds nothing to do)
+    return { room, code, players };
   };
 
   beforeAll(async () => {

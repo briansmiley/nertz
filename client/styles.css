@@ -103,6 +103,17 @@ button {
   will-change: transform;
 }
 
+/* With reduced motion the deal is not played: the cards are simply there, after a short fade. */
+.card.dealt {
+  animation: dealt 0.3s ease-out;
+}
+
+@keyframes dealt {
+  from {
+    opacity: 0;
+  }
+}
+
 .card .flip {
   position: absolute;
   inset: 0;

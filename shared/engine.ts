@@ -6,7 +6,7 @@
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 import type { AnyCard, Card, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
 
-export { GRACE_MS, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
+export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
 export const NERTZ_SIZE = 13;
 export const FLIP_COUNT = 3;
@@ -40,7 +40,8 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * Deals a fresh round: one shuffled 52-card deck per seat, with opaque random
  * card ids. Per seat: 13 in the nertz pile, work piles of 1, 2, 3 and 4 cards
  * (0 to 3 face-down under one face-up), and the other 29 as stock. The middle
- * gets 4 empty slots per seat.
+ * gets 4 empty slots per seat. The round starts out `dealing`: closed to every
+ * intent and fully redacted until `finishDeal`.
  */
 export function deal(seats: readonly number[], rng: Rng): GameState {
   const pick = (n: number) => Math.min(n - 1, Math.max(0, Math.floor(rng() * n)));
@@ -68,7 +69,7 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
     return { seat, nertz, work, down, stock: deck, waste: [], stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, (): Card[] => []);
-  return { players, slots, tray: [], nertzCalledBy: null, grace: [] };
+  return { players, dealing: true, slots, tray: [], nertzCalledBy: null, grace: [] };
 }
 
 // ---------------------------------------------------------------- legality
@@ -253,6 +254,11 @@ function settleGrace(state: GameState, candidates: readonly number[]): GameState
   return { ...state, grace, players: state.players.map((p) => (grace.includes(p.seat) || p.holding === null ? p : { ...p, holding: null })) };
 }
 
+/** The deal is over (the server's deal timer fired): play opens. Same object if it already had. */
+export function finishDeal(state: GameState): GameState {
+  return state.dealing ? { ...state, dealing: false } : state;
+}
+
 /**
  * The one reducer. Pure, never throws (garbage intents and seats are rejected),
  * never mutates `state`. Works on redacted views too: face-down cards can be
@@ -263,13 +269,15 @@ function settleGrace(state: GameState, candidates: readonly number[]): GameState
  * Each of them may make exactly one more intent: a `move` of the held card, or
  * a `release`. Either takes them out of grace (a refused move too, see `refused`), and anyone else in grace whose
  * card now has nowhere to go is cut off with them. When `grace` is empty the
- * round is over and everything is rejected.
+ * round is over and everything is rejected. While the cards are being dealt
+ * (`state.dealing`) everything is rejected too.
  */
 export function applyIntent(state: GameState, seat: number, rawIntent: Intent): Result {
   const intent = parseIntent(rawIntent);
   if (!intent) return fail('Malformed intent');
   const index = state.players.findIndex((p) => p.seat === seat);
   if (index < 0) return fail('Not playing in this round');
+  if (state.dealing) return fail('The cards are still being dealt');
   const called = state.nertzCalledBy !== null;
   if (called) {
     if (!state.grace.includes(seat)) return fail('The round is over');
@@ -335,6 +343,7 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
  * The state as a player may see it: same shape and same card ids, with every
  * face-down card redacted: stocks, everything under the top of each nertz pile
  * and the face-down cards at the bottom of each work pile, your own included.
+ * While the cards are being dealt that is every card: nobody gets a head start.
  * No hand is private in Nertz, so today every seat gets the same view; `seat`
  * is kept so that can change without touching callers.
  */
@@ -343,9 +352,10 @@ export function viewFor(state: GameState, _seat: number): GameState {
     ...state,
     players: state.players.map((p) => ({
       ...p,
-      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 ? c : hide(c))),
-      work: p.work.map((w, i) => w.map((c, j) => (j < p.down[i]! ? hide(c) : c))),
+      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && !state.dealing ? c : hide(c))),
+      work: p.work.map((w, i) => w.map((c, j) => (j < p.down[i]! || state.dealing ? hide(c) : c))),
       stock: p.stock.map(hide),
+      waste: state.dealing ? p.waste.map(hide) : p.waste,
     })),
   };
 }
@@ -426,6 +436,9 @@ export function checkInvariants(state: GameState): string | null {
   if (state.nertzCalledBy !== null) {
     const caller = state.players.find((p) => p.seat === state.nertzCalledBy);
     if (!caller || caller.nertz.length > 0) return 'nertz called by a seat with cards left';
+  }
+  if (state.dealing && (state.nertzCalledBy !== null || middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
+    return 'play began during the deal';
   }
   if (new Set(state.grace).size !== state.grace.length) return 'duplicate seat in grace';
   if (state.grace.length > 0 && state.nertzCalledBy === null) return 'grace without a nertz call';

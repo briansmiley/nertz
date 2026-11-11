@@ -4,8 +4,9 @@ import {
   canDrop,
   checkInvariants,
   completedBy,
-  deal,
+  deal as dealRound,
   expireGrace,
+  finishDeal,
   grab,
   isComplete,
   isHidden,
@@ -21,6 +22,9 @@ import {
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
+
+/** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
+const deal = (seats: readonly number[], rng: () => number): GameState => finishDeal(dealRound(seats, rng));
 
 function mulberry32(seed: number): Rng {
   let a = seed >>> 0;
@@ -64,6 +68,7 @@ function pile(topFace: string, owner = 0): Card[] {
 /** A round with the given centre piles in slots 0, 1, ... and the rest of the 4-per-player slots empty. */
 const game = (players: PlayerState[], piles: Card[][] = [], extra: Partial<GameState> = {}): GameState => ({
   players,
+  dealing: false,
   slots: Array.from({ length: 4 * players.length }, (_, i) => piles[i] ?? []),
   tray: [],
   nertzCalledBy: null,
@@ -100,6 +105,79 @@ const allCards = (s: GameState): AnyCard[] => [
   ...s.slots.flat(),
   ...s.tray.flat(),
 ];
+
+// ---------------------------------------------------------------- the deal as a phase
+
+describe('dealing', () => {
+  const fresh = deepFreeze(dealRound([0, 1, 2], mulberry32(21)));
+  const everyIntent = (s: GameState, seat: number): Intent[] => {
+    const p = s.players.find((q) => q.seat === seat)!;
+    const tops = [p.nertz.at(-1)!, ...p.work.map((w) => w.at(-1)!)];
+    return [
+      { k: 'flip' },
+      { k: 'stuck', on: true },
+      { k: 'stuck', on: false },
+      { k: 'nertz' },
+      { k: 'release' },
+      { k: 'clear', slot: 0 },
+      ...tops.map((c) => hold(c.id)),
+      ...tops.flatMap((c) => [move(c.id, work(0)), move(c.id, work(3)), move(c.id, slot(0))]),
+    ];
+  };
+
+  it('a fresh deal is still being dealt: every intent from every seat is refused and changes nothing', () => {
+    expect(fresh.dealing).toBe(true);
+    expect(checkInvariants(fresh)).toBeNull();
+    for (const seat of [0, 1, 2]) {
+      for (const intent of everyIntent(fresh, seat)) {
+        const r = applyIntent(fresh, seat, intent);
+        expect(r).toEqual({ ok: false, reason: 'The cards are still being dealt' });
+        expect(refused(fresh, seat, intent)).toBe(fresh);
+        expect(canDrop(fresh, seat, intent.k === 'move' ? intent.cardId : 'x', slot(0))).toBe(false);
+      }
+    }
+    expect(resolveStuck(fresh, [0, 1, 2])).toBe(fresh);
+    expect(expireGrace(fresh)).toBe(fresh);
+    expect(isOver(fresh)).toBe(false);
+  });
+
+  it('shows nobody a single face until the deal is over, their own cards included; ids, owners and shape stay put', () => {
+    for (const seat of [0, 1, 2, 7]) {
+      const view = viewFor(fresh, seat);
+      expect(view.dealing).toBe(true);
+      expect(allCards(view)).toHaveLength(3 * 52);
+      expect(allCards(view).every(isHidden)).toBe(true);
+      expect(JSON.stringify(view)).not.toMatch(/suit|rank/);
+      expect(allCards(view).map((x) => [x.id, x.owner])).toEqual(allCards(fresh).map((x) => [x.id, x.owner]));
+      expect(view.players.map((p) => [p.nertz.length, p.work.map((w) => w.length), p.down, p.stock.length])).toEqual(
+        fresh.players.map((p) => [p.nertz.length, p.work.map((w) => w.length), p.down, p.stock.length]),
+      );
+      expect(checkInvariants(view)).toBeNull();
+      // The reducer refuses on the view exactly as on the full state, so a client predicts nothing during the deal.
+      for (const intent of everyIntent(view, 0)) rejected(applyIntent(view, 0, intent));
+    }
+  });
+
+  it('finishDeal opens play without touching a card, for every seat at once, and only once', () => {
+    const open = finishDeal(fresh);
+    expect(open).toEqual({ ...fresh, dealing: false });
+    expect(finishDeal(open)).toBe(open);
+    expect(checkInvariants(open)).toBeNull();
+    for (const seat of [0, 1, 2]) {
+      // The same ids, now with the face-up cards showing: the nertz top and the four work tops of every player.
+      const view = viewFor(open, seat);
+      expect(ids(allCards(view))).toEqual(ids(allCards(viewFor(fresh, seat))));
+      for (const p of view.players) expect([...p.nertz, ...p.work.flat(), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(5);
+      ok(applyIntent(open, seat, { k: 'flip' }));
+      ok(applyIntent(view, seat, hold(view.players.find((p) => p.seat === seat)!.nertz.at(-1)!.id)));
+    }
+  });
+
+  it('checkInvariants rejects a deal during which something was played', () => {
+    const played = ok(applyIntent(finishDeal(fresh), 0, { k: 'flip' }));
+    expect(checkInvariants({ ...played, dealing: true })).toMatch(/during the deal/);
+  });
+});
 
 // ---------------------------------------------------------------- deal
 

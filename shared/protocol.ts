@@ -24,6 +24,8 @@ export const WORK_PILES = 4;
 export const SLOTS_PER_PLAYER = 4;
 /** How long a player who was holding a card when Nertz was called has to put it down. */
 export const GRACE_MS = 4000;
+/** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
+export const DEAL_MS = 2400;
 
 /** No I, O (look like 1, 0). */
 export const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyIntent, checkInvariants, deal, isHidden, refused, viewFor } from '../shared/engine';
+import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, refused, viewFor } from '../shared/engine';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
 import * as net from './net';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
+
+/** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
+const deal = (seats: readonly number[], rng: () => number): GameState => finishDeal(dealRound(seats, rng));
 
 /** Deterministic rng so the deals are reproducible. */
 function rng(seed: number) {
@@ -20,6 +23,7 @@ const roomOf = (game: GameState, you: number): RoomView => ({
   players: game.players.map((p) => ({ seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, isHost: p.seat === 0, stuck: p.stuck })),
   game: viewFor(game, you),
   graceMs: null,
+  dealMs: null,
   lastRound: null,
 });
 
@@ -55,6 +59,28 @@ function dealWithAces(): GameState {
 const send = (sync: Sync, intent: Intent): Sync => onSend(sync, intent);
 
 describe('prediction', () => {
+  it('predicts nothing while the cards are being dealt, and plays on from the snapshot that opens the round', () => {
+    const dealt = dealRound([0, 1], rng(1));
+    const s = server(dealt, 0);
+    let sync = onSnapshot(freshSync, s.snapshot());
+    expect(predict(sync)).toBe(sync.server);
+    expect(sync.server!.game!.players.flatMap((p) => [...p.nertz, ...p.work.flat(), ...p.stock]).every(isHidden)).toBe(true);
+    // What `net.send` asks before sending anything: every intent is refused on the dealing view, so nothing goes out.
+    const intents: Intent[] = [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'hold', cardId: dealt.players[0]!.nertz.at(-1)!.id }, { k: 'nertz' }];
+    for (const intent of intents) expect(applyIntent(sync.server!.game!, 0, intent).ok).toBe(false);
+    // Even an intent that did go out (a hostile or stale client) is refused by both sides: prediction stays the snapshot.
+    sync = send(sync, { k: 'flip' });
+    expect(predict(sync)).toBe(sync.server);
+    expect(s.apply(0, { k: 'flip' }, sync.seq)).toBe(false);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(sync.pending).toHaveLength(0);
+
+    const open = server(finishDeal(dealt), 0);
+    sync = onSnapshot({ ...sync, rev: -1 }, open.snapshot());
+    sync = send(sync, { k: 'flip' });
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
+  });
+
   it('renders the snapshot untouched when nothing is pending', () => {
     const s = server(deal([0, 1], rng(1)), 0);
     const sync = onSnapshot(freshSync, s.snapshot());

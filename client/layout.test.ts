@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { deal, viewFor } from '../shared/engine';
+import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, viewFor } from '../shared/engine';
 import type { Card, GameState } from '../shared/types';
 import { planFinale } from './Finale';
-import { computeLayout, COUNTDOWN, countdownTop, dropTarget, fanOut, inside, type Rect } from './layout';
+import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
+
+/** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
+const deal = (seats: readonly number[], rng: () => number): GameState => finishDeal(dealRound(seats, rng));
 
 function rng(seed: number) {
   return () => {
@@ -242,5 +245,28 @@ describe('table layout', () => {
       }
     }
     expect(CARD_H / CARD_W).toBeCloseTo(1.4);
+  });
+});
+
+describe('the deal', () => {
+  const LEAVING = NERTZ_SIZE + 1 + 2 + 3 + 4; // the nertz pile and the four work piles; the rest is the stock
+
+  it('has every card down, with a beat to spare, before the server turns the faces over', () => {
+    const waits = Array.from({ length: LEAVING }, (_, i) => dealWait(i, DEAL_MS)!);
+    expect(waits.every((w, i) => w !== null && (i === 0 || w > waits[i - 1]!))).toBe(true); // one after another
+    expect(DEAL.step).toBeLessThan(DEAL.duration * 1000); // overlapping: the next has left before this one lands
+    const landed = waits[LEAVING - 1]! + DEAL.duration * 1000;
+    expect(landed).toBeLessThanOrEqual(DEAL_MS - 200);
+    expect(landed).toBeGreaterThan(DEAL_MS / 2); // and it fills the time: this is a deal, not a flash
+  });
+
+  it('in a window that arrives late, leaves the cards already dealt in place and deals the rest on the same schedule', () => {
+    const late = 900;
+    const waits = Array.from({ length: LEAVING }, (_, i) => dealWait(i, DEAL_MS - late));
+    const gone = waits.filter((w) => w === null).length;
+    expect(gone).toBeGreaterThan(0);
+    expect(gone).toBeLessThan(LEAVING);
+    waits.forEach((w, i) => expect(w).toBe(i < gone ? null : dealWait(i, DEAL_MS)! - late));
+    expect(Array.from({ length: LEAVING }, (_, i) => dealWait(i, 0)).every((w) => w === null)).toBe(true); // nothing left to deal
   });
 });

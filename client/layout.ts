@@ -2,7 +2,7 @@
 // visible card sits. Every card is absolutely positioned on one layer and
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
-import { isHidden } from '../shared/engine';
+import { DEAL_MS, isHidden } from '../shared/engine';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -344,4 +344,24 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   }
 
   return { cards, me, opponents, slots, slotHit: slots.map((r) => grow(r, gap * 0.35)), tray, out, middle, fs };
+}
+
+// ---------------------------------------------------------------- the deal
+
+/**
+ * The deal at the start of a round: after `lead` ms a card leaves each deck
+ * every `step` ms and takes `duration` s to land. 23 cards leave (13 nertz, 10
+ * work), so the last is down a beat before the server's DEAL_MS is up and the
+ * face-up cards turn over.
+ */
+export const DEAL = { lead: 120, step: 72, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
+
+/**
+ * How long until the `i`th card of a deck leaves it, in a window that was told
+ * `dealMs` of the deal remain. Null if it has left already (a window that
+ * arrived late): that card is simply in its place.
+ */
+export function dealWait(i: number, dealMs: number): number | null {
+  const wait = DEAL.lead + i * DEAL.step - (DEAL_MS - dealMs);
+  return wait >= 0 ? wait : null;
 }
