@@ -1,4 +1,5 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
+import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg } from './chat';
 import type { Intent, PileRef, RoomView } from './types';
 
 export type ClientMsg =
@@ -8,12 +9,15 @@ export type ClientMsg =
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
   | { t: 'intent'; seq: number; intent: Intent }
-  | { t: 'leave' };
+  | { t: 'leave' }
+  /** Text chat, the host's chat switches, voice presence and WebRTC signalling: see chat.ts. */
+  | SocialClientMsg;
 
 export type ServerMsg =
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
   | { t: 'state'; rev: number; ack: number; room: RoomView }
-  | { t: 'error'; message: string };
+  | { t: 'error'; message: string }
+  | SocialServerMsg;
 
 export const MAX_MESSAGE_BYTES = 2048;
 export const MAX_NAME_LENGTH = 20;
@@ -131,6 +135,6 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'intent', seq: v.seq as number, intent };
     }
     default:
-      return null;
+      return parseSocialMsg(v);
   }
 }

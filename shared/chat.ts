@@ -1,0 +1,90 @@
+// Text chat and voice chat: wire messages, limits and inbound validation.
+// Kept apart from protocol.ts (which only adds these to its unions) because
+// none of it touches the game: chat is never part of a snapshot.
+
+/** Longest chat message, after cleaning. */
+export const CHAT_MAX_LENGTH = 300;
+/** Messages a room remembers; older ones are forgotten. */
+export const CHAT_HISTORY = 200;
+/** A player may send CHAT_RATE_COUNT messages per CHAT_RATE_MS; the excess is dropped quietly. */
+export const CHAT_RATE_COUNT = 5;
+export const CHAT_RATE_MS = 5000;
+/**
+ * Longest `data` of one signalling message. A WebRTC offer is bigger than one
+ * websocket frame may be (MAX_MESSAGE_BYTES), so clients send it in pieces
+ * (see client/voice.ts); the server forwards each piece as opaque text.
+ */
+export const SIGNAL_MAX_LENGTH = 1200;
+
+export interface ChatLine {
+  /** Rises by one per message in a room. */
+  id: number;
+  seat: number;
+  /** The sender's name when it was said, so the line stays right after they leave. */
+  name: string;
+  text: string;
+  /** Server clock, ms since the epoch. */
+  at: number;
+}
+
+/** The host's two switches. Both default to on. */
+export interface SocialSettings {
+  text: boolean;
+  voice: boolean;
+}
+
+export interface VoiceMember {
+  seat: number;
+  muted: boolean;
+}
+
+export type SocialClientMsg =
+  | { t: 'chat'; text: string }
+  /** Host only: flip one or both switches. */
+  | { t: 'social'; text?: boolean; voice?: boolean }
+  /** Join or leave the table's voice chat, and say whether the microphone is muted. */
+  | { t: 'voice'; on: boolean; muted: boolean }
+  /** WebRTC signalling for the player in seat `to`; the server forwards it as it is. */
+  | { t: 'signal'; to: number; data: string };
+
+export type SocialServerMsg =
+  /** New lines, or with `history` everything the room remembers (sent once to a connection when it sits down). */
+  | { t: 'chat'; lines: ChatLine[]; history: boolean }
+  /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
+  | ({ t: 'social'; inVoice: VoiceMember[] } & SocialSettings)
+  /** `from` is stamped by the server. */
+  | { t: 'signal'; from: number; data: string };
+
+/** Control characters become spaces; trimmed and capped. May return ''. */
+export function cleanChat(raw: string): string {
+  return raw
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
+    .trim()
+    .slice(0, CHAT_MAX_LENGTH)
+    .trim();
+}
+
+/** Returns a clean copy of a well-formed chat or voice message, or null. `v` is already-parsed JSON. Never throws. */
+export function parseSocialMsg(v: Record<string, unknown>): SocialClientMsg | null {
+  switch (v.t) {
+    case 'chat': {
+      if (typeof v.text !== 'string') return null;
+      const text = cleanChat(v.text);
+      return text ? { t: 'chat', text } : null;
+    }
+    case 'social': {
+      const ok = (x: unknown) => x === undefined || typeof x === 'boolean';
+      if (!ok(v.text) || !ok(v.voice) || (v.text === undefined && v.voice === undefined)) return null;
+      return { t: 'social', ...(typeof v.text === 'boolean' && { text: v.text }), ...(typeof v.voice === 'boolean' && { voice: v.voice }) };
+    }
+    case 'voice':
+      return typeof v.on === 'boolean' && typeof v.muted === 'boolean' ? { t: 'voice', on: v.on, muted: v.muted } : null;
+    case 'signal': {
+      const { to, data } = v;
+      if (!Number.isInteger(to) || (to as number) < 0 || (to as number) > 63) return null;
+      return typeof data === 'string' && data.length > 0 && data.length <= SIGNAL_MAX_LENGTH ? { t: 'signal', to: to as number, data } : null;
+    }
+    default:
+      return null;
+  }
+}

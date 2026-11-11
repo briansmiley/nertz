@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode
 import { cleanName, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
+import { Chat } from './Chat';
 import { create, join, leave, start, useNet } from './net';
 import { Table } from './Table';
 
@@ -65,6 +66,7 @@ export function App() {
     <>
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
+      <Chat room={room} />
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (

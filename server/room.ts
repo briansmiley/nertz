@@ -10,6 +10,7 @@
 import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { GameState, Phase, RoomView, RoundResult } from '../shared/types';
+import { Social } from './chat';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -47,6 +48,8 @@ export class Room {
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. */
   game: GameState | null = null;
   lastRound: RoundResult | null = null;
+  /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
+  readonly social = new Social();
 
   private players: Player[] = []; // in seat order
   private conns = new Map<Conn, Player>();
@@ -109,6 +112,7 @@ export class Room {
     Object.assign(player, { name, conn, ack: -1, left: false });
     this.conns.set(conn, player);
     this.host ??= player;
+    this.social.joined(player, this.players);
     this.settle();
     this.changed();
     return null;
@@ -125,6 +129,8 @@ export class Room {
         return this.intent(player, msg.seq, msg.intent);
       case 'leave':
         return this.drop(conn, true);
+      default:
+        return this.social.handle(player, this.players, player === this.dealer, msg);
     }
   }
 
@@ -261,6 +267,7 @@ export class Room {
       player.left = true; // their cards are on the table; the seat is freed when the next round is dealt
     }
     this.letGo(player);
+    this.social.left(player, this.players);
     this.settle(); // the remaining connected players may now all be stuck
     this.changed();
   }

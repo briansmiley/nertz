@@ -1050,3 +1050,213 @@ button {
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------ chat panel (Chat.tsx) */
+
+/* Docked bottom-left on every screen of a table, above the score sheet and under the connection banner. */
+.chat {
+  position: fixed;
+  z-index: 45000;
+  left: 10px;
+  bottom: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+/* With a card in hand the panel is out of the way: it takes no pointer and the card shows through. */
+.chat.aside {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+.chat button {
+  padding: 4px 10px 5px;
+  border: 1.5px solid var(--ink);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.chat button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.chat button.on {
+  background: var(--marigold);
+  border-color: var(--marigold);
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-bar button,
+.chat-bar .mic {
+  position: relative;
+  border-color: rgba(241, 234, 216, 0.4);
+  background: rgba(8, 28, 33, 0.6);
+  color: var(--chalk);
+}
+
+.chat-bar button.on {
+  color: var(--ink);
+}
+
+.chat-bar .mic {
+  padding: 4px 10px 5px;
+  border: 1.5px solid transparent;
+  border-radius: 99px;
+  font-size: 13px;
+}
+
+.chat-bar .mic.speaking {
+  border-color: var(--marigold);
+}
+
+.chat .dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--marigold);
+  box-shadow: 0 0 0 2px var(--felt-dark);
+}
+
+.chat.open {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: calc(100vw - 20px); /* the width is set by Chat.tsx */
+  max-height: min(430px, calc(100vh - 20px));
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.chat header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat h3 {
+  margin: 0;
+  font: 400 1.05rem/1.2 var(--display);
+}
+
+.chat-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.chat .voice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat .voice ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat .voice li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 2px 6px;
+  border: 1.5px solid var(--rule);
+  border-radius: 99px;
+  font-size: 13px;
+}
+
+.chat .voice li.speaking {
+  border-color: #1c9468;
+  box-shadow: 0 0 0 2px rgba(28, 148, 104, 0.3);
+}
+
+.chat .voice li i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.chat .voice li small {
+  color: var(--ink-soft);
+}
+
+.chat .lines {
+  flex: 1;
+  min-height: 90px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--card);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.chat form {
+  display: flex;
+  gap: 6px;
+}
+
+.chat form input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px 5px;
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.chat form input:disabled {
+  background: #e9e1cc;
+}
+
+.chat .switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 4px 8px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.chat .switches legend {
+  padding: 0 4px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.chat .switches label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat .switches:disabled label {
+  color: var(--ink-soft);
+}

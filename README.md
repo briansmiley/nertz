@@ -201,6 +201,38 @@ with nobody connected is deleted after 10 minutes, or after 1 minute if it never
 is deleted at once. There is a cap of 2000 tables and no limit per address: someone opening sockets in bulk could still
 fill it for about a minute at a time.
 
+## Chat and voice
+
+A small **Chat** button sits in the bottom-left corner of the lobby, the table and the score sheet. It opens a panel with
+text chat, voice controls and the host's two switches; **Hide** folds it back to the button, which shows a dot when there is
+something unread. During a round the open panel is only as wide as the free felt beside the piles, and while you hold a
+card it fades and lets the pointer through. Keys typed in the panel are never game hotkeys.
+
+- **Text chat.** Enter sends. Plain text, at most 300 characters, shown with the sender's name in their seat colour. The
+  server stamps the sender and an id, keeps the last 200 lines per table in memory and allows each player 5 messages per
+  5 seconds (the excess is dropped). Chat is not part of the game snapshot: lines arrive as their own message
+  (`{ t: 'chat' }`), and the kept history is sent once to every connection that sits down, reconnects included.
+- **Voice chat.** Opt-in: the microphone is asked for only when you press **Join voice**. Then: **Mute**, **Leave voice**,
+  a list of who is in voice and who is muted, and a ring around whoever is making sound. It is a WebRTC mesh, audio only:
+  every pair of players in voice has one direct peer connection (15 for a full table of 6). Offers, answers and ICE
+  candidates go through the game's websocket (`{ t: 'signal', to: seat }`); the server forwards them only between two
+  players of the same table who have both joined voice, stamps the sender's seat, and never looks inside. The player in
+  the lower seat makes the offer. Leaving voice, leaving the table, losing the connection or the host switching voice off
+  closes the connections and releases the microphone; after a dropped websocket the client rejoins by itself, after a
+  page reload you press Join again.
+- **No relay (STUN only).** Peers find each other with a public STUN server (`stun:stun.l.google.com:19302`). That works
+  when at least one of the two can be reached directly, as on most home networks. Two players who are both behind strict
+  NATs or firewalls (some company, campus and mobile networks) will not hear each other: that needs a TURN relay, which
+  costs bandwidth and is not set up. The place for it is the one `ICE_SERVERS` constant in `client/voice.ts`.
+- **Host switches.** "Text chat" and "Voice chat", both on by default, are in the chat panel on every screen. Only the
+  host (whoever may deal) can flip them, at any time; everyone else sees them greyed out. Text off: the server refuses new
+  messages and the input is disabled, but the history stays readable and is still there when it is switched back on.
+  Voice off: everyone is disconnected from voice at once and the Join button is hidden; switching it back on lets people
+  join again, nobody is put back automatically.
+
+Voice has been checked in headless Chromium with fake microphones only (connection state and audio packet counters, not
+by ear), and not in Safari or Firefox or across real networks.
+
 ## Project layout
 
 ```
@@ -208,8 +240,10 @@ shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. 
   types.ts      Card, GameState, Intent, RoomView
   engine.ts     deal, finishDeal, applyIntent, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types, limits, parsing and validation
+  chat.ts       chat and voice messages, their limits and validation
 server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal and grace timers, snapshots. No IO.
+  chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
   index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
 client/   Vite + React
   net.ts        websocket store and prediction
@@ -217,6 +251,9 @@ client/   Vite + React
   Table.tsx     the table: the deal, drag and drop, the Nertz call, the grace countdown, the steps of the end-of-round sequence
   Finale.tsx    the wash and the sorted piles at the end of a round, drawn on a canvas
   App.tsx       home, lobby and score sheet
+  Chat.tsx      the chat panel: text, voice controls, host switches
+  social.ts     chat lines, switches and voice presence as the server reports them
+  voice.ts      microphone, WebRTC mesh, speaking meter
   cards/        card faces drawn as SVG in code (original art, see cards/CREDITS.md)
 ```
 
@@ -324,4 +361,6 @@ would still need one of the options above, and serving both from one origin is s
 - **After a server restart** a reconnecting window is told its table no longer exists and is put back on the home page with
   the code filled in; somebody has to start a new table.
 - **Bundle size** is about 400 kB (130 kB gzipped), a third of it the animation library.
-- **No spectators, no chat, no persistence.** Restarting the server ends every game.
+- **Chat in a small window.** With the panel open during a round in a window under about 1250 px wide, it lies over the
+  captions under your nertz pile and, narrower still, over the pile's edge. Hide it to play.
+- **No spectators, no persistence.** Restarting the server ends every game and forgets the chat.
