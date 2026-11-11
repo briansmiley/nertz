@@ -1,9 +1,9 @@
 // Screens around the table: home, lobby, round results.
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { cleanName, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
-import type { RoomView } from '../shared/types';
+import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
+import type { BotLevel, RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
-import { create, join, leave, start, useNet } from './net';
+import { addBot, create, join, leave, removeBot, start, useNet } from './net';
 import { Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the
@@ -94,6 +94,31 @@ function Mini({ seat, suit, rank, style }: { seat?: number; suit?: 'S' | 'H' | '
         <span className="back" style={{ '--back': backColour(seat ?? 0) } as CSSProperties} />
       )}
     </span>
+  );
+}
+
+/** For whoever deals, between rounds: seat a bot to play against, or send one away. */
+function Bots({ room }: { room: RoomView }) {
+  const [level, setLevel] = useState<BotLevel>('medium');
+  const bots = room.players.filter((p) => p.bot);
+  return (
+    <div className="bots">
+      <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
+        {BOT_LEVELS.map((l) => (
+          <option key={l} value={l}>
+            {l} bot
+          </option>
+        ))}
+      </select>
+      <button type="button" className="plain" disabled={room.players.length >= MAX_PLAYERS} onClick={() => addBot(level)}>
+        Add bot
+      </button>
+      {bots.map((p) => (
+        <button key={p.seat} type="button" className="quiet" onClick={() => removeBot(p.seat)}>
+          Remove {p.name}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -211,7 +236,7 @@ function Lobby({ room }: { room: RoomView }) {
             <li key={p.seat} className={p.connected ? '' : 'away'}>
               <Mini seat={p.seat} />
               <span className="name">{p.name}</span>
-              <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away'].filter(Boolean).join(', ')}</span>
+              <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `bot, ${p.bot}`].filter(Boolean).join(', ')}</span>
             </li>
           ))}
         </ul>
@@ -222,6 +247,7 @@ function Lobby({ room }: { room: RoomView }) {
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
         )}
+        {me?.isHost && <Bots room={room} />}
         <button type="button" className="quiet" onClick={exit}>
           Leave table
         </button>
@@ -276,6 +302,7 @@ function Results({ room }: { room: RoomView }) {
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
         )}
+        {me?.isHost && <Bots room={room} />}
         <button type="button" className="quiet" onClick={exit}>
           Leave table
         </button>

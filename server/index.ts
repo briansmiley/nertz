@@ -63,6 +63,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const released = (room: Room): void => {
     if (room.connected > 0) return;
     if (room.empty) {
+      room.close();
       if (rooms.get(room.code) === room) rooms.delete(room.code);
       idleSince.delete(room);
     } else if (!idleSince.has(room)) {
@@ -82,6 +83,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
     for (const [room, since] of idleSince) {
       if (now - since < (room.phase === 'lobby' ? LOBBY_TTL_MS : ROOM_TTL_MS)) continue;
       idleSince.delete(room);
+      room.close();
       if (rooms.get(room.code) === room) rooms.delete(room.code);
     }
   };

@@ -1,5 +1,5 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
-import type { Intent, PileRef, RoomView } from './types';
+import type { BotLevel, Intent, PileRef, RoomView } from './types';
 
 export type ClientMsg =
   /** Open a new table; the server picks the code and answers with the first snapshot (`room.code`). */
@@ -8,7 +8,10 @@ export type ClientMsg =
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
   | { t: 'intent'; seq: number; intent: Intent }
-  | { t: 'leave' };
+  | { t: 'leave' }
+  /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
+  | { t: 'addBot'; level: BotLevel }
+  | { t: 'removeBot'; seat: number };
 
 export type ServerMsg =
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
@@ -24,6 +27,7 @@ export const WORK_PILES = 4;
 export const SLOTS_PER_PLAYER = 4;
 /** How long a player who was holding a card when Nertz was called has to put it down. */
 export const GRACE_MS = 4000;
+export const BOT_LEVELS: readonly BotLevel[] = ['slow', 'medium', 'fast'];
 
 /** No I, O (look like 1, 0). */
 export const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -123,6 +127,12 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'start' };
     case 'leave':
       return { t: 'leave' };
+    case 'addBot': {
+      const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
+      return level ? { t: 'addBot', level } : null;
+    }
+    case 'removeBot':
+      return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
     case 'intent': {
       const intent = parseIntent(v.intent);
       if (!Number.isSafeInteger(v.seq) || (v.seq as number) < 0 || !intent) return null;

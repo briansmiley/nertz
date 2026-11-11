@@ -419,6 +419,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               <i className="chip" style={{ background: backColour(o.seat) }} />
               <span className="name">{name(o.seat)}</span>
               <span className="pts">{points(total(o.seat))}</span>
+              {p?.bot && <em className="bot">bot</em>}
               {p?.connected === false ? <em className="flag">away</em> : st?.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.work.map((w) => ({ ...w, y: o.nertz.y })), o.stock, o.waste].map((r, i) => (

@@ -335,6 +335,17 @@ button {
   color: var(--chalk-dim);
 }
 
+.tag .bot {
+  padding: 1px 5px 2px;
+  border: 1px solid var(--chalk-dim);
+  border-radius: 4px;
+  font-style: normal;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--chalk-dim);
+}
+
 .tag .flag.hot {
   background: var(--marigold);
   color: var(--ink);
@@ -891,6 +902,23 @@ button {
   margin-left: auto;
   font-size: 0.9rem;
   color: var(--ink-soft);
+}
+
+/* Whoever deals can seat a bot: level, Add, and one Remove per bot. */
+.bots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+}
+
+.bots select {
+  padding: 0.55rem 0.5rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  font: inherit;
+  color: var(--ink);
+  background: #fffdf6;
 }
 
 .seats .away .name {
