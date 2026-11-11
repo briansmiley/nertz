@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
-import { CARD_RATIO, cardSize, offFelt, pileGap, TABLE, type TableMode } from '../shared/table';
+import { canDrop, deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
+import { CARD_RATIO, cardSize, offFelt, pileGap, roomAt, TABLE, tiltAt, type TableMode } from '../shared/table';
 import type { Card, GameState } from '../shared/types';
 import { LABEL, planFinale, restAt, TILT } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
+import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, keepOut, landingAt, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
@@ -268,6 +268,80 @@ describe('table layout', () => {
     expect(r.h / L.felt.u).toBeCloseTo(size.h, 9);
     expect(pileGap(4) * L.felt.u).toBeGreaterThan(4);
     expect(pileGap(4) * L.felt.u).toBeLessThan(r.w * 0.2);
+  });
+
+  it('the picture is the rule: an Ace has room exactly where its outline is clear of every drawn keep-out and inside the drawn felt, on every screen', () => {
+    // What Table.tsx draws while an Ace is in hand (`landingAt`, `keepOut`, the felt with its rounded corners) held
+    // against what the engine accepts (`canDrop` on a point of the felt), in px, for every table size and window.
+    // Random places, and places on purpose just either side of every line.
+    const next = rng(77);
+    let [yes, no, close] = [0, 0, 0];
+    for (let n = 2; n <= 6; n++) {
+      const { w, h } = cardSize(n);
+      const gap = pileGap(n);
+      for (const [W, H] of WINDOWS) {
+        // A table with a good few piles on it, put down wherever the engine lets them go.
+        let game = deal(seats(n), rng(n * 100 + W), 'free');
+        const ace = (i: number): Card => ({ id: `pile${i}`, owner: i % n, suit: 'S', rank: 1 });
+        const at: { x: number; y: number }[] = [];
+        for (let tries = 0; at.length < 3 * n && tries < 2000; tries++) {
+          const near = at.length > 0 && next() < 0.5 ? at[Math.floor(next() * at.length)]! : null;
+          const p = near
+            ? { x: near.x + (next() < 0.5 ? -1 : 1) * (w + gap + next() * 0.02), y: near.y + (next() - 0.5) * h }
+            : { x: (next() * 2 - 1) * TABLE.hw, y: next() * 2 - 1 };
+          const q = { x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000 };
+          if (roomAt(q, at, n)) at.push(q);
+        }
+        expect(at.length).toBeGreaterThanOrEqual(2 * n);
+        game = { ...game, slots: game.slots.map((s, i) => (at[i] ? [ace(i)] : s)), places: game.places.map((_, i) => (at[i] ? { ...at[i]!, r: tiltAt(at[i]!) } : null)) };
+        // Seat 0 has an Ace on top of a work pile.
+        const mine: Card = { id: 'mine', owner: 0, suit: 'H', rank: 1 };
+        game = { ...game, players: game.players.map((p, i) => (i === 0 ? { ...p, work: [[...p.work[0]!, mine], ...p.work.slice(1)] } : p)) };
+        const u0 = computeLayout(W, H, game, 0).felt.u;
+        const eps = 0.75 / u0; // three quarters of a px either side of a line
+        const points: { x: number; y: number }[] = [];
+        for (const q of at) {
+          for (const sx of [-1, 1]) for (const e of [-eps, eps]) points.push({ x: q.x + sx * (w + gap + e), y: q.y + (next() - 0.5) * 1.8 * h }, { x: q.x + (next() - 0.5) * 1.8 * w, y: q.y + sx * (h + gap + e) });
+        }
+        for (let i = 0; i < 60; i++) {
+          const e = next() < 0.5 ? -eps : eps;
+          points.push({ x: (next() < 0.5 ? -1 : 1) * (TABLE.hw - w / 2 + e), y: (next() * 2 - 1) * (1 - TABLE.corner) }, { x: (next() * 2 - 1) * (TABLE.hw - TABLE.corner), y: (next() < 0.5 ? -1 : 1) * (1 - h / 2 + e) });
+          points.push({ x: (next() * 2 - 1) * TABLE.hw, y: next() * 2 - 1 });
+        }
+        for (let you = 0; you < n; you += Math.max(1, n - 1)) {
+          const L = computeLayout(W, H, game, you);
+          const keep = L.slots.flatMap((r) => (r ? [keepOut(L, r, n)] : []));
+          const r = L.felt.u * TABLE.corner;
+          /** How far outside the felt as drawn (a box with corners of radius r) a point of the screen is, in px. */
+          const outside = (x: number, y: number) => {
+            const dx = Math.abs(x - L.felt.cx) - (L.middle.w / 2 - r);
+            const dy = Math.abs(y - L.felt.cy) - (L.middle.h / 2 - r);
+            return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - r;
+          };
+          for (const p of points) {
+            // As Table.tsx does it: the outline about the card's centre on screen, the place sent to the thousandth.
+            const centre = toScreen(L.felt, p);
+            const there = toTable(L.felt, centre.x, centre.y);
+            const to = { k: 'felt' as const, x: Math.round(there.x * 1000) / 1000, y: Math.round(there.y * 1000) / 1000 };
+            const box = landingAt(L, centre);
+            // How deep the outline is into the nearest keep-out, and how far its worst corner is off the felt (px; negative: clear).
+            const into = Math.max(-Infinity, ...keep.map((k) => Math.min(Math.min(box.x + box.w, k.x + k.w) - Math.max(box.x, k.x), Math.min(box.y + box.h, k.y + k.h) - Math.max(box.y, k.y))));
+            const off = Math.max(...cornersOf(box).map(([x, y]) => outside(x, y)));
+            const worst = Math.max(into, off);
+            const ok = canDrop(game, 0, 'mine', to);
+            // (Within a tenth of a px of a line the thousandth the place is sent to can tip it either way.)
+            if (Math.abs(worst) < 0.1) continue;
+            if (Math.abs(worst) < 1) close++;
+            expect([n, W, H, you, to.x, to.y, ok]).toEqual([n, W, H, you, to.x, to.y, worst < 0]);
+            ok ? yes++ : no++;
+          }
+        }
+      }
+    }
+    // It was a real test: plenty of places either way, many of them within a px of a line.
+    expect(yes).toBeGreaterThan(1500);
+    expect(no).toBeGreaterThan(1500);
+    expect(close).toBeGreaterThan(1500);
   });
 
   it('keeps the tray where it is whatever is in it, shows the near side of every pile, and takes a drop anywhere out to the edge', () => {

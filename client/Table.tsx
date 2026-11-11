@@ -14,11 +14,11 @@ import { animate, motion, useMotionValue, type MotionValue } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
 import { DRAG_HZ, STOCK_CARD_MS, type DragAt } from '../shared/protocol';
-import { cardSize, offFelt, pileGap, TABLE } from '../shared/table';
+import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, sortMs, TIMING } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, post } from './net';
@@ -51,7 +51,6 @@ const GLIDE_MS = 70;
 const STALE_MS = 600;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
-const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 
 // ---------------------------------------------------------------- one card
 
@@ -113,16 +112,20 @@ const CardView = memo(function CardView(p: CardProps) {
   const goal = useRef({ x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot });
   const mine = useRef(p.mine);
   const flight = useRef(0);
+  const el = useRef<HTMLDivElement>(null);
   const flying = useRef(!!dealt); // a card waiting in the deck keeps the deck's stacking until it has landed
   /** When this card leaves the deck (performance clock). 0 once it has, or if it was never in one: it is dealt once. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0);
 
-  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false) => {
+  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false, passing = false) => {
     const g = goal.current;
     const n = ++flight.current;
     flying.current = true;
     z.set(g.z + Z_FLYING); // travel above everything that is lying still
     if (veiled) o.set(ALOFT);
+    // Somebody else's card crossing the table is not in the pointer's way either (styles.css `.card[data-passing]`).
+    if (passing) el.current?.setAttribute('data-passing', '');
+    else el.current?.removeAttribute('data-passing');
     animate(x, g.x, move);
     animate(y, g.y, move);
     animate(s, g.s, move);
@@ -132,6 +135,7 @@ const CardView = memo(function CardView(p: CardProps) {
       flying.current = false;
       z.set(goal.current.z);
       o.set(1); // landed: solid again, whatever it was in the air
+      el.current?.removeAttribute('data-passing');
     }, move.duration * 1000 + 30);
   }, [x, y, s, z, r, o, p.slow]);
 
@@ -144,7 +148,7 @@ const CardView = memo(function CardView(p: CardProps) {
     const g = goal.current;
     const far = Math.hypot(x.get() - g.x, y.get() - g.y);
     if (own || p.slow || calm() || far < 4) fly();
-    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s);
+    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s, true);
   }, [fly, x, y, p.slow]);
 
   useEffect(() => {
@@ -178,7 +182,7 @@ const CardView = memo(function CardView(p: CardProps) {
   }, [p.id, p.reg, x, y, z, s, o, go]);
 
   return (
-    <motion.div className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
+    <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} /> : null}</div>
         <div className="back" style={{ '--back': backColour(p.owner) } as CSSProperties} />
@@ -583,9 +587,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const at = toTable(L.felt, centre.x, centre.y);
     if (offFelt(at) > cardSize(game.players.length).h / 2) return undefined;
     const to: PileRef = { k: 'felt', x: round3(at.x), y: round3(at.y) };
-    const w = L.fs * CARD_W;
-    const h = L.fs * CARD_H;
-    const rect = { x: centre.x - w / 2, y: centre.y - h / 2, w, h };
+    const rect = landingAt(L, centre);
     return { key: 'felt', to, rect, hit: rect, ok: canDrop(game, you, d.held.id, to) };
   };
   const targetUnder = (d: Drag): Target | undefined => {
@@ -674,6 +676,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : d.held.k === 'pile' ? !toClear(d.held.slot) : frozen || mine?.stock.at(-1)?.id !== d.lead;
     if (gone) letGo(d);
   });
+  // The table can change under a hand that is holding still: someone starts a pile right where your Ace was about
+  // to go. What the outline says is worked out again there and then, not only when the hand next moves.
+  useEffect(() => {
+    const d = drag.current;
+    if (d?.active) aim(d);
+  }, [game, L]);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (stage === 'flip' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
@@ -898,7 +906,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       ))}
       {/* An Ace is in hand that may go anywhere there is room: what is not room. Around every pile, the gap the rules
           keep (shared/table.ts `clash`); the edge of the felt is the other limit, and is drawn up while this lasts. */}
-      {placing && L.slots.map((slot, i) => slot && game.slots[i]!.length > 0 && <div key={i} className="keepout" style={box(grow({ x: slot.x, y: slot.y, w: slot.w, h: slot.h }, pileGap(game.players.length) * L.felt.u))} />)}
+      {placing && L.slots.map((slot, i) => slot && game.slots[i]!.length > 0 && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}
       <div ref={preview} className="landing" hidden />
 
       {L.cards.map((c) => {
