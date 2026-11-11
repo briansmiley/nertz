@@ -12,13 +12,13 @@ import { backColour, CARD_H, CARD_W } from './cards/Face';
 import { TAG_H, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
-export const TIMING = { flip: 800, out: 900, wash: 2400, sortEach: 1500, hold: 6500 };
+export const TIMING = { flip: 800, out: 900, wash: 1500, sortEach: 1500, hold: 6500 };
 /** The piles are gathered one player at a time: this long for `n` players. */
 export const sortMs = (n: number): number => n * TIMING.sortEach;
 const SPREAD_MS = 560; // a card's trip from its pile out into the wash
 const LAND_MS = 420; // a card's trip from the wash onto its owner's pile
-const DRAW_IN_MS = 520; // the wash is drawn in to the middle of the disc as the sorting starts
-const SWIRL = 2.5; // radians the wash turns through
+/** How much of the table's width and height the mixed-up wash spreads over. */
+const WASH_SPREAD = { x: 0.62, y: 0.6 };
 /** The label beside a sorted pile (name, played, penalty, net score): it is laid out in a box of exactly this size. */
 export const LABEL = { w: 176, h: 62 };
 /** Clear felt between a sorted pile and the rim of the disc, and between it and the wash or its label. */
@@ -296,12 +296,10 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   const { w, h } = plan;
   const pad = Math.ceil(w * 0.08);
   const landed = plan.piles.map(() => 0);
-  const u = clamp01(t / TIMING.wash);
-  const turn = SWIRL * easeInOut(u);
-  // When the swirl is done the wash is drawn in to a heap along the middle of the disc, clear of where the piles go.
-  const drawn = easeInOut(clamp01((t - TIMING.wash) / DRAW_IN_MS));
-  const rx = lerp(plan.rx, plan.core.rx, drawn);
-  const ry = lerp(plan.ry, plan.core.ry, drawn);
+  // The wash is simply one big mixed-up mess in the middle: the cards slide out of their piles to scattered places,
+  // at all angles, and lie there. It does not turn, and it is not tidied up before the cards go out to their owners.
+  const rx = plan.rx * WASH_SPREAD.x;
+  const ry = plan.ry * WASH_SPREAD.y;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, c.canvas.width, c.canvas.height);
   /** A card with its centre at (x, y), turned by `rot`, `size` times as large as a card in the wash. */
@@ -317,8 +315,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   const arriving: Stamp[] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
-    // (The first pile waits for the wash to be drawn in.)
-    const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - DRAW_IN_MS * 0.6 - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - DRAW_IN_MS * 0.6 - 150)) / LAND_MS));
+    const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
@@ -328,12 +325,11 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     }
     // In the wash: out from its pile to a spot on the disc, which then turns (the inside faster) and breathes.
     const spread = easeOut(clamp01((t - mv.delay * 280) / SPREAD_MS));
-    const a = mv.angle + turn * (1.3 - 0.75 * mv.radius);
-    const r = mv.radius * (1 + 0.1 * Math.sin(u * Math.PI * 3 + mv.angle * 3) * (1 - drawn));
+    const a = mv.angle;
+    const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
     let y = lerp(mv.y + h / 2, plan.cy + Math.sin(a) * r * ry, spread);
-    // (Drawn in, the cards are all but squared up: a heap, not a scatter.)
-    let rot = lerp(mv.spin * (0.45 + 0.75 * u) * spread, mv.tilt * 1.5, drawn);
+    let rot = mv.spin * 0.5 * spread;
     let size = 1;
     if (q > 0) {
       x = lerp(x, px, q);
@@ -343,7 +339,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     }
     (q > 0 ? arriving : flying).push([mv, x, y, rot, size]);
   }
-  // The wash turns underneath; the gathered piles lie on top of it; a card on its way out to its pile is above both.
+  // The wash lies underneath; the gathered piles lie on top of it; a card on its way out to its pile is above both.
   for (const f of [...flying, ...resting, ...arriving]) stamp(...f);
   return landed;
 }
