@@ -10,6 +10,7 @@
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
+import type { TableSettings } from '../shared/settings';
 import type { Intent, RoomView } from '../shared/types';
 
 // ---------------------------------------------------------------- pure reconciliation
@@ -182,6 +183,11 @@ export function leave(): void {
 
 export function start(): void {
   post({ t: 'start' });
+}
+
+/** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
+export function setTableSettings(patch: Partial<TableSettings>): void {
+  post({ t: 'settings', patch });
 }
 
 /**

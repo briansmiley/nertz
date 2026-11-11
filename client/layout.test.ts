@@ -39,23 +39,66 @@ function played(game: GameState): GameState {
 }
 
 describe('table layout', () => {
-  it('fits 4 slots per player and the tray on the table for 2 to 6 players, nothing overlapping', () => {
-    for (const [W, H] of WINDOWS) {
+  it('fits 4 slots per player on the table for 2 to 6 players, centred, with the tray half off the right edge and nothing overlapping', () => {
+    for (const [W, H] of [...WINDOWS, [1280, 720]] as [number, number][]) {
       for (let n = 2; n <= 6; n++) {
         const L = computeLayout(W, H, deal(seats(n), rng(n)), 0);
         expect(L.slots).toHaveLength(4 * n);
-        const boxes = [...L.slots, L.tray];
-        for (const r of boxes) {
+        for (const r of L.slots) {
           expect(r.x).toBeGreaterThanOrEqual(0);
           expect(r.x + r.w).toBeLessThanOrEqual(W);
           expect(r.y).toBeGreaterThanOrEqual(0);
           expect(r.w).toBeGreaterThan(20);
         }
+        const left = Math.min(...L.slots.map((r) => r.x));
+        const right = Math.max(...L.slots.map((r) => r.x + r.w));
+        expect(left + right).toBeCloseTo(W); // the grid is centred in the window
+        // The tray: as much of it beyond the edge as on the table, and on the table enough to show most of a pile.
+        expect(W - L.tray.x).toBeCloseTo(L.tray.w / 2);
+        expect(W - L.tray.x).toBeGreaterThan(L.slots[0]!.w * 0.6);
+        expect(L.tray.y).toBeGreaterThanOrEqual(0);
+        const boxes = [...L.slots, L.tray];
         for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) expect(overlap(a, b)).toBe(false);
+        expect(L.tray.x - right).toBeGreaterThan(10); // and a clear strip of felt between the slots and the tray
+        for (const o of L.opponents) expect(overlap(L.tray, { ...o.box, y: o.box.y - 28, h: o.box.h + 28 })).toBe(false);
         // The middle stays clear of your own hand.
         for (const r of boxes) expect(r.y + r.h).toBeLessThanOrEqual(L.me!.box.y);
       }
     }
+  });
+
+  it('keeps the tray where it is whatever is in it, shows the near side of every pile, and takes a drop anywhere out to the edge', () => {
+    const base = played(deal(seats(6), rng(11))); // six finished piles
+    for (const [W, H] of [[1280, 720], [1440, 900]] as [number, number][]) {
+      for (let n = 2; n <= 6; n++) {
+        const full = played(deal(seats(n), rng(n)));
+        const empty = computeLayout(W, H, { ...full, tray: [] }, 0);
+        for (const piles of [0, 1, n]) {
+          const game = { ...full, tray: full.tray.slice(0, piles) };
+          const L = computeLayout(W, H, game, 0);
+          expect(L.tray).toEqual(empty.tray);
+          expect(L.slots).toEqual(empty.slots);
+          const w = L.slots[0]!.w;
+          const kings = L.cards.filter((c) => c.pile === 'tray' && 'rank' in c.card && c.card.rank === 13);
+          expect(kings).toHaveLength(piles);
+          for (const c of kings) {
+            expect(inside(L.tray, c.x + 1, c.y + 1)).toBe(true);
+            expect(W - c.x).toBeGreaterThan(w * 0.5); // more than half of the King is on the table...
+            expect(c.x + w).toBeGreaterThan(W); // ...and the rest of it is over the edge
+            expect(c.y + w * (CARD_H / CARD_W)).toBeLessThanOrEqual(L.tray.y + L.tray.h + 0.01);
+          }
+        }
+        // The drop area: all of the visible tray and more, out past the edge of the window, and never a slot.
+        const L = computeLayout(W, H, full, 0);
+        const mid = L.tray.y + L.tray.h / 2;
+        expect(inside(L.trayHit, L.tray.x + 2, L.tray.y + 2)).toBe(true);
+        expect(inside(L.trayHit, L.tray.x - 5, mid)).toBe(true);
+        expect(inside(L.trayHit, W - 1, mid)).toBe(true);
+        expect(inside(L.trayHit, W + 200, mid)).toBe(true); // a captured pointer can be outside the window
+        for (const r of L.slots) expect(overlap(L.trayHit, r)).toBe(false);
+      }
+    }
+    expect(base.tray).toHaveLength(6);
   });
 
   it('drop areas never touch: a card released between two piles is on neither', () => {
@@ -124,9 +167,9 @@ describe('table layout', () => {
     const targets = L.slotHit.map((hit, i) => ({ i, hit }));
     const mid = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
     const [a, b] = [L.slots[7]!, L.slots[8]!];
-    // Grabbed 5px inside its top-left corner and pointed at the middle of slot 7: the card's centre is most of a card away.
+    // Grabbed 5px inside its top-left corner and pointed well inside slot 7: the card's centre is most of a card away.
     const card = { w: L.me!.nertz.w, h: L.me!.nertz.h };
-    const pointer = mid(a);
+    const pointer = { x: a.x + a.w * 0.7, y: a.y + a.h * 0.7 };
     const centre = { x: pointer.x - 5 + card.w / 2, y: pointer.y - 5 + card.h / 2 };
     expect(inside(L.slotHit[7]!, centre.x, centre.y)).toBe(false); // the old rule: refused
     expect(dropTarget(targets, pointer, centre)?.i).toBe(7);

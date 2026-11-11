@@ -343,7 +343,7 @@ describe('Room', () => {
     room.flush();
     const p0 = room.game!.players[0]!;
     expect(p0.waste).toHaveLength(0);
-    expect(p0.stock).toHaveLength(29);
+    expect(p0.stock).toHaveLength(32); // three players: the small-table deal (on by default)
     expect(p0.stock[0]!.id).toBe(firstTop); // old top card went to the bottom
     expect(a.last.room.players.map((p) => p.stuck)).toEqual([false, false, false]);
     expect(checkInvariants(room.game!)).toBeNull();

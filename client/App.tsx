@@ -4,6 +4,8 @@ import { cleanName, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH }
 import type { RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
 import { create, join, leave, start, useNet } from './net';
+import { Corner, TableRules } from './Settings';
+import { useSounds } from './sound';
 import { Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the
@@ -60,9 +62,18 @@ export function App() {
   useEffect(() => {
     if (code) history.replaceState(null, '', `/?room=${code}`);
   }, [code]);
-  if (!room) return <Home error={net.error} busy={net.status !== 'idle'} />;
+  useSounds(room, net.status === 'online');
+  if (!room) {
+    return (
+      <>
+        <Home error={net.error} busy={net.status !== 'idle'} />
+        <Corner />
+      </>
+    );
+  }
   return (
     <>
+      <Corner />
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
       {net.status === 'reconnecting' ? (
@@ -215,6 +226,7 @@ function Lobby({ room }: { room: RoomView }) {
             </li>
           ))}
         </ul>
+        <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!ready} onClick={start}>
             {ready ? 'Deal the first round' : 'Waiting for a second player'}
@@ -269,6 +281,7 @@ function Results({ room }: { room: RoomView }) {
             ))}
           </tbody>
         </table>
+        <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
             {enoughToDeal(room) ? 'Deal the next round' : 'Waiting for a second player'}

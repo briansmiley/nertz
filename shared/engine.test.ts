@@ -1015,9 +1015,13 @@ function randomIntent(s: GameState, seat: number, rng: Rng): Intent {
   return move(card.id, pick(targets), 1 + Math.floor(rng() * 3));
 }
 
+// Everything from here on runs twice: under the standard deal and under the small-table rule (which changes the
+// deal of the two- and three-seat cases).
+for (const rules of [{ fewerDown: false }, { fewerDown: true }]) describe(`with fewerDown ${rules.fewerDown}`, () => {
+
 /** A deal with only `n` cards in each nertz pile (the rest go under the stock), so that Nertz calls actually happen in random play. */
 function shortDeal(seats: readonly number[], rng: Rng, n = 2): GameState {
-  const g = deal(seats, rng);
+  const g = deal(seats, rng, rules);
   return { ...g, players: g.players.map((p) => ({ ...p, nertz: p.nertz.slice(-n), stock: [...p.nertz.slice(0, -n), ...p.stock] })) };
 }
 
@@ -1026,7 +1030,7 @@ describe('random play keeps every invariant', () => {
     it(`seed ${seed}, ${seatCount} seats, 4000 intents${short ? ', short nertz piles' : ''}`, () => {
       const rng = mulberry32(seed);
       const seats = Array.from({ length: seatCount }, (_, i) => i * 2); // non-contiguous seats on purpose
-      const fresh = () => deepFreeze(short ? shortDeal(seats, rng) : deal(seats, rng));
+      const fresh = () => deepFreeze(short ? shortDeal(seats, rng) : deal(seats, rng, rules));
       let state = fresh();
       const seen = { accepted: 0, rotations: 0, rounds: 0, graces: 0, graceMoves: 0, cleared: 0, centre: 0, reveals: 0 };
       for (let step = 0; step < 4000; step++) {
@@ -1087,7 +1091,7 @@ describe('random play keeps every invariant', () => {
     // Greedy play to the middle by four seats, never calling Nertz, clearing finished piles as they appear.
     const rng = mulberry32(77);
     const seats = [0, 1, 2, 3];
-    let state = deal(seats, rng);
+    let state = deal(seats, rng, rules);
     let cleared = 0;
     let reused = 0;
     const freed = new Set<number>();
@@ -1142,7 +1146,7 @@ describe('greedy bots can finish a round', () => {
     for (let seed = 1; seed <= 12; seed++) {
       const rng = mulberry32(seed * 101);
       const seats = [0, 1, 2, 3];
-      let state = deal(seats, rng);
+      let state = deal(seats, rng, rules);
       const idle = new Map(seats.map((s) => [s, 0]));
       for (let step = 0; step < 20_000 && state.nertzCalledBy === null; step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
@@ -1237,7 +1241,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
     for (const seed of [31, 32, 33]) {
       const rng = mulberry32(seed);
       const seats = [0, 1];
-      let state = deal(seats, rng);
+      let state = deal(seats, rng, rules);
       let diverged = 0;
       for (let round = 0; round < 600; round++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
@@ -1260,7 +1264,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
             break;
           }
         }
-        if (state.nertzCalledBy !== null) state = deal(seats, rng);
+        if (state.nertzCalledBy !== null) state = deal(seats, rng, rules);
       }
       expect(diverged).toBeLessThan(200);
     }
@@ -1281,3 +1285,5 @@ describe('client prediction on a redacted view agrees with the server', () => {
     expect(viewFor(server, 1).slots[1]).toHaveLength(1);
   });
 });
+
+}); // both deal shapes

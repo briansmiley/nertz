@@ -8,6 +8,7 @@
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
 import { GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import type { GameState, Phase, RoomView, RoundResult } from '../shared/types';
 
 /** A live client connection, as far as a room cares. */
@@ -46,6 +47,8 @@ export class Room {
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. */
   game: GameState | null = null;
   lastRound: RoundResult | null = null;
+  /** House rules, read when a round is dealt. */
+  settings: TableSettings = { ...DEFAULT_SETTINGS };
 
   private players: Player[] = []; // in seat order
   private conns = new Map<Conn, Player>();
@@ -117,6 +120,8 @@ export class Room {
     switch (msg.t) {
       case 'start':
         return this.start(player);
+      case 'settings':
+        return this.configure(player, msg.patch);
       case 'intent':
         return this.intent(player, msg.seq, msg.intent);
       case 'leave':
@@ -150,6 +155,13 @@ export class Room {
     return this.host?.conn ? this.host : (this.players.find((p) => p.conn) ?? this.host);
   }
 
+  /** Table settings belong to whoever may deal, and stand still while a round is on. Anyone else is ignored. */
+  private configure(player: Player, patch: Partial<TableSettings>): void {
+    if (player !== this.dealer || this.phase === 'playing') return;
+    this.settings = { ...this.settings, ...patch };
+    this.changed();
+  }
+
   private start(player: Player): void {
     // Only people who are here get cards. Someone away keeps their seat and score and sits the round out.
     const dealt = this.players.filter((p) => p.conn);
@@ -160,6 +172,7 @@ export class Room {
     this.game = deal(
       dealt.map((p) => p.seat),
       this.rng,
+      this.settings,
     );
     this.phase = 'playing';
     this.changed();
@@ -266,6 +279,7 @@ export class Room {
         isHost: p === dealer,
         stuck: stuck(p.seat),
       })),
+      settings: this.settings,
       game,
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
       lastRound: this.lastRound,

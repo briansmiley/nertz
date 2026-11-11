@@ -1,4 +1,5 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
+import { parseSettings, type TableSettings } from './settings';
 import type { Intent, PileRef, RoomView } from './types';
 
 export type ClientMsg =
@@ -7,6 +8,8 @@ export type ClientMsg =
   /** Sit down at (or reconnect to) an existing table. An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
+  /** Host only, between rounds: change some table settings. They apply from the next deal. */
+  | { t: 'settings'; patch: Partial<TableSettings> }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' };
 
@@ -123,6 +126,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'start' };
     case 'leave':
       return { t: 'leave' };
+    case 'settings': {
+      const patch = parseSettings(v.patch);
+      return patch ? { t: 'settings', patch } : null;
+    }
     case 'intent': {
       const intent = parseIntent(v.intent);
       if (!Number.isSafeInteger(v.seq) || (v.seq as number) < 0 || !intent) return null;
