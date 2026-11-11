@@ -16,13 +16,15 @@ import type { GameState, RoomView } from '../shared/types';
 export type Who = 'me' | 'other';
 
 export type Cue =
-  /** A new round's cards appeared. */
-  | { k: 'deal' }
+  /** A new round's cards appeared. `work` is how many cards go to the work piles of the hand you watch (7 under the small-table rule, else 10): they leave the deck first, then the 13 of the nertz pile. */
+  | { k: 'deal'; work: number }
   /** A card (or run) was picked up. */
   | { k: 'pickup'; who: Who }
   /** A card or run landed on a work pile. */
   | { k: 'work'; who: Who }
-  /** Three off the stock. */
+  /** One card off the stock, face-down onto the waste. */
+  | { k: 'stock'; who: Who }
+  /** A group dealt onto the waste turned face-up. */
   | { k: 'flip'; who: Who }
   /** The waste went back under the stock. */
   | { k: 'recycle'; who: Who }
@@ -84,7 +86,11 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const a = prev?.room;
   const b = next.room;
   if (!a || !b || !prev.online || !next.online || a.code !== b.code) return [];
-  if (a.round !== b.round) return b.phase === 'playing' && b.game ? [{ k: 'deal' }] : [];
+  if (a.round !== b.round) {
+    if (b.phase !== 'playing' || !b.game) return [];
+    const hand = b.game.players.find((p) => p.seat === b.you) ?? b.game.players[0];
+    return [{ k: 'deal', work: hand?.work.flat().length ?? 10 }];
+  }
   if (!a.game || !b.game || a.phase !== 'playing') return []; // nothing moves on a table that was already scored
   const you = b.you;
   const who = (seat: number): Who => (seat === you ? 'me' : 'other');
@@ -98,6 +104,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
+  /** Cards that came off each seat's stock onto its waste in this step. */
+  const dealt = new Map<number, number>();
   for (const [id, to] of after) {
     const from = before.get(id);
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
@@ -115,13 +123,17 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     } else if (to.pile === 'work') {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
     } else if (to.pile === 'waste' && from.pile === 'stock') {
-      add({ k: 'flip', who: who(to.seat) });
+      add({ k: 'stock', who: who(to.seat) }, id); // once per card
+      dealt.set(to.seat, (dealt.get(to.seat) ?? 0) + 1);
     } else if (to.pile === 'stock' && from.pile === 'waste') {
       add({ k: 'recycle', who: who(to.seat) });
     }
   }
 
   for (const p of b.game.players) {
+    // Fewer cards lie face-down on the waste than were there plus those just dealt: a group was completed and turned up.
+    const n = dealt.get(p.seat);
+    if (n && p.dealt < (a.game.players.find((q) => q.seat === p.seat)?.dealt ?? 0) + n) add({ k: 'flip', who: who(p.seat) });
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;
     if (p.holding !== null && p.holding !== was) add({ k: 'pickup', who: who(p.seat) });
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });

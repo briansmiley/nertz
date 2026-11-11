@@ -3,8 +3,9 @@ import WebSocket from 'ws';
 import { DEAL_MS, START_MS } from '../shared/protocol';
 import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, resolveStuck, startCountdown, SUITS, viewFor, type Rng } from '../shared/engine';
 import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { spots } from '../shared/table';
 import type { Card, GameState, Intent, PlayerState, Suit } from '../shared/types';
-import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
+import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 
@@ -51,10 +52,10 @@ function table(mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'
     const p = { nertz: pile(h.nertz), work: [0, 1, 2, 3].map((i) => pile(h.work?.[i])), waste: pile(h.waste) };
     for (const c of [...p.nertz, ...p.work.flat(), ...p.waste]) used.add(c.id);
     const stock = SUITS.flatMap((s) => Array.from({ length: 13 }, (_, r) => card(seat, `${s}${r + 1}`))).filter((c) => !used.has(c.id));
-    return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, stuck: h.stuck ?? false, holding: null };
+    return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, dealt: 0, stuck: h.stuck ?? false, holding: null };
   };
   const slots = Array.from({ length: 8 }, (_, i): Card[] => middle[i] ?? []);
-  const state: GameState = { players: [player(0, mine), player(1, theirs)], slots, tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
+  const state: GameState = { players: [player(0, mine), player(1, theirs)], table: 'spots', slots, places: spots(2), tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }
@@ -164,7 +165,7 @@ describe('chooseIntent', () => {
     expect(look(emptier)?.intent).toEqual(move('D8', work(0))); // f before g
   });
 
-  it('h. flips when there is nothing else, says stuck after one whole fruitless cycle, and starts over after a move', () => {
+  it('h. deals a card off the stock when there is nothing else, says stuck after one whole fruitless cycle, and starts over after a move', () => {
     // A dead hand: the middle is full of finished and barely started piles, the 3s and Queens lie under the nertz top,
     // and none of the 31 cards in the stock goes anywhere.
     const full: Centre[] = [...SUITS.map((suit) => ({ owner: 1, suit, upTo: 13 })), ...SUITS.map((suit) => ({ owner: 0, suit, upTo: 2 }))];
@@ -181,7 +182,7 @@ describe('chooseIntent', () => {
       memory = choice.memory;
       intents.push(choice.intent.k);
     };
-    const cycle = Math.ceil(31 / 3) + 1; // 11 flips to run out, one to turn the waste over: the same state again
+    const cycle = 31 + 1; // a flip per card to run out, one to turn the waste over: the same state again
     for (let i = 0; i <= cycle; i++) step();
     expect(intents).toEqual([...Array<string>(cycle).fill('flip'), 'stuck']);
     expect(state.players[0]).toMatchObject({ stuck: true, waste: [] });
@@ -201,6 +202,26 @@ describe('chooseIntent', () => {
     const none = { ...bare, players: bare.players.map((p) => (p.seat === 0 ? { ...p, stock: [], nertz: [...p.stock, ...p.nertz] } : p)) };
     expect(look(none)?.intent).toEqual({ k: 'stuck', on: true });
     expect(look({ ...none, players: none.players.map((p) => ({ ...p, stuck: true })) })).toBeNull();
+  });
+
+  it('with a group half-dealt it leaves the waste alone, plays its other piles as ever, and otherwise deals on', () => {
+    const one = (state: GameState) => {
+      const r = applyIntent(state, 0, { k: 'flip' });
+      if (!r.ok) throw new Error(r.reason);
+      return r.state;
+    };
+    // The waste top would go to the middle: it does, until a card is dealt onto it. Then the bot finishes the group.
+    const centre: Centre[] = [{ owner: 1, suit: 'H', upTo: 3 }];
+    const waste = table({ nertz: ['S9'], work: DEAD, waste: ['C2', 'H4'] }, centre);
+    expect(look(waste)?.intent).toEqual(move('H4', slot(0)));
+    for (const mid of [one(waste), one(one(waste))]) {
+      expect(mid.players[0]!.dealt).toBeGreaterThan(0);
+      expect(look(mid)?.intent).toEqual({ k: 'flip' }); // (and not nothing: a face-down waste top is not a closed table)
+    }
+    expect(one(one(one(waste))).players[0]!.dealt).toBe(0);
+    // A nertz move turns up between two cards of a group: it is taken, and the memory starts over.
+    const nertz = one(table({ nertz: ['S5'], work: [['H6'], ['C13'], ['H13'], ['D13']], waste: ['C2'] }));
+    expect(look(nertz, { flips: 7, last: null })).toEqual({ intent: move('S5', work(0)), memory: freshMemory() });
   });
 
   it('observance 0 only ever flips (and says stuck); observance 1 always takes the best move', () => {
@@ -267,7 +288,7 @@ describe('chooseIntent', () => {
       }
       if (state.nertzCalledBy !== null) nertzCalls++;
     }
-    expect(nertzCalls).toBeGreaterThan(20); // most deals are played out to a call
+    expect(nertzCalls).toBeGreaterThan(15); // most deals are played out to a call (tables of two mostly jam, tables of four never)
   });
 });
 
@@ -479,25 +500,39 @@ describe('Room with bots', () => {
     }
   });
 
-  it('a bot acts at its level\'s pace: one look per delay, half to one and a half times the mean', () => {
+  it('a bot acts at its level\'s pace: one look per delay (half to one and a half times the mean), and a card off the stock costs it half a look more', () => {
     vi.useFakeTimers();
     for (const level of ['slow', 'medium', 'fast'] as const) {
       const { room, host } = hosted(3);
       room.handle(host, { t: 'addBot', level });
       room.handle(host, { t: 'start' });
-      opening(room, host);
-      const t0 = Date.now();
-      let last = t0;
-      for (let i = 0; i < 40; i++) {
+      opening(room, host); // the deal and the count: bots wake when play opens
+      const delay = BOTS[level].delayMs;
+      const bot = () => room.game!.players.find((p) => p.seat === 1)!;
+      const gaps = { look: [] as number[], card: [] as number[] };
+      let last = Date.now();
+      let afterCard = false; // the look before this one dealt a card off the stock
+      for (let i = 0; i < 150; i++) {
+        const stock = bot().stock.length;
         vi.advanceTimersToNextTimer();
         const gap = Date.now() - last;
-        expect(gap).toBeGreaterThanOrEqual(BOTS[level].delayMs * 0.5);
-        expect(gap).toBeLessThanOrEqual(BOTS[level].delayMs * 1.5);
+        const pace = afterCard ? DEAL_PACE : 1;
+        expect(gap).toBeGreaterThanOrEqual(delay * pace * 0.5);
+        expect(gap).toBeLessThanOrEqual(delay * pace * 1.5);
+        gaps[afterCard ? 'card' : 'look'].push(gap);
         last = Date.now();
+        afterCard = bot().stock.length === stock - 1; // one card at most, whatever it did
+        expect(stock - bot().stock.length === 1 || bot().stock.length >= stock).toBe(true);
       }
-      const mean = (last - t0) / 40;
-      expect(mean).toBeGreaterThan(BOTS[level].delayMs * 0.8);
-      expect(mean).toBeLessThan(BOTS[level].delayMs * 1.2);
+      const mean = (xs: number[]) => xs.reduce((n, x) => n + x, 0) / xs.length;
+      expect(gaps.look.length).toBeGreaterThan(8);
+      expect(gaps.card.length).toBeGreaterThan(30);
+      expect(mean(gaps.look)).toBeGreaterThan(delay * 0.7);
+      expect(mean(gaps.look)).toBeLessThan(delay * 1.3);
+      // A group of three costs one and a half looks, never less than three quarters of one: no faster than a quick hand.
+      expect(mean(gaps.card)).toBeGreaterThan(delay * DEAL_PACE * 0.8);
+      expect(mean(gaps.card)).toBeLessThan(delay * DEAL_PACE * 1.2);
+      expect(Math.min(...gaps.card)).toBeGreaterThanOrEqual(150);
       room.close();
     }
   });

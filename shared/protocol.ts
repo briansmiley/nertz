@@ -18,6 +18,8 @@ export type ClientMsg =
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
+  /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
+  | ({ t: 'drag' } & DragAt)
   /** Text chat, the host's chat switches, voice presence and WebRTC signalling: see chat.ts. */
   | SocialClientMsg;
 
@@ -25,7 +27,34 @@ export type ServerMsg =
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
   | { t: 'state'; rev: number; ack: number; room: RoomView }
   | { t: 'error'; message: string }
+  /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
+  | ({ t: 'drag'; seat: number } & DragAt)
   | SocialServerMsg;
+
+/**
+ * Where a held card (the one named by the sender's `hold`) is, in two frames
+ * at once, so that every window can draw it in its own picture of the table:
+ * - `h`: how far its centre is from where it lay in its owner's hand, in
+ *   widths of that hand's cards: [along the row of piles, towards the middle
+ *   of the table]. Right near the hand, whatever size and place a window
+ *   gives that hand (hands are drawn upright everywhere, so "along the row"
+ *   is to the right on every screen; "towards the middle" is up the owner's
+ *   screen and down, or sideways, on everyone else's).
+ * - `p`: its centre in table space (shared/table.ts). Right on the disc.
+ * - `w`: how much `p` counts, from 0 (the card has just left its pile) to 1
+ *   (it is over the disc). A window draws it at `h` and `p` mixed by `w`.
+ */
+export interface DragAt {
+  id: string;
+  w: number;
+  h: [number, number];
+  p: [number, number];
+}
+
+/** How often a dragging client reports its card (per second), and what the server lets through per player. */
+export const DRAG_HZ = 18;
+export const DRAG_RATE = 30;
+export const DRAG_BURST = 12;
 
 export const MAX_MESSAGE_BYTES = 2048;
 export const MAX_NAME_LENGTH = 20;
@@ -64,6 +93,8 @@ export function randomRoomCode(rng: () => number = Math.random): string {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH;
 
+const isCoord = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= max;
+const round3 = (v: number): number => Math.round(v * 1000) / 1000 || 0;
 const isIndex = (v: unknown, below: number): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < below;
 const MAX_SLOTS = SLOTS_PER_PLAYER * MAX_PLAYERS;
 /** The longest run there is: King down to Ace. */
@@ -73,7 +104,17 @@ function parsePileRef(raw: unknown): PileRef | null {
   if (!isObj(raw)) return null;
   if (raw.k === 'work') return isIndex(raw.i, WORK_PILES) ? { k: 'work', i: raw.i } : null;
   if (raw.k === 'slot') return isIndex(raw.i, MAX_SLOTS) ? { k: 'slot', i: raw.i } : null;
+  if (raw.k === 'felt') return isCoord(raw.x, 1) && isCoord(raw.y, 1) ? { k: 'felt', x: round3(raw.x), y: round3(raw.y) } : null;
   return null;
+}
+
+/** A clean copy of a card-position report, or null. Coordinates are bounded and rounded: nothing else is checked. */
+function parseDrag(v: Record<string, unknown>): DragAt | null {
+  const pair = (raw: unknown, max: number): [number, number] | null =>
+    Array.isArray(raw) && raw.length === 2 && isCoord(raw[0], max) && isCoord(raw[1], max) ? [round3(raw[0]), round3(raw[1])] : null;
+  const h = pair(v.h, 60);
+  const p = pair(v.p, 8);
+  return isId(v.id) && isCoord(v.w, 1) && v.w >= 0 && h && p ? { id: v.id, w: round3(v.w), h, p } : null;
 }
 
 /** Returns a clean copy of a well-formed intent, or null. Never throws. */
@@ -153,6 +194,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'settings': {
       const patch = parseSettings(v.patch);
       return patch ? { t: 'settings', patch } : null;
+    }
+    case 'drag': {
+      const at = parseDrag(v);
+      return at ? { t: 'drag', ...at } : null;
     }
     case 'intent': {
       const intent = parseIntent(v.intent);

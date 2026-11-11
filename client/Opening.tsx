@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import type { Rect } from './layout';
 import { go } from './net';
 
 /** How long the word stays up once play is open. It lets every click through. */
@@ -13,15 +12,6 @@ const WORD_MS = 650;
 
 /** The number being said when `startMs` of the count are left: 1, 2, 3. */
 export const beatAt = (startMs: number): number => Math.min(START_BEATS, Math.max(1, Math.floor((START_MS - startMs) / START_BEAT_MS) + 1));
-
-/** The middle of the table: the centre of the box around the given rectangles (the centre slots). */
-export function middleOf(rects: readonly Rect[]): { x: number; y: number } {
-  const x0 = Math.min(...rects.map((r) => r.x));
-  const y0 = Math.min(...rects.map((r) => r.y));
-  const x1 = Math.max(...rects.map((r) => r.x + r.w));
-  const y1 = Math.max(...rects.map((r) => r.y + r.h));
-  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
-}
 
 /** Counts 1, 2, 3 locally from the duration the snapshot carried. A window that arrives late starts on the right number. */
 function useBeat(startMs: number | null): number {
@@ -36,7 +26,7 @@ function useBeat(startMs: number | null): number {
   return beat;
 }
 
-/** `at` is the middle of the table, in the table's own coordinates. */
+/** `at` is the middle of the table (the centre of the disc), in the table's own coordinates. */
 export function Opening({ room, at }: { room: RoomView; at: { x: number; y: number } }) {
   const stage = room.phase === 'playing' ? room.game?.stage : undefined;
   const dealer = room.players.find((p) => p.isHost);

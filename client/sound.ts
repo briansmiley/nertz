@@ -197,8 +197,8 @@ export function deal(delay = 0): void {
 }
 
 /** The deal at the start of a round: a flick as each card of your layout lands, on the animation's own schedule. */
-export function dealBurst(cards = 23): void {
-  for (let i = 0; i < cards; i++) deal(((dealWait(i, DEAL_MS) ?? 0) + DEAL.duration * 700) / 1000);
+export function dealBurst(work = 10, nertz = 13): void {
+  for (let i = 0; i < work + nertz; i++) deal(((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
 }
 
 export function pickup(who: Who = 'me'): void {
@@ -209,8 +209,8 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
-/** Cards off the stock: one soft flick. */
-export function stockFlip(who: Who = 'me'): void {
+/** One card off the stock onto the waste: one soft flick. */
+export function stockCard(who: Who = 'me'): void {
   hit(pick(FLICKS), { gain: rand(0.24, 0.3), rate: rand(0.95, 1.1), who });
 }
 
@@ -297,13 +297,15 @@ export function stage(from: Stage, to: Stage): void {
 function play(cue: Cue): void {
   switch (cue.k) {
     case 'deal':
-      return dealBurst();
+      return dealBurst(cue.work);
     case 'pickup':
       return pickup(cue.who);
     case 'work':
       return workDrop(cue.who);
+    case 'stock':
+      return stockCard(cue.who);
     case 'flip':
-      return stockFlip(cue.who);
+      return; // the group turning up makes no noise of its own: each of its cards has already flicked
     case 'recycle':
       return recycle(cue.who);
     case 'centre':
