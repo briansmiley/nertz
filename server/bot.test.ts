@@ -375,7 +375,7 @@ describe('Room with bots', () => {
   it('a person and two bots play whole rounds to a Nertz call, and the bots are scored like anyone', () => {
     vi.useFakeTimers();
     // Deals that get played out. Not every deal does: a table of two or three can jam for good, as in the real game.
-    for (const seed of [2, 4, 5]) {
+    for (const seed of [1, 3, 4]) {
       const { room, host } = hosted(seed);
       room.handle(host, { t: 'addBot', level: 'fast' });
       room.handle(host, { t: 'addBot', level: 'slow' });

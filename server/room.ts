@@ -10,7 +10,7 @@
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
-import type { BotLevel, GameState, Phase, RoomView, RoundResult } from '../shared/types';
+import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import { Social } from './chat';
@@ -36,7 +36,7 @@ interface Player {
   /** Left on purpose after a round: listed until the next round is dealt, or until a newcomer needs the seat. */
   left: boolean;
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
-  bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null };
+  bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null; pending: { intent: Intent; memory: BotMemory } | null };
 }
 
 /** What a bot has for a connection: it counts as connected and is told nothing (it looks for itself, on its timer). */
@@ -316,7 +316,7 @@ export class Room {
     if (seat === null) return;
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat.
-    this.players.push({ token: `bot:${seat}`, name, seat, score: 0, conn: BOT_CONN, ack: -1, dirty: false, left: false, bot: { level, memory: freshMemory(), timer: null } });
+    this.players.push({ token: `bot:${seat}`, name, seat, score: 0, conn: BOT_CONN, ack: -1, dirty: false, left: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
     this.players.sort((a, b) => a.seat - b.seat);
     this.changed();
   }
@@ -332,29 +332,38 @@ export class Room {
   /** Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times. */
   private wake(player: Player, memory?: BotMemory): void {
     const bot = player.bot!;
-    if (memory) bot.memory = memory;
+    if (memory) {
+      bot.memory = memory;
+      bot.pending = null;
+    }
     if (bot.timer) clearTimeout(bot.timer);
     bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()));
     bot.timer.unref?.();
   }
 
   /**
-   * One look, one action. The bot decides from the view a person in its seat
-   * would be sent, and its intent goes through `intent` like anyone's. If it is
-   * refused (someone got there first, or the table is not open) the bot keeps
-   * its old memory and tries again at its next look.
+   * One look, one action, a look late. At each look the bot first does what it
+   * noticed at its PREVIOUS look, then looks again: so nothing it does is a
+   * reaction faster than one pause, as with a person who has to see a card,
+   * then move it. It decides from the view a person in its seat would be sent,
+   * and its intent goes through `intent` like anyone's. If the table has moved
+   * on meanwhile and the intent is refused (someone got there first), the bot
+   * keeps its old memory and simply looks again.
    */
   private look(player: Player): void {
     const bot = player.bot!;
     bot.timer = null;
     if (this.phase !== 'playing' || !this.game) return;
-    const before = this.game;
-    const choice = chooseIntent(viewFor(before, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
-    if (choice) {
-      this.intent(player, player.ack + 1, choice.intent);
-      if (this.game !== before) bot.memory = choice.memory;
+    if (bot.pending) {
+      const before = this.game;
+      const { intent, memory } = bot.pending;
+      bot.pending = null;
+      this.intent(player, player.ack + 1, intent);
+      if (this.game !== before) bot.memory = memory;
     }
-    if (this.phase === 'playing') this.wake(player);
+    if (this.phase !== 'playing' || !this.game) return;
+    bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
+    this.wake(player);
   }
 
   private stopBots(): void {

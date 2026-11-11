@@ -209,18 +209,18 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
+/** Cards off the stock: one soft flick. */
 export function stockFlip(who: Who = 'me'): void {
-  for (let i = 0; i < 3; i++) hit(FLICKS[i]!, { gain: rand(0.28, 0.36), rate: rand(0.95, 1.12), delay: i * 0.065, who });
+  hit(pick(FLICKS), { gain: rand(0.24, 0.3), rate: rand(0.95, 1.1), who });
 }
 
 export function recycle(who: Who = 'me'): void {
   hit('slide-2', { gain: 0.3, rate: 1.1, who });
 }
 
-/** A card to the middle: the thunk, and a ding one step up the scale for each rank. */
-export function centre(rank: number, who: Who = 'me'): void {
-  hit(pick(PLACES), { gain: 0.5, rate: rand(0.96, 1.04), who });
-  tone(rankHz(rank), { gain: 0.17 - 0.005 * rank, dur: 0.42, delay: 0.012, who });
+/** A card to the middle: the same firm card sound whatever its rank. */
+export function centre(_rank: number, who: Who = 'me'): void {
+  hit('place-2', { gain: 0.58, rate: rand(0.97, 1.03), who });
 }
 
 /** The King: a fuller thunk and two notes, a fourth apart. */

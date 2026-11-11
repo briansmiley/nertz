@@ -13,7 +13,7 @@ export interface Prefs {
   calm: boolean | null;
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.5, calm: null };
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null };
 const KEY = 'nertz.prefs';
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
