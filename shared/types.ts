@@ -54,11 +54,13 @@ export interface PlayerState {
 export interface GameState {
   players: PlayerState[];
   /**
-   * The cards are still being dealt out: nothing can be played and no face is
-   * shown to anyone (`viewFor` redacts every card). True from `deal` until the
-   * server's deal timer fires and it applies `finishDeal`, for everyone at once.
+   * How far the opening of the round has got. Only `play` accepts intents.
+   * - `dealing`: the cards are being dealt out; no face is shown to anyone. Until the server's deal timer (`finishDeal`).
+   * - `ready`: the work piles' tops are face-up, every nertz top is still face-down. Waits, without limit, for the dealer (`startCountdown`).
+   * - `countdown`: "1, 2, 3": as `ready`, until the server's start timer (`openPlay`).
+   * - `play`: the nertz tops are turned over and the round is on.
    */
-  dealing: boolean;
+  stage: RoundStage;
   /**
    * The shared middle: a fixed grid of 4 x players slots. Each entry is one
    * centre pile, Ace up to King in one suit; an empty array is an empty slot.
@@ -79,6 +81,8 @@ export interface GameState {
   grace: number[];
 }
 
+export type RoundStage = 'dealing' | 'ready' | 'countdown' | 'play';
+
 /** Where a card can be dropped: one of your own work piles, or one specific centre slot. */
 export type PileRef = { k: 'work'; i: number } | { k: 'slot'; i: number };
 
@@ -93,7 +97,7 @@ export type Intent =
   | { k: 'flip' }
   | { k: 'stuck'; on: boolean }
   | { k: 'nertz' }
-  /** Move the completed pile in `slot` to the tray. Only for the player who placed its King. */
+  /** Move the completed pile in `slot` to the tray. Only for the player who placed its King, and the only thing they may do until it is done. */
   | { k: 'clear'; slot: number }
   /** A drag started on `cardId`. */
   | { k: 'hold'; cardId: string }
@@ -162,9 +166,14 @@ export interface RoomView {
    */
   graceMs: number | null;
   /**
-   * Milliseconds of the deal left when this snapshot was sent (`game.dealing`);
-   * null otherwise. Like `graceMs`, a duration to count down locally.
+   * Milliseconds of the deal left when this snapshot was sent (`game.stage` is
+   * `dealing`); null otherwise. Like `graceMs`, a duration to count down locally.
    */
   dealMs: number | null;
+  /**
+   * Milliseconds of the "1, 2, 3" left when this snapshot was sent (`game.stage`
+   * is `countdown`): play opens, on the word NERTZ!, when it reaches 0. Null otherwise.
+   */
+  startMs: number | null;
   lastRound: RoundResult | null;
 }

@@ -1,7 +1,7 @@
 // Table settings end to end: the wire message, who may change them and when,
 // and what the small-table rule does to the deal.
 import { describe, expect, it } from 'vitest';
-import { checkInvariants, deal, finishDeal } from '../shared/engine';
+import { checkInvariants, deal, finishDeal, openPlay, startCountdown } from '../shared/engine';
 import { parseClientMsg, type ServerMsg } from '../shared/protocol';
 import { DEFAULT_SETTINGS, parseSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
@@ -126,7 +126,7 @@ describe('table settings in a room', () => {
 
     // End the round, then change it on the score sheet.
     const game = room.game!;
-    room.game = finishDeal({ ...game, players: game.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) });
+    room.game = openPlay(startCountdown(finishDeal({ ...game, players: game.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) })));
     room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
     room.handle(guest, { t: 'settings', patch: { fewerDown: false } }); // still not the guest's to change

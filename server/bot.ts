@@ -34,8 +34,8 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * One look at the table. Rules in priority order; every candidate move is
  * noticed with a probability, and the highest-priority noticed one is taken:
  *
- *   a. nertz pile empty: call Nertz (always noticed)
- *   b. carry one of its finished centre piles to the tray
+ *   a. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
+ *   b. nertz pile empty: call Nertz (always noticed)
  *   c. nertz top to a work pile (an empty pile only if it builds down nowhere)
  *   d. nertz top to the middle
  *   e. waste top or a work pile's top to the middle
@@ -44,12 +44,12 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  *   h. flip the stock (always noticed); after a whole fruitless cycle, say "stuck" instead
  *
  * Returns the intent and the memory to keep IF the intent is accepted, or null
- * when there is nothing to do: the round is called, it is not in it, or it
- * cannot see its own face-up cards.
+ * when there is nothing to do: play has not opened, the round is called, it is
+ * not in it, or it cannot see its own face-up cards.
  */
 export function chooseIntent(view: GameState, seat: number, memory: BotMemory, rng: Rng, observance = 1): { intent: Intent; memory: BotMemory } | null {
   const me = view.players.find((p) => p.seat === seat);
-  if (!me || view.nertzCalledBy !== null) return null;
+  if (!me || view.stage !== 'play' || view.nertzCalledBy !== null) return null;
   const nertz = top(me.nertz);
   const waste = top(me.waste);
   // Cards that are face-up in play but hidden in this view: the table is not open yet. Look again later.
@@ -71,11 +71,10 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   };
 
   // a
-  if (!nertz) return acted({ k: 'nertz' });
+  const finished = view.slots.findIndex((pile) => completedBy(pile) === seat);
+  if (finished >= 0) return acted({ k: 'clear', slot: finished });
   // b
-  for (const [i, pile] of view.slots.entries()) {
-    if (completedBy(pile) === seat && noticed()) return acted({ k: 'clear', slot: i });
-  }
+  if (!nertz) return acted({ k: 'nertz' });
   // c
   const home = workFor(nertz);
   if (home && noticed(NERTZ_FOCUS)) return acted(move(nertz, home));

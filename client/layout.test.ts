@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, viewFor } from '../shared/engine';
+import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
 import type { Card, GameState } from '../shared/types';
 import { planFinale } from './Finale';
 import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
-const deal = (seats: readonly number[], rng: () => number): GameState => finishDeal(dealRound(seats, rng));
+const deal = (seats: readonly number[], rng: () => number): GameState => openPlay(startCountdown(finishDeal(dealRound(seats, rng))));
 
 function rng(seed: number) {
   return () => {

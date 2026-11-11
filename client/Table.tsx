@@ -12,7 +12,8 @@ import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, TIMING } from './Finale';
 import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, MINI_BELOW, type Placed, type Rect, type Stage } from './layout';
-import { send } from './net';
+import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
+import { middleOf, Opening } from './Opening';
 import { calm } from './prefs';
 import { stage as stageSound } from './sound';
 
@@ -272,9 +273,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = setTimeout(() => setReplaying(false), DEAL_MS);
     return () => clearTimeout(t);
   }, [replay, replaying]);
-  const dealing = game.dealing || replaying;
-  /** Nothing can be started: the cards are still being dealt, or Nertz has been called. (A card already in hand may still land during grace.) */
-  const frozen = dealing || called || results;
+  const dealing = game.stage === 'dealing' || replaying;
+  /** Nothing can be started: the cards are still being dealt, play has not opened, or Nertz has been called. (A card already in hand may still land during grace.) */
+  const frozen = dealing || game.stage !== 'play' || called || results;
+  /** Clear-first: with a finished pile of yours waiting, anything but carrying it to the tray is answered with a nudge (clearFirst.tsx). */
+  const must = useClearFirst(game, you);
 
   // The deal. Every player's cards start as one deck where their stock lies, and the nertz pile and the work piles
   // are dealt off it one card after another, everyone's at once. `dealMs` says how far along the server is: in a
@@ -376,6 +379,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (!el) return;
     const id = el.getAttribute('data-id');
     const placed = id ? byId.get(id) : undefined;
+    if (must.blocked && (!id || placed?.mine)) return nag();
     if (!id || (placed?.mine && placed.pile === 'stock')) return void send({ k: 'flip' });
     let pick: Pick<Drag, 'held' | 'ids' | 'lead'> | null = null;
     if (placed?.pile === 'slot' && toClear(placed.at)) {
@@ -449,8 +453,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const cardClass = (c: Placed): string => {
     let cls = dealing && calm() ? 'card dealt' : 'card';
     if (c.pile === 'tray' && stage !== 'out') cls += ' shelved';
-    if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ' grab' : stage === 'live' ? ' done' : '';
-    if (c.mine && !frozen) {
+    if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
+    if (c.mine && !frozen && !must.blocked) {
       if (c.pile === 'stock') cls += ' tap';
       else if (c.up) cls += ' grab';
     }
@@ -482,7 +486,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           </div>
         );
       })}
-      <div className={`tray${held?.k === 'pile' ? ' open' : waiting ? ' wanted' : ''}${hot === 'tray' ? ' hot' : ''}${finale ? ' gone' : ''}`} style={box(held?.k === 'pile' ? trayOpen : L.tray)} />
+      <div className={`tray${held?.k === 'pile' ? ' open' : waiting ? ' wanted' : ''}${hot === 'tray' ? ' hot' : ''}${finale ? ' gone' : ''}${must.cls}`} style={box(held?.k === 'pile' ? trayOpen : L.tray)} />
 
       {L.opponents.map((o) => {
         const p = info(o.seat);
@@ -591,6 +595,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           />
         );
       })}
+
+      <ClearNotice must={must} rect={L.slots[must.slot]} />
+      <Opening room={room} at={middleOf(L.slots)} />
 
       {callerBox && (
         <div className="shout" style={{ left: callerBox.x, top: callerBox.y, width: callerBox.w, height: callerBox.h, fontSize: Math.min(callerBox.w * 0.2, callerBox.h * 0.95) }}>

@@ -1,0 +1,93 @@
+// The opening of a round, after the deal (GameState.stage): the dealer's Start
+// button while the table waits, "1, 2, 3" while the server counts, and the word
+// as play opens. It decides nothing: the button sends `go`, the numbers are
+// read off `startMs`, and the word appears when the snapshot that opens play does.
+import { useEffect, useRef, useState } from 'react';
+import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
+import type { RoomView } from '../shared/types';
+import type { Rect } from './layout';
+import { go } from './net';
+
+/** How long the word stays up once play is open. It lets every click through. */
+const WORD_MS = 650;
+
+/** The number being said when `startMs` of the count are left: 1, 2, 3. */
+export const beatAt = (startMs: number): number => Math.min(START_BEATS, Math.max(1, Math.floor((START_MS - startMs) / START_BEAT_MS) + 1));
+
+/** The middle of the table: the centre of the box around the given rectangles (the centre slots). */
+export function middleOf(rects: readonly Rect[]): { x: number; y: number } {
+  const x0 = Math.min(...rects.map((r) => r.x));
+  const y0 = Math.min(...rects.map((r) => r.y));
+  const x1 = Math.max(...rects.map((r) => r.x + r.w));
+  const y1 = Math.max(...rects.map((r) => r.y + r.h));
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+}
+
+/** Counts 1, 2, 3 locally from the duration the snapshot carried. A window that arrives late starts on the right number. */
+function useBeat(startMs: number | null): number {
+  const [beat, setBeat] = useState(startMs === null ? 0 : beatAt(startMs));
+  useEffect(() => {
+    if (startMs === null) return setBeat(0);
+    const end = performance.now() + startMs; // `startMs` was what remained when the snapshot was sent
+    setBeat(beatAt(startMs));
+    const tick = setInterval(() => setBeat(beatAt(Math.max(0, end - performance.now()))), 40);
+    return () => clearInterval(tick);
+  }, [startMs]);
+  return beat;
+}
+
+/** `at` is the middle of the table, in the table's own coordinates. */
+export function Opening({ room, at }: { room: RoomView; at: { x: number; y: number } }) {
+  const stage = room.phase === 'playing' ? room.game?.stage : undefined;
+  const dealer = room.players.find((p) => p.isHost);
+  const mine = stage === 'ready' && dealer?.seat === room.you;
+  const beat = useBeat(stage === 'countdown' ? room.startMs : null);
+
+  // The word, only in a window that watched the count: a reload into a round that is already on shows nothing.
+  const was = useRef(stage);
+  const [word, setWord] = useState(false);
+  useEffect(() => {
+    const from = was.current;
+    was.current = stage;
+    if (stage !== 'play') return setWord(false);
+    if (from !== 'countdown') return;
+    setWord(true);
+    const done = setTimeout(() => setWord(false), WORD_MS);
+    return () => clearTimeout(done);
+  }, [stage]);
+
+  // Space or Enter is the dealer's Start. (A focused button or the chat box keeps its own keys.)
+  useEffect(() => {
+    if (!mine) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.code !== 'Space' && e.code !== 'Enter') || e.repeat || (e.target as Element).closest?.('input,textarea,button')) return;
+      e.preventDefault();
+      go();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mine]);
+
+  const inner =
+    stage === 'ready' ? (
+      mine ? (
+        <button type="button" className="kickoff" onClick={() => go()}>
+          Start
+          <small>1, 2, 3, Nertz! · Space</small>
+        </button>
+      ) : (
+        <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
+      )
+    ) : stage === 'countdown' && beat ? (
+      <b key={beat} className="beat">
+        {beat}
+      </b>
+    ) : word ? (
+      <b className="beat word">Nertz!</b>
+    ) : null;
+  return inner ? (
+    <div className="opening" role="status" style={{ left: at.x, top: at.y }}>
+      {inner}
+    </div>
+  ) : null;
+}
