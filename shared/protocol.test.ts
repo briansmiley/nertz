@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, randomRoomCode } from './protocol';
+import { cleanName, DRAG_HZ, DRAG_RATE, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, randomRoomCode } from './protocol';
 
 const TOKEN = 'abcDEF123_-xyz';
 
@@ -55,6 +55,64 @@ describe('parseClientMsg', () => {
       expect(() => parseClientMsg(raw)).not.toThrow();
       expect(parseClientMsg(raw), JSON.stringify(raw)?.slice(0, 80)).toBeNull();
     }
+  });
+});
+
+describe('a pile started on the felt', () => {
+  it('is a point of the table: both coordinates finite and within the square the disc sits in, kept to a thousandth', () => {
+    const felt = (x: unknown, y: unknown) => parseIntent({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt', x, y, i: 3 } });
+    expect(felt(0.25, -0.5)).toEqual({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt', x: 0.25, y: -0.5 } });
+    expect(felt(0.123456, -0.9876543)).toEqual({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt', x: 0.123, y: -0.988 } });
+    expect(felt(1, -1)).not.toBeNull();
+    expect(Object.is((felt(-0.0001, 0) as { to: { x: number } }).to.x, 0)).toBe(true); // never minus zero: it does not survive JSON
+    for (const bad of [1.001, -1.5, NaN, Infinity, -Infinity, '0.5', null, undefined, [0], {}]) {
+      expect(felt(bad, 0)).toBeNull();
+      expect(felt(0, bad)).toBeNull();
+    }
+    expect(parseIntent({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt' } })).toBeNull();
+  });
+});
+
+describe('card-position reports (drag)', () => {
+  const good = { t: 'drag', id: 'c1', w: 0.5, h: [1.25, -2], p: [0.1, 0.9] };
+
+  it('accepts a well-formed report as a clean, rounded copy', () => {
+    expect(parseClientMsg({ ...good, seat: 4, extra: true })).toEqual(good); // the seat is the server's to stamp
+    expect(parseClientMsg(JSON.stringify({ ...good, w: 0.123456, h: [1.23456, -2.00049], p: [0.33333, -0.66666] }))).toEqual({ t: 'drag', id: 'c1', w: 0.123, h: [1.235, -2], p: [0.333, -0.667] });
+    expect(parseClientMsg({ ...good, w: 0, h: [60, -60], p: [8, -8] })).not.toBeNull();
+    expect(parseClientMsg({ ...good, w: 1 })).not.toBeNull();
+  });
+
+  it('refuses anything else: missing or wrong-typed fields, numbers out of range or not finite', () => {
+    const bad: unknown[] = [
+      { ...good, id: '' },
+      { ...good, id: 7 },
+      { ...good, id: 'x'.repeat(65) },
+      { ...good, w: -0.01 },
+      { ...good, w: 1.01 },
+      { ...good, w: '1' },
+      { ...good, w: NaN },
+      { ...good, h: [0] },
+      { ...good, h: [0, 0, 0] },
+      { ...good, h: [61, 0] },
+      { ...good, h: [0, Infinity] },
+      { ...good, h: 'up' },
+      { ...good, p: [8.5, 0] },
+      { ...good, p: [0, null] },
+      { ...good, p: { x: 0, y: 0 } },
+      { t: 'drag' },
+      { t: 'drag', id: 'c1', w: 0.5, h: [0, 0] },
+    ];
+    for (const msg of bad) expect(parseClientMsg(msg), JSON.stringify(msg)).toBeNull();
+  });
+
+  it('is small, and the rate a client sends at is within what the server lets through', () => {
+    const biggest = JSON.stringify({ t: 'drag', id: 'x'.repeat(64), w: 0.123, h: [-59.999, -59.999], p: [-7.999, -7.999] });
+    expect(biggest.length).toBeLessThan(140);
+    expect(biggest.length).toBeLessThan(MAX_MESSAGE_BYTES);
+    expect(DRAG_HZ).toBeGreaterThanOrEqual(15);
+    expect(DRAG_HZ).toBeLessThanOrEqual(20);
+    expect(DRAG_HZ).toBeLessThan(DRAG_RATE);
   });
 });
 

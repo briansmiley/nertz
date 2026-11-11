@@ -66,6 +66,9 @@ describe('the settings message', () => {
     expect(parseSettings({ fewerDown: true })).toEqual({ fewerDown: true });
     expect(parseClientMsg({ t: 'settings', patch: { stockDeal: 'click' } })).toEqual({ t: 'settings', patch: { stockDeal: 'click' } });
     expect(parseSettings({ stockDeal: 'drag', fewerDown: false, x: 1 })).toEqual({ stockDeal: 'drag', fewerDown: false });
+    expect(parseSettings({ centre: 'free', other: 1 })).toEqual({ centre: 'free' });
+    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots', fewerDown: false } })).toEqual({ t: 'settings', patch: { fewerDown: false, centre: 'spots' } });
+    for (const centre of ['FREE', 'anywhere', true, 1, null, undefined]) expect(parseSettings({ centre })).toBeNull();
   });
 
   it('is dropped when malformed', () => {
@@ -93,8 +96,8 @@ describe('table settings in a room', () => {
   it('start out as the defaults (small-table rule on, the stock dealt by dragging) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'drag' });
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'drag' });
+    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'drag', centre: 'spots' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'drag', centre: 'spots' });
   });
 
   it('only the host changes them, and everyone is told', () => {
@@ -108,7 +111,7 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { fewerDown: false } });
     room.flush();
     expect(room.settings.fewerDown).toBe(false);
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'drag' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'drag', centre: 'spots' });
   });
 
   it('how the stock is dealt is for the host to choose, between rounds: the round on the table keeps the way it was dealt under', () => {

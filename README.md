@@ -36,8 +36,9 @@ Controls:
 | Do this | To |
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
-| Drag an Ace onto an empty slot in the middle | start a centre pile in that slot |
-| Drag a finished pile (one you put the King on) to the tray | clear it and free its slot. Until you have, you can do nothing else |
+| Drag an Ace onto an empty spot in the middle | start a centre pile on that spot |
+| ...or, at a table without spots, let an Ace go anywhere on the felt | start a centre pile right there, if it overlaps no other |
+| Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Drag the top card of your stock onto your waste (on it or anywhere near it) | deal one card, face-down. The third turns the group of three face-up |
 | Click the empty stock | turn the waste back over into the stock |
@@ -54,6 +55,17 @@ decide. Each pile's drop area is the pile plus a small margin (a whole column, f
 touch, and a card let go between two piles goes back where it came from.
 
 What you see around a round:
+
+- **One table, seen from your chair.** The middle is a round table drawn as an ellipse. Everyone sits around it: you
+  along the bottom, large; the others as small hands where their seats are, across the top for whoever sits opposite
+  and at the left and right edges for your neighbours. It is the same table for everybody, turned to each chair: the
+  pile nearest you is the farthest from the player opposite. Cards are always upright for whoever is looking. See
+  [The table](#the-table).
+- **Other people's cards move while they are still in their hands.** When someone picks a card up you see it leave
+  their pile and follow their hand across the table, hesitations and all, about 18 times a second and smoothed in
+  between. A card in someone else's hand is see-through and never in your pointer's way, so it cannot hide a pile;
+  your own card turns partly see-through while it is over the middle, for the same reason. A bot does not drag, so
+  its card simply crosses the table at a pace you can follow.
 
 - **The deal.** Every round opens with each player's deck, in their own back colour, lying where their stock goes. The
   nertz pile and then the four work piles are dealt off it one card after another, everyone's at the same time, yours
@@ -73,14 +85,14 @@ What you see around a round:
 - **A pile you finished** (you placed its King) glows and says "Drag to tray"; other people's finished piles are dimmed and
   ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
   NERTZ! first, nothing moves, the pile shakes, the tray flashes, there is a soft tap and a small notice by the pile says
-  "Move your finished pile to the tray first" for a couple of seconds. Your cards do not look grabbable meanwhile. The **tray** runs off the right edge of the table: finished piles are pushed half off-screen there, the near
-  side of every King peeking out from under the next. While you carry a finished pile it lights up and comes a little way
-  in; let go anywhere from just short of it to the edge of the screen.
+  "Move your finished pile to the tray first" for a couple of seconds. Your cards do not look grabbable meanwhile.
+  The **tray** runs off the right edge of the window beside your hand: finished piles are pushed half
+  off-screen there, the near side of every King peeking out from under the next. While you carry a finished pile it
+  lights up and comes a little way in; let go anywhere from just short of it to the edge of the screen.
 - **NERTZ!** in big letters lies across the hand of whoever called it, on every board.
 - **The grace window**: a small countdown ring in the top right, for everyone, while cards that were in hand at the call may
-  still land, with "Put it down!" or the name of whoever is being waited for. If an opponent sits in that corner it moves
-  down the right edge to the first spot clear of every opponent. If you are holding a card you simply keep dragging; if the
-  server takes it out of your hand it slides home.
+  still land, with "Put it down!" or the name of whoever is being waited for. Nobody is ever seated in that corner. If
+  you are holding a card you simply keep dragging; if the server takes it out of your hand it slides home.
 - **The end of the round** is played on the table before the scores: the centre piles turn face-down where they lie, the tray
   piles turn over and come out, everything is washed around the middle, and the cards sort themselves by back colour into
   one pile per player with the count and the nertz penalty underneath. Then the score sheet. It takes about five seconds; a
@@ -113,18 +125,24 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
-- **The middle** is a grid of fixed **slots**, 4 per player in the round, shared by everyone. An Ace starts a pile in the
-  specific empty slot it is dropped on; every other card goes on the specific pile it extends, up by suit to the King, one
-  card at a time.
+- **The middle** holds up to 4 piles per player in the round, shared by everyone. Every card but an Ace goes on the
+  specific pile it extends, up by suit to the King, one card at a time. Where an Ace goes is the host's choice (a table
+  rule, see [The table](#the-table)):
+  - **Spots** (the default): the middle has a marked place for every pile, laid out as a loose cluster. An Ace starts
+    a pile on the specific empty spot it is dropped on.
+  - **No spots**: an Ace starts a pile at the very point of the felt where it is let go. The pile must lie wholly on
+    the table and may not overlap another pile, or come closer than a small gap, on anybody's screen. Two Aces for
+    the same patch of felt: the first lands, the second goes back. The table still holds at most 4 piles per player.
 - **Precise placement.** A card lands only when released on the one pile where it legally fits. If someone got there first
-  (the pile moved on, or the empty slot was taken), the card returns to where it came from. Nothing is ever rerouted.
-- **Completed piles.** A pile with its King takes nothing more and stays in its slot until the player who placed the King
-  drags it to the **tray** at the side. The slot is then free for a new Ace. Tray piles still count for scoring.
+  (the pile moved on, or the empty place was taken), the card returns to where it came from. Nothing is ever rerouted.
+- **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King
+  drags it to the **tray** at the side. Its place is then free for a new Ace. Tray piles still count for scoring.
 - **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in
-  the tray they cannot move a card, flip, say they are stuck or call Nertz. (At a real table you have to get the pile out
-  of the way too; nothing is automated here.) Nobody else is held up, and the slot stays taken meanwhile. If somebody else
-  calls Nertz before the pile is cleared, the round ends as usual and the pile scores where it lies. It cannot meet the
-  held-card grace window: placing the King emptied that player's hand and they could not pick anything up since.
+  the tray they cannot move a card, deal from the stock, say they are stuck or call Nertz. (At a real table you have to
+  get the pile out of the way too; nothing is automated here.) Nobody else is held up, and the place stays taken
+  meanwhile. If somebody else calls Nertz before the pile is cleared, the round ends as usual and the pile scores where
+  it lies. It cannot meet the held-card grace window: placing the King emptied that player's hand and they could not
+  pick anything up since.
 - You can play: the top of your nertz pile or of your waste to a work pile or the middle; the top of a work pile to the
   middle; a run from one work pile to another.
 - **Stock**: cards come off it **one at a time**, each its own action, face-down onto the waste. When the third card
@@ -147,13 +165,96 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   anywhere is that one move: if the spot was taken a moment earlier, the card goes back and that player is done. The round
   is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A stock card on its way to
   the waste is not such a card: it goes back, and a group left half-dealt at the call stays as it lies, face-down.
-- **Scoring**, strictly: +1 for each of your cards in the middle (slots and tray), −2 for each card left in your nertz pile.
+- **Scoring**, strictly: +1 for each of your cards in the middle (piles and tray), −2 for each card left in your nertz pile.
   No bonus for going out. Scores add up over rounds.
 - **Table management**: the person who opened the table deals. If they are not connected, the first connected player may deal
   instead; the role returns when they are back. A round is dealt only to players who are connected at that moment. Someone
   who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. New players cannot
   join during a round; they can between rounds. Someone who presses Leave on the score sheet stays on that sheet, but no
   longer counts towards the six seats: a newcomer can take the place.
+
+## The table
+
+**Table space.** The table is defined once, in `shared/table.ts`, for everybody: the middle is the unit disc, and the
+players of the round sit around it at evenly spaced angles in seat order. A centre pile is a point of that disc, kept
+in the game state (`GameState.places`, one per slot, in every snapshot). Nothing in the state says where anything is
+on a screen.
+
+**A view is the table turned.** Each client turns table space so that its own seat is straight down (`toView`), and
+only then draws it. So for two players the other one's piles are yours turned half a circle; for four, your left-hand
+neighbour sees what is side by side for you one above the other. Positions turn; cards never do.
+
+**The drawing.** A window is wider than tall, and the bottom of it is your own hand. So the disc is drawn as an
+ellipse, like a round table seen from a chair: a point (x, y) of your view is drawn at
+`(cx + x * rx, cy + y * ry)` (`toScreen` in `client/layout.ts`), and `toTable` is the exact inverse, so every point
+of the disc has one place on every screen and back. The ellipse is `aspect` times as wide as high, and `aspect`
+depends only on the number of players (2.4 for two, four and six, 2.8 for three, 2 for five), never on the window.
+That is what makes "how big is a card" a fact about the table: an upright card covers the same `w` by `h` of every
+view (a tall thin rectangle there, because the drawing is stretched sideways). The client makes the ellipse as large
+as fits between the hands and gives a card `w * rx` pixels.
+
+**Overlap is one question with one answer.** Two piles clash if in *any* seat's view their upright cards would touch
+or leave less than a gap of 0.14 of a card (`clash`); a pile is on the table if in every view all four corners of
+its card are inside the disc (`onDisc`). The engine uses exactly these to accept or refuse an Ace on a table without
+spots, so a pile that is accepted overlaps nothing on anyone's screen, whatever their window.
+
+**Spots.** Four per player, as [radius, angle] pairs for one player's sector repeated around the table, so every
+chair has the same loose rosette in front of it; each spot is then nudged a little off its mark and given up to two
+and a half degrees of tilt, always the same way. The patterns were found by search (the largest card for which no two
+spots clash) and are checked by `shared/table.test.ts`.
+
+**Without spots** cards are drawn a little smaller (0.72 to 0.88 of the size with spots, by table), so that piles put
+down carelessly still leave room for all four per player: dropped anywhere at random, they nearly always all fit.
+While you hold an Ace over the felt an outline shows the pile it would start, and turns red where there is no room.
+Nothing snaps.
+
+**Hands.** Your own hand is laid out as it always was. Everyone else's is a compact row at their seat: along the top
+edge for seats across from you, at the left or right edge for your neighbours, lower down the nearer they sit to
+you. A hand across the table is drawn the other way round (its owner's left is your right, as at a real table), a
+neighbour's the same way round as yours. The top corners are kept free for the chat button and the grace countdown,
+the bottom corners for the settings and the tray.
+
+**Card sizes** (width in pixels of a centre card with spots / without, and of an opponent's card):
+
+| Window | 2 players | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- |
+| 1280 x 720 | 65 / 49, 45 | 52 / 37, 40 | 45 / 36, 30 | 29 / 25, 29 | 38 / 28, 25 |
+| 1440 x 900 | 96 / 75, 56 | 79 / 57, 50 | 57 / 45, 34 | 43 / 38, 34 | 54 / 41, 32 |
+| 1920 x 1080 | 96 / 96, 64 | 96 / 80, 60 | 76 / 61, 46 | 60 / 52, 43 | 77 / 58, 38 |
+
+Five is the awkward number: no arrangement of piles looks the same from five chairs and also packs upright cards
+well, so its cards are the smallest (see [Known limits](#known-limits)).
+
+### Seeing cards move
+
+While you drag a card your client reports where it is, `{ t: 'drag', id, w, h, p }`, at most 18 times a second (and
+always the last position). The server stamps your seat on it and forwards it to the other players at the table.
+That is all it does: the report is not stored, not checked against the rules, not in any snapshot and not predicted.
+The card still moves only when you let go, by the ordinary `move` intent. The server forwards a report only while
+the game says that player is holding that very card (the `hold` intent came down the same socket just before), so
+nobody can make a card fly that is not in their hand, and it lets through at most 30 a second per player.
+
+A report says where the card is in two frames at once, because there is no single mapping from one player's screen to
+another's: hands are drawn upright and in a row on every screen, the table is turned.
+
+- `p`: the card's centre in table space. Right once the card is on the disc.
+- `h`: how far the card is from its pile, in widths of its owner's cards: along the row, and towards the middle.
+  Right near the hand, wherever and however large a window draws that hand.
+- `w`: how much `p` counts, from 0 when the card has just left its pile to 1 once it is over the disc (it rises
+  smoothly with how far the card has come from its pile towards the disc's edge).
+
+A receiving window draws the card at `h` (from its own picture of that hand) and `p` (turned to its own seat) mixed
+by `w`, growing from hand size to pile size on the way. So the card leaves the right pile on every screen and
+arrives at the right point of every screen's disc. Between reports the card closes on the last reported place
+smoothly (about two thirds of the way every 70 ms), so 18 reports a second, or fewer if some are late or lost, look
+like one movement. When the snapshot says the hold is over, the card is released from wherever it has got to and
+the ordinary animation takes it to its pile, or home if the move was refused. A player who disconnects mid-drag
+loses the hold on the server, so the card goes home on everyone's screen. A run moves as one. Carrying a finished
+pile to the tray is not reported: the pile is seen to go when it gets there.
+
+Cards that move without having been seen on their way (a bot's, or after lost reports) cross the table in 0.2 to
+0.45 seconds depending on the distance, see-through while in the air. With "reduce motion" on, other players' held
+cards jump from report to report instead of gliding.
 
 ## Bots
 
@@ -176,7 +277,9 @@ owns the timers, which stop when the round ends, when the bot is removed and whe
 1. Carry a centre pile it finished (it placed the King) to the tray: before everything, as the rules demand.
 2. Its nertz pile is empty: call Nertz.
 3. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
-4. Nertz top to the middle (an Ace to any empty slot, anything else to the exact pile).
+4. Nertz top to the middle (an Ace to any empty spot, anything else to the exact pile). At a table without spots it
+   starts the pile on its own side of the felt: of a dozen places it glances at there, the clear one nearest itself,
+   and if none of them is clear, wherever there is room.
 5. Waste top, or the top of a work pile, to the middle.
 6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
    It never moves a run that gains nothing, and never undoes its own last run move.
@@ -206,7 +309,8 @@ from the waste or a work pile a little less (`observance ^ 1.25`). Clearing its 
 from the stock are never missed. A bot never deals and never presses Start: it wakes when play opens, on the word, like everyone.
 
 A bot does not drag: its card is placed in the instant it decides. So it never sends `hold`, and can never be in the
-held-card grace window after a call.
+held-card grace window after a call. On screen its card is not teleported: every client glides it from its pile to
+where it went (see [Seeing cards move](#seeing-cards-move)).
 
 **It is a basic bot.** It does not plan, and it jams. In simulation, bots playing only each other finish nearly every deal
 at four to a table, but three get stuck for good in about one deal in three and two in about two deals in three: each sits
@@ -237,10 +341,11 @@ storage they last until the page closes.
 
 **Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in every
 snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from whoever may
-deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Two options today: the
-small-table rule (`fewerDown`), and how cards are dealt off the stock (`stockDeal`: `'drag'`, the default, or `'click'`;
-see the rules). The second is only a choice of gesture for the client: the round in play always has the setting it was
-dealt under, because settings cannot change during a round.
+deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Three options today, listed
+together under "Table rules": the small-table rule (`fewerDown`); "Piles go wherever the Ace is put down"
+(`centre: 'spots' | 'free'`, spots by default); and how cards are dealt off the stock (`stockDeal`: `'drag'`, the
+default, or `'click'`; see the rules). The last is only a choice of gesture for the client. The next deal reads them,
+and a round keeps what it was dealt under, because settings cannot change during a round.
 
 ## How concurrency works
 
@@ -274,10 +379,13 @@ sent that are not yet acknowledged. What you see is those pending intents replay
 that no longer apply. So your card moves the instant you let go, and if you lost a race the next snapshot simply no longer
 supports your move: the card animates back. There is no rollback code. (`client/net.ts`: `onSnapshot`, `onSend`, `predict`.)
 
-**No fallback.** A move names its destination exactly: `{ k: 'work', i }` (one of your own piles) or `{ k: 'slot', i }` (one
-slot of the middle). The engine judges that pile and nothing else. Two players dropping on the same pile, or two Aces on the
-same empty slot, are simply two messages: the first to arrive lands, the second is rejected and its sender's next snapshot
-no longer supports the predicted move, so the card animates home.
+**No fallback.** A move names its destination exactly: `{ k: 'work', i }` (one of your own piles), `{ k: 'slot', i }` (one
+pile or spot of the middle) or, for an Ace at a table without spots, `{ k: 'felt', x, y }` (a point of the table, to a
+thousandth of its radius). The engine judges that pile, or that point, and nothing else. Two players dropping on the
+same pile, two Aces on the same empty spot, or two Aces on overlapping patches of felt are simply two messages: the
+first to arrive lands, the second is rejected and its sender's next snapshot no longer supports the predicted move, so
+the card animates home. A pile started on the felt takes the first slot nobody is using; if another Ace got in first
+the server may file it under a different slot than the client predicted, at the same place, which nobody can see.
 
 **Holds and the grace window.** The server has to know who is mid-drag when Nertz is called, so drags are intents too:
 `{ k: 'hold', cardId }` when a drag starts (accepted only for a card that seat could pick up), `{ k: 'release' }` when it
@@ -353,10 +461,10 @@ fill it for about a minute at a time.
 
 ## Chat and voice
 
-A small **Chat** button sits in the bottom-left corner of the lobby, the table and the score sheet. It opens a panel with
+A small **Chat** button sits in the top-left corner of the lobby, the table and the score sheet. It opens a panel with
 text chat, voice controls and the host's two switches; **Hide** folds it back to the button, which shows a dot when there is
-something unread. During a round the open panel is only as wide as the free felt beside the piles, and while you hold a
-card it fades and lets the pointer through. Keys typed in the panel are never game hotkeys.
+something unread. During a round the open panel is only as wide as the free felt beside your hand and the disc, and while you
+hold a card it fades and lets the pointer through. Keys typed in the panel are never game hotkeys.
 
 - **Text chat.** Enter sends. Plain text, at most 300 characters, shown with the sender's name in their seat colour. The
   server stamps the sender and an id, keeps the last 200 lines per table in memory and allows each player 5 messages per
@@ -388,19 +496,20 @@ by ear), and not in Safari or Firefox or across real networks.
 ```
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
-  protocol.ts   message types, limits, parsing and validation
+  table.ts      the table everyone shares: seats round a disc, views, the size of a card, spots, which piles clash
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, legalDrops, feltFree, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
+  protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
 server/   Node http + ws
-  room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, snapshots. No IO.
+  room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, the relay of card positions, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
   index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
 client/   Vite + React
   net.ts        websocket store and prediction
-  layout.ts     pure geometry: where every card, slot, tray pile, drop area and the countdown goes for a given window size; the deal's schedule
-  Table.tsx     the table: the deal, drag and drop, the Nertz call, the grace countdown, the steps of the end-of-round sequence
+  layout.ts     pure geometry: where the disc, every hand, card, pile, tray pile, drop area and the countdown goes for a given window size; the deal's schedule
+  Table.tsx     the table: the deal, drag and drop, other players' cards in the air, the Nertz call, the grace countdown, the steps of the end-of-round sequence
   Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the wash and the sorted piles at the end of a round, drawn on a canvas
@@ -500,12 +609,25 @@ would still need one of the options above, and serving both from one origin is s
   the dealer is connected but not looking, everyone waits; the role passes on only when their connection drops.
 - **No Leave button during a round**, only in the lobby and on the results sheet. Closing the tab holds the seat.
 - **Fonts come from Google Fonts** at runtime. Offline they fall back to system fonts; everything still works.
-- **Small screens.** Laid out for laptop and desktop windows. Phone landscape works but is tight, and touch input has not
-  been tested on a real device.
-- **Very long work piles in a low window.** At 1280 x 720 a pile of two face-down and ten face-up cards shows its newest
-  six cards with the whole rank and the top of the suit, the next with most of its rank, and the oldest three as slivers
-  about 11 px tall, which are hard to read and to grab. A taller window, or fewer players, leaves felt for the pile to rise into. With six players in a small window (about 1024 x 700)
-  the 24 centre slots are only about 35 px wide; they still take a drop, but it is fiddly.
+- **Small screens.** Laid out for desktop windows from 1280 x 720 up, and checked for 2 to 6 players at 1280 x 720,
+  1440 x 900 and 1920 x 1080. Narrower than that your hand reaches the settings corner. There is no phone layout yet,
+  and touch input has not been tested on a real device.
+- **Cards in the middle are small with five or six players in a small window**: 38 px wide for six at 1280 x 720 and
+  29 px for five (25 px without spots). They take a drop, but it is fiddly, and smaller than the row of slots this
+  table replaced. It is the price of one round table that is the same from every chair: piles have to clear each
+  other however the table is turned, and the room between your hand and the top row is short. Five is worst because
+  nothing repeats five times round a table and also packs upright cards well; seating five at a table for six, one
+  chair empty, would give them the six-player size (38 px), and is not done.
+- **The first stretch of a card's journey is approximate for a neighbour at your side.** Their hand is drawn as an
+  upright row at the edge of your window, while on the table it runs along the side; a card leaving it is drawn
+  heading for the middle and joins its true path as it nears the disc. It always leaves the right pile and arrives at
+  the right place. Across the table, where hands are drawn the other way round, the path is close to the real one.
+- **A table without spots can fill up before every Ace is out** if piles are put down wastefully; an Ace then waits
+  until a pile is finished and cleared. Cards there are drawn smaller to make that rare.
+- **Very long work piles.** There is little felt between your hand and the disc now, so a long pile is squeezed
+  rather than rising: at 1280 x 720 a pile of two face-down and ten face-up cards shows its newest five or six cards
+  with the whole rank, and the oldest as slivers about 11 px tall, which are hard to read and to grab.
+- **The open chat panel** lies over a neighbour seated at the left edge. Hide it to see them.
 - **The wash is a canvas.** At the end of a round up to ~300 card backs move at once, so they are drawn on one canvas
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late
@@ -515,8 +637,6 @@ would still need one of the options above, and serving both from one origin is s
   and the deal carries on. In a background tab the browser slows timers, so cards can leave the deck late there. The
   turn-over arrives with the snapshot that ends the deal, so on a slow connection it is late by that connection's
   latency.
-- **The grace countdown** avoids every opponent's hand, but with four or five opponents in one row it sits just below
-  them and can lie over the top edge of the tray for the (at most four) seconds it is up.
 - **A round nobody ends.** If every card is played and nobody presses NERTZ!, the round just sits there. The call is
   deliberate by design. The same goes for a table that is jammed for good (everyone stuck, and reshuffling changes
   nothing), which is much more likely against one or two bots: there is no way yet to agree to end such a round.

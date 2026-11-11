@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 import { DEAL_MS, START_MS } from '../shared/protocol';
 import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, resolveStuck, startCountdown, SUITS, viewFor, type Rng } from '../shared/engine';
 import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { spots } from '../shared/table';
 import type { Card, GameState, Intent, PlayerState, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
@@ -54,7 +55,7 @@ function table(mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'
     return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, dealt: 0, stuck: h.stuck ?? false, holding: null };
   };
   const slots = Array.from({ length: 8 }, (_, i): Card[] => middle[i] ?? []);
-  const state: GameState = { players: [player(0, mine), player(1, theirs)], slots, tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
+  const state: GameState = { players: [player(0, mine), player(1, theirs)], table: 'spots', slots, places: spots(2), tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }

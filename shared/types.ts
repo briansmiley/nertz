@@ -3,6 +3,7 @@
 // Pile convention, everywhere: the TOP of a pile is the LAST array element.
 
 import type { TableSettings } from './settings';
+import type { Spot, TableMode } from './table';
 
 export type Suit ='S' | 'H' | 'D' | 'C';
 
@@ -69,12 +70,26 @@ export interface GameState {
    */
   stage: RoundStage;
   /**
-   * The shared middle: a fixed grid of 4 x players slots. Each entry is one
-   * centre pile, Ace up to King in one suit; an empty array is an empty slot.
-   * A pile of 13 is complete: it takes nothing more and stays in its slot
-   * until the player who placed its King (that King's `owner`) clears it.
+   * How the middle of this round's table works (see shared/table.ts): 'spots'
+   * has a fixed place for every pile, on a 'free' table a pile lies wherever
+   * its Ace was put down.
+   */
+  table: TableMode;
+  /**
+   * The shared middle: 4 x players slots. Each entry is one centre pile, Ace
+   * up to King in one suit; an empty array is an empty slot. A pile of 13 is
+   * complete: it takes nothing more and stays in its slot until the player
+   * who placed its King (that King's `owner`) clears it.
    */
   slots: Card[][];
+  /**
+   * Where each slot's pile lies on the table, in table space (the same for
+   * every player; each client turns it to its own seat). On a 'spots' table
+   * every slot has its place for the whole round. On a 'free' table a slot
+   * has a place only while it holds a pile: the place is set by the Ace that
+   * starts it and given up when the finished pile is cleared.
+   */
+  places: (Spot | null)[];
   /** Completed piles cleared off the table, oldest first. Each has 13 cards, King on top. Still scores. */
   tray: Card[][];
   /** Seat that called "Nertz!", or null while the round is in full swing. */
@@ -90,8 +105,12 @@ export interface GameState {
 
 export type RoundStage = 'dealing' | 'ready' | 'countdown' | 'play';
 
-/** Where a card can be dropped: one of your own work piles, or one specific centre slot. */
-export type PileRef = { k: 'work'; i: number } | { k: 'slot'; i: number };
+/**
+ * Where a card can be dropped: one of your own work piles, one specific centre
+ * slot, or (an Ace on a 'free' table) a point of the bare felt, in table
+ * space, where a new pile is to start.
+ */
+export type PileRef = { k: 'work'; i: number } | { k: 'slot'; i: number } | { k: 'felt'; x: number; y: number };
 
 export type Intent =
   /**
