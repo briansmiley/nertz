@@ -22,7 +22,8 @@ Then open **http://localhost:5173** in two browser windows (two tabs of the same
    invite link like `http://localhost:5173/?room=ABCD`.
 2. Window 2: paste the invite link (or open the home page and type the code), type a different name, press **Join table**.
    A code that no table has is refused with a message; it never opens a new table.
-3. Window 1: press **Deal the first round**.
+3. Window 1: press **Deal the first round**. The cards are dealt and the table waits.
+4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays.
 
 On your own? In the lobby press **Add bot** and deal: one person and one bot make a round (see [Bots](#bots)).
 
@@ -36,7 +37,8 @@ Controls:
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
 | Drag an Ace onto an empty slot in the middle | start a centre pile in that slot |
-| Drag a finished pile (one you put the King on) to the tray | clear it and free its slot |
+| Drag a finished pile (one you put the King on) to the tray | clear it and free its slot. Until you have, you can do nothing else |
+| **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the stock, or press Space | flip three cards |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
@@ -54,13 +56,20 @@ What you see around a round:
 - **The deal.** Every round opens with each player's deck, in their own back colour, lying where their stock goes. The
   nertz pile and then the four work piles are dealt off it one card after another, everyone's at the same time, yours
   large and the others' small. It takes about two and a half seconds and nothing can be touched meanwhile. Then the
-  face-up cards (each nertz top and the four work tops) turn over at the same moment on every screen: that is the start.
-  With "reduce motion" switched on the cards simply fade in where they belong; the wait and the turn are the same.
+  four work tops of every hand turn over at the same moment on every screen, so that everyone can look at their layout.
+  The nertz piles stay face-down. With "reduce motion" switched on the cards simply fade in where they belong; the wait
+  and the turn are the same.
+- **The start.** The table now waits, for as long as it takes, for the dealer. The dealer has a big **Start** button in
+  the middle of the table (Space or Enter does the same); everyone else reads "Waiting for Brian to start". Pressing it
+  counts "1", "2", "3" in the middle of every screen, about 0.7 seconds each, and on "NERTZ!" every nertz pile's top card
+  turns over and play is open. Nothing can be touched before the word. With "reduce motion" the numbers do not bounce.
 - **Face-down work cards** lie under each work pile, yours and everyone's, and turn over when the cards above them leave.
 - **A long work pile** of yours starts higher up, into the free felt above its column, rather than being squeezed. When
   there is no felt left, the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
 - **A pile you finished** (you placed its King) glows and says "Drag to tray"; other people's finished piles are dimmed and
-  ticked. The **tray** runs off the right edge of the table: finished piles are pushed half off-screen there, the near
+  ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
+  NERTZ! first, nothing moves, the pile shakes, the tray flashes, there is a soft tap and a small notice by the pile says
+  "Move your finished pile to the tray first" for a couple of seconds. Your cards do not look grabbable meanwhile. The **tray** runs off the right edge of the table: finished piles are pushed half off-screen there, the near
   side of every King peeking out from under the next. While you carry a finished pile it lights up and comes a little way
   in; let go anywhere from just short of it to the edge of the screen.
 - **NERTZ!** in big letters lies across the hand of whoever called it, on every board.
@@ -91,6 +100,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - Deal, per player: a 13-card **nertz pile** (only the top card face up), 4 **work piles** with 0, 1, 2 and 3 face-down
   cards under one face-up card (10 cards), the other 29 cards face down as the **stock**, and an empty **waste**.
   While the cards are being dealt (3 seconds) nobody can play, flip, vote or call, and nobody is shown a face.
+- **The start.** When the cards are down the work piles' top cards are turned over; the nertz piles stay face-down and
+  still nobody can do anything. The round begins when the dealer says so: "1, 2, 3, Nertz!" (about two seconds), and on
+  the word every nertz top is turned over and play is open for everyone at once. There is no time limit on the dealer.
 - **Small tables** (a house rule, on by default): with fewer than four players in the round each work pile gets one fewer
   face-down card, 0, 0, 1 and 2 (7 cards in the work piles, 32 in the stock). The nertz pile is 13 either way. The host
   switches it under "Table rules" in the lobby or on the score sheet; it applies from the next deal.
@@ -104,6 +116,11 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   (the pile moved on, or the empty slot was taken), the card returns to where it came from. Nothing is ever rerouted.
 - **Completed piles.** A pile with its King takes nothing more and stays in its slot until the player who placed the King
   drags it to the **tray** at the side. The slot is then free for a new Ace. Tray piles still count for scoring.
+- **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in
+  the tray they cannot move a card, flip, say they are stuck or call Nertz. (At a real table you have to get the pile out
+  of the way too; nothing is automated here.) Nobody else is held up, and the slot stays taken meanwhile. If somebody else
+  calls Nertz before the pile is cleared, the round ends as usual and the pile scores where it lies. It cannot meet the
+  held-card grace window: placing the King emptied that player's hand and they could not pick anything up since.
 - You can play: the top of your nertz pile or of your waste to a work pile or the middle; the top of a work pile to the
   middle; a run from one work pile to another.
 - **Stock**: flip up to three cards onto the waste. When the stock is empty, flipping turns the waste back over into the stock.
@@ -143,8 +160,8 @@ owns the timers, which stop when the round ends, when the bot is removed and whe
 
 **One action per look.** Each look it takes the first of these that applies:
 
-1. Its nertz pile is empty: call Nertz.
-2. Carry a centre pile it finished (it placed the King) to the tray.
+1. Carry a centre pile it finished (it placed the King) to the tray: before everything, as the rules demand.
+2. Its nertz pile is empty: call Nertz.
 3. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
 4. Nertz top to the middle (an Ace to any empty slot, anything else to the exact pile).
 5. Waste top, or the top of a work pile, to the middle.
@@ -168,7 +185,8 @@ The pause is jittered between half and one and a half times the mean. *Observanc
 move it could make is noticed, independently, with that probability, and it takes the first one in the list above that it
 noticed. A move it missed gets a fresh chance at the next look, so it finds things late rather than never. Moves with its own
 nertz card are noticed more reliably (probability `observance ^ 0.5`, which about halves the misses) and plays to the middle
-from the waste or a work pile a little less (`observance ^ 1.25`). Calling Nertz and flipping are never missed.
+from the waste or a work pile a little less (`observance ^ 1.25`). Clearing its finished pile, calling Nertz and flipping
+are never missed. A bot never deals and never presses Start: it wakes when play opens, on the word, like everyone.
 
 A bot does not drag: its card is placed in the instant it decides. So it never sends `hold`, and can never be in the
 held-card grace window after a call.
@@ -183,7 +201,8 @@ If you and the bot are both truly stuck, see "A round nobody ends" under [Known 
 **Sound.** Every card makes a noise: a flick per dealt card, a faint slide on pick-up, a thunk on a work pile, three flicks
 for the stock, a thunk and a soft ding for a card played to the middle (the ding steps up a pentatonic scale with the rank,
 Ace low to King high), a two-note chime for a King, a slide for a pile going to the tray, a dull tap when a card goes back
-(put down nowhere, or beaten to its pile), one loud hit when Nertz is called, a tick each second of the grace window for
+(put down nowhere, or beaten to its pile, or tried while a finished pile of yours is waiting for the tray), a knock for
+each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud hit when Nertz is called at the end, a tick each second of the grace window for
 whoever still holds a card, and a riffle, flicks and a small flourish through the end-of-round sequence. Your own cards
 sound at full level, everyone else's much quieter.
 
@@ -258,17 +277,32 @@ The server owns only the clock: when a call leaves someone in grace it starts on
 `expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to `results`. Snapshots carry
 `graceMs`, the milliseconds left when the snapshot was sent (a duration to count down locally, not a timestamp), or `null`.
 
-**The deal is a phase, and it is the same for everyone.** A fresh round from `deal` has `GameState.dealing` set. While it
-is, `applyIntent` refuses every intent from every seat (the sender's `ack` still advances), and `viewFor` redacts every
-card, the face-up ones included, so no layout can be read early, not even off the network tab. Ids are unchanged, so the
-cards on screen are the ones that turn over later. The server owns only the clock, exactly as for grace: one `DEAL_MS`
-(3 s) timer per round, and when it fires `finishDeal(state)` clears the flag and every player's ordinary view goes out in
-the same flush. Snapshots carry `dealMs`, the milliseconds of the deal left when the snapshot was sent, or `null`. The
+**The opening is a small state machine, and it is the same for everyone.** `GameState.stage` goes `dealing` → `ready` →
+`countdown` → `play`, one pure function per step (`finishDeal`, `startCountdown`, `openPlay`; each returns the same object
+when it is not its turn). Only `play` accepts intents: before it `applyIntent` refuses every intent from every seat (the
+sender's `ack` still advances), so a client predicts nothing either. `viewFor` redacts by stage: while `dealing` every
+card, the face-up ones included, so no layout can be read early, not even off the network tab; in `ready` and `countdown`
+the work tops are shown and every nertz top is still hidden, the owner's included. Ids never change, so the cards on
+screen are the ones that turn over later. The server owns the two clocks and the button, exactly as for grace:
+
+- one `DEAL_MS` (3 s) timer per round; when it fires, `finishDeal` and one flush. Snapshots carry `dealMs`.
+- `ready` has no timer at all. `{ t: 'go' }` from whoever may deal (the host, or the acting dealer while the host is away,
+  even if they are sitting the round out) applies `startCountdown`; from anyone else, or in any other stage, it is ignored.
+- one `START_MS` timer (3 beats of `START_BEAT_MS`, 2.1 s); when it fires, `openPlay`, the bots are woken, and every
+  player's view with the nertz tops goes out in the same flush. Snapshots carry `startMs`, a duration like `dealMs`, so a
+  window that reloads mid-count shows the right number and nothing is replayed.
+
+A table left in `ready` with nobody connected runs no timer and expires like any abandoned table. Both timers are stopped
+when the room is forgotten. The
 client animates from it and never decides anything: its input is off because the shared reducer says no, and a window that
 arrives late (a reload or reconnect mid-deal) puts the cards already dealt in place and deals the rest on schedule
 (`dealWait` in `client/layout.ts`). A card is dealt only when its element first appears during a deal, and only once, so
-later snapshots, reconnects, the end of the round and coming back from the score sheet never replay it. Disconnecting during the deal changes nothing: the round opens on time. The timer is stopped when
-the room is forgotten.
+later snapshots, reconnects, the end of the round and coming back from the score sheet never replay it. Disconnecting during the deal changes nothing: the deal ends on time.
+
+**Clear-first is a rule of the reducer.** `mustClear(state, seat)` is "some centre pile was completed by this seat and
+Nertz has not been called". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
+pile to the tray is a single intent; it never used `hold`). The client's replay applies the same rule, so after a
+predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the nudge and the notice.
 
 **The final table.** During `results` the snapshot still holds the finished round (`game`: slots, tray, hands) next to
 `lastRound` (who called, and per player the name, the cards played, the nertz cards left and the running total), so the
@@ -326,12 +360,12 @@ by ear), and not in Safari or Firefox or across real networks.
 ```
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
-  engine.ts     deal, finishDeal, applyIntent, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types, limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
 server/   Node http + ws
-  room.ts       one table: seats, host, rounds, intent handling, the deal and grace timers, bot timers, snapshots. No IO.
+  room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
   index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
@@ -339,6 +373,8 @@ client/   Vite + React
   net.ts        websocket store and prediction
   layout.ts     pure geometry: where every card, slot, tray pile, drop area and the countdown goes for a given window size; the deal's schedule
   Table.tsx     the table: the deal, drag and drop, the Nertz call, the grace countdown, the steps of the end-of-round sequence
+  Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
+  clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the wash and the sorted piles at the end of a round, drawn on a canvas
   App.tsx       home, lobby and score sheet
   Settings.tsx  the mute button and gear (your settings), and the table rules on the lobby and score sheets
@@ -432,6 +468,8 @@ would still need one of the options above, and serving both from one origin is s
   while away, but they count towards the six seats. There is no kick.
 - **An abandoned lobby lasts a minute.** If you open a table and everyone's connection drops for more than a minute before
   the first deal, the table is gone and the invite link reports no such table.
+- **Only the dealer can start.** Once the cards are dealt the table waits for the dealer's Start with no time limit. If
+  the dealer is connected but not looking, everyone waits; the role passes on only when their connection drops.
 - **No Leave button during a round**, only in the lobby and on the results sheet. Closing the tab holds the seat.
 - **Fonts come from Google Fonts** at runtime. Offline they fall back to system fonts; everything still works.
 - **Small screens.** Laid out for laptop and desktop windows. Phone landscape works but is tight, and touch input has not

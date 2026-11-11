@@ -10,6 +10,7 @@
 //   that is the 'home' cue;
 // - nothing is compared across a reconnect, a reload or a change of table, so
 //   whatever happened meanwhile is not replayed.
+import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { GameState, RoomView } from '../shared/types';
 
 export type Who = 'me' | 'other';
@@ -33,7 +34,22 @@ export type Cue =
   | { k: 'clear'; who: Who }
   /** A card went back where it came from: put down nowhere, refused by the server, or taken out of the hand. */
   | { k: 'home'; who: Who }
-  | { k: 'nertz' };
+  | { k: 'nertz' }
+  /** The dealer said go: one tick per number of "1, 2, 3" still to come, each `at` that many seconds from now. */
+  | { k: 'count'; at: number[] }
+  /** The word at the start, "NERTZ!": play is open. (Not the call that ends a round: that is `nertz`.) */
+  | { k: 'open' };
+
+/** A number whose moment passed less than this long ago still ticks (the snapshot took a moment to get here). */
+const BEAT_SLACK_MS = 150;
+
+/** When each number of the count still to come is said, in seconds from now, given `startMs` left until play opens. */
+export function startBeats(startMs: number): number[] {
+  const elapsed = START_MS - startMs;
+  return Array.from({ length: START_BEATS }, (_, i) => i * START_BEAT_MS - elapsed)
+    .filter((ms) => ms > -BEAT_SLACK_MS)
+    .map((ms) => Math.max(0, ms) / 1000);
+}
 
 /** One rendered state: the (predicted) room, and whether it is live on the current connection. */
 export interface Frame {
@@ -74,6 +90,10 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const who = (seat: number): Who => (seat === you ? 'me' : 'other');
   const cues = new Map<string, Cue>();
   const add = (cue: Cue, key = '') => cues.set(`${cue.k}:${'who' in cue ? cue.who : ''}:${key}`, cue);
+
+  // The opening: the count starts once (its ticks are scheduled from the duration the snapshot carried), play opens once.
+  if (b.game.stage === 'countdown' && a.game.stage !== 'countdown') add({ k: 'count', at: startBeats(b.startMs ?? START_MS) });
+  if (b.game.stage === 'play' && a.game.stage !== 'play') add({ k: 'open' });
 
   const before = places(a.game);
   const after = places(b.game);

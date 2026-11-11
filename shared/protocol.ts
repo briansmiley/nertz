@@ -9,6 +9,8 @@ export type ClientMsg =
   /** Sit down at (or reconnect to) an existing table. An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
+  /** Dealer only, once the cards are dealt and the table is waiting (`game.stage` is `ready`): count "1, 2, 3, Nertz!" and open play. */
+  | { t: 'go' }
   /** Host only, between rounds: change some table settings. They apply from the next deal. */
   | { t: 'settings'; patch: Partial<TableSettings> }
   | { t: 'intent'; seq: number; intent: Intent }
@@ -36,6 +38,10 @@ export const SLOTS_PER_PLAYER = 4;
 export const GRACE_MS = 4000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
+/** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */
+export const START_BEAT_MS = 700;
+export const START_BEATS = 3;
+export const START_MS = START_BEAT_MS * START_BEATS;
 export const BOT_LEVELS: readonly BotLevel[] = ['slow', 'medium', 'fast'];
 
 /** No I, O (look like 1, 0). */
@@ -134,6 +140,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'start':
       return { t: 'start' };
+    case 'go':
+      return { t: 'go' };
     case 'leave':
       return { t: 'leave' };
     case 'addBot': {

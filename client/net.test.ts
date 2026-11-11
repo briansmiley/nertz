@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, refused, viewFor } from '../shared/engine';
+import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, openPlay, refused, startCountdown, viewFor } from '../shared/engine';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
 import * as net from './net';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
 
 /** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
-const deal = (seats: readonly number[], rng: () => number): GameState => finishDeal(dealRound(seats, rng));
+const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
+const deal = (seats: readonly number[], rng: () => number): GameState => toPlay(dealRound(seats, rng));
 
 /** Deterministic rng so the deals are reproducible. */
 function rng(seed: number) {
@@ -25,6 +26,7 @@ const roomOf = (game: GameState, you: number): RoomView => ({
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,
+  startMs: null,
   lastRound: null,
 });
 
@@ -60,7 +62,7 @@ function dealWithAces(): GameState {
 const send = (sync: Sync, intent: Intent): Sync => onSend(sync, intent);
 
 describe('prediction', () => {
-  it('predicts nothing while the cards are being dealt, and plays on from the snapshot that opens the round', () => {
+  it('predicts nothing while the cards are being dealt, while the table waits and through the count, and plays on from the snapshot that opens the round', () => {
     const dealt = dealRound([0, 1], rng(1));
     const s = server(dealt, 0);
     let sync = onSnapshot(freshSync, s.snapshot());
@@ -76,10 +78,76 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
 
-    const open = server(finishDeal(dealt), 0);
+    // Ready and "1, 2, 3": the work tops are showing, the nertz top is not, and still nothing is predicted or accepted.
+    for (const waiting of [finishDeal(dealt), startCountdown(finishDeal(dealt))]) {
+      const w = server(waiting, 0);
+      sync = onSnapshot({ ...sync, rev: -1 }, w.snapshot());
+      const me = sync.server!.game!.players[0]!;
+      expect(me.nertz.every(isHidden)).toBe(true);
+      expect(me.work.map((pile) => isHidden(pile.at(-1)!))).toEqual([false, false, false, false]);
+      const tries: Intent[] = [...intents, { k: 'hold', cardId: me.work[0]!.at(-1)!.id }, { k: 'move', cardId: me.work[0]!.at(-1)!.id, count: 1, to: { k: 'slot', i: 0 } }];
+      for (const intent of tries) {
+        expect(applyIntent(sync.server!.game!, 0, intent).ok).toBe(false);
+        sync = send(sync, intent);
+        expect(predict(sync)).toBe(sync.server);
+        expect(w.apply(0, intent, sync.seq)).toBe(false);
+      }
+      sync = onSnapshot(sync, w.snapshot());
+      expect(sync.pending).toHaveLength(0);
+    }
+
+    const open = server(toPlay(dealt), 0);
     sync = onSnapshot({ ...sync, rev: -1 }, open.snapshot());
+    expect(isHidden(sync.server!.game!.players[0]!.nertz.at(-1)!)).toBe(false);
     sync = send(sync, { k: 'flip' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
+  });
+
+  it('clear-first is predicted too: after my King nothing else of mine applies until the pile is in the tray; a King that lost its race holds nothing up', () => {
+    // Seat 0's spades up to the Queen are a centre pile; its King of spades is the top of work pile 0.
+    const g = deal([0, 1], rng(4));
+    const cards = g.players[0]!.nertz.concat(g.players[0]!.work.flat(), g.players[0]!.stock) as Card[];
+    const spades = cards.filter((c) => c.suit === 'S').sort((x, y) => x.rank - y.rank);
+    const rest = cards.filter((c) => c.suit !== 'S');
+    const king = spades[12]!;
+    const rigged: GameState = {
+      ...g,
+      slots: g.slots.map((_, i) => (i === 0 ? spades.slice(0, 12) : [])),
+      players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest.slice(0, 3), work: [[king], [], [], []], down: [0, 0, 0, 0], stock: rest.slice(3), waste: [] } : p)),
+    };
+    expect(checkInvariants(rigged)).toBeNull();
+    const kingMove: Intent = { k: 'move', cardId: king.id, count: 1, to: { k: 'slot', i: 0 } };
+    const s = server(rigged, 0);
+    let sync = onSnapshot(freshSync, s.snapshot());
+    sync = send(sync, kingMove);
+    const blocked = predict(sync)!.game!;
+    expect(blocked.slots[0]).toHaveLength(13);
+    // What `net.send` asks: everything but the clear is refused on the predicted table, before the server has said a word.
+    const nertzTop = blocked.players[0]!.nertz.at(-1)!.id;
+    for (const intent of [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'hold', cardId: nertzTop }, { k: 'nertz' }] as Intent[]) expect(applyIntent(blocked, 0, intent).ok).toBe(false);
+    expect(applyIntent(blocked, 0, { k: 'clear', slot: 0 }).ok).toBe(true);
+    // King and clear in flight together; a flip sent between them (a stale client) is dropped by both sides.
+    sync = send(send(sync, { k: 'flip' }), { k: 'clear', slot: 0 });
+    expect(predict(sync)!.game!.slots[0]).toEqual([]);
+    expect(predict(sync)!.game!.tray.map((pile) => pile.length)).toEqual([13]);
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0);
+    expect(sync.pending.map((p) => s.apply(0, p.intent, p.seq))).toEqual([true, false, true]);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(predict(sync)).toBe(sync.server);
+    sync = send(sync, { k: 'flip' });
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
+
+    // The other way round: the server refuses my King (the pile is no longer there for it). I am not held up by a pile I never finished.
+    const lost = server({ ...rigged, slots: rigged.slots.map(() => []) }, 0);
+    sync = onSnapshot(freshSync, s2snap(rigged));
+    sync = send(send(sync, kingMove), { k: 'flip' });
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0); // predicted: blocked behind my King
+    expect(sync.pending.map((p) => lost.apply(0, p.intent, p.seq))).toEqual([false, true]);
+    sync = onSnapshot(sync, lost.snapshot());
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3); // the truth: the King went home, the flip counted
+    function s2snap(game: GameState) {
+      return { rev: 0, ack: -1, room: roomOf(game, 0) };
+    }
   });
 
   it('renders the snapshot untouched when nothing is pending', () => {

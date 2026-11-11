@@ -247,6 +247,18 @@ export function nertz(): void {
   [523.25, 659.25, 783.99, 1046.5].forEach((hz, i) => tone(hz, { gain: 0.2, dur: 1.2, delay: at + i * 0.012, partials: CHIME }));
 }
 
+/** One number of the dealer's "1, 2, 3": a knock and a short low note, the same for everyone. */
+export function countBeat(delay = 0): void {
+  hit('tap-1', { gain: 0.55, rate: 1.2, delay });
+  tone(587.33, { gain: 0.15, dur: 0.14, delay, partials: TICK });
+}
+
+/** "NERTZ!" at the start: play is open. A bright, light hit; nothing like the loud call that ends a round. */
+export function opened(): void {
+  hit('place-1', { gain: 0.5, rate: 1.15 });
+  [880, 1174.66, 1760].forEach((hz, i) => tone(hz, { gain: 0.13, dur: 0.5, delay: i * 0.01, partials: CHIME }));
+}
+
 /** One second of the grace countdown. */
 export function tick(): void {
   tone(1174.66, { gain: 0.1, dur: 0.07, partials: TICK });
@@ -304,6 +316,10 @@ function play(cue: Cue): void {
       return home(cue.who);
     case 'nertz':
       return nertz();
+    case 'count':
+      return cue.at.forEach(countBeat);
+    case 'open':
+      return opened();
   }
 }
 

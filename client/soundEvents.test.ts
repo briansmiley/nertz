@@ -2,13 +2,14 @@
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them (net.ts).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, finishDeal, refused, viewFor } from '../shared/engine';
+import { applyIntent, deal as dealRound, finishDeal, openPlay, refused, startCountdown, viewFor } from '../shared/engine';
+import { START_BEAT_MS, START_MS } from '../shared/protocol';
 
 /** A round in play: dealt, and the deal over. */
-const deal: typeof dealRound = (...a) => finishDeal(dealRound(...a));
+const deal: typeof dealRound = (...a) => openPlay(startCountdown(finishDeal(dealRound(...a))));
 import type { Card, GameState, Intent, PileRef, RoomView, Suit } from '../shared/types';
 import { freshSync, onSend, onSnapshot, predict, type Sync } from './net';
-import { graceTicking, soundCues, type Cue, type Frame } from './soundEvents';
+import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
 function rng(seed: number) {
   return () => {
@@ -43,6 +44,7 @@ const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): Ro
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,
+  startMs: null,
   lastRound: null,
   ...extra,
 });
@@ -253,6 +255,38 @@ describe('sound cues from rendered state', () => {
     // The round being scored is not a deal, and the scored table makes no card sounds.
     expect(soundCues({ room: first, online: true }, { room: sheet, online: true })).toEqual([]);
     expect(soundCues({ room: sheet, online: true }, { room: { ...sheet, players: [] }, online: true })).toEqual([]);
+  });
+
+  it('the opening: silence while the table waits, a tick per number when the dealer starts, one bright hit as play opens', () => {
+    const dealt = dealRound([0, 1], rng(7));
+    const stages = { dealing: dealt, ready: finishDeal(dealt), countdown: startCountdown(finishDeal(dealt)), play: openPlay(startCountdown(finishDeal(dealt))) };
+    const frame = (stage: keyof typeof stages, extra: Partial<RoomView> = {}): Frame => ({ room: roomOf(stages[stage], 0, extra), online: true });
+    const beat = START_BEAT_MS / 1000;
+    expect(soundCues(frame('dealing', { dealMs: 5 }), frame('ready'))).toEqual([]);
+    expect(soundCues(frame('ready'), frame('ready'))).toEqual([]);
+    expect(soundCues(frame('ready'), frame('countdown', { startMs: START_MS }))).toEqual([{ k: 'count', at: [0, beat, 2 * beat] }]);
+    // More snapshots during the count (someone reconnected, a refused intent) do not start it again.
+    expect(soundCues(frame('countdown', { startMs: START_MS }), frame('countdown', { startMs: START_MS - 900 }))).toEqual([]);
+    expect(soundCues(frame('countdown', { startMs: 300 }), frame('play'))).toEqual([{ k: 'open' }]);
+    expect(soundCues(frame('play'), frame('play'))).toEqual([]);
+    // The word at the start is its own cue: never the call that ends a round.
+    expect(soundCues(frame('countdown'), frame('play')).some((c) => c.k === 'nertz')).toBe(false);
+    // A window that arrives mid-count (reload, reconnect) has nothing to compare with: silent, as everywhere.
+    expect(soundCues(null, frame('countdown', { startMs: 1000 }))).toEqual([]);
+    expect(soundCues({ ...frame('ready'), online: false }, frame('countdown', { startMs: START_MS }))).toEqual([]);
+    expect(soundCues({ ...frame('countdown'), online: false }, frame('play'))).toEqual([]);
+    // Opening play moves no card: nothing but the hit, for a player and for someone watching.
+    expect(soundCues({ room: roomOf(stages.countdown, 5), online: true }, { room: roomOf(stages.play, 5), online: true })).toEqual([{ k: 'open' }]);
+  });
+
+  it('the ticks are scheduled from the duration the snapshot carried: late by a little still ticks, a number already said does not', () => {
+    const beat = START_BEAT_MS / 1000;
+    expect(startBeats(START_MS)).toEqual([0, beat, 2 * beat]);
+    expect(startBeats(START_MS - 40)).toEqual([0, 0.66, 1.36]); // the snapshot took 40 ms: "1" now, the rest on time
+    expect(startBeats(START_MS - 400)).toEqual([0.3, 1]); // "1" was said a while ago
+    expect(startBeats(START_BEAT_MS)).toEqual([0]); // just in time for "3"
+    expect(startBeats(100)).toEqual([]);
+    expect(startBeats(0)).toEqual([]);
   });
 
   it('the grace countdown ticks only for a player still holding a card', () => {

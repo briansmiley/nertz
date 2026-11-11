@@ -1,15 +1,15 @@
 // One game room. No IO: it is handed parsed messages for opaque connection
 // handles and decides what each connection is sent. Its only clocks are the
-// deal timer at the start of a round, the held-card grace timer at its end, and
-// one timer per bot (see server/bot.ts); every rule about the first two lives in
+// deal timer and the "1, 2, 3" start timer at the opening of a round, the
+// held-card grace timer at its end, and one timer per bot (see server/bot.ts); every rule about the first two lives in
 // the engine.
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -70,9 +70,12 @@ export class Room {
   /** Running while a called round waits for held cards to land; `graceEndsAt` is its deadline (ms epoch). */
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private graceEndsAt = 0;
-  /** Running while a new round is being dealt out (`game.dealing`); `dealEndsAt` is its deadline (ms epoch). */
+  /** Running while a new round is being dealt out (stage `dealing`); `dealEndsAt` is its deadline (ms epoch). */
   private dealTimer: ReturnType<typeof setTimeout> | null = null;
   private dealEndsAt = 0;
+  /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
+  private startTimer: ReturnType<typeof setTimeout> | null = null;
+  private startEndsAt = 0;
   private readonly rng: Rng;
   private readonly schedule: (flush: () => void) => void;
 
@@ -128,6 +131,8 @@ export class Room {
     switch (msg.t) {
       case 'start':
         return this.start(player);
+      case 'go':
+        return this.go(player);
       case 'settings':
         return this.configure(player, msg.patch);
       case 'intent':
@@ -203,11 +208,29 @@ export class Room {
     this.changed();
   }
 
-  /** The deal timer fired: play opens, and everyone's next snapshot (one flush) shows their face-up cards. */
+  /** The deal timer fired: the work piles show their tops, and the table waits (for as long as it takes) for the dealer to press Start. */
   private dealt(): void {
     this.dealTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = finishDeal(this.game);
+    this.changed();
+  }
+
+  /** Whoever may deal says "1, 2, 3...": only once the cards are dealt and the table is waiting. Anyone else, any other time, is ignored. */
+  private go(player: Player): void {
+    if (player !== this.dealer || this.phase !== 'playing' || this.game?.stage !== 'ready') return;
+    this.game = startCountdown(this.game);
+    this.startEndsAt = Date.now() + START_MS;
+    this.startTimer = setTimeout(() => this.opened(), START_MS);
+    this.startTimer.unref?.();
+    this.changed();
+  }
+
+  /** "...NERTZ!": play opens, and everyone's next snapshot (one flush) shows the nertz tops. */
+  private opened(): void {
+    this.startTimer = null;
+    if (this.phase !== 'playing' || !this.game) return;
+    this.game = openPlay(this.game);
     // Play is open: the bots start looking at their cards now, like everyone else.
     for (const p of this.players) if (p.bot && this.game.players.some((g) => g.seat === p.seat)) this.wake(p, freshMemory());
     this.settle();
@@ -215,9 +238,8 @@ export class Room {
   }
 
   private stopTimers(): void {
-    if (this.dealTimer) clearTimeout(this.dealTimer);
-    if (this.graceTimer) clearTimeout(this.graceTimer);
-    this.dealTimer = this.graceTimer = null;
+    for (const timer of [this.dealTimer, this.startTimer, this.graceTimer]) if (timer) clearTimeout(timer);
+    this.dealTimer = this.startTimer = this.graceTimer = null;
   }
 
   private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
@@ -408,6 +430,7 @@ export class Room {
       game,
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
       dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
+      startMs: this.startTimer ? Math.max(0, this.startEndsAt - Date.now()) : null,
       lastRound: this.lastRound,
     };
   }
