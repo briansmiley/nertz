@@ -18,7 +18,7 @@ import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, sortMs, TIMING } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, post } from './net';
@@ -33,6 +33,8 @@ const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const
 const Z_FLYING = 10000;
 const Z_HELD = 30000;
 const DRAG_SLOP = 6; // px of travel before a press becomes a drag
+/** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
+const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
 const ALOFT = 0.58;
 /** Your own card while it is over the felt: the pile underneath shows through. */
@@ -336,7 +338,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     stageSound(stageWas.current, stage); // the riffle of the wash, the flourish of the score sheet
     stageWas.current = stage;
   }, [stage]);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage), [W, H, game, you, stage]);
+  /** Your work pile that is being looked at (fanned out in full): the mouse rested on it, or it was tapped. */
+  const [peek, setPeek] = useState<number | null>(null);
+  const peekWait = useRef<{ i: number; t: number } | null>(null);
+  useEffect(() => () => void (peekWait.current && clearTimeout(peekWait.current.t)), []);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek), [W, H, game, you, stage, peek]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
   const drag = useRef<Drag | null>(null);
@@ -477,6 +483,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const dealing = game.stage === 'dealing' || replaying;
   /** Nothing can be started: the cards are still being dealt, play has not opened, or Nertz has been called. (A card already in hand may still land during grace.) */
   const frozen = dealing || game.stage !== 'play' || called || results;
+  // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
+  useEffect(() => {
+    if (stage !== 'live' || frozen) setPeek(null);
+  }, [stage, frozen]);
   /** Clear-first: with a finished pile of yours waiting, anything but carrying it to the tray is answered with a nudge (clearFirst.tsx). */
   const must = useClearFirst(game, you);
 
@@ -724,8 +734,43 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
+  /** Which of your work piles is at (x, y): its column, and while it is fanned out in full, all of it. */
+  const columnAt = (x: number, y: number): number | null => {
+    const hits = L.me?.workHit ?? [];
+    for (const [i, r] of hits.entries()) {
+      let area = r;
+      if (i === peek) {
+        const top = Math.min(r.y, ...L.cards.filter((c) => c.mine && c.pile === 'work' && c.x >= r.x && c.x <= r.x + r.w).map((c) => c.y));
+        area = { ...r, y: top, h: r.y + r.h - top };
+      }
+      if (inside(area, x, y)) return i;
+    }
+    return null;
+  };
+  const stopPeek = () => {
+    if (peekWait.current) clearTimeout(peekWait.current.t);
+    peekWait.current = null;
+    setPeek(null);
+  };
+  /** The mouse moved with nothing held: a pile it rests on fans out after a moment; off it, it closes at once. */
+  const hover = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || frozen || stage !== 'live') return;
+    const i = columnAt(e.clientX, e.clientY);
+    if (i === peek) {
+      if (peekWait.current) clearTimeout(peekWait.current.t);
+      peekWait.current = null;
+      return;
+    }
+    if (peek !== null) setPeek(null);
+    if (i === null) return void (peekWait.current && (clearTimeout(peekWait.current.t), (peekWait.current = null)));
+    if (peekWait.current?.i === i) return;
+    if (peekWait.current) clearTimeout(peekWait.current.t);
+    peekWait.current = { i, t: window.setTimeout(() => ((peekWait.current = null), setPeek(i)), PEEK_MS) };
+  };
+
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
+    if (!d || !d.active) hover(e);
     if (!d || e.pointerId !== d.pointer) return;
     [d.px, d.py] = [e.clientX, e.clientY];
     const dx = e.clientX - d.sx;
@@ -735,6 +780,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       // The drag starts here, and the server is told: who holds what decides the grace window.
       if (d.held.k === 'card' && !send({ k: 'hold', cardId: d.held.id })) return void (drag.current = null);
       d.active = true;
+      stopPeek();
       for (const id of d.ids) reg.held.add(id);
       setHeld(d.held);
     }
@@ -755,6 +801,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
+    // On a touch screen a tap on one of your work piles fans it out in full, and another tap (anywhere) closes it.
+    if (e.pointerType !== 'mouse' && (!d || !d.active) && stage === 'live') {
+      const i = columnAt(e.clientX, e.clientY);
+      setPeek(i === peek ? null : i);
+    }
     if (!d || e.pointerId !== d.pointer) return;
     if (!d.active) return void (drag.current = null);
     // A drop. Only the pile it was released on counts; anywhere else the card is put back. If the move is
@@ -809,6 +860,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && !drag.current && stopPeek()}
     >
       <div className={`felt${placing ? ' placing' : ''}`} style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, borderRadius: TABLE.corner * L.felt.u }} />
       {L.slots.map((slot, i) => {

@@ -197,6 +197,8 @@ interface HandSpec {
   mine: boolean;
   /** Lay the piles out from right to left. */
   flip?: boolean;
+  /** A work pile being looked at (hovered, or tapped on a touch screen): fanned out in full, rising as far as it needs to over the felt. */
+  peek?: number | null;
 }
 
 /**
@@ -252,7 +254,13 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
     const rise = clamp(wanted - h.workRoom, 0, h.workRise);
     const at = fanOut(show, h.workFan, h.minStrip, h.workRoom + rise);
-    pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work'));
+    if (i === h.peek) {
+      // Looked at: every card shows its whole strip, the pile reaching up over whatever is above it (and above the
+      // middle's cards) as far as the top of the window. Its drop area and its top card stay where they were.
+      const up = clamp(wanted - h.workRoom, 0, h.y - 8);
+      const full = fanOut(show, h.workFan, h.minStrip, h.workRoom + up);
+      pile.forEach((c, j) => put(c, x, h.y - up + full[j]!, PEEK_Z + j, 'work'));
+    } else pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work'));
     workHit.push({ x: mx(x - margin, h.w + 2 * margin), y: h.y - rise - margin, w: h.w + 2 * margin, h: ch + h.workRoom + rise + 2 * margin });
     return rect(x, h.y - rise + (at.at(-1) ?? 0));
   });
@@ -329,6 +337,8 @@ const OWN_MAX = 150;
 const OPP_MAX = 96;
 /** The widest a card in the middle is drawn, in widths of your own. */
 const CENTRE_MAX = 1.2;
+/** A work pile being looked at is drawn above the middle's cards (z 5000 and up) and below anything flying or held. */
+const PEEK_Z = 4000;
 /** Width of a hand in card widths, for the gaps used below. */
 const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
@@ -359,7 +369,7 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live'): Layout {
+export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null): Layout {
   const cards: Placed[] = [];
   const n = game.players.length;
   const mine = game.players.find((p) => p.seat === you);
@@ -491,6 +501,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
           minStrip: oh * 0.21,
           z: 3000,
           mine: true,
+          peek,
         },
         cards,
       )

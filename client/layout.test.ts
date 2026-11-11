@@ -613,6 +613,26 @@ describe('table layout', () => {
       expect(strips(computeLayout(1280, 720, seven, 0), seven).slice(1).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true);
     });
 
+    it('a pile looked at fans out in full above everything in the middle; its drop area, its top card and the rest of the hand stay put', () => {
+      for (const [W, H] of [[1280, 720], [1920, 1080]] as const) {
+        const game = longPile(6, 2, 10);
+        const L = computeLayout(W, H, game, 0);
+        const P = computeLayout(W, H, game, 0, 'live', 1);
+        const cardH = P.me!.nertz.h;
+        expect(strips(L, game).some((step) => step < cardH * 0.21 - 0.01)).toBe(true); // squeezed...
+        const full = strips(P, game);
+        expect(full.slice(2).every((step) => step >= cardH * 0.29)).toBe(true); // ...and in full when looked at (after its two face-down cards)
+        expect(full.slice(0, 2).every((step) => step >= cardH * 0.13)).toBe(true);
+        const ids = new Set(game.players[0]!.work[1]!.map((c) => c.id));
+        const zs = P.cards.filter((c) => ids.has(c.card.id)).map((c) => c.z);
+        expect(Math.min(...zs)).toBeGreaterThan(Math.max(...P.cards.filter((c) => c.pile === 'slot' || c.pile === 'tray').map((c) => c.z), 0));
+        expect(Math.min(...P.cards.filter((c) => ids.has(c.card.id)).map((c) => c.y))).toBeGreaterThanOrEqual(8);
+        expect(P.me!.workHit).toEqual(L.me!.workHit);
+        expect(P.me!.work).toEqual(L.me!.work);
+        expect(P.cards.filter((c) => !ids.has(c.card.id))).toEqual(L.cards.filter((c) => !ids.has(c.card.id)));
+      }
+    });
+
     it('with no felt to spare (six players) keeps the newest cards readable and lets only the oldest give way', () => {
       const game = longPile(6, 1, 7);
       const L = computeLayout(1280, 720, game, 0);
