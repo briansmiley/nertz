@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { DEAL_MS, isHidden } from '../shared/engine';
-import { cardSize, TABLE, type Pt } from '../shared/table';
+import { cardSize, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -436,6 +436,24 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
   return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs };
 }
+
+// ---------------------------------------------------------------- an Ace in hand on a table without marked places
+
+/**
+ * What is drawn while an Ace that may start a pile anywhere is in hand. The
+ * picture is the rule (shared/table.ts): the Ace's outline (`landingAt`) may
+ * come up to the line round every pile (`keepOut`) and to the edge of the felt,
+ * and no further. client/layout.test.ts holds the two against the engine.
+ */
+
+/** The outline of the pile an Ace would start with its centre at `centre` (a point of this screen): exactly the card that would lie there. */
+export const landingAt = (L: Pick<Layout, 'fs'>, centre: Pt): Rect => {
+  const [w, h] = [L.fs * CARD_W, L.fs * CARD_H];
+  return { x: centre.x - w / 2, y: centre.y - h / 2, w, h };
+};
+
+/** The room a pile lying at `slot` keeps round it on a table for `n` players: its card, grown by the gap. */
+export const keepOut = (L: Pick<Layout, 'felt'>, slot: Rect, n: number): Rect => grow({ x: slot.x, y: slot.y, w: slot.w, h: slot.h }, pileGap(n) * L.felt.u);
 
 // ---------------------------------------------------------------- other players' cards in the air
 

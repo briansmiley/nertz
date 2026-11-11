@@ -86,11 +86,12 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
     let best: Pt = any;
     let nearest = Infinity;
     for (let look = 0; look < 5; look++) {
-      const at = { x: (rng() * 2 - 1) * TABLE.hw, y: rng() * 2 - 1 };
+      // (To the thousandth, as it goes over the wire: the place that is checked is the very place that is asked for.)
+      const at = { x: Math.round((rng() * 2 - 1) * TABLE.hw * 1000) / 1000, y: Math.round((rng() * 2 - 1) * 1000) / 1000 };
       const d = Math.hypot(at.x / TABLE.hw, at.y);
       if (d < nearest && feltFree(view, at)) [best, nearest] = [at, d];
     }
-    return { k: 'felt', x: Math.round(best.x * 1000) / 1000, y: Math.round(best.y * 1000) / 1000 };
+    return { k: 'felt', x: best.x, y: best.y };
   };
 
   // a

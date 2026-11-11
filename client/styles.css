@@ -104,8 +104,10 @@ button {
   opacity: var(--o, 1); /* set by Table.tsx: a card in the air over the middle lets the piles show through */
 }
 
-/* A card in another player's hand: it can pass over anything without ever being in your pointer's way. */
-.card.aloft {
+/* A card in another player's hand, or on its way across the table from one: it can pass over anything without ever
+   being in your pointer's way. */
+.card.aloft,
+.card[data-passing] {
   pointer-events: none;
 }
 
