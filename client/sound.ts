@@ -209,8 +209,8 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
-/** Cards off the stock: one soft flick. */
-export function stockFlip(who: Who = 'me'): void {
+/** One card off the stock onto the waste: one soft flick. */
+export function stockCard(who: Who = 'me'): void {
   hit(pick(FLICKS), { gain: rand(0.24, 0.3), rate: rand(0.95, 1.1), who });
 }
 
@@ -302,8 +302,10 @@ function play(cue: Cue): void {
       return pickup(cue.who);
     case 'work':
       return workDrop(cue.who);
+    case 'stock':
+      return stockCard(cue.who);
     case 'flip':
-      return stockFlip(cue.who);
+      return; // the group turning up makes no noise of its own: each of its cards has already flicked
     case 'recycle':
       return recycle(cue.who);
     case 'centre':

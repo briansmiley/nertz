@@ -11,7 +11,7 @@
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
-import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
+import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import { Social } from './chat';
 
@@ -351,15 +351,18 @@ export class Room {
     this.changed();
   }
 
-  /** Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times. */
-  private wake(player: Player, memory?: BotMemory): void {
+  /**
+   * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times
+   * (times `pace`: shorter after dealing a card off the stock).
+   */
+  private wake(player: Player, memory?: BotMemory, pace = 1): void {
     const bot = player.bot!;
     if (memory) {
       bot.memory = memory;
       bot.pending = null;
     }
     if (bot.timer) clearTimeout(bot.timer);
-    bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()));
+    bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()) * pace);
     bot.timer.unref?.();
   }
 
@@ -376,16 +379,21 @@ export class Room {
     const bot = player.bot!;
     bot.timer = null;
     if (this.phase !== 'playing' || !this.game) return;
+    let pace = 1;
     if (bot.pending) {
       const before = this.game;
       const { intent, memory } = bot.pending;
       bot.pending = null;
       this.intent(player, player.ack + 1, intent);
-      if (this.game !== before) bot.memory = memory;
+      if (this.game !== before) {
+        bot.memory = memory;
+        // It dealt a card off the stock (not: turned the waste over). The next card follows sooner than a fresh look would.
+        if (intent.k === 'flip' && before.players.find((p) => p.seat === player.seat)!.stock.length > 0) pace = DEAL_PACE;
+      }
     }
     if (this.phase !== 'playing' || !this.game) return;
     bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
-    this.wake(player);
+    this.wake(player, undefined, pace);
   }
 
   private stopBots(): void {

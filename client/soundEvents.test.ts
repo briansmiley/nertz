@@ -6,6 +6,7 @@ import { applyIntent, deal as dealRound, finishDeal, openPlay, refused, startCou
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
 
 /** A round in play: dealt, and the deal over. */
+import { DEFAULT_SETTINGS } from '../shared/settings';
 const deal: typeof dealRound = (...a) => openPlay(startCountdown(finishDeal(dealRound(...a))));
 import type { Card, GameState, Intent, PileRef, RoomView, Suit } from '../shared/types';
 import { freshSync, onSend, onSnapshot, predict, type Sync } from './net';
@@ -40,7 +41,7 @@ const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): Ro
   round: 1,
   you,
   players: game.players.map((p) => ({ seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, isHost: p.seat === 0, stuck: p.stuck })),
-  settings: { fewerDown: true },
+  settings: DEFAULT_SETTINGS,
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,
@@ -153,25 +154,37 @@ describe('sound cues from rendered state', () => {
     expect(s.confirm()).toEqual([]);
   });
 
-  it('work-pile drops, stock flips and turning the waste over, for me and (marked as such) for the others', () => {
+  it('work-pile drops, one flick per card off the stock, the group turning up and the waste going back, for me and (marked as such) for the others', () => {
     const s = session(rigged());
     const four = s.game.players[0]!.waste.at(-1)!.id;
     s.me({ k: 'hold', cardId: four });
     expect(s.me(move(four, work(3)))).toEqual([{ k: 'work', who: 'me' }]);
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'flip', who: 'me' }]);
+    // Three cards, three flicks; the third also turns the group up. All of it at the moment it is predicted:
+    // the confirmation, which brings the faces, is silent.
+    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
+    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
+    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }, { k: 'flip', who: 'me' }]);
+    expect(s.confirm()).toEqual([]);
+    expect(s.frame.room!.game!.players[0]).toMatchObject({ dealt: 0 });
 
     expect(s.them({ k: 'hold', cardId: s.game.players[1]!.waste.at(-1)!.id })).toEqual([{ k: 'pickup', who: 'other' }]);
     expect(s.them(move(s.game.players[1]!.waste.at(-1)!.id, work(3)))).toEqual([{ k: 'work', who: 'other' }]);
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'flip', who: 'other' }]);
+    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
+    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
+    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }, { k: 'flip', who: 'other' }]);
+    // Four of their cards in one snapshot (a slow connection): a flick each, and the group that was completed turns up once.
+    for (let i = 0; i < 3; i++) s.act(1, { k: 'flip' });
+    expect(s.them({ k: 'flip' })).toEqual([...Array<Cue>(4).fill({ k: 'stock', who: 'other' }), { k: 'flip', who: 'other' }]);
+    expect(s.game.players[1]!.dealt).toBe(1);
     // A run of two cards moved together is one drop, not two.
     const run = s.game.players[0]!.work[3]![0]!.id;
     s.me({ k: 'hold', cardId: run });
     expect(s.game.players[0]!.work[3]).toHaveLength(2);
-    // Flip until the stock is gone, then once more: the waste goes back under.
+    // Deal until the stock is gone (its last card turns the group up, however short), then once more: the waste goes back under.
     let cues: Cue[] = [];
-    for (let i = 0; i < 20 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) cues = s.me({ k: 'flip' });
-    expect(cues).toEqual([{ k: 'flip', who: 'me' }]);
+    for (let i = 0; i < 60 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) cues = s.me({ k: 'flip' });
+    expect(cues).toEqual([{ k: 'stock', who: 'me' }, { k: 'flip', who: 'me' }]);
     expect(s.me({ k: 'flip' })).toEqual([{ k: 'recycle', who: 'me' }]);
   });
 
@@ -232,7 +245,7 @@ describe('sound cues from rendered state', () => {
     expect(dropped).toEqual([]); // my lost prediction snapping back is not a refusal
     expect(back).toEqual([]);
     // And from there on the table is live again.
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'flip', who: 'other' }]);
+    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
   });
 
   it('a first render, a reload into a running round, and re-rendering the same state are silent', () => {

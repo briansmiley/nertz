@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, openPlay, refused, startCountdown, viewFor } from '../shared/engine';
+import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
 import * as net from './net';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
@@ -22,7 +23,7 @@ const roomOf = (game: GameState, you: number): RoomView => ({
   round: 1,
   you,
   players: game.players.map((p) => ({ seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, isHost: p.seat === 0, stuck: p.stuck })),
-  settings: { fewerDown: true },
+  settings: DEFAULT_SETTINGS,
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,
@@ -100,7 +101,7 @@ describe('prediction', () => {
     sync = onSnapshot({ ...sync, rev: -1 }, open.snapshot());
     expect(isHidden(sync.server!.game!.players[0]!.nertz.at(-1)!)).toBe(false);
     sync = send(sync, { k: 'flip' });
-    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
   });
 
   it('clear-first is predicted too: after my King nothing else of mine applies until the pile is in the tray; a King that lost its race holds nothing up', () => {
@@ -135,7 +136,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     expect(predict(sync)).toBe(sync.server);
     sync = send(sync, { k: 'flip' });
-    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
 
     // The other way round: the server refuses my King (the pile is no longer there for it). I am not held up by a pile I never finished.
     const lost = server({ ...rigged, slots: rigged.slots.map(() => []) }, 0);
@@ -144,7 +145,7 @@ describe('prediction', () => {
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0); // predicted: blocked behind my King
     expect(sync.pending.map((p) => lost.apply(0, p.intent, p.seq))).toEqual([false, true]);
     sync = onSnapshot(sync, lost.snapshot());
-    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3); // the truth: the King went home, the flip counted
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1); // the truth: the King went home, the flip counted
     function s2snap(game: GameState) {
       return { rev: 0, ack: -1, room: roomOf(game, 0) };
     }
@@ -156,21 +157,36 @@ describe('prediction', () => {
     expect(predict(sync)).toBe(sync.server);
   });
 
-  it('predicts a flip with face-down cards and keeps their ids when the truth arrives', () => {
+  it('predicts cards dealt off the stock one by one, face-down, and keeps their ids when the group turns up', () => {
     const s = server(deal([0, 1], rng(2)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
+    const mine = () => predict(sync)!.game!.players[0]!;
     sync = send(sync, { k: 'flip' });
-    const predicted = predict(sync)!.game!.players[0]!;
-    expect(predicted.waste).toHaveLength(3);
+    expect([mine().waste.length, mine().dealt]).toEqual([1, 1]);
+    sync = send(sync, { k: 'flip' });
+    expect([mine().waste.length, mine().dealt]).toEqual([2, 2]);
+    // The server has the first card only: the snapshot shows it face-down too, and the second is still replayed over it.
+    s.apply(0, { k: 'flip' }, 1);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(sync.server!.game!.players[0]!).toMatchObject({ dealt: 1 });
+    expect(sync.server!.game!.players[0]!.waste.every(isHidden)).toBe(true);
+    expect([mine().waste.length, mine().dealt]).toEqual([2, 2]);
+    // The third is predicted: the group counts as turned up, but its faces are the server's to show.
+    sync = send(sync, { k: 'flip' });
+    const predicted = mine();
+    expect([predicted.waste.length, predicted.dealt]).toEqual([3, 0]);
     expect(predicted.waste.every(isHidden)).toBe(true);
     expect(checkInvariants(predict(sync)!.game!)).toBeNull();
+    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: predicted.waste.at(-1)!.id }).ok).toBe(false); // not until it is seen
 
-    s.apply(0, { k: 'flip' }, sync.seq);
+    s.apply(0, { k: 'flip' }, 2);
+    s.apply(0, { k: 'flip' }, 3);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
-    const real = predict(sync)!.game!.players[0]!;
+    const real = mine();
     expect(real.waste.map((c) => c.id)).toEqual(predicted.waste.map((c) => c.id));
     expect(real.waste.some(isHidden)).toBe(false);
+    expect(real.dealt).toBe(0);
   });
 
   it('keeps unacknowledged intents applied over a snapshot that does not include them yet', () => {
@@ -187,8 +203,8 @@ describe('prediction', () => {
     expect(sync.pending).toHaveLength(2);
     let game = predict(sync)!.game!;
     expect(game.slots[3]!.map((c) => c.id)).toEqual([ace.id]);
-    expect(game.players[0]!.waste).toHaveLength(3);
-    expect(game.players[1]!.waste).toHaveLength(3);
+    expect(game.players[0]!.waste).toHaveLength(1);
+    expect(game.players[1]!.waste).toHaveLength(1);
 
     // The server processes the first intent only.
     s.apply(0, sync.pending[0]!.intent, 1);
@@ -196,7 +212,7 @@ describe('prediction', () => {
     expect(sync.pending.map((p) => p.seq)).toEqual([2]);
     game = predict(sync)!.game!;
     expect(game.slots.filter((pile) => pile.length > 0)).toHaveLength(1);
-    expect(game.players[0]!.waste).toHaveLength(3);
+    expect(game.players[0]!.waste).toHaveLength(1);
     expect(checkInvariants(game)).toBeNull();
   });
 
@@ -483,6 +499,6 @@ describe('the store over a (fake) socket', () => {
     expect(net.current().status).toBe('online');
     expect(net.send({ k: 'flip' })).toBe(true);
     expect(second.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'flip' } }); // seq starts over with the connection
-    expect(net.current().room!.game!.players[0]!.waste).toHaveLength(3);
+    expect(net.current().room!.game!.players[0]!.waste).toHaveLength(1);
   });
 });

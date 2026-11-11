@@ -22,7 +22,9 @@ export type Cue =
   | { k: 'pickup'; who: Who }
   /** A card or run landed on a work pile. */
   | { k: 'work'; who: Who }
-  /** Three off the stock. */
+  /** One card off the stock, face-down onto the waste. */
+  | { k: 'stock'; who: Who }
+  /** A group dealt onto the waste turned face-up. */
   | { k: 'flip'; who: Who }
   /** The waste went back under the stock. */
   | { k: 'recycle'; who: Who }
@@ -98,6 +100,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
+  /** Cards that came off each seat's stock onto its waste in this step. */
+  const dealt = new Map<number, number>();
   for (const [id, to] of after) {
     const from = before.get(id);
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
@@ -115,13 +119,17 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     } else if (to.pile === 'work') {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
     } else if (to.pile === 'waste' && from.pile === 'stock') {
-      add({ k: 'flip', who: who(to.seat) });
+      add({ k: 'stock', who: who(to.seat) }, id); // once per card
+      dealt.set(to.seat, (dealt.get(to.seat) ?? 0) + 1);
     } else if (to.pile === 'stock' && from.pile === 'waste') {
       add({ k: 'recycle', who: who(to.seat) });
     }
   }
 
   for (const p of b.game.players) {
+    // Fewer cards lie face-down on the waste than were there plus those just dealt: a group was completed and turned up.
+    const n = dealt.get(p.seat);
+    if (n && p.dealt < (a.game.players.find((q) => q.seat === p.seat)?.dealt ?? 0) + n) add({ k: 'flip', who: who(p.seat) });
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;
     if (p.holding !== null && p.holding !== was) add({ k: 'pickup', who: who(p.seat) });
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });

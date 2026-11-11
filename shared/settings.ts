@@ -8,9 +8,18 @@ export interface TableSettings {
    * pile is dealt one fewer face-down card (0/0/1/2 instead of 0/1/2/3).
    */
   fewerDown: boolean;
+  /**
+   * How a card is dealt off the stock. Either way it is one card per action
+   * (the same `flip` intent, enforced by the engine); this only chooses the
+   * gesture: 'drag' each card from the stock onto the waste, or 'click' the
+   * stock (or press Space) once per card.
+   */
+  stockDeal: StockDeal;
 }
 
-export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true };
+export type StockDeal = 'drag' | 'click';
+
+export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true, stockDeal: 'drag' };
 
 /** Players in the round below which `fewerDown` applies. */
 export const SMALL_TABLE = 4;
@@ -27,6 +36,10 @@ export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if ('fewerDown' in v) {
     if (typeof v.fewerDown !== 'boolean') return null;
     patch.fewerDown = v.fewerDown;
+  }
+  if ('stockDeal' in v) {
+    if (v.stockDeal !== 'drag' && v.stockDeal !== 'click') return null;
+    patch.stockDeal = v.stockDeal;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 }

@@ -40,8 +40,15 @@ export interface PlayerState {
   down: number[];
   /** Face-down. */
   stock: AnyCard[];
-  /** Face-up; only the top is playable. */
+  /** Face-up, except the top `dealt` cards; only the top is playable, and only when `dealt` is 0. */
   waste: AnyCard[];
+  /**
+   * How many cards of a group still being dealt lie face-down on top of the
+   * waste: 0, 1 or 2. Cards come off the stock one per `flip`; the third (or
+   * the last card of the stock) turns the group face-up and this is 0 again.
+   * Never above 0 on an empty stock.
+   */
+  dealt: number;
   stuck: boolean;
   /**
    * Id of the card this player is dragging right now (the bottom card of the
@@ -94,6 +101,11 @@ export type Intent =
    * refused rather than carrying cards that were never picked up.
    */
   | { k: 'move'; cardId: string; count: number; to: PileRef }
+  /**
+   * One card off the stock, face-down onto the waste; the third of a group (or
+   * the last card of the stock) turns the group up. On an empty stock: turn
+   * the waste back over into the stock.
+   */
   | { k: 'flip' }
   | { k: 'stuck'; on: boolean }
   | { k: 'nertz' }

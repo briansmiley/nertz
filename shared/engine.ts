@@ -10,6 +10,7 @@ import type { AnyCard, Card, GameState, HiddenCard, Intent, PileRef, PlayerState
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
 export const NERTZ_SIZE = 13;
+/** Cards in a group dealt off the stock: each is one action, and the group turns face-up when the last one lands. */
 export const FLIP_COUNT = 3;
 const DECK_SIZE = 52;
 const KING = 13;
@@ -78,7 +79,7 @@ export function deal(seats: readonly number[], rng: Rng, rules: { fewerDown?: bo
     const nertz = deck.splice(0, NERTZ_SIZE);
     const down = Array.from({ length: WORK_PILES }, (_, i) => Math.max(0, i - fewer));
     const work = down.map((n) => deck.splice(0, n + 1));
-    return { seat, nertz, work, down, stock: deck, waste: [], stuck: false, holding: null };
+    return { seat, nertz, work, down, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, (): Card[] => []);
   return { players, stage: 'dealing', slots, tray: [], nertzCalledBy: null, grace: [] };
@@ -98,7 +99,7 @@ const slotAccepts = (pile: readonly Card[], card: Card): boolean =>
 
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
- * or waste, or a face-up card in one of their work piles together with
+ * or waste (not while a group is half-dealt onto it: its top is face-down), or a face-up card in one of their work piles together with
  * everything on top of it. Null if the card is not theirs to move, is
  * face-down, or its face is not known in this (redacted) state.
  */
@@ -107,7 +108,7 @@ export function grab(state: GameState, seat: number, cardId: string): Grab | nul
   if (!p) return null;
   const lift = (from: Source, cards: AnyCard[]): Grab | null => (cards.some(isHidden) ? null : { from, cards: cards as Card[] });
   if (top(p.nertz)?.id === cardId) return lift({ k: 'nertz' }, p.nertz.slice(-1));
-  if (top(p.waste)?.id === cardId) return lift({ k: 'waste' }, p.waste.slice(-1));
+  if (top(p.waste)?.id === cardId) return p.dealt > 0 ? null : lift({ k: 'waste' }, p.waste.slice(-1));
   for (const [i, pile] of p.work.entries()) {
     const at = pile.findIndex((c) => c.id === cardId);
     if (at >= 0) return at >= p.down[i]! ? lift({ k: 'work', i }, pile.slice(at)) : null;
@@ -193,10 +194,13 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
     case 'flip': {
       if (me.stock.length === 0) {
         if (me.waste.length === 0) return 'Nothing to flip';
-        me.stock = me.waste.reverse(); // turn the waste over: first card flipped is on top again
+        me.stock = me.waste.reverse(); // turn the waste over: first card dealt is on top again
         me.waste = [];
+        me.dealt = 0; // (it was: a group is never left half-dealt on an empty stock)
       } else {
-        for (let n = 0; n < FLIP_COUNT && me.stock.length > 0; n++) me.waste.push(me.stock.pop()!);
+        // One card per action, face-down onto the waste. The third of a group, or the last of the stock, turns the group up.
+        me.waste.push(me.stock.pop()!);
+        me.dealt = me.dealt + 1 === FLIP_COUNT || me.stock.length === 0 ? 0 : me.dealt + 1;
       }
       break;
     }
@@ -249,7 +253,7 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
     }
   }
   next = { ...next, players: state.players.map((p, i) => (i === index ? me : p)) };
-  // A flip can bury the card being held; a hold never outlives the card being pickable.
+  // Dealing a card onto the waste buries the card being held; a hold never outlives the card being pickable.
   if (me.holding !== null && !grab(next, seat, me.holding)) me.holding = null;
   return next;
 }
@@ -289,7 +293,7 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
 /**
  * The one reducer. Pure, never throws (garbage intents and seats are rejected),
  * never mutates `state`. Works on redacted views too: face-down cards can be
- * flipped, recycled or uncovered, but can never be the subject or target of a move.
+ * dealt, recycled or uncovered, but can never be the subject or target of a move.
  *
  * Held-card grace: a `nertz` call freezes the table except for the seats that
  * are holding a card with at least one legal destination (`state.grace`).
@@ -351,7 +355,7 @@ export function expireGrace(state: GameState): GameState {
 /**
  * If every seat in `activeSeats` (the connected players) has flagged "stuck",
  * unsticks the table: every player's waste is turned back onto their stock
- * (restoring the original order), then the top stock card moves to the bottom
+ * (restoring the original order; a half-dealt group is waste like the rest), then the top stock card moves to the bottom
  * so the next flips come up differently, and all flags clear. Returns the SAME
  * state object when nothing happens (always, once Nertz has been called).
  */
@@ -365,7 +369,7 @@ export function resolveStuck(state: GameState, activeSeats: Iterable<number>): G
     if (stock.length > 1) stock.unshift(stock.pop()!);
     // A held waste card has just gone back into the stock: it is no longer in hand.
     const holding = p.waste.some((c) => c.id === p.holding) ? null : p.holding;
-    return { ...p, stock, waste: [], stuck: false, holding };
+    return { ...p, stock, waste: [], dealt: 0, stuck: false, holding };
   });
   return { ...state, players };
 }
@@ -376,8 +380,9 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
 
 /**
  * The state as a player may see it: same shape and same card ids, with every
- * face-down card redacted: stocks, everything under the top of each nertz pile
- * and the face-down cards at the bottom of each work pile, your own included.
+ * face-down card redacted: stocks, everything under the top of each nertz pile,
+ * the face-down cards at the bottom of each work pile and the cards of a group
+ * still being dealt onto a waste (`dealt`), your own included.
  * While the cards are being dealt that is every card, and until play opens
  * (`ready`, `countdown`) it is still every nertz top: nobody gets a head start.
  * No hand is private in Nertz, so today every seat gets the same view; `seat`
@@ -392,7 +397,7 @@ export function viewFor(state: GameState, _seat: number): GameState {
       nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && state.stage === 'play' ? c : hide(c))),
       work: p.work.map((w, i) => w.map((c, j) => (j < p.down[i]! || dealing ? hide(c) : c))),
       stock: p.stock.map(hide),
-      waste: dealing ? p.waste.map(hide) : p.waste,
+      waste: p.waste.map((c, i) => (dealing || i >= p.waste.length - p.dealt ? hide(c) : c)),
     })),
   };
 }
@@ -454,6 +459,8 @@ export function checkInvariants(state: GameState): string | null {
         if (!stacksOn(above, below)) return `${at} work ${i}: not a descending alternating run`;
       }
     }
+    if (!Number.isInteger(p.dealt) || p.dealt < 0 || p.dealt >= FLIP_COUNT || p.dealt > p.waste.length) return `${at}: bad half-dealt group`;
+    if (p.dealt > 0 && p.stock.length === 0) return `${at}: a group left half-dealt on an empty stock`;
     if (p.holding !== null && !grab(state, p.seat, p.holding)) return `${at}: holding a card they cannot pick up`;
   }
   if (state.slots.length !== SLOTS_PER_PLAYER * state.players.length) return 'wrong number of centre slots';
