@@ -239,6 +239,13 @@ export function home(who: Who = 'me'): void {
   hit(pick(TAPS), { gain: 0.36, rate: rand(0.8, 0.9), dull: 900, who });
 }
 
+/** A move we showed as made was refused after all (somebody got there first): the card's tap, then a soft falling sigh. */
+export function lost(): void {
+  home('me');
+  tone(493.88, { gain: 0.07, dur: 0.22, delay: 0.04, partials: BELL });
+  tone(392, { gain: 0.07, dur: 0.38, delay: 0.16, partials: BELL });
+}
+
 /** Nertz is called: the one loud sound, the same for everyone, landing with the stamp. */
 export function nertz(): void {
   const at = 0.11; // the stamp takes about this long to come down
@@ -316,6 +323,8 @@ function play(cue: Cue): void {
       return clearPile(cue.who);
     case 'home':
       return home(cue.who);
+    case 'lost':
+      return lost();
     case 'nertz':
       return nertz();
     case 'count':

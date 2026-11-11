@@ -232,8 +232,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const span = 7 * h.w + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const mx = (x: number, w = h.w): number => (h.flip ? 2 * h.x + span - x - w : x);
   const rect = (x: number, y: number): Rect => ({ x: mx(x), y, w: h.w, h: ch });
-  const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind) =>
-    out.push({ card, x: mx(x), y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock', pile, mine: h.mine, at: 0, rot: 0 });
+  const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind, down = false) =>
+    out.push({ card, x: mx(x), y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock' && !down, pile, mine: h.mine, at: 0, rot: 0 });
 
   // Nertz pile: lower cards peek out underneath so the pile shows its thickness.
   const lean = 0.55 * s;
@@ -269,7 +269,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // The waste is one squared-up pile: only its top card shows, face-down while a group is being dealt onto it.
   // (The few cards under the top are drawn too, exactly beneath it, so there is something there when the top leaves.)
   const n = p.waste.length;
-  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, h.y, 30 + (i - (n - WASTE_SHOWN)), 'waste');
+  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, h.y, 30 + (i - (n - WASTE_SHOWN)), 'waste', i >= n - p.dealt); // half-dealt: face-down even when the client knows it (a turned-over waste, predicted)
 
   return {
     seat: p.seat,

@@ -132,7 +132,7 @@ describe('sound cues from rendered state', () => {
     expect(s.confirm()).toEqual([]);
   });
 
-  it('a predicted move the server refuses gets the going-home tap when the card comes back, once', () => {
+  it('a predicted move the server refuses (we lost the race) gets its own disappointed sound when the card comes back, once', () => {
     const s = session(rigged());
     const mine = top(s.game, 0, 0);
     expect(s.them(move(top(s.game, 1, 0), slot(3)))).toEqual([{ k: 'centre', who: 'other', rank: 1 }]);
@@ -142,7 +142,7 @@ describe('sound cues from rendered state', () => {
     expect(s.me(move(two, slot(3)))).toEqual([{ k: 'centre', who: 'me', rank: 2 }]);
     // Their snapshot: the pile already holds their 2, so my prediction no longer applies and my card is back.
     const lost = s.them(move(top(s.game, 1, 1), slot(3)));
-    expect(lost).toContainEqual({ k: 'home', who: 'me' });
+    expect(lost).toContainEqual({ k: 'lost' });
     expect(lost).toContainEqual({ k: 'centre', who: 'other', rank: 2 });
     expect(lost).toHaveLength(2);
     expect(s.confirm()).toEqual([]); // the refusal itself changes nothing more
@@ -352,7 +352,7 @@ describe('a table without fixed places', () => {
     expect(s.frame.room!.game!.places[1]).toMatchObject({ x: 0.4, y: 0.3 });
   });
 
-  it('an Ace that lost the race for its patch of felt goes home with the dull tap', () => {
+  it('an Ace that lost the race for its patch of felt goes home with the disappointed sound', () => {
     const s = session(riggedFree());
     const mine = top(s.game, 0, 0);
     const theirs = top(s.game, 1, 2);
@@ -360,7 +360,7 @@ describe('a table without fixed places', () => {
     s.me({ k: 'hold', cardId: mine });
     expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
     const cues = s.confirm();
-    expect(cues).toContainEqual({ k: 'home', who: 'me' });
+    expect(cues).toContainEqual({ k: 'lost' });
     expect(cues).toContainEqual({ k: 'centre', who: 'other', rank: 1 });
     expect(top(s.frame.room!.game!, 0, 0)).toBe(mine);
   });

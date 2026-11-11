@@ -36,6 +36,8 @@ export type Cue =
   | { k: 'clear'; who: Who }
   /** A card went back where it came from: put down nowhere, refused by the server, or taken out of the hand. */
   | { k: 'home'; who: Who }
+  /** A move of ours that we showed as made was refused by the server after all: somebody got there first. */
+  | { k: 'lost' }
   | { k: 'nertz' }
   /** The dealer said go: one tick per number of "1, 2, 3" still to come, each `at` that many seconds from now. */
   | { k: 'count'; at: number[] }
@@ -119,7 +121,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     } else if (to.pile === 'tray') {
       if (from.pile === 'slot') add({ k: 'clear', who: who(b.game.tray[to.i]!.at(-1)!.owner) }, `${to.i}`);
     } else if (from.pile === 'slot' || (from.pile === 'work' && to.pile !== 'work')) {
-      add({ k: 'home', who: who(to.seat) }); // no move goes that way: a predicted one was undone
+      // No move goes that way: a predicted one was undone. Ours: we lost a race for that place.
+      add(who(to.seat) === 'me' ? { k: 'lost' } : { k: 'home', who: who(to.seat) });
     } else if (to.pile === 'work') {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
     } else if (to.pile === 'waste' && from.pile === 'stock') {
