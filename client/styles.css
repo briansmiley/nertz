@@ -1,0 +1,753 @@
+:root {
+  --felt: #17464f;
+  --felt-light: #1f5a63;
+  --felt-dark: #0e2c33;
+  --chalk: #f1ead8;
+  --chalk-dim: rgba(241, 234, 216, 0.62);
+  --paper: #f6efdc;
+  --rule: #b9cbd6;
+  --ink: #1b2733;
+  --ink-soft: #55616c;
+  --marigold: #f2b320;
+  --red: #cf2233;
+  --card: #fffdf7;
+  --ui: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --num: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+  --display: 'Bowlby One', 'Arial Black', Impact, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font: 500 16px/1.45 var(--ui);
+  color: var(--chalk);
+  background-color: var(--felt);
+  /* Felt: a soft pool of light over a fine woven grain. */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 90% 80% at 50% 42%, var(--felt-light) 0%, var(--felt) 52%, var(--felt-dark) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--marigold);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ cards */
+
+.front,
+.back {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 1.5px 2.5px rgba(0, 0, 0, 0.32);
+}
+
+.front {
+  background: var(--card);
+}
+
+.front svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.back {
+  transform: rotateY(180deg);
+  border: 4.5px solid var(--card);
+  background-color: var(--back);
+  background-image:
+    radial-gradient(circle at 50% 50%, var(--back) 0 17%, transparent 17.5%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.85) 0 21%, transparent 21.5%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.3) 0 1.3px, transparent 1.3px 7px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.3) 0 1.3px, transparent 1.3px 7px);
+  box-shadow:
+    inset 0 0 0 1.2px rgba(255, 255, 255, 0.75),
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 1.5px 2.5px rgba(0, 0, 0, 0.32);
+}
+
+/* A card on the table: drawn at 90x126 and moved/scaled by transforms only. */
+.card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 90px;
+  height: 126px;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.card .flip {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.card.grab {
+  cursor: grab;
+}
+
+.card.tap {
+  cursor: pointer;
+}
+
+.dragging .card {
+  cursor: grabbing;
+}
+
+.card.done .front {
+  filter: brightness(0.62) saturate(0.6);
+}
+
+/* A card outside the table (home page, lobby swatches). */
+.mini {
+  position: relative;
+  display: inline-block;
+  width: 90px;
+  height: 126px;
+  flex: none;
+}
+
+.mini .back {
+  transform: none;
+}
+
+/* ------------------------------------------------------------ table */
+
+.table {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.slot {
+  position: absolute;
+  border: 1.5px dashed rgba(241, 234, 216, 0.2);
+  pointer-events: none;
+}
+
+.slot.foundation {
+  border-style: solid;
+  border-color: rgba(241, 234, 216, 0.1);
+  background: rgba(8, 28, 33, 0.22);
+}
+
+.slot.foundation.done::after {
+  content: '';
+  position: absolute;
+  z-index: 9000;
+  left: 50%;
+  top: 50%;
+  width: 34%;
+  aspect-ratio: 2;
+  border: solid var(--marigold);
+  border-width: 0 0 4px 4px;
+  transform: translate(-50%, -70%) rotate(-45deg);
+}
+
+.slot.stock {
+  pointer-events: auto;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.slot.stock svg {
+  width: 44%;
+  fill: rgba(241, 234, 216, 0.22);
+}
+
+.slot.stock.turn {
+  border-color: var(--marigold);
+}
+
+.slot.stock.turn svg {
+  fill: var(--marigold);
+}
+
+.ring {
+  position: absolute;
+  z-index: 9500;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 3px rgba(242, 179, 32, 0.75),
+    0 0 14px 3px rgba(242, 179, 32, 0.35);
+}
+
+.ring.hot {
+  box-shadow:
+    0 0 0 5px var(--marigold),
+    0 0 22px 8px rgba(242, 179, 32, 0.7);
+  background: rgba(242, 179, 32, 0.22);
+}
+
+.chip {
+  display: inline-block;
+  width: 0.72em;
+  height: 1em;
+  border-radius: 2px;
+  border: 1.5px solid var(--card);
+  flex: none;
+  vertical-align: -0.12em;
+}
+
+/* Opponent name line. */
+.tag {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tag .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.tag .pts {
+  font: 700 17px/1 var(--num);
+  color: var(--marigold);
+}
+
+.tag .flag {
+  margin-left: auto;
+  padding: 2px 7px 3px;
+  border-radius: 99px;
+  font-style: normal;
+  font-size: 12px;
+  background: rgba(8, 28, 33, 0.55);
+  color: var(--chalk-dim);
+}
+
+.tag .flag.hot {
+  background: var(--marigold);
+  color: var(--ink);
+}
+
+.tag.away .name,
+.tag.away .pts {
+  opacity: 0.45;
+}
+
+.count {
+  position: absolute;
+  z-index: 9000;
+  min-width: 20px;
+  padding: 0 4px;
+  border-radius: 99px;
+  font: 700 14px/20px var(--num);
+  text-align: center;
+  color: var(--ink);
+  background: var(--chalk);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Your own line, under the nertz pile. */
+.mine {
+  position: absolute;
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1.1;
+  color: var(--chalk-dim);
+  pointer-events: none;
+}
+
+.mine b {
+  font: 700 1.3em/1 var(--num);
+  color: var(--chalk);
+}
+
+.mine .who {
+  margin-top: 6px;
+  color: var(--chalk);
+  font-weight: 600;
+}
+
+.mine .who .chip {
+  margin-right: 6px;
+}
+
+.mine .who b {
+  margin-left: 4px;
+  color: var(--marigold);
+}
+
+.mine .where {
+  font-size: 12.5px;
+}
+
+.stuck {
+  position: absolute;
+  z-index: 9000;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 10px 10px;
+  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  border-radius: 10px;
+  background: rgba(8, 28, 33, 0.35);
+  color: var(--chalk);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.stuck:hover {
+  border-color: var(--chalk);
+}
+
+.stuck small {
+  font-weight: 500;
+  font-size: 12.5px;
+  opacity: 0.75;
+}
+
+.stuck.on {
+  background: var(--marigold);
+  border-color: var(--marigold);
+  color: var(--ink);
+}
+
+.nertz {
+  position: absolute;
+  z-index: 9600;
+  border: 0;
+  border-radius: 50%;
+  translate: -50% -50%;
+  font: 400 clamp(20px, 2.6vw, 34px) / 1 var(--display);
+  color: var(--ink);
+  background: var(--marigold);
+  box-shadow:
+    0 0 0 5px var(--card),
+    0 6px 0 5px rgba(0, 0, 0, 0.35);
+  animation: shout 0.7s ease-in-out infinite alternate;
+}
+
+.nertz:active {
+  translate: -50% calc(-50% + 4px);
+  box-shadow: 0 0 0 5px var(--card);
+}
+
+@keyframes shout {
+  to {
+    scale: 1.08;
+    rotate: -4deg;
+  }
+}
+
+.banner {
+  position: fixed;
+  z-index: 50000;
+  left: 50%;
+  top: 12px;
+  translate: -50% 0;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 99px;
+  background: var(--ink);
+  color: var(--chalk);
+  font-size: 14px;
+}
+
+.banner.low {
+  top: auto;
+  bottom: 12px;
+}
+
+/* ------------------------------------------------------------ score-pad sheets (home, lobby, results) */
+
+.pad {
+  position: relative;
+  width: min(100%, 25rem);
+  padding: 2.4rem 1.75rem 1.6rem 3.1rem;
+  color: var(--ink);
+  background-color: var(--paper);
+  /* Ruled lines and a margin, like the pad the scores get kept on. */
+  background-image:
+    linear-gradient(90deg, transparent 2.2rem, rgba(207, 34, 51, 0.45) 2.2rem, rgba(207, 34, 51, 0.45) calc(2.2rem + 1.5px), transparent calc(2.2rem + 1.5px)),
+    repeating-linear-gradient(transparent 0 calc(2rem - 1px), var(--rule) calc(2rem - 1px) 2rem);
+  background-position:
+    0 0,
+    0 0.9rem;
+  border-radius: 3px;
+  box-shadow:
+    0 1px 0 #e3d9bf,
+    0 2px 0 #cfc4a6,
+    0 14px 30px rgba(0, 0, 0, 0.4);
+  rotate: -0.6deg;
+}
+
+.pad::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0.9rem;
+  border-radius: 3px 3px 0 0;
+  background: var(--red);
+}
+
+.pad.wide {
+  width: min(100%, 37rem);
+}
+
+.pad h2 {
+  margin: 0 0 0.5rem;
+  font: 400 1.65rem/2rem var(--display);
+  letter-spacing: 0.01em;
+}
+
+.pad .code {
+  font-family: var(--num);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.pad h2 .code {
+  font-size: 1.25em;
+  color: var(--red);
+}
+
+.pad form,
+.pad {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.pad h2,
+.pad .lead {
+  margin: 0;
+}
+
+.pad .lead {
+  margin-top: -0.6rem;
+  color: var(--ink-soft);
+}
+
+.pad label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pad label small {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.pad input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  background: #fffdf6;
+  color: var(--ink);
+}
+
+.pad input.code {
+  width: 7.5rem;
+  font-size: 1.3rem;
+  padding-block: 0.3rem;
+  text-transform: uppercase;
+}
+
+.pad input::placeholder {
+  color: #9aa3a8;
+  letter-spacing: inherit;
+}
+
+.go {
+  padding: 0.75rem 1rem 0.85rem;
+  border: 0;
+  border-radius: 8px;
+  font: 400 1.15rem/1.2 var(--display);
+  color: var(--ink);
+  background: var(--marigold);
+  box-shadow: 0 4px 0 #b47f0c;
+}
+
+.go:active:not(:disabled) {
+  translate: 0 3px;
+  box-shadow: 0 1px 0 #b47f0c;
+}
+
+.go:disabled {
+  cursor: default;
+  font-family: var(--ui);
+  font-weight: 600;
+  font-size: 1rem;
+  background: #e2d9c2;
+  color: var(--ink-soft);
+  box-shadow: none;
+}
+
+.quiet {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.quiet:hover {
+  color: var(--ink);
+}
+
+.error,
+.hint,
+.wait {
+  margin: 0;
+}
+
+.error {
+  padding: 0.5rem 0.7rem;
+  border-left: 4px solid var(--red);
+  background: #fbe3df;
+  font-size: 0.95rem;
+}
+
+.hint {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.wait {
+  font-weight: 600;
+}
+
+.invite {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.invite input {
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.invite button {
+  flex: none;
+  min-width: 6.2rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.seats {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seats li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 2.6rem;
+}
+
+.seats .mini {
+  zoom: 0.3;
+}
+
+.seats .name {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.seats .note {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.seats .away .name {
+  opacity: 0.5;
+}
+
+.scores {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.scores th,
+.scores td {
+  height: 2rem;
+  padding: 0 0.4rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.scores thead th {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  vertical-align: bottom;
+}
+
+.scores th:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+
+.scores tbody th {
+  font-weight: 600;
+  font-size: 1.05rem;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scores tbody th .chip {
+  margin-right: 0.5rem;
+  border-color: var(--ink);
+}
+
+.scores td {
+  font: 600 1.15rem/1 var(--num);
+}
+
+.scores td.total {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.scores tr.you th,
+.scores tr.you td {
+  background: rgba(242, 179, 32, 0.3);
+}
+
+/* ------------------------------------------------------------ page layouts */
+
+.solo {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.solo.over {
+  position: fixed;
+  inset: 0;
+  z-index: 40000;
+  overflow: auto;
+  background: rgba(8, 26, 31, 0.6);
+}
+
+.home {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 25rem);
+  align-items: center;
+  gap: clamp(2rem, 6vw, 6rem);
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 2rem clamp(1.25rem, 4vw, 3rem);
+}
+
+.hero h1 {
+  margin: 0;
+  font: 400 clamp(4.5rem, 10.5vw, 9rem) / 0.9 var(--display);
+  letter-spacing: -0.01em;
+  color: var(--chalk);
+  text-shadow: 0 0.045em 0 rgba(0, 0, 0, 0.3);
+  rotate: -3deg;
+  transform-origin: 0 100%;
+}
+
+.hero p {
+  max-width: 30rem;
+  margin: 1.6rem 0 0;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+
+/* Six decks, one per player, fanned with the ace of spades on top. */
+.spread {
+  display: flex;
+  height: 150px;
+  margin: 0 0 1.5rem 0.5rem;
+}
+
+.spread .mini {
+  margin-right: -38px;
+  transform-origin: 50% 130%;
+  rotate: calc((var(--i) - 3) * 7deg);
+  translate: 0 calc((var(--i) - 3) * (var(--i) - 3) * 2.4px);
+  animation: deal 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i) * 55ms);
+}
+
+@keyframes deal {
+  from {
+    rotate: 0deg;
+    translate: -40vw -30vh;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .home {
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+
+  .spread {
+    zoom: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spread .mini,
+  .nertz {
+    animation: none;
+  }
+}
