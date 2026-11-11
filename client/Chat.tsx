@@ -16,7 +16,7 @@ const EDGE = 10;
 
 /**
  * How wide the open panel may be: during a round, the free felt between the
- * window's left edge and your hand or the disc in the middle, whichever is nearer, so
+ * window's left edge and your hand or the felt in the middle, whichever is nearer, so
  * it covers no pile. In a window too small for that it is NARROWEST and can
  * lie over the edge of your nertz pile until it is hidden again.
  */

@@ -1,15 +1,15 @@
 // The end of a round, played on the table: every card that reached the middle
-// is washed on the disc (spread and swirled, backs up), then the wash is drawn
-// in to the middle of the disc and sorted into one pile per player, each out
-// in front of its player's seat as this window sees the table. Up to ~300
+// is washed on the felt (spread and swirled, backs up), then the wash is drawn
+// in to the middle of the felt and sorted into one pile per player, each out
+// in front of its player's hand as this window draws the seating. Up to ~300
 // cards move at once, so they are drawn on one canvas from pre-rendered back
 // sprites instead of being 300 animated elements; the labels beside the piles
 // are ordinary DOM.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { seatDir, toView } from '../shared/table';
+import { offFelt, TABLE } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backColour, CARD_H, CARD_W } from './cards/Face';
-import { TAG_H, type Layout, type Rect } from './layout';
+import { seatDir, TAG_H, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 800, out: 900, wash: 2400, sortEach: 1500, hold: 6500 };
@@ -17,14 +17,14 @@ export const TIMING = { flip: 800, out: 900, wash: 2400, sortEach: 1500, hold: 6
 export const sortMs = (n: number): number => n * TIMING.sortEach;
 const SPREAD_MS = 560; // a card's trip from its pile out into the wash
 const LAND_MS = 420; // a card's trip from the wash onto its owner's pile
-const DRAW_IN_MS = 520; // the wash is drawn in to the middle of the disc as the sorting starts
+const DRAW_IN_MS = 520; // the wash is drawn in to the middle of the felt as the sorting starts
 const SWIRL = 2.5; // radians the wash turns through
 /** The label beside a sorted pile (name, played, penalty, net score): it is laid out in a box of exactly this size. */
 export const LABEL = { w: 176, h: 62 };
-/** Clear felt between a sorted pile and the rim of the disc, and between it and the wash or its label. */
+/** Clear felt between a sorted pile and the edge of the felt, and between it and the wash or its label. */
 const RIM = 5;
 const GAP = 6;
-/** How far the cards of the drawn-in wash still stray from the middle line of the disc. */
+/** How far the cards of the drawn-in wash still stray from the middle line of the felt. */
 const CORE_RY = 5;
 /** A sorted pile leans as it grows, so its thickness shows: up by at most this share of its height, and 0.4 of that to the left. */
 const LEAN = 0.16;
@@ -100,9 +100,9 @@ export interface Plan {
   /** A card in the wash. */
   w: number;
   h: number;
-  /** A card in a sorted pile, as a share of that (smaller where the disc is low for its cards: a table for two). */
+  /** A card in a sorted pile, as a share of that (smaller where the felt is low for its cards: a table for two). */
   scale: number;
-  /** The middle of the disc, and how far from it the centres of the washed cards go. */
+  /** The middle of the felt, and how far from it the centres of the washed cards go. */
   cx: number;
   cy: number;
   rx: number;
@@ -118,18 +118,18 @@ const overlap = (a: Rect, b: Rect): number =>
 /**
  * Geometry of the whole sequence. Pure, so a resize mid-way just continues with new numbers.
  *
- * The wash turns on the disc. Each player's pile is then gathered on the rim
- * of the disc, out in front of that player's seat as this window draws the
- * table: yours at the bottom, everyone else's where they sit. The label goes
- * beside its pile, on whichever side is clear of every hand, the tray, the
- * wash, the other piles and the other labels.
+ * The wash turns on the felt. Each player's pile is then gathered at the edge
+ * of the felt, out towards that player's chair as this window seats them:
+ * yours at the bottom, everyone else's round the table from there. The label goes beside
+ * its pile, on whichever side is clear of every hand, the tray, the wash, the
+ * other piles and the other labels.
  */
 export function planFinale(L: Layout, game: GameState): Plan {
   const w = L.fs * CARD_W;
   const h = L.fs * CARD_H;
-  const d = L.disc;
+  const d = { cx: L.felt.cx, cy: L.felt.cy, rx: TABLE.hw * L.felt.u, ry: L.felt.u };
   const n = game.players.length;
-  // The drawn-in wash is a low heap along the middle of the disc. What is left of the disc's height above and below
+  // The drawn-in wash is a low heap along the middle of the felt. What is left of the felt's height above and below
   // it is what a pile in front of the seats at the top and the bottom can have.
   const coreHalf = h / 2 + CORE_RY;
   const scale = Math.max(0.45, Math.min(1, (d.ry - RIM - GAP - coreHalf) / h));
@@ -138,13 +138,14 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const core = { rx: Math.max(pw, d.rx * (n > 3 ? 0.2 : 0.26)), ry: CORE_RY };
   const heap: Rect = { x: d.cx - core.rx - w / 2, y: d.cy - coreHalf, w: 2 * core.rx + w, h: 2 * coreHalf };
 
-  // A pile goes as far out towards its seat as it still lies on the disc.
-  const onDisc = (cx: number, cy: number): boolean =>
-    [-1, 1].every((sx) => [-1, 1].every((sy) => Math.hypot((cx + (sx * pw) / 2 - d.cx) / (d.rx - RIM), (cy + (sy * ph) / 2 - d.cy) / (d.ry - RIM)) <= 1));
+  // A pile goes out towards its player's chair (as this window seats them: `seatDir`), as far as it still lies on the felt.
+  const onFelt = (cx: number, cy: number): boolean => offFelt({ x: (Math.abs(cx - d.cx) + pw / 2) / L.felt.u, y: (Math.abs(cy - d.cy) + ph / 2) / L.felt.u }) <= -RIM / L.felt.u;
+  // Someone who is not in the round watches from the first player's chair.
+  const view = Math.max(0, game.players.findIndex((p) => p.seat === L.me?.seat));
   const spots = game.players.map((p, i) => {
-    const v = toView(seatDir(i, n), d.i, n);
-    let k = 0.96;
-    while (k > 0.3 && !onDisc(d.cx + v.x * d.rx * k, d.cy + v.y * d.ry * k)) k -= 0.01;
+    const v = seatDir((i - view + n) % n, n);
+    let k = 1.5;
+    while (k > 0.3 && !onFelt(d.cx + v.x * d.rx * k, d.cy + v.y * d.ry * k)) k -= 0.005;
     return { seat: p.seat, v, x: d.cx + v.x * d.rx * k - pw / 2, y: d.cy + v.y * d.ry * k - ph / 2, w: pw, h: ph };
   });
 
@@ -169,7 +170,8 @@ export function planFinale(L: Layout, game: GameState): Plan {
     const near: LabelSide = far === 'below' ? 'above' : 'below';
     const flushFar = far === 'below' ? pile.y + ph - LABEL.h : pile.y;
     const flushNear = far === 'below' ? pile.y : pile.y + ph - LABEL.h;
-    const ys = [mid.y - LABEL.h / 2, flushFar, flushNear];
+    // (...or, where neighbours' labels are in the way of all that, half a label up or down: still right beside the pile.)
+    const ys = [mid.y - LABEL.h / 2, flushFar, flushNear, mid.y - LABEL.h, mid.y];
     const xs = [mid.x - LABEL.w / 2, outer === 'right' ? pile.x : pile.x + pw - LABEL.w, outer === 'right' ? pile.x + pw - LABEL.w : pile.x];
     const options: { side: LabelSide; box: Rect; cost: number }[] = [];
     for (const side of [outer, inner, far, near]) {
@@ -180,7 +182,9 @@ export function planFinale(L: Layout, game: GameState): Plan {
         options.push({ side, box, cost });
       }
     }
-    return options;
+    // Places that lie over nothing are all that is tried, while there are any.
+    const clear = options.filter((o) => o.cost === 0);
+    return clear.length > 0 ? clear : options;
   });
   // One label per pile with nothing overlapping, each on the best side that allows it: a search, since the first
   // pile's favourite place may be the only one left for another's (there are at most six piles and twelve places
@@ -190,7 +194,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const pick: (typeof labels)[number][] = [];
   let tries = 0;
   const search = (i: number, cost: number): void => {
-    if (cost >= least || ++tries > 20000) return;
+    if (cost >= least || ++tries > 200000) return;
     if (i === choices.length) {
       least = cost;
       labels = [...pick];
@@ -218,7 +222,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const shuffled = movers.map((mv, i) => ({ mv, o: order[i]! })).sort((a, b) => a.o - b.o).map((e) => e.mv);
   shuffled.forEach((mv, i) => {
     mv.angle = noise(i, 2) * Math.PI * 2;
-    mv.radius = Math.sqrt(0.04 + 0.96 * noise(i, 3)); // even over the disc
+    mv.radius = Math.sqrt(0.04 + 0.96 * noise(i, 3)); // even over the felt
     mv.spin = (noise(i, 4) - 0.5) * 2.4 * Math.PI;
     mv.delay = noise(i, 5);
     mv.tilt = (noise(i, 6) - 0.5) * TILT;
@@ -227,7 +231,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   for (const mv of shuffled) mv.of = piles[mv.pile]!.total;
   const span = Math.hypot(w, h) / 2 + 8; // a card turned to any angle, plus its shadow
   const area: Rect = { x: Math.floor(d.cx - d.rx - span), y: Math.floor(d.cy - d.ry - span), w: Math.ceil(2 * (d.rx + span)), h: Math.ceil(2 * (d.ry + span)) };
-  // The wash keeps to the disc: the centres of its cards stay well inside the rim.
+  // The wash keeps to the felt: an oval well inside its edge, clear of the rounded corners.
   return { area, movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), core, heap };
 }
 
@@ -298,7 +302,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   const landed = plan.piles.map(() => 0);
   const u = clamp01(t / TIMING.wash);
   const turn = SWIRL * easeInOut(u);
-  // When the swirl is done the wash is drawn in to a heap along the middle of the disc, clear of where the piles go.
+  // When the swirl is done the wash is drawn in to a heap along the middle of the felt, clear of where the piles go.
   const drawn = easeInOut(clamp01((t - TIMING.wash) / DRAW_IN_MS));
   const rx = lerp(plan.rx, plan.core.rx, drawn);
   const ry = lerp(plan.ry, plan.core.ry, drawn);
@@ -326,7 +330,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
       resting.push([mv, px, py, mv.tilt, plan.scale]);
       continue;
     }
-    // In the wash: out from its pile to a spot on the disc, which then turns (the inside faster) and breathes.
+    // In the wash: out from its pile to a spot on the felt, which then turns (the inside faster) and breathes.
     const spread = easeOut(clamp01((t - mv.delay * 280) / SPREAD_MS));
     const a = mv.angle + turn * (1.3 - 0.75 * mv.radius);
     const r = mv.radius * (1 + 0.1 * Math.sin(u * Math.PI * 3 + mv.angle * 3) * (1 - drawn));

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
-import { CARD_RATIO, seatDir, toView, type TableMode } from '../shared/table';
+import { CARD_RATIO, cardSize, offFelt, pileGap, TABLE, type TableMode } from '../shared/table';
 import type { Card, GameState } from '../shared/types';
 import { LABEL, planFinale, restAt, TILT } from './Finale';
-import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
+import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
@@ -28,13 +28,19 @@ const WINDOWS: [number, number][] = [
 const slotsOf = (L: Layout) => L.slots.filter((r) => r !== null);
 /** An opponent's hand with the name line above it. */
 const tagged = (o: { box: Rect }): Rect => ({ ...o.box, y: o.box.y - TAG_H, h: o.box.h + TAG_H });
-/** Is any point of the rectangle on the disc as drawn (an ellipse)? */
-const onEllipse = (L: Layout, r: Rect): boolean => {
-  const d = L.disc;
-  const x = Math.max(r.x, Math.min(d.cx, r.x + r.w));
-  const y = Math.max(r.y, Math.min(d.cy, r.y + r.h));
-  return ((x - d.cx) / d.rx) ** 2 + ((y - d.cy) / d.ry) ** 2 < 1;
+/** Is any point of the rectangle on the felt as drawn? (Nearer than the corner radius to the felt's inner box.) */
+const onFelt = (L: Layout, r: Rect): boolean => {
+  const [a, b] = [toTable(L.felt, r.x, r.y), toTable(L.felt, r.x + r.w, r.y + r.h)];
+  const apart = (lo: number, hi: number, half: number) => Math.max(0, lo - half, -half - hi);
+  return Math.hypot(apart(a.x, b.x, TABLE.hw - TABLE.corner), apart(a.y, b.y, 1 - TABLE.corner)) < TABLE.corner;
 };
+const cornersOf = (r: Rect) => [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]] as const;
+/** The windows the table is checked in for the size of its cards. */
+const DESKTOPS: [number, number][] = [
+  [1280, 720],
+  [1440, 900],
+  [1920, 1080],
+];
 
 /** Moves every player's whole spade suit into the tray and three hearts into slot 1, as if they had been played. */
 function played(game: GameState): GameState {
@@ -54,7 +60,7 @@ function played(game: GameState): GameState {
 }
 
 describe('table layout', () => {
-  it('seats 2 to 6 players around the disc with nothing overlapping anything, from every chair', () => {
+  it('seats 2 to 6 players around the felt with nothing overlapping anything, from every chair', () => {
     for (const [W, H] of WINDOWS) {
       for (let n = 2; n <= 6; n++) {
         const game = deal(seats(n), rng(n));
@@ -78,20 +84,22 @@ describe('table layout', () => {
             expect(r.x + r.w, at).toBeLessThanOrEqual(W);
             expect(r.y + r.h, at).toBeLessThanOrEqual(H);
           }
-          // The disc is in the middle of the window, on screen, and no hand, tray or corner reaches onto it.
-          expect(L.disc.cx, at).toBeCloseTo(W / 2);
-          expect(L.disc.cy - L.disc.ry, at).toBeGreaterThan(0);
-          expect(L.disc.cy + L.disc.ry, at).toBeLessThan(me.y);
-          for (const r of things) expect(onEllipse(L, r), at).toBe(false);
-          // The piles: 4 per player, each wholly on the disc, no two touching, none tiny.
+          // The felt is in the middle of the window, on screen, above your hand, and no hand, tray or corner reaches onto it.
+          expect(L.felt.cx, at).toBeCloseTo(W / 2);
+          expect(L.middle, at).toEqual({ x: L.felt.cx - TABLE.hw * L.felt.u, y: L.felt.cy - L.felt.u, w: 2 * TABLE.hw * L.felt.u, h: 2 * L.felt.u });
+          expect(L.middle.x, at).toBeGreaterThan(0);
+          expect(L.middle.y, at).toBeGreaterThan(0);
+          expect(L.middle.x + L.middle.w, at).toBeLessThan(W);
+          expect(L.middle.y + L.middle.h, at).toBeLessThan(me.y);
+          for (const r of things) expect(onFelt(L, r), at).toBe(false);
+          // The piles: 4 per player, each wholly on the felt, no two touching, none small.
           const piles = slotsOf(L);
           expect(piles, at).toHaveLength(4 * n);
           for (const [i, a] of piles.entries()) {
-            expect(a.w, at).toBeGreaterThan(n === 5 ? 26 : 32);
+            expect(a.w, at).toBeGreaterThan(W >= 1280 ? 43 : 31); // (the small laptop: its side hands leave the felt less width)
+            expect(a.w, at).toBeCloseTo(cardSize(n).w * L.felt.u);
             expect(a.h / a.w, at).toBeCloseTo(CARD_H / CARD_W);
-            for (const [x, y] of [[a.x, a.y], [a.x + a.w, a.y], [a.x, a.y + a.h], [a.x + a.w, a.y + a.h]] as const) {
-              expect(((x - L.disc.cx) / L.disc.rx) ** 2 + ((y - L.disc.cy) / L.disc.ry) ** 2, at).toBeLessThanOrEqual(1.0001);
-            }
+            for (const [x, y] of cornersOf(a)) expect(offFelt(toTable(L.felt, x, y)), at).toBeLessThanOrEqual(1e-9);
             for (const b of piles.slice(i + 1)) expect(overlap({ x: a.x - 2, y: a.y - 2, w: a.w + 4, h: a.h + 4 }, b), at).toBe(false);
           }
           // The tray: as much of it beyond the right edge as on the table, beside your hand.
@@ -103,50 +111,77 @@ describe('table layout', () => {
     expect(CARD_RATIO).toBeCloseTo(CARD_H / CARD_W); // the table's idea of a card is the one that is drawn
   });
 
-  it('is one table for everybody, turned to each chair: positions agree in table space', () => {
-    for (const [W, H] of [[1280, 720], [1440, 900]] as const) {
+  it('cards in the middle are a good size at desktop sizes, whichever way the piles are placed: 44px and up at 1280x720', () => {
+    const sizes: Record<string, number[]> = {};
+    for (const [W, H] of DESKTOPS) {
+      sizes[`${W}x${H}`] = [2, 3, 4, 5, 6].map((n) => {
+        const free = computeLayout(W, H, deal(seats(n), rng(n), 'free'), 0);
+        const grid = computeLayout(W, H, deal(seats(n), rng(n), 'spots'), 0);
+        expect(free.fs).toBe(grid.fs); // one size of card for both kinds of table
+        expect(free.felt).toEqual(grid.felt);
+        // Never larger than your own cards, and not much smaller than half of them even with six at the table.
+        expect(free.fs).toBeLessThanOrEqual(free.me!.s);
+        expect(free.fs).toBeGreaterThan(free.me!.s * 0.42);
+        return Math.round(free.fs * CARD_W * 10) / 10;
+      });
+    }
+    // The widths, in px, for 2, 3, 4, 5 and 6 players. (Before the felt stopped being turned for every seat, 1280x720
+    // had 65/52/42/30/37 with marked places and 49/37/34/26/28 without.)
+    expect(sizes).toEqual({
+      '1280x720': [46.3, 48.6, 48.7, 44.9, 43.9],
+      '1440x900': [71, 73.8, 55, 49.2, 47.3],
+      '1920x1080': [95.7, 95.7, 74, 69.1, 68.1],
+    });
+  });
+
+  it('is one felt for everybody, the same way up from every chair: only the seating differs', () => {
+    for (const [W, H] of [[1280, 720], [1440, 900], [1920, 1080]] as const) {
       for (let n = 2; n <= 6; n++) {
         const game = deal(seats(n), rng(n));
         const layouts = seats(n).map((you) => computeLayout(W, H, game, you));
         for (const [you, L] of layouts.entries()) {
-          // You are at the bottom: your hand lies straight below the disc, and the disc is turned to your seat.
-          expect(L.disc.i).toBe(you);
-          expect(L.me!.box.y).toBeGreaterThan(L.disc.cy + L.disc.ry);
+          // The same felt in the same place of the window, and every pile at the same place on it, whoever looks.
+          expect(L.felt).toEqual(layouts[0]!.felt);
+          expect(L.slots).toEqual(layouts[0]!.slots);
+          expect(L.fs).toBe(layouts[0]!.fs);
           L.slots.forEach((r, i) => {
             const c = { x: r!.x + r!.w / 2, y: r!.y + r!.h / 2 };
-            // Each pile is drawn at its place in table space, as this chair sees it...
-            const v = toView(game.places[i]!, you, n);
-            expect((c.x - L.disc.cx) / L.disc.rx).toBeCloseTo(v.x, 6);
-            expect((c.y - L.disc.cy) / L.disc.ry).toBeCloseTo(v.y, 6);
-            // ...so the point of the table under it is the same point from every chair.
-            const p = toTable(L.disc, c.x, c.y);
+            // Each pile is drawn at its place in table space: so far across and so far down the felt, not turned.
+            expect((c.x - L.felt.cx) / L.felt.u).toBeCloseTo(game.places[i]!.x, 6);
+            expect((c.y - L.felt.cy) / L.felt.u).toBeCloseTo(game.places[i]!.y, 6);
+            const p = toTable(L.felt, c.x, c.y);
             expect(p.x).toBeCloseTo(game.places[i]!.x, 6);
             expect(p.y).toBeCloseTo(game.places[i]!.y, 6);
           });
-          // Everyone else is where their seat is: to the left of the middle if they sit to your left, above if across.
-          for (const o of L.opponents) {
-            const dir = toView(seatDir(o.seat, n), you, n);
-            const from = { x: o.box.x + o.box.w / 2 - L.disc.cx, y: o.box.y + o.box.h / 2 - L.disc.cy };
+          // You are at the bottom: your hand lies straight below the felt.
+          expect(L.me!.seat).toBe(you);
+          expect(L.me!.box.y).toBeGreaterThan(L.middle.y + L.middle.h);
+          expect(L.me!.box.x + L.me!.box.w / 2).toBeCloseTo(W / 2);
+          // Everyone else in seat order, clockwise from your left: where the kth chair round a table from yours is.
+          expect(L.opponents.map((o) => o.seat)).toEqual(seats(n - 1).map((k) => (you + 1 + k) % n));
+          L.opponents.forEach((o, k) => {
+            const dir = seatDir(k + 1, n);
+            const from = { x: o.box.x + o.box.w / 2 - L.felt.cx, y: o.box.y + o.box.h / 2 - L.felt.cy };
             if (Math.abs(dir.x) > 0.3) expect(Math.sign(from.x)).toBe(Math.sign(dir.x));
-            if (dir.y < -0.4) expect(from.y).toBeLessThan(-L.disc.ry);
-          }
-        }
-        if (n % 2 === 0) {
-          // The player opposite sees it all the other way up: the pile nearest me is the farthest from them.
-          const [mine, theirs] = [layouts[0]!, layouts[n / 2]!];
-          const depth = (L: Layout, i: number) => (L.slots[i]!.y + L.slots[i]!.h / 2 - L.disc.cy) / L.disc.ry;
-          const across = (L: Layout, i: number) => (L.slots[i]!.x + L.slots[i]!.w / 2 - L.disc.cx) / L.disc.rx;
-          game.places.forEach((_, i) => {
-            expect(depth(theirs, i)).toBeCloseTo(-depth(mine, i), 6);
-            expect(across(theirs, i)).toBeCloseTo(-across(mine, i), 6);
+            if (dir.y < -0.4) expect(o.box.y + o.box.h).toBeLessThan(L.middle.y); // across: along the top edge
+            else expect(Math.abs(from.x)).toBeGreaterThan(TABLE.hw * L.felt.u); // a neighbour: beside the felt
           });
-          const nearest = seats(4 * n).reduce((a, b) => (depth(mine, a) > depth(mine, b) ? a : b));
-          expect(seats(4 * n).every((i) => depth(theirs, i) >= depth(theirs, nearest) - 1e-9)).toBe(true);
-          // And each sits at the top of the other's screen.
-          expect(mine.opponents.find((o) => o.seat === n / 2)!.box.y).toBeLessThan(mine.disc.cy - mine.disc.ry);
-          expect(theirs.opponents.find((o) => o.seat === 0)!.box.y).toBeLessThan(theirs.disc.cy - theirs.disc.ry);
+        }
+        // The hands are where they are for the chair, not for the player: every chair sees the same arrangement of
+        // hands, with different people in them.
+        for (const L of layouts) expect(L.opponents.map((o) => [o.box.x, o.box.y, o.flip])).toEqual(layouts[0]!.opponents.map((o) => [o.box.x, o.box.y, o.flip]));
+        if (n % 2 === 0) {
+          // The player opposite is at the top of my screen and I am at the top of theirs; the piles are where they are for both.
+          const [mine, theirs] = [layouts[0]!, layouts[n / 2]!];
+          expect(mine.opponents.find((o) => o.seat === n / 2)!.box.y).toBeLessThan(mine.middle.y);
+          expect(theirs.opponents.find((o) => o.seat === 0)!.box.y).toBeLessThan(theirs.middle.y);
         }
       }
+    }
+    expect(seatDir(0, 4)).toEqual({ x: -0, y: 1 }); // your own chair: straight down
+    for (const [k, n, x, y] of [[1, 4, -1, 0], [2, 4, 0, -1], [3, 4, 1, 0], [1, 2, 0, -1], [1, 6, -Math.sin(Math.PI / 3), 0.5]] as const) {
+      expect(seatDir(k, n).x).toBeCloseTo(x);
+      expect(seatDir(k, n).y).toBeCloseTo(y);
     }
   });
 
@@ -156,7 +191,7 @@ describe('table layout', () => {
       expect(L.me!.flip).toBe(false);
       expect(L.me!.nertz.x).toBeLessThan(L.me!.stock.x);
       for (const o of L.opponents) {
-        const across = o.box.y < L.disc.cy - L.disc.ry; // along the top edge
+        const across = o.box.y < L.middle.y; // along the top edge
         expect(o.flip).toBe(across);
         // Their left is your right: the nertz pile, leftmost for its owner, is at the right-hand end.
         expect(o.nertz.x < o.stock.x).toBe(!across);
@@ -175,49 +210,64 @@ describe('table layout', () => {
       expect(L.opponents).toHaveLength(n);
       const hands = L.opponents.map(tagged);
       for (const [i, a] of hands.entries()) {
-        expect(onEllipse(L, a)).toBe(false);
+        expect(onFelt(L, a)).toBe(false);
         expect(a.y + a.h).toBeLessThanOrEqual(720);
         for (const b of hands.slice(i + 1)) expect(overlap(a, b)).toBe(false);
       }
-      expect(L.opponents[0]!.box.y).toBeGreaterThan(L.disc.cy + L.disc.ry);
+      expect(L.opponents[0]!.box.y).toBeGreaterThan(L.middle.y + L.middle.h);
       expect(slotsOf(L)).toHaveLength(4 * n);
     }
   });
 
-  it('maps table space to the screen and back exactly, on the disc and off it', () => {
-    const L = computeLayout(1280, 720, deal(seats(5), rng(5)), 3);
-    for (const p of [{ x: 0, y: 0 }, { x: 0.3, y: -0.8 }, { x: -1, y: 0 }, { x: 2.5, y: 1.7 }]) {
-      const s = toScreen(L.disc, p);
-      const back = toTable(L.disc, s.x, s.y);
+  it('maps table space to the screen and back exactly, on the felt and off it, the same from every chair', () => {
+    const game = deal(seats(5), rng(5));
+    const L = computeLayout(1280, 720, game, 3);
+    for (const p of [{ x: 0, y: 0 }, { x: 0.3, y: -0.8 }, { x: -TABLE.hw, y: 0 }, { x: 4.5, y: 1.7 }]) {
+      const s = toScreen(L.felt, p);
+      const back = toTable(L.felt, s.x, s.y);
       expect(back.x).toBeCloseTo(p.x, 9);
       expect(back.y).toBeCloseTo(p.y, 9);
+      // The same point of the table is the same point of the window for every player (in windows of one size).
+      for (let you = 0; you < 5; you++) expect(toScreen(computeLayout(1280, 720, game, you).felt, p)).toEqual(s);
     }
-    // The centre of the table is the centre of the ellipse; the edge of the disc is the edge of the ellipse.
-    expect(toScreen(L.disc, { x: 0, y: 0 })).toEqual({ x: L.disc.cx, y: L.disc.cy });
-    for (let a = 0; a < 6.28; a += 0.4) {
-      const s = toScreen(L.disc, { x: Math.cos(a), y: Math.sin(a) });
-      expect(((s.x - L.disc.cx) / L.disc.rx) ** 2 + ((s.y - L.disc.cy) / L.disc.ry) ** 2).toBeCloseTo(1, 9);
+    // The centre of the table is the centre of the felt; one unit is the same distance across and down; the felt's
+    // box is its box as drawn.
+    expect(toScreen(L.felt, { x: 0, y: 0 })).toEqual({ x: L.felt.cx, y: L.felt.cy });
+    expect(toScreen(L.felt, { x: 1, y: 1 })).toEqual({ x: L.felt.cx + L.felt.u, y: L.felt.cy + L.felt.u });
+    expect(toScreen(L.felt, { x: -TABLE.hw, y: -1 })).toEqual({ x: L.middle.x, y: L.middle.y });
+    // In a larger window the felt is larger and somewhere else, and the same point of the table is still the same
+    // share of the way across and down it.
+    const big = computeLayout(1920, 1080, game, 0);
+    expect(big.felt.u).toBeGreaterThan(L.felt.u);
+    for (const p of [{ x: 1.3, y: -0.4 }, { x: -2, y: 0.7 }]) {
+      const [a, b] = [toScreen(L.felt, p), toScreen(big.felt, p)];
+      expect((a.x - L.middle.x) / L.middle.w).toBeCloseTo((b.x - big.middle.x) / big.middle.w, 9);
+      expect((a.y - L.middle.y) / L.middle.h).toBeCloseTo((b.y - big.middle.y) / big.middle.h, 9);
     }
-    // My own seat is straight down from the middle, whichever seat I have.
-    const mine = toScreen(L.disc, seatDir(3, 5));
-    expect(mine.x).toBeCloseTo(L.disc.cx, 6);
-    expect(mine.y).toBeCloseTo(L.disc.cy + L.disc.ry, 6);
   });
 
-  it('on a table without fixed places, draws a pile exactly where it was put down and nothing where there is none', () => {
+  it('on a table without marked places, draws a pile exactly where it was put down and nothing where there is none', () => {
     const game = deal(seats(4), rng(4), 'free');
     const ace = (owner: number): Card => ({ id: `ace${owner}`, owner, suit: 'S', rank: 1 });
-    const placed: GameState = { ...game, slots: game.slots.map((s, i) => (i === 2 ? [ace(0)] : s)), places: game.places.map((at, i) => (i === 2 ? { x: 0.25, y: -0.4, r: 1.5 } : at)) };
+    const placed: GameState = { ...game, slots: game.slots.map((s, i) => (i === 2 ? [ace(0)] : s)), places: game.places.map((at, i) => (i === 2 ? { x: 1.25, y: -0.4, r: 1.5 } : at)) };
     const L = computeLayout(1280, 720, placed, 1);
     expect(L.slots.map((r) => r !== null)).toEqual(seats(16).map((i) => i === 2));
     const r = L.slots[2]!;
-    const p = toTable(L.disc, r.x + r.w / 2, r.y + r.h / 2);
-    expect([p.x, p.y]).toEqual([expect.closeTo(0.25, 6), expect.closeTo(-0.4, 6)]);
+    const p = toTable(L.felt, r.x + r.w / 2, r.y + r.h / 2);
+    expect([p.x, p.y]).toEqual([expect.closeTo(1.25, 6), expect.closeTo(-0.4, 6)]);
     expect(r.rot).toBe(1.5);
     const card = L.cards.find((c) => c.card.id === 'ace0')!;
     expect([card.x, card.y, card.rot, card.pile, card.at]).toEqual([r.x, r.y, 1.5, 'slot', 2]);
-    // Cards are smaller than on a table with spots, so that piles put down carelessly still all fit.
-    expect(r.w).toBeLessThan(computeLayout(1280, 720, deal(seats(4), rng(4)), 1).slots[0]!.w);
+    // Everyone has it at that very place, and the same size as on a table with marked places.
+    for (let you = 0; you < 4; you++) expect(computeLayout(1280, 720, placed, you).slots[2]).toEqual(r);
+    expect(r.w).toBe(computeLayout(1280, 720, deal(seats(4), rng(4)), 1).slots[0]!.w);
+    // What is drawn is what the rules go by: the card's rectangle on screen is its footprint in table space, and
+    // the room a pile keeps round it is the same number of px all round.
+    const size = cardSize(4);
+    expect(r.w / L.felt.u).toBeCloseTo(size.w, 9);
+    expect(r.h / L.felt.u).toBeCloseTo(size.h, 9);
+    expect(pileGap(4) * L.felt.u).toBeGreaterThan(4);
+    expect(pileGap(4) * L.felt.u).toBeLessThan(r.w * 0.2);
   });
 
   it('keeps the tray where it is whatever is in it, shows the near side of every pile, and takes a drop anywhere out to the edge', () => {
@@ -312,7 +362,7 @@ describe('table layout', () => {
     for (const [i, a] of plan.piles.entries()) for (const b of plan.piles.slice(i + 1)) expect(overlap(a, b)).toBe(false);
   });
 
-  it('gathers each pile out in front of its player, on the disc and clear of the wash, with a label that touches nothing else: 2 to 6 players, every chair', () => {
+  it('gathers each pile out in front of its player, on the felt and clear of the wash, with a label that touches nothing else: 2 to 6 players, every chair', () => {
     for (const [W, H] of [[1280, 720], [1440, 900]] as const) {
       for (const centre of ['spots', 'free'] as const) {
         for (let n = 2; n <= 6; n++) {
@@ -321,25 +371,27 @@ describe('table layout', () => {
             const L = computeLayout(W, H, game, you, 'wash');
             const plan = planFinale(L, game);
             const where = `${n} players at ${W}x${H} (${centre}), seat ${you}`;
-            const d = L.disc;
+            const d = { cx: L.felt.cx, cy: L.felt.cy, rx: TABLE.hw * L.felt.u, ry: L.felt.u };
             expect(plan.piles.map((p) => p.seat), where).toEqual(game.players.map((p) => p.seat));
             const hands = [...L.opponents.map(tagged), { ...L.me!.box, h: H - L.me!.box.y }];
             for (const [i, pile] of plan.piles.entries()) {
               const at = `${where}, pile of seat ${pile.seat}`;
-              // On the disc, every corner of it.
-              for (const [x, y] of [[pile.x, pile.y], [pile.x + pile.w, pile.y], [pile.x, pile.y + pile.h], [pile.x + pile.w, pile.y + pile.h]] as const) {
-                expect(((x - d.cx) / d.rx) ** 2 + ((y - d.cy) / d.ry) ** 2, at).toBeLessThan(1);
-              }
-              // Out towards its own seat: the way from the middle of the disc to the pile is the way to that player
-              // (as this chair sees the table), most of the way to the rim, so nearer to them than to anyone else.
-              const v = toView(seatDir(i, n), game.players.findIndex((p) => p.seat === you), n);
+              // On the felt, every corner of it.
+              for (const [x, y] of cornersOf(pile)) expect(offFelt(toTable(L.felt, x, y)), at).toBeLessThan(0);
+              // Out towards its own player's chair as this window seats them: the way from the middle of the felt
+              // to the pile is the way to that chair, as far out as the felt goes, so nearer to them than to anyone else.
+              const v = seatDir((i - you + n) % n, n);
               const out = { x: (pile.x + pile.w / 2 - d.cx) / d.rx, y: (pile.y + pile.h / 2 - d.cy) / d.ry };
               expect(Math.hypot(out.x, out.y), at).toBeGreaterThan(0.45);
               expect((out.x * v.x + out.y * v.y) / Math.hypot(out.x, out.y), at).toBeGreaterThan(0.999);
+              // A little further out that way and it would hang over the edge.
+              const far = Math.hypot(out.x * d.rx, out.y * d.ry) / 16;
+              const on = { x: (out.x * d.rx) / far, y: (out.y * d.ry) / far };
+              expect(cornersOf({ ...pile, x: pile.x + on.x, y: pile.y + on.y }).some(([x, y]) => offFelt(toTable(L.felt, x, y)) > 0), at).toBe(true);
               const hand = pile.seat === you ? L.me! : L.opponents.find((o) => o.seat === pile.seat)!;
               const gap = (r: Rect) => Math.hypot(Math.max(r.x - (pile.x + pile.w / 2), 0, pile.x + pile.w / 2 - (r.x + r.w)), Math.max(r.y - (pile.y + pile.h / 2), 0, pile.y + pile.h / 2 - (r.y + r.h)));
-              // (Your own hand runs the whole width of the window under the disc, so it is near every pile low on the
-              // disc: a neighbour's pile is compared with the other opponents' hands only.)
+              // (Your own hand runs the whole width of the window under the felt, so it is near every pile low on the
+              // felt: a neighbour's pile is compared with the other opponents' hands only.)
               for (const other of pile.seat === you ? L.opponents : L.opponents.filter((o) => o !== hand)) expect(gap(hand.box), `${at} vs the hand of seat ${other.seat}`).toBeLessThan(gap(other.box));
               // Clear of the wash once it has been drawn in, and of every other pile.
               expect(overlap(pile, plan.heap), at).toBe(false);
@@ -371,7 +423,7 @@ describe('table layout', () => {
               }
               for (const other of plan.piles.slice(i + 1)) expect(overlap(label, other.label), `${at}: label over the label of seat ${other.seat}`).toBe(false);
             }
-            // The wash itself stays on the disc.
+            // The wash itself stays on the felt.
             expect(plan.rx + plan.w / 2, where).toBeLessThanOrEqual(d.rx);
             expect(plan.ry + plan.h / 2, where).toBeLessThanOrEqual(d.ry);
             expect(plan.heap.y >= d.cy - d.ry && plan.heap.y + plan.heap.h <= d.cy + d.ry, where).toBe(true);
@@ -438,7 +490,7 @@ describe('table layout', () => {
     });
 
     // Regression: a pile of 2 face-down + 10 face-up cards got about 17px a card: half a rank, no suit.
-    it('rises into what felt there is between its column and the disc, never onto the disc, without moving anything else', () => {
+    it('rises into what cloth there is between its column and the felt, never onto the felt, without moving anything else', () => {
       const [W, H] = [1440, 900];
       const short = computeLayout(W, H, deal(seats(2), rng(2)), 0);
       const game = longPile(2, 2, 10);
@@ -452,7 +504,7 @@ describe('table layout', () => {
       expect(L.tray).toEqual(short.tray);
       const first = L.cards.find((c) => c.card.id === game.players[0]!.work[1]![0]!.id)!;
       expect(first.y).toBeLessThan(L.me!.nertz.y); // it starts above the row...
-      expect(first.y).toBeGreaterThan(L.disc.cy + L.disc.ry); // ...and stops short of the disc,
+      expect(first.y).toBeGreaterThan(L.middle.y + L.middle.h); // ...and stops short of the felt,
       for (const hit of L.slotHit) expect(overlap(hit!, L.me!.workHit[1]!)).toBe(false); // as do the drop areas
       expect(L.me!.work[1]!.y + cardH).toBeLessThanOrEqual(H); // the top card is whole
       expect(inside(L.me!.workHit[1]!, first.x + 5, first.y + 5)).toBe(true); // the whole column takes a drop
@@ -503,10 +555,104 @@ describe('table layout', () => {
         const pill: Rect = { x: W - COUNTDOWN.right - COUNTDOWN.w, y: countdownTop(L, W), w: COUNTDOWN.w, h: COUNTDOWN.h };
         for (const o of L.opponents) expect(overlap(pill, tagged(o))).toBe(false);
         expect(pill.y).toBe(12); // nobody is ever seated in the top-right corner: it is the countdown's
-        expect(onEllipse(L, pill)).toBe(false);
+        expect(onFelt(L, pill)).toBe(false);
       }
     }
     expect(CARD_H / CARD_W).toBeCloseTo(1.4);
+  });
+});
+
+describe("another player's card in the air", () => {
+  /**
+   * Seat `k` carries the top of their nertz pile in a straight line to the point `P` of the felt, on their own screen;
+   * returns where seat 0's window draws it on the way. With `pile` there is a pile at `P` that takes the card: it
+   * reports how far it has come. Without, it is an Ace over bare felt: it gets there, and is then held still.
+   */
+  function seen(n: number, k: number, W: number, H: number, P: { x: number; y: number }, pile: boolean) {
+    const game = deal(seats(n), rng(n), 'free');
+    const [mine, theirs] = [computeLayout(W, H, game, 0), computeLayout(W, H, game, k)];
+    // On their screen: their own hand at the bottom.
+    const own = theirs.me!;
+    const from = { x: own.nertz.x + own.nertz.w / 2, y: own.nertz.y + own.nertz.h / 2 };
+    const to = toScreen(theirs.felt, P);
+    // On mine: their hand where I see them sit.
+    const hand = mine.opponents.find((o) => o.seat === k)!;
+    const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
+    const report = (t: number) => {
+      const c = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+      const p = toTable(theirs.felt, c.x, c.y);
+      return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const };
+    };
+    const end = toScreen(mine.felt, P);
+    const path = seats(41).map((i) => aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(i / 40), w: pile ? i / 40 : 0 }, pile ? end : undefined, 0));
+    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(1), w: 0 }, undefined, i / 20));
+    return { path, home, end, felt: mine.felt };
+  }
+  /** How much longer the path is than the straight line, and how far it ever backs away from where it ends (px). */
+  function shape(path: { x: number; y: number }[]) {
+    const end = path.at(-1)!;
+    let [length, back, nearest] = [0, 0, Math.hypot(path[0]!.x - end.x, path[0]!.y - end.y)];
+    for (let i = 1; i < path.length; i++) {
+      length += Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.y - path[i - 1]!.y);
+      const d = Math.hypot(path[i]!.x - end.x, path[i]!.y - end.y);
+      back = Math.max(back, d - nearest);
+      nearest = Math.min(nearest, d);
+    }
+    return { ratio: length / Math.max(1, Math.hypot(path[0]!.x - end.x, path[0]!.y - end.y)), back };
+  }
+  const PLACES = [{ x: 0, y: 0 }, { x: -2.2, y: -0.5 }, { x: 2.2, y: -0.5 }, { x: -2.2, y: 0.5 }, { x: 2.2, y: 0.5 }, { x: 0.4, y: -0.7 }, { x: -0.9, y: 0.7 }];
+
+  it('travels from their hand, wherever this window seats them, to its true place on the felt: no looping, no doubling back, from every seat', () => {
+    const worst = { ratio: 0, back: 0 };
+    for (const [W, H] of [[1280, 720], [1440, 900]] as const) {
+      for (let n = 2; n <= 6; n++) {
+        for (let k = 1; k < n; k++) {
+          for (const P of PLACES) {
+            // A card with a pile to go to (it says how far it has come), and an Ace (nothing is known until it lingers).
+            for (const pile of [true, false]) {
+              const at = `${pile ? 'a card for a pile' : 'an Ace'}, ${n} players at ${W}x${H}, seat ${k}, to ${P.x},${P.y}`;
+              const { path, home, end, felt } = seen(n, k, W, H, P, pile);
+              // It starts on its pile in their hand as drawn here, and ends at the very point of the felt.
+              expect(path[0], at).toEqual(home);
+              expect(path.at(-1)!.x, at).toBeCloseTo(end.x, 6);
+              expect(path.at(-1)!.y, at).toBeCloseTo(end.y, 6);
+              const { ratio, back } = shape(path);
+              worst.ratio = Math.max(worst.ratio, ratio);
+              worst.back = Math.max(worst.back, back);
+              expect(ratio, at).toBeLessThan(1.35); // not much longer than the straight line
+              expect(back, at).toBeLessThan(24); // and never more than half a small card further from its place than it has been
+              // On the way it is on screen; and an Ace, until it lingers, is lifted out of the hand towards the felt.
+              for (const c of path) expect(c.x > 0 && c.x < W && c.y > 0 && c.y < H, at).toBe(true);
+              if (!pile) expect(Math.hypot(path[20]!.x - felt.cx, path[20]!.y - felt.cy), at).toBeLessThan(Math.hypot(home.x - felt.cx, home.y - felt.cy));
+            }
+          }
+        }
+      }
+    }
+    // (Measured over all of these: at worst 1.31 times the straight line, and 21px back, on the way out of the hand.)
+    expect(worst.ratio).toBeGreaterThan(1); // (it is a path, not a jump)
+  });
+
+  it('a card going from pile to pile within a hand is drawn in that hand as this window draws it, mirrored for a hand across the table', () => {
+    for (let n = 2; n <= 6; n++) {
+      const game = deal(seats(n), rng(n), 'free');
+      const mine = computeLayout(1280, 720, game, 0);
+      for (let k = 1; k < n; k++) {
+        const theirs = computeLayout(1280, 720, game, k);
+        const own = theirs.me!;
+        const hand = mine.opponents.find((o) => o.seat === k)!;
+        // Their nertz card carried onto their third work pile, on their screen.
+        const from = { x: own.nertz.x + own.nertz.w / 2, y: own.nertz.y + own.nertz.h / 2 };
+        const to = { x: own.work[2]!.x + own.work[2]!.w / 2, y: from.y };
+        const p = toTable(theirs.felt, to.x, to.y);
+        const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
+        const drawn = aloftAt(mine.felt, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
+        // It is over that hand's third work pile here, whichever way round the hand is drawn.
+        expect(Math.abs(drawn.x - (hand.work[2]!.x + hand.work[2]!.w / 2))).toBeLessThan(hand.nertz.w * 0.35);
+        expect(drawn.y).toBeCloseTo(home.y, 6);
+        expect(Math.sign(drawn.x - home.x)).toBe(hand.flip ? -1 : 1);
+      }
+    }
   });
 });
 

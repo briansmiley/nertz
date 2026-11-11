@@ -70,9 +70,9 @@ export interface GameState {
    */
   stage: RoundStage;
   /**
-   * How the middle of this round's table works (see shared/table.ts): 'spots'
-   * has a fixed place for every pile, on a 'free' table a pile lies wherever
-   * its Ace was put down.
+   * How the middle of this round's table works (see shared/table.ts): on a
+   * 'free' table a pile lies wherever its Ace was put down, 'spots' has a
+   * marked place for every pile.
    */
   table: TableMode;
   /**
@@ -84,7 +84,7 @@ export interface GameState {
   slots: Card[][];
   /**
    * Where each slot's pile lies on the table, in table space (the same for
-   * every player; each client turns it to its own seat). On a 'spots' table
+   * every player, and drawn at the same place of the felt on every screen). On a 'spots' table
    * every slot has its place for the whole round. On a 'free' table a slot
    * has a place only while it holds a pile: the place is set by the Ace that
    * starts it and given up when the finished pile is cleared.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cleanName, DRAG_HZ, DRAG_RATE, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, randomRoomCode } from './protocol';
+import { TABLE } from './table';
 
 const TOKEN = 'abcDEF123_-xyz';
 
@@ -59,16 +60,19 @@ describe('parseClientMsg', () => {
 });
 
 describe('a pile started on the felt', () => {
-  it('is a point of the table: both coordinates finite and within the square the disc sits in, kept to a thousandth', () => {
+  it('is a point of the table: both coordinates finite and within the box the felt lies in, kept to a thousandth', () => {
     const felt = (x: unknown, y: unknown) => parseIntent({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt', x, y, i: 3 } });
     expect(felt(0.25, -0.5)).toEqual({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt', x: 0.25, y: -0.5 } });
     expect(felt(0.123456, -0.9876543)).toEqual({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt', x: 0.123, y: -0.988 } });
-    expect(felt(1, -1)).not.toBeNull();
+    expect(felt(TABLE.hw, -1)).not.toBeNull(); // (the box: whether a card fits there is the engine's business)
+    expect(felt(-TABLE.hw, 1)).not.toBeNull();
     expect(Object.is((felt(-0.0001, 0) as { to: { x: number } }).to.x, 0)).toBe(true); // never minus zero: it does not survive JSON
-    for (const bad of [1.001, -1.5, NaN, Infinity, -Infinity, '0.5', null, undefined, [0], {}]) {
+    for (const bad of [TABLE.hw + 0.001, -7, NaN, Infinity, -Infinity, '0.5', null, undefined, [0], {}]) {
       expect(felt(bad, 0)).toBeNull();
       expect(felt(0, bad)).toBeNull();
     }
+    expect(felt(0, 1.001)).toBeNull(); // the felt is wider than it is high
+    expect(felt(1.001, 0)).not.toBeNull();
     expect(parseIntent({ k: 'move', cardId: 'a', count: 1, to: { k: 'felt' } })).toBeNull();
   });
 });

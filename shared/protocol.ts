@@ -1,6 +1,7 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
 import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg } from './chat';
 import { parseSettings, type TableSettings } from './settings';
+import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, RoomView } from './types';
 
 export type ClientMsg =
@@ -40,9 +41,14 @@ export type ServerMsg =
  *   gives that hand (hands are drawn upright everywhere, so "along the row"
  *   is to the right on every screen; "towards the middle" is up the owner's
  *   screen and down, or sideways, on everyone else's).
- * - `p`: its centre in table space (shared/table.ts). Right on the disc.
- * - `w`: how much `p` counts, from 0 (the card has just left its pile) to 1
- *   (it is over the disc). A window draws it at `h` and `p` mixed by `w`.
+ * - `p`: its centre in table space (shared/table.ts): the same point of the
+ *   felt on every screen. Right once it is where it is going.
+ * - `w`: how far it has come of the way to a pile in the middle that would
+ *   take it, from 0 (it has just left its own pile, or there is no such pile:
+ *   an Ace above all) to 1 (it is over that pile). A window draws the card
+ *   that far along the line from that player's hand, wherever the window
+ *   seats them, to the pile (`aloftAt` in client/layout.ts, which also says
+ *   how a card with no pile to go by gets to `p`).
  */
 export interface DragAt {
   id: string;
@@ -109,7 +115,7 @@ function parsePileRef(raw: unknown): PileRef | null {
   if (!isObj(raw)) return null;
   if (raw.k === 'work') return isIndex(raw.i, WORK_PILES) ? { k: 'work', i: raw.i } : null;
   if (raw.k === 'slot') return isIndex(raw.i, MAX_SLOTS) ? { k: 'slot', i: raw.i } : null;
-  if (raw.k === 'felt') return isCoord(raw.x, 1) && isCoord(raw.y, 1) ? { k: 'felt', x: round3(raw.x), y: round3(raw.y) } : null;
+  if (raw.k === 'felt') return isCoord(raw.x, TABLE.hw) && isCoord(raw.y, 1) ? { k: 'felt', x: round3(raw.x), y: round3(raw.y) } : null;
   return null;
 }
 

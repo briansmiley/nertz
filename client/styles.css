@@ -177,10 +177,10 @@ button {
   pointer-events: none;
 }
 
-/* The middle of the table: the disc everyone plays onto, drawn as an ellipse (a round table seen from your chair). */
+/* The middle of the table: the felt everyone plays onto, the same shape and the same way up on every screen
+   (its corner radius is set by Table.tsx, from shared/table.ts). */
 .felt {
   position: absolute;
-  border-radius: 50%;
   pointer-events: none;
   background: radial-gradient(ellipse at 50% 45%, rgba(46, 116, 124, 0.5) 0%, rgba(31, 90, 99, 0.42) 60%, rgba(23, 70, 79, 0.5) 100%);
   box-shadow:
@@ -190,26 +190,69 @@ button {
     inset 0 2px 18px rgba(0, 0, 0, 0.22);
 }
 
-/* On a table without fixed places a pile has no mark under it. */
+/* While an Ace is in hand that may start a pile anywhere: the edge it has to stay within, drawn up. */
+.felt.placing {
+  outline: 1.5px dashed rgba(241, 234, 216, 0.5);
+  outline-offset: -1.5px;
+}
+
+/* ...and around every pile, the room it keeps: the Ace's outline may come up to this line and no nearer. */
+.keepout {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed rgba(241, 234, 216, 0.45);
+  background: repeating-linear-gradient(135deg, rgba(8, 28, 33, 0.34) 0 3px, rgba(8, 28, 33, 0.12) 3px 6px);
+}
+
+/* On a table without marked places a pile has no mark under it. */
 .slot.centre.bare {
   border-color: transparent;
   background: none;
 }
 
-/* Where the Ace in hand would start its pile (no fixed places): a quiet outline, and a warning when there is no room.
-   It lies over the card in hand, which is larger than a pile in the middle: this is what the pile will cover. */
+/* Where the Ace in hand would start its pile (no marked places): exactly what the pile will cover. The Ace itself has
+   come down to that size and is see-through, and this lies over it: a solid ring and a tick where there is room, a
+   broken red one, struck through, with a cross where there is none. */
 .landing {
   position: absolute;
   z-index: 31000;
   border-radius: 6px;
   pointer-events: none;
-  box-shadow: 0 0 0 2px rgba(241, 234, 216, 0.6);
-  background: rgba(241, 234, 216, 0.1);
+  box-shadow:
+    0 0 0 3px var(--marigold),
+    0 0 14px 4px rgba(242, 179, 32, 0.45);
+}
+
+.landing::after {
+  content: '✓';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  translate: -50% 7px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--marigold);
+  color: #1b2733;
+  font: 800 13px/1 system-ui, sans-serif;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
 .landing.no {
-  box-shadow: 0 0 0 2px rgba(207, 34, 51, 0.65);
-  background: rgba(207, 34, 51, 0.16);
+  box-shadow: none;
+  outline: 3px dashed #ff5a6a;
+  outline-offset: 0;
+  background:
+    linear-gradient(to top right, transparent calc(50% - 2px), #ff5a6a calc(50% - 2px) calc(50% + 2px), transparent calc(50% + 2px)),
+    rgba(120, 12, 24, 0.22);
+}
+
+.landing.no::after {
+  content: '✕';
+  background: #cf2233;
+  color: #fff;
 }
 
 /* A centre slot: a quiet outline that is always there, pile or no pile. */

@@ -131,9 +131,9 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
         </span>
       </label>
       <label className="check">
-        <input type="checkbox" checked={room.settings.centre === 'free'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'free' : 'spots' })} />
+        <input type="checkbox" checked={room.settings.centre === 'spots'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'spots' : 'free' })} />
         <span>
-          Piles go wherever the Ace is put down <small>Off: the middle has a marked place for every pile. On: no marks. An Ace starts its pile wherever you let go of it, as long as it overlaps no other pile.</small>
+          Use grid for piles <small>Off: an Ace starts its pile wherever you put it down in the middle, as long as there is room for the card. On: the middle has a marked place for every pile.</small>
         </span>
       </label>
       {children}
