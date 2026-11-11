@@ -279,9 +279,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     for (const p of game.players) {
       const hand = p.seat === you ? L.me : L.opponents.find((o) => o.seat === p.seat);
       if (!hand) continue;
-      const out = [...p.nertz, ...p.work.flat()];
+      const work = p.work.flat();
+      const out = [...work, ...p.nertz];
       out.forEach((c, i) => {
-        const wait = dealWait(i, dealMs);
+        const wait = dealWait(i, dealMs, work.length);
         const under = out.length - i; // cards of the deck beneath this one that are also on their way out
         if (wait !== null) plan.set(c.id, { x: hand.stock.x, y: hand.stock.y - under * 0.3 * hand.s, z: Z_FLYING + under, wait });
       });

@@ -84,7 +84,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - 2 to 6 players. Each has their own 52-card deck with its own back colour.
 - Deal, per player: a 13-card **nertz pile** (only the top card face up), 4 **work piles** with 0, 1, 2 and 3 face-down
   cards under one face-up card (10 cards), the other 29 cards face down as the **stock**, and an empty **waste**.
-  While the cards are being dealt (2.4 seconds) nobody can play, flip, vote or call, and nobody is shown a face.
+  While the cards are being dealt (3 seconds) nobody can play, flip, vote or call, and nobody is shown a face.
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -174,7 +174,7 @@ The server owns only the clock: when a call leaves someone in grace it starts on
 is, `applyIntent` refuses every intent from every seat (the sender's `ack` still advances), and `viewFor` redacts every
 card, the face-up ones included, so no layout can be read early, not even off the network tab. Ids are unchanged, so the
 cards on screen are the ones that turn over later. The server owns only the clock, exactly as for grace: one `DEAL_MS`
-(2.4 s) timer per round, and when it fires `finishDeal(state)` clears the flag and every player's ordinary view goes out in
+(3 s) timer per round, and when it fires `finishDeal(state)` clears the flag and every player's ordinary view goes out in
 the same flush. Snapshots carry `dealMs`, the milliseconds of the deal left when the snapshot was sent, or `null`. The
 client animates from it and never decides anything: its input is off because the shared reducer says no, and a window that
 arrives late (a reload or reconnect mid-deal) puts the cards already dealt in place and deals the rest on schedule
