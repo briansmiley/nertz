@@ -4,6 +4,7 @@
 //
 // Pile convention: the TOP of every pile is the LAST array element.
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
+import { SMALL_TABLE } from './settings';
 import type { AnyCard, Card, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
@@ -42,8 +43,13 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * (0 to 3 face-down under one face-up), and the other 29 as stock. The middle
  * gets 4 empty slots per seat. The round starts out `dealing`: closed to every
  * intent and fully redacted until `finishDeal`.
+ *
+ * `rules.fewerDown` is the small-table house rule: with fewer than four seats
+ * every work pile gets one fewer face-down card (0/0/1/2: 7 cards in the work
+ * piles, 32 in the stock). With four or more seats it changes nothing.
  */
-export function deal(seats: readonly number[], rng: Rng): GameState {
+export function deal(seats: readonly number[], rng: Rng, rules: { fewerDown?: boolean } = {}): GameState {
+  const fewer = rules.fewerDown && seats.length < SMALL_TABLE ? 1 : 0;
   const pick = (n: number) => Math.min(n - 1, Math.max(0, Math.floor(rng() * n)));
   const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const used = new Set<string>();
@@ -64,7 +70,7 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
     }
     const nertz = deck.splice(0, NERTZ_SIZE);
-    const down = Array.from({ length: WORK_PILES }, (_, i) => i);
+    const down = Array.from({ length: WORK_PILES }, (_, i) => Math.max(0, i - fewer));
     const work = down.map((n) => deck.splice(0, n + 1));
     return { seat, nertz, work, down, stock: deck, waste: [], stuck: false, holding: null };
   });

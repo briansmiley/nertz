@@ -63,8 +63,10 @@ export interface Layout {
   slots: Rect[];
   /** Drop area of each slot: the slot plus a margin smaller than half the gap, so neighbours never touch. */
   slotHit: Rect[];
-  /** The side area for completed piles. */
+  /** The side area for completed piles. It runs off the right edge of the window: half of it is beyond the edge. */
   tray: Rect;
+  /** Where a finished pile may be let go to land in the tray: generous, and all the way past the edge. */
+  trayHit: Rect;
   /** Where each tray pile stands once it has come out onto the table at the end of a round. */
   out: Rect[];
   /** The free felt between the opponents and your hand. */
@@ -219,9 +221,16 @@ const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
 const OPP = { gap: 0.14, wide: 0.42 };
 const OPP_UNITS = 7 + 4 * OPP.gap + 2 * OPP.wide;
-/** The tray: one card wide plus padding, standing this far to the right of the slot grid. */
+/**
+ * The tray runs off the right edge of the table, half of it beyond the edge.
+ * A pile in it shows TRAY_SHOW of its width (the King's index and then some),
+ * inside TRAY_PAD of padding; the slot grid keeps TRAY_GAP clear of it.
+ */
 const TRAY_PAD = 0.12;
-const TRAY_UNITS = 1 + 2 * TRAY_PAD;
+const TRAY_SHOW = 0.62;
+const TRAY_IN = TRAY_SHOW + TRAY_PAD;
+/** Piles are not squared up: each sits a little further in or out than the one before. */
+const TRAY_JOG = [0, 0.08, 0.03];
 const TRAY_GAP = 22;
 const SLOT_GAP = 10;
 
@@ -239,8 +248,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const ownTop = mine ? H - 12 - oh * 2.2 : H - 12;
   // Opponents: compact hands along the top - in two rows when one row would
   // make them tiny and the window is tall enough to keep the middle roomy.
-  // The middle: a grid with one cell per slot (4 per player), and the tray
-  // standing to its right.
+  // The middle: a grid with one cell per slot (4 per player), centred, and the
+  // tray half off the right edge.
   const n = others.length;
   const labelH = 28;
   const count = game.slots.length;
@@ -257,7 +266,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       const cols = Math.ceil(count / rows);
       const fw = Math.min(
         mine ? ow * 0.92 : 90,
-        (W * 0.94 - (cols - 1) * gap - TRAY_GAP) / (cols + TRAY_UNITS),
+        (W - (cols - 1) * gap - 2 * TRAY_GAP) / (cols + 2 * TRAY_IN), // centred, and clear of the tray at the edge
         (bottom - top - (rows - 1) * gap) / rows / RATIO,
       );
       if (fw > grid.fw + 0.5) grid = { fw, cols, rows };
@@ -298,15 +307,23 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const gridW = best.cols * fw + (best.cols - 1) * gap;
   const gridH = best.rows * fh + (best.rows - 1) * gap;
   const pad = fw * TRAY_PAD;
-  const gx = (W - (gridW + TRAY_GAP + fw * TRAY_UNITS)) / 2;
+  const gx = (W - gridW) / 2;
   const gy = top + Math.max(0, (bottom - top - gridH) / 2);
   const slots = game.slots.map((_, i): Rect => ({ x: gx + (i % best.cols) * (fw + gap), y: gy + Math.floor(i / best.cols) * (fh + gap), w: fw, h: fh }));
 
-  // The tray is as tall as the grid (taller if the grid is a single row and there is room), so piles can cascade down it.
-  const trayH = Math.min(middle.h, Math.max(gridH + 2 * pad, fh * 1.9));
-  const tray: Rect = { x: gx + gridW + TRAY_GAP, y: clamp(gy + gridH / 2 - trayH / 2, top, top + middle.h - trayH), w: fw * TRAY_UNITS, h: trayH };
+  // The tray is as tall as the grid (taller if the grid is low and there is room), so piles can cascade down it,
+  // each showing its King's rank and suit while there is room for that.
+  // At the edge it may also rise past the top of the middle, where no opponent sits above it (it stays below the
+  // corner the grace countdown uses).
+  const trayIn = Math.min(fw * TRAY_IN, W - (gx + gridW) - TRAY_GAP * 0.5); // (a window too narrow for all this: the tray gives way, not the slots)
+  const trayTop = Math.min(top, Math.max(64, ...opponents.filter((o) => o.box.x + o.box.w > W - trayIn - TRAY_GAP).map((o) => o.box.y + o.box.h + 18)));
+  const trayH = Math.min(Math.max(middle.h, bottom - trayTop), Math.max(gridH + 2 * pad, fh * 2.6));
+  const tray: Rect = { x: W - trayIn, y: clamp(gy + gridH / 2 - trayH / 2, trayTop, Math.max(trayTop, bottom - trayH)), w: 2 * trayIn, h: trayH };
+  // Dropping a finished pile is not a precision job: anywhere from a little short of the tray to past the edge of the screen.
+  const reach = Math.min(fw * 0.9, tray.x - (gx + gridW) - 4);
+  const trayHit: Rect = { x: tray.x - reach, y: tray.y - fh * 0.3, w: reach + tray.w + W, h: tray.h + fh * 0.6 };
   const trays = game.tray.length;
-  const trayStep = trays > 1 ? Math.min(fh * 0.26, (trayH - 2 * pad - fh) / (trays - 1)) : 0;
+  const trayStep = trays > 1 ? Math.min(fh * 0.36, (trayH - 2 * pad - fh) / (trays - 1)) : 0;
   // End of round: the tray piles walk out to a row across the middle of the table.
   const outStep = trays > 1 ? Math.min(fw * 1.15, (middle.w * 0.8 - fw) / (trays - 1)) : 0;
   const out = game.tray.map((_, k): Rect => ({ x: W / 2 - (outStep * (trays - 1) + fw) / 2 + k * outStep, y: middle.y + (middle.h - fh) / 2, w: fw, h: fh }));
@@ -345,12 +362,12 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       pile.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: fs, z: z + k, up, pile: kind, mine: false, at: i }));
     game.slots.forEach((pile, i) => put(pile, slots[i]!, 5000 + i * 4, 'slot', i, stage === 'live'));
     game.tray.forEach((pile, k) => {
-      const home: Rect = { x: tray.x + pad, y: tray.y + pad + k * trayStep, w: fw, h: fh };
+      const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * fw, y: tray.y + pad + k * trayStep, w: fw, h: fh };
       put(pile, stage === 'out' ? out[k]! : home, 5200 + k * 4, 'tray', k, stage !== 'out');
     });
   }
 
-  return { cards, me, opponents, slots, slotHit: slots.map((r) => grow(r, gap * 0.35)), tray, out, middle, fs };
+  return { cards, me, opponents, slots, slotHit: slots.map((r) => grow(r, gap * 0.35)), tray, trayHit, out, middle, fs };
 }
 
 // ---------------------------------------------------------------- the deal

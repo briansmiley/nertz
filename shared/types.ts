@@ -2,7 +2,9 @@
 //
 // Pile convention, everywhere: the TOP of a pile is the LAST array element.
 
-export type Suit = 'S' | 'H' | 'D' | 'C';
+import type { TableSettings } from './settings';
+
+export type Suit ='S' | 'H' | 'D' | 'C';
 
 /** A card whose face is known. `rank` is 1 (Ace) .. 13 (King). `owner` is the seat whose deck it came from. */
 export interface Card {
@@ -145,6 +147,8 @@ export interface RoomView {
   round: number;
   you: number;
   players: PlayerView[];
+  /** The table's house rules, as the next deal will read them. Only the host changes them, between rounds. */
+  settings: TableSettings;
   /**
    * Redacted current round; null in the lobby. Kept through 'results' as the
    * final table (centre slots, tray, hands), so the client can play the

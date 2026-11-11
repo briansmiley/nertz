@@ -40,6 +40,8 @@ Controls:
 | Click the stock, or press Space | flip three cards |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
+| Press M, or the speaker button bottom left | mute or unmute |
+| The gear beside it | your own settings: volume, other players' volume, reduce motion |
 
 There is no click-to-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
 While you hold a card, exactly the piles that would take it are outlined, and the one you are over lights up. What counts is
@@ -58,7 +60,9 @@ What you see around a round:
 - **A long work pile** of yours starts higher up, into the free felt above its column, rather than being squeezed. When
   there is no felt left, the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
 - **A pile you finished** (you placed its King) glows and says "Drag to tray"; other people's finished piles are dimmed and
-  ticked. The **tray** stands to the right of the middle, with every King peeking out from under the next.
+  ticked. The **tray** runs off the right edge of the table: finished piles are pushed half off-screen there, the near
+  side of every King peeking out from under the next. While you carry a finished pile it lights up and comes a little way
+  in; let go anywhere from just short of it to the edge of the screen.
 - **NERTZ!** in big letters lies across the hand of whoever called it, on every board.
 - **The grace window**: a small countdown ring in the top right, for everyone, while cards that were in hand at the call may
   still land, with "Put it down!" or the name of whoever is being waited for. If an opponent sits in that corner it moves
@@ -87,6 +91,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - Deal, per player: a 13-card **nertz pile** (only the top card face up), 4 **work piles** with 0, 1, 2 and 3 face-down
   cards under one face-up card (10 cards), the other 29 cards face down as the **stock**, and an empty **waste**.
   While the cards are being dealt (3 seconds) nobody can play, flip, vote or call, and nobody is shown a face.
+- **Small tables** (a house rule, on by default): with fewer than four players in the round each work pile gets one fewer
+  face-down card, 0, 0, 1 and 2 (7 cards in the work piles, 32 in the stock). The nertz pile is 13 either way. The host
+  switches it under "Table rules" in the lobby or on the score sheet; it applies from the next deal.
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -170,6 +177,32 @@ held-card grace window after a call.
 at four to a table, but three get stuck for good in about one deal in three and two in about two deals in three: each sits
 on cards the others need, and reshuffling the stocks does not help. A person who plays well opens the middle for it.
 If you and the bot are both truly stuck, see "A round nobody ends" under [Known limits](#known-limits).
+
+## Sound and settings
+
+**Sound.** Every card makes a noise: a flick per dealt card, a faint slide on pick-up, a thunk on a work pile, three flicks
+for the stock, a thunk and a soft ding for a card played to the middle (the ding steps up a pentatonic scale with the rank,
+Ace low to King high), a two-note chime for a King, a slide for a pile going to the tray, a dull tap when a card goes back
+(put down nowhere, or beaten to its pile), one loud hit when Nertz is called, a tick each second of the grace window for
+whoever still holds a card, and a riffle, flicks and a small flourish through the end-of-round sequence. Your own cards
+sound at full level, everyone else's much quieter.
+
+- The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
+  tones are synthesised. Sources and licence: [`client/sounds/CREDITS.md`](client/sounds/CREDITS.md).
+- `client/sound.ts` has one function per cue (Web Audio: each sound a one-shot with its own short envelope, into a master
+  gain and a limiter, at most 18 at once). The audio context is made on the first click or key press, as browsers require.
+- Which cue fires is decided by `client/soundEvents.ts`, a pure function that compares two successive *rendered* states by
+  card id. So a move sounds once, when it is predicted, and not again when the server confirms it; a predicted move that is
+  refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
+
+**Your settings** (the gear, bottom left on every screen): sound on or off, volume, other players' volume, reduce motion.
+Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
+storage they last until the page closes.
+
+**Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in every
+snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from whoever may
+deal and only between rounds. `shared/settings.ts` holds the one object and its validation; today its only option is the
+small-table rule.
 
 ## How concurrency works
 
@@ -263,6 +296,7 @@ shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. 
   types.ts      Card, GameState, Intent, RoomView
   engine.ts     deal, finishDeal, applyIntent, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types, limits, parsing and validation
+  settings.ts   table settings (house rules): the object, its defaults, validation
 server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal and grace timers, bot timers, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
@@ -273,6 +307,11 @@ client/   Vite + React
   Table.tsx     the table: the deal, drag and drop, the Nertz call, the grace countdown, the steps of the end-of-round sequence
   Finale.tsx    the wash and the sorted piles at the end of a round, drawn on a canvas
   App.tsx       home, lobby and score sheet
+  Settings.tsx  the mute button and gear (your settings), and the table rules on the lobby and score sheets
+  prefs.ts      your settings: sound levels, reduced motion; localStorage
+  sound.ts      Web Audio: one function per cue, and the hook that plays them
+  soundEvents.ts  pure: which cues a change of the rendered table calls for
+  sounds/       13 short card recordings (CC0, see sounds/CREDITS.md)
   cards/        card faces drawn as SVG in code (original art, see cards/CREDITS.md)
 ```
 
@@ -380,5 +419,10 @@ would still need one of the options above, and serving both from one origin is s
   nothing), which is much more likely against one or two bots: there is no way yet to agree to end such a round.
 - **After a server restart** a reconnecting window is told its table no longer exists and is put back on the home page with
   the code filled in; somebody has to start a new table.
-- **Bundle size** is about 400 kB (130 kB gzipped), a third of it the animation library.
+- **Bundle size** is about 460 kB (160 kB gzipped), a third of it the animation library, plus 39 kB of sound files
+  (the smallest recordings are inlined in the script).
+- **Sound needs a first click or key press**, like all audio in a browser, and the recordings load at that moment. If the
+  very first thing you do is something audible, it may be silent.
+- **In a very small window** (roughly under 700 px wide or 520 px high) the mute button and gear, bottom left, can sit
+  over the line of text under your nertz pile.
 - **No spectators, no chat, no persistence.** Restarting the server ends every game.

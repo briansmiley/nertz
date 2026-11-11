@@ -13,12 +13,14 @@ import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, TIMING } from './Finale';
 import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, MINI_BELOW, type Placed, type Rect, type Stage } from './layout';
 import { send } from './net';
+import { calm } from './prefs';
+import { stage as stageSound } from './sound';
 
-const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MOVE = { duration: calm ? 0 : 0.15, ease: 'easeOut' } as const;
-const FLIP = { duration: calm ? 0 : 0.16, ease: 'easeInOut' } as const;
+// Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
+const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
+const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const;
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
-const TURN = { duration: calm ? 0 : 0.42, ease: 'easeInOut' } as const;
+const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
 const Z_FLYING = 10000;
 const Z_HELD = 30000;
 const DRAG_SLOP = 6; // px of travel before a press becomes a drag
@@ -77,7 +79,7 @@ const CardView = memo(function CardView(p: CardProps) {
   /** When this card leaves the deck (performance clock). 0 once it has, or if it was never in one: it is dealt once. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0);
 
-  const fly = useCallback((move: { duration: number } = p.slow ? TURN : MOVE) => {
+  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE()) => {
     const g = goal.current;
     const n = ++flight.current;
     flying.current = true;
@@ -122,7 +124,7 @@ const CardView = memo(function CardView(p: CardProps) {
 
   return (
     <motion.div className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z }}>
-      <motion.div className="flip" initial={false} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN : FLIP}>
+      <motion.div className="flip" initial={false} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} /> : null}</div>
         <div className="back" style={{ '--back': backColour(p.owner) } as CSSProperties} />
       </motion.div>
@@ -147,7 +149,7 @@ function useStage(results: boolean, trayPiles: number): [Stage, () => void] {
       watched.current = true;
       return setStage('live');
     }
-    if (!watched.current || calm) return setStage('sheet');
+    if (!watched.current || calm()) return setStage('sheet');
     setStage('flip');
     let at = 0;
     const steps: [Stage, number][] = [
@@ -238,6 +240,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const results = room.phase === 'results';
   const [W, H] = useViewport();
   const [stage, skip] = useStage(results, game.tray.length);
+  const stageWas = useRef(stage);
+  useEffect(() => {
+    stageSound(stageWas.current, stage); // the riffle of the wash, the flourish of the score sheet
+    stageWas.current = stage;
+  }, [stage]);
   const L = useMemo(() => computeLayout(W, H, game, you, stage), [W, H, game, you, stage]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
@@ -275,7 +282,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const dealMs = replaying ? DEAL_MS : room.dealMs;
   const deck = useMemo(() => {
     const plan = new Map<string, Dealt>();
-    if (!dealing || dealMs === null || calm) return plan;
+    if (!dealing || dealMs === null || calm()) return plan;
     for (const p of game.players) {
       const hand = p.seat === you ? L.me : L.opponents.find((o) => o.seat === p.seat);
       if (!hand) continue;
@@ -314,9 +321,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [frozen]);
 
+  /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
+  const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
   /** Exactly the piles that would take what is in hand right now. */
   const targetsFor = (h: Held): Target[] => {
-    if (h.k === 'pile') return [{ key: 'tray', to: 'tray', rect: L.tray, hit: { ...L.tray, x: L.tray.x - L.tray.w * 0.3, w: L.tray.w * 1.6 } }];
+    if (h.k === 'pile') return [{ key: 'tray', to: 'tray', rect: trayOpen, hit: L.trayHit }];
     const out: Target[] = [];
     L.me?.work.forEach((rect, i) => {
       if (canDrop(game, you, h.id, { k: 'work', i })) out.push({ key: `w${i}`, to: { k: 'work', i }, rect, hit: L.me!.workHit[i]! });
@@ -438,7 +447,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   };
 
   const cardClass = (c: Placed): string => {
-    let cls = dealing && calm ? 'card dealt' : 'card';
+    let cls = dealing && calm() ? 'card dealt' : 'card';
     if (c.pile === 'tray' && stage !== 'out') cls += ' shelved';
     if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ' grab' : stage === 'live' ? ' done' : '';
     if (c.mine && !frozen) {
@@ -473,9 +482,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           </div>
         );
       })}
-      <div className={`tray${held?.k === 'pile' ? ' open' : waiting ? ' wanted' : ''}${hot === 'tray' ? ' hot' : ''}${finale ? ' gone' : ''}`} style={box(L.tray)}>
-        {game.tray.length === 0 && <em>finished piles</em>}
-      </div>
+      <div className={`tray${held?.k === 'pile' ? ' open' : waiting ? ' wanted' : ''}${hot === 'tray' ? ' hot' : ''}${finale ? ' gone' : ''}`} style={box(held?.k === 'pile' ? trayOpen : L.tray)} />
 
       {L.opponents.map((o) => {
         const p = info(o.seat);

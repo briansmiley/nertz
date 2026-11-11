@@ -12,6 +12,7 @@ import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStu
 import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
+import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -55,6 +56,8 @@ export class Room {
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. */
   game: GameState | null = null;
   lastRound: RoundResult | null = null;
+  /** House rules, read when a round is dealt. */
+  settings: TableSettings = { ...DEFAULT_SETTINGS };
 
   private players: Player[] = []; // in seat order
   private conns = new Map<Conn, Player>();
@@ -121,6 +124,8 @@ export class Room {
     switch (msg.t) {
       case 'start':
         return this.start(player);
+      case 'settings':
+        return this.configure(player, msg.patch);
       case 'intent':
         return this.intent(player, msg.seq, msg.intent);
       case 'leave':
@@ -164,6 +169,13 @@ export class Room {
     return this.host?.conn ? this.host : (this.players.find((p) => p.conn && !p.bot) ?? this.host);
   }
 
+  /** Table settings belong to whoever may deal, and stand still while a round is on. Anyone else is ignored. */
+  private configure(player: Player, patch: Partial<TableSettings>): void {
+    if (player !== this.dealer || this.phase === 'playing') return;
+    this.settings = { ...this.settings, ...patch };
+    this.changed();
+  }
+
   private start(player: Player): void {
     // Only people who are here get cards. Someone away keeps their seat and score and sits the round out.
     const dealt = this.players.filter((p) => p.conn);
@@ -174,6 +186,7 @@ export class Room {
     this.game = deal(
       dealt.map((p) => p.seat),
       this.rng,
+      this.settings,
     );
     this.phase = 'playing';
     // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
@@ -375,6 +388,7 @@ export class Room {
         stuck: stuck(p.seat),
         bot: p.bot?.level,
       })),
+      settings: this.settings,
       game,
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
       dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
