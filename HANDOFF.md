@@ -11,10 +11,10 @@ turnarounds over long verification loops for small visual changes.
 
 ## To do, in the owner's priority order
 
-1. **Centre cards are too small, and do not grow on a big screen.** Six players: 44 px wide at 1280x720, 47 at
-   1440x900, 68 at 1920x1080; he finds them small on a 32-inch monitor. The felt has one fixed shape (2.8:1, see
-   `shared/table.ts` and `computeLayout` in `client/layout.ts`), is hemmed in by the side hands and leaves vertical room
-   unused; card size is capped. Two-player grid-mode cards also shrank (46 px at 1280x720, was 65).
+1. ~~**Centre cards are too small.**~~ Done in `def509f` (not yet seen in a browser): caps raised, felt 2.2:1 from four
+   players, own hand 0.108 of the window's height. Six players now 46 / 53 / 75 / 103 px at 720p / 900p / 1080p / 1440p.
+   `npx tsx scripts/sizes.ts` prints the full table. Note: the long random-play tests time out on the 1-vCPU droplet
+   (they do on the old code too); run `npm test` on a faster machine before deploying.
 2. **Mobile.** Not designed for yet. He reports the end-of-round score card is bigger than the screen and there is a lot
    of empty space. A phone needs its own layout. Open question he raised: whether live card movement can survive a
    different phone layout. It should: positions on the felt are in shared table coordinates and positions near a hand

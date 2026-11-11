@@ -664,6 +664,28 @@ button {
   pointer-events: none;
 }
 
+/* The solid block behind a sorted pile and its label: pile, name, lines and score read as one unit. It is drawn as a
+   few rectangles (blockParts in Finale.tsx) in one opaque colour, with one shadow round the whole shape. */
+.heap-block {
+  position: absolute;
+  inset: 0;
+  z-index: 19999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  filter: drop-shadow(0 0 1px rgba(241, 234, 216, 0.35)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+
+.heap-block.on {
+  opacity: 1;
+}
+
+.heap-block i {
+  position: absolute;
+  border-radius: 10px;
+  background: #0a2228;
+}
+
 /* The label beside a sorted pile. It is laid out in a box of a fixed size (LABEL in Finale.tsx), which the table
    places clear of every hand, the tray, the wash and the other labels: nothing in it may spill out of that box.
    Name on top; under it "+N played" and the nertz penalty, the same size; beside those the net score, largest. */

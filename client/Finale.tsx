@@ -23,6 +23,8 @@ const WASH_SPREAD = { x: 0.62, y: 0.6 };
 export const LABEL = { w: 176, h: 62 };
 /** Clear felt between a sorted pile and the edge of the felt, and between it and the wash or its label. */
 const RIM = 5;
+/** How far the solid block behind a pile and its label reaches beyond the two. */
+const BLOCK_PAD = 4;
 const GAP = 6;
 /** How far the cards of the drawn-in wash still stray from the middle line of the felt. */
 const CORE_RY = 5;
@@ -37,6 +39,25 @@ export function restAt(pile: Rect, k: number, of: number): { x: number; y: numbe
   const rise = Math.min(0.45, (pile.h * LEAN) / of) * k;
   return { x: pile.x + pile.w / 2 - rise * LEAN_X, y: pile.y + pile.h / 2 - rise };
 }
+
+/**
+ * The solid block behind a sorted pile and its label, as rectangles whose union is the block: the pile's reach and the
+ * label, each a little larger, and the strip of felt between them on the label's side.
+ */
+export function blockParts(p: SortedPile): Rect[] {
+  const m = BLOCK_PAD;
+  const r = grow(pileReach(p), m);
+  const l = grow(p.label, m);
+  const across = p.side === 'left' || p.side === 'right';
+  // The strip between them: across the gap, as long as the two face each other (but never less than a rounded corner).
+  const lo = across ? Math.max(r.y, l.y) : Math.max(r.x, l.x);
+  const hi = across ? Math.min(r.y + r.h, l.y + l.h) : Math.min(r.x + r.w, l.x + l.w);
+  const a = across ? Math.min(r.x + r.w, l.x + l.w) : Math.min(r.y + r.h, l.y + l.h);
+  const b = across ? Math.max(r.x, l.x) : Math.max(r.y, l.y);
+  const bridge: Rect = across ? { x: a - 1, y: lo, w: b - a + 2, h: Math.max(0, hi - lo) } : { x: lo, y: a - 1, w: Math.max(0, hi - lo), h: b - a + 2 };
+  return bridge.w > 0 && bridge.h > 0 ? [r, l, bridge] : [r, l];
+}
+const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 
 /**
  * What a sorted pile covers once it is drawn, however many cards it gets: more than its own rectangle, up and to the
@@ -425,6 +446,16 @@ export function Finale({ L, game, scores, name, instant }: Props) {
 
   return (
     <>
+      {/* One solid block behind each player's gathered pile and its label, so the two read as one unit: the pile, the
+          label and the gap between them (not their bounding box, which can reach a neighbour's). Under the canvas: the
+          cards land on it. */}
+      {plan.piles.map((p, i) => (
+        <div key={`b${p.seat}`} className={`heap-block${done >= turn[i]! ? ' on' : ''}`}>
+          {blockParts(p).map((r, k) => (
+            <i key={k} style={{ left: r.x, top: r.y, width: r.w, height: r.h }} />
+          ))}
+        </div>
+      ))}
       <canvas ref={canvas} className="wash" style={{ left: plan.area.x, top: plan.area.y, width: plan.area.w, height: plan.area.h }} />
       {plan.piles.map((p, i) => {
         const left = scores.find((s) => s.seat === p.seat)?.nertzLeft ?? 0;
