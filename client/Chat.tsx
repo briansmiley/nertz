@@ -16,7 +16,7 @@ const EDGE = 10;
 
 /**
  * How wide the open panel may be: during a round, the free felt between the
- * window's left edge and the leftmost pile (your hand or the centre slots), so
+ * window's left edge and your hand or the disc in the middle, whichever is nearer, so
  * it covers no pile. In a window too small for that it is NARROWEST and can
  * lie over the edge of your nertz pile until it is hidden again.
  */
@@ -32,7 +32,7 @@ function useWidth(room: RoomView, open: boolean): number {
   return useMemo(() => {
     if (!game) return WIDEST;
     const L = computeLayout(W, H, game, room.you);
-    const left = Math.min(...L.slots.map((r) => r.x), ...(L.me ? [L.me.box.x] : []));
+    const left = Math.min(L.middle.x, ...(L.me ? [L.me.box.x] : []));
     return Math.max(NARROWEST, Math.min(WIDEST, left - 2 * EDGE));
   }, [W, H, game, room.you]);
 }

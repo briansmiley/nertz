@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -35,6 +35,8 @@ interface Player {
   dirty: boolean;
   /** Left on purpose after a round: listed until the next round is dealt, or until a newcomer needs the seat. */
   left: boolean;
+  /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
+  drags?: { left: number; at: number };
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
   bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null };
 }
@@ -132,6 +134,8 @@ export class Room {
         return this.configure(player, msg.patch);
       case 'intent':
         return this.intent(player, msg.seq, msg.intent);
+      case 'drag':
+        return this.dragged(player, msg);
       case 'leave':
         return this.drop(conn, true);
       case 'addBot':
@@ -231,6 +235,26 @@ export class Room {
     this.game = next;
     this.settle();
     this.changed();
+  }
+
+  /**
+   * A player reports where the card in their hand is. Purely for show: it is
+   * forwarded to everyone else at the table with the seat stamped on, and
+   * nothing is kept, checked against the rules or put in a snapshot. It is
+   * forwarded only while the game says that player is holding that very card
+   * (their `hold` came down the same socket just before), so nobody can make
+   * a card fly that is not in their hand; and only DRAG_RATE times a second.
+   */
+  private dragged(player: Player, at: { t: 'drag' } & DragAt): void {
+    if (this.phase !== 'playing' || this.game?.players.find((p) => p.seat === player.seat)?.holding !== at.id) return;
+    const now = Date.now();
+    const drags = (player.drags ??= { left: DRAG_BURST, at: now });
+    drags.left = Math.min(DRAG_BURST, drags.left + ((now - drags.at) / 1000) * DRAG_RATE);
+    drags.at = now;
+    if (drags.left < 1) return;
+    drags.left--;
+    const msg: ServerMsg = { t: 'drag', seat: player.seat, id: at.id, w: at.w, h: at.h, p: at.p };
+    for (const p of this.players) if (p !== player) p.conn?.send(msg);
   }
 
   /**

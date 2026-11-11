@@ -64,6 +64,9 @@ describe('the settings message', () => {
     expect(parseClientMsg({ t: 'settings', patch: { fewerDown: false } })).toEqual({ t: 'settings', patch: { fewerDown: false } });
     expect(parseClientMsg('{"t":"settings","patch":{"fewerDown":true,"cheat":1},"x":2}')).toEqual({ t: 'settings', patch: { fewerDown: true } });
     expect(parseSettings({ fewerDown: true })).toEqual({ fewerDown: true });
+    expect(parseSettings({ centre: 'free', other: 1 })).toEqual({ centre: 'free' });
+    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots', fewerDown: false } })).toEqual({ t: 'settings', patch: { fewerDown: false, centre: 'spots' } });
+    for (const centre of ['FREE', 'anywhere', true, 1, null, undefined]) expect(parseSettings({ centre })).toBeNull();
   });
 
   it('is dropped when malformed', () => {
@@ -87,8 +90,8 @@ describe('table settings in a room', () => {
   it('start out as the defaults (small-table rule on) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true });
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true });
+    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, centre: 'spots' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, centre: 'spots' });
   });
 
   it('only the host changes them, and everyone is told', () => {
@@ -102,7 +105,7 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { fewerDown: false } });
     room.flush();
     expect(room.settings.fewerDown).toBe(false);
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false });
+    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, centre: 'spots' });
   });
 
   it('follows the dealing role: while the host is away the first connected player may change them', () => {

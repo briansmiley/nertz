@@ -21,7 +21,7 @@ const roomOf = (game: GameState, you: number): RoomView => ({
   round: 1,
   you,
   players: game.players.map((p) => ({ seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, isHost: p.seat === 0, stuck: p.stuck })),
-  settings: { fewerDown: true },
+  settings: { fewerDown: true, centre: 'spots' },
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,

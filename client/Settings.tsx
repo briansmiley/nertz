@@ -130,6 +130,12 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
           Fewer face-down cards for small tables <small>With two or three players the work piles start with 0, 0, 1 and 2 cards face-down, not 0, 1, 2 and 3.</small>
         </span>
       </label>
+      <label className="check">
+        <input type="checkbox" checked={room.settings.centre === 'free'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'free' : 'spots' })} />
+        <span>
+          Piles go wherever the Ace is put down <small>Off: the middle has a marked place for every pile. On: no marks. An Ace starts its pile wherever you let go of it, as long as it overlaps no other pile.</small>
+        </span>
+      </label>
       {children}
       {!mine && <p className="hint">{host?.name ?? 'The host'} sets these.</p>}
     </fieldset>

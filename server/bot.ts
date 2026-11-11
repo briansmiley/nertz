@@ -3,7 +3,8 @@
 // intent, or nothing. The Room owns the timers and submits the intent through
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
-import { completedBy, FLIP_COUNT, isHidden, legalDrops, type Rng } from '../shared/engine';
+import { completedBy, feltFree, FLIP_COUNT, isHidden, legalDrops, type Rng } from '../shared/engine';
+import { seatDir, type Pt } from '../shared/table';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
 /** A level is exactly two numbers: the mean pause between looks, and the chance of noticing a move on one look. */
@@ -60,14 +61,30 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const move = (card: AnyCard, to: PileRef, count = 1): Intent => ({ k: 'move', cardId: card.id, count, to });
   const drops = (card: AnyCard) => legalDrops(view, seat, card.id);
   /** The work pile a single card should go to: one it builds down on, else an empty one. */
-  const workFor = (card: AnyCard): PileRef | undefined => {
-    const piles = drops(card).filter((to) => to.k === 'work');
+  const workFor = (card: AnyCard): Extract<PileRef, { k: 'work' }> | undefined => {
+    const piles = drops(card).filter((to): to is Extract<PileRef, { k: 'work' }> => to.k === 'work');
     return piles.find((to) => me.work[to.i]!.length > 0) ?? piles[0];
   };
-  /** A centre slot that takes the card. An Ace fits every empty slot: any of them. */
+  /**
+   * A place in the middle that takes the card. An Ace fits every empty slot:
+   * any of them. On a table without fixed places it starts its pile on its own
+   * side of the felt: of a dozen places it glances at there, the clear one
+   * nearest to itself; and if none of those is clear, wherever there is room.
+   */
   const slotFor = (card: AnyCard): PileRef | undefined => {
-    const slots = drops(card).filter((to) => to.k === 'slot');
-    return slots.length > 1 ? slots[Math.min(slots.length - 1, Math.floor(rng() * slots.length))] : slots[0];
+    const slots = drops(card).filter((to) => to.k !== 'work');
+    const any = slots.length > 1 ? slots[Math.min(slots.length - 1, Math.floor(rng() * slots.length))] : slots[0];
+    if (any?.k !== 'felt') return any;
+    const side = seatDir(view.players.indexOf(me), view.players.length);
+    const home: Pt = { x: side.x * 0.5, y: side.y * 0.5 };
+    let best: Pt = any;
+    let nearest = Infinity;
+    for (let look = 0; look < 12; look++) {
+      const at = { x: home.x + (rng() - 0.5) * 1.1, y: home.y + (rng() - 0.5) * 1.1 };
+      const d = Math.hypot(at.x - home.x, at.y - home.y);
+      if (d < nearest && feltFree(view, at)) [best, nearest] = [at, d];
+    }
+    return { k: 'felt', x: Math.round(best.x * 1000) / 1000, y: Math.round(best.y * 1000) / 1000 };
   };
 
   // a

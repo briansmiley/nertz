@@ -112,6 +112,14 @@ function token(): string {
 const socialListeners = new Set<(msg: SocialServerMsg) => void>();
 export const onSocial = (fn: (msg: SocialServerMsg) => void): void => void socialListeners.add(fn);
 
+/** Reports of where another player's held card is go to the table (client/Table.tsx). Returns the way to stop listening. */
+type DragMsg = Extract<ServerMsg, { t: 'drag' }>;
+const dragListeners = new Set<(msg: DragMsg) => void>();
+export function onDrag(fn: (msg: DragMsg) => void): () => void {
+  dragListeners.add(fn);
+  return () => void dragListeners.delete(fn);
+}
+
 /** Sends one message if the socket is open. Game intents go through `send` instead. */
 export function post(msg: ClientMsg): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false;
@@ -154,6 +162,8 @@ function connect(): void {
       // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
       if (sync.server) set({ error: msg.message });
       else stop(msg.message);
+    } else if (msg.t === 'drag') {
+      for (const fn of dragListeners) fn(msg);
     } else {
       for (const fn of socialListeners) fn(msg);
     }

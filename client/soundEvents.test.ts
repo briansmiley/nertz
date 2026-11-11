@@ -39,13 +39,16 @@ const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): Ro
   round: 1,
   you,
   players: game.players.map((p) => ({ seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, isHost: p.seat === 0, stuck: p.stuck })),
-  settings: { fewerDown: true },
+  settings: { fewerDown: true, centre: 'spots' },
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,
   lastRound: null,
   ...extra,
 });
+
+/** The same two hands on a table without fixed places. */
+const riggedFree = (): GameState => ({ ...rigged(), table: 'free', places: rigged().slots.map(() => null) });
 
 /** One client (seat 0) and the server it talks to. Every step returns the cues for the change in what is rendered. */
 function session(start: GameState) {
@@ -268,5 +271,43 @@ describe('sound cues from rendered state', () => {
     expect(graceTicking(roomOf(g, 0))).toBe(false);
     expect(graceTicking({ ...roomOf(state.state, 0), phase: 'results' })).toBe(false);
     expect(graceTicking(null)).toBe(false);
+  });
+});
+
+describe('a table without fixed places', () => {
+  const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
+
+  it('an Ace put down on the felt sounds like any card to the middle, once', () => {
+    const s = session(riggedFree());
+    const ace = top(s.game, 0, 0);
+    expect(s.me({ k: 'hold', cardId: ace })).toEqual([{ k: 'pickup', who: 'me' }]);
+    expect(s.me(move(ace, felt(0.1, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    expect(s.confirm()).toEqual([]);
+  });
+
+  it('is silent when the server files my pile under another slot than I predicted: it has not moved', () => {
+    const s = session(riggedFree());
+    const mine = top(s.game, 0, 0);
+    const theirs = top(s.game, 1, 2);
+    // Their Ace reaches the server first and takes slot 0; mine, predicted into slot 0, ends up in slot 1 at the same place.
+    s.act(1, move(theirs, felt(-0.5, -0.3)));
+    expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    expect(s.frame.room!.game!.slots[0]!.map((c) => c.id)).toEqual([mine]);
+    expect(s.confirm()).toEqual([{ k: 'centre', who: 'other', rank: 1 }]); // their card arriving, and nothing for mine
+    expect(s.frame.room!.game!.slots.slice(0, 2).map((p) => p[0]!.id)).toEqual([theirs, mine]);
+    expect(s.frame.room!.game!.places[1]).toMatchObject({ x: 0.4, y: 0.3 });
+  });
+
+  it('an Ace that lost the race for its patch of felt goes home with the dull tap', () => {
+    const s = session(riggedFree());
+    const mine = top(s.game, 0, 0);
+    const theirs = top(s.game, 1, 2);
+    s.act(1, move(theirs, felt(0.42, 0.28)));
+    s.me({ k: 'hold', cardId: mine });
+    expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    const cues = s.confirm();
+    expect(cues).toContainEqual({ k: 'home', who: 'me' });
+    expect(cues).toContainEqual({ k: 'centre', who: 'other', rank: 1 });
+    expect(top(s.frame.room!.game!, 0, 0)).toBe(mine);
   });
 });

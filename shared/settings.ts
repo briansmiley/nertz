@@ -2,15 +2,23 @@
 // of independent options, stored in the room, sent in every RoomView and read
 // when the next round is dealt. To add an option: a field here, its default, a
 // line in `parseSettings`, and a row in client/Settings.tsx (`TableRules`).
+import { TABLE_MODES, type TableMode } from './table';
+
 export interface TableSettings {
   /**
    * The small-table rule: with fewer than four players in the round each work
    * pile is dealt one fewer face-down card (0/0/1/2 instead of 0/1/2/3).
    */
   fewerDown: boolean;
+  /**
+   * The middle of the table: 'spots' gives every centre pile a fixed place
+   * (an Ace goes on an empty one); 'free' has none, and a pile lies wherever
+   * its Ace is put down, as long as it overlaps no other pile.
+   */
+  centre: TableMode;
 }
 
-export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true };
+export const DEFAULT_SETTINGS: TableSettings = { fewerDown: true, centre: 'spots' };
 
 /** Players in the round below which `fewerDown` applies. */
 export const SMALL_TABLE = 4;
@@ -27,6 +35,11 @@ export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if ('fewerDown' in v) {
     if (typeof v.fewerDown !== 'boolean') return null;
     patch.fewerDown = v.fewerDown;
+  }
+  if ('centre' in v) {
+    const centre = TABLE_MODES.find((m) => m === v.centre);
+    if (!centre) return null;
+    patch.centre = centre;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 }

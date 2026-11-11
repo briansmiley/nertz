@@ -101,6 +101,12 @@ button {
   height: 126px;
   transform-origin: 0 0;
   will-change: transform;
+  opacity: var(--o, 1); /* set by Table.tsx: a card in the air over the middle lets the piles show through */
+}
+
+/* A card in another player's hand: it can pass over anything without ever being in your pointer's way. */
+.card.aloft {
+  pointer-events: none;
 }
 
 /* With reduced motion the deal is not played: the cards are simply there, after a short fade. */
@@ -138,7 +144,7 @@ button {
 
 /* A finished pile put aside in the tray: still there, out of the game. */
 .card.shelved {
-  opacity: 0.7;
+  opacity: calc(0.7 * var(--o, 1));
 }
 
 /* A card outside the table (home page, lobby swatches). */
@@ -169,6 +175,41 @@ button {
   position: absolute;
   border: 1.5px dashed rgba(241, 234, 216, 0.2);
   pointer-events: none;
+}
+
+/* The middle of the table: the disc everyone plays onto, drawn as an ellipse (a round table seen from your chair). */
+.felt {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, rgba(46, 116, 124, 0.5) 0%, rgba(31, 90, 99, 0.42) 60%, rgba(23, 70, 79, 0.5) 100%);
+  box-shadow:
+    0 0 0 1.5px rgba(241, 234, 216, 0.16),
+    0 0 0 9px rgba(8, 28, 33, 0.28),
+    0 14px 30px rgba(0, 0, 0, 0.28),
+    inset 0 2px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* On a table without fixed places a pile has no mark under it. */
+.slot.centre.bare {
+  border-color: transparent;
+  background: none;
+}
+
+/* Where the Ace in hand would start its pile (no fixed places): a quiet outline, and a warning when there is no room.
+   It lies over the card in hand, which is larger than a pile in the middle: this is what the pile will cover. */
+.landing {
+  position: absolute;
+  z-index: 31000;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(241, 234, 216, 0.6);
+  background: rgba(241, 234, 216, 0.1);
+}
+
+.landing.no {
+  box-shadow: 0 0 0 2px rgba(207, 34, 51, 0.65);
+  background: rgba(207, 34, 51, 0.16);
 }
 
 /* A centre slot: a quiet outline that is always there, pile or no pile. */
