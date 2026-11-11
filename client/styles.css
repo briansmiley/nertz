@@ -633,7 +633,9 @@ button {
   margin-top: 5px;
   padding: 3px 14px 4px;
   border-radius: 99px;
-  background: rgba(8, 28, 33, 0.55);
+  background: #0a2228; /* solid: the score must read against cards and felt alike */
+  box-shadow: 0 0 0 1.5px rgba(241, 234, 216, 0.35), 0 3px 10px rgba(0, 0, 0, 0.45);
+  text-shadow: none;
   font: 700 36px/1 var(--num);
   color: var(--chalk);
   opacity: 0;
@@ -663,8 +665,9 @@ button {
   text-shadow: none;
 }
 
-.heap.all:not(.best) {
-  opacity: 0.72;
+.heap.all:not(.best) .line,
+.heap.all:not(.best) .who {
+  opacity: 0.8;
 }
 
 
