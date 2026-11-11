@@ -4,7 +4,7 @@
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
 import { completedBy, feltFree, isHidden, legalDrops, type Rng } from '../shared/engine';
-import { TABLE, type Pt } from '../shared/table';
+import { feltHw, type Pt } from '../shared/table';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
 /** A level is exactly two numbers: the mean pause between looks, and the chance of noticing a move on one look. */
@@ -87,8 +87,8 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
     let nearest = Infinity;
     for (let look = 0; look < 5; look++) {
       // (To the thousandth, as it goes over the wire: the place that is checked is the very place that is asked for.)
-      const at = { x: Math.round((rng() * 2 - 1) * TABLE.hw * 1000) / 1000, y: Math.round((rng() * 2 - 1) * 1000) / 1000 };
-      const d = Math.hypot(at.x / TABLE.hw, at.y);
+      const at = { x: Math.round((rng() * 2 - 1) * feltHw(view.players.length) * 1000) / 1000, y: Math.round((rng() * 2 - 1) * 1000) / 1000 };
+      const d = Math.hypot(at.x / feltHw(view.players.length), at.y);
       if (d < nearest && feltFree(view, at)) [best, nearest] = [at, d];
     }
     return { k: 'felt', x: best.x, y: best.y };

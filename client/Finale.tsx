@@ -6,7 +6,7 @@
 // sprites instead of being 300 animated elements; the labels beside the piles
 // are ordinary DOM.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { offFelt, TABLE } from '../shared/table';
+import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backColour, CARD_H, CARD_W } from './cards/Face';
 import { seatDir, stackOffset, TAG_H, type Layout, type Rect } from './layout';
@@ -129,7 +129,7 @@ const overlap = (a: Rect, b: Rect): number =>
 export function planFinale(L: Layout, game: GameState): Plan {
   const w = L.fs * CARD_W;
   const h = L.fs * CARD_H;
-  const d = { cx: L.felt.cx, cy: L.felt.cy, rx: TABLE.hw * L.felt.u, ry: L.felt.u };
+  const d = { cx: L.felt.cx, cy: L.felt.cy, rx: feltHw(game.players.length) * L.felt.u, ry: L.felt.u };
   const n = game.players.length;
   // The drawn-in wash is a low heap along the middle of the felt. What is left of the felt's height above and below
   // it is what a pile in front of the seats at the top and the bottom can have.
@@ -141,7 +141,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const heap: Rect = { x: d.cx - core.rx - w / 2, y: d.cy - coreHalf, w: 2 * core.rx + w, h: 2 * coreHalf };
 
   // A pile goes out towards its player's chair (as this window seats them: `seatDir`), as far as it still lies on the felt.
-  const onFelt = (cx: number, cy: number): boolean => offFelt({ x: (Math.abs(cx - d.cx) + pw / 2) / L.felt.u, y: (Math.abs(cy - d.cy) + ph / 2) / L.felt.u }) <= -RIM / L.felt.u;
+  const onFelt = (cx: number, cy: number): boolean => offFelt({ x: (Math.abs(cx - d.cx) + pw / 2) / L.felt.u, y: (Math.abs(cy - d.cy) + ph / 2) / L.felt.u }, n) <= -RIM / L.felt.u;
   // Someone who is not in the round watches from the first player's chair.
   const view = Math.max(0, game.players.findIndex((p) => p.seat === L.me?.seat));
   const spots = game.players.map((p, i) => {

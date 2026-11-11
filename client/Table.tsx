@@ -399,7 +399,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       const table = { x: at.p[0], y: at.p[1] };
       // Lingering: a report that has had no successor for a while means the card is being held still.
       const speed = time - at.at > 150 ? 0 : at.v;
-      f.dwell = clamp(f.dwell + (offFelt(table) <= 0 ? clamp(1 - speed / SLOW, 0, 1) : -2) * (dt / DWELL_MS), 0, 1);
+      f.dwell = clamp(f.dwell + (offFelt(table, game.players.length) <= 0 ? clamp(1 - speed / SLOW, 0, 1) : -2) * (dt / DWELL_MS), 0, 1);
       const linger = calm() ? 1 : f.dwell * f.dwell * (3 - 2 * f.dwell);
       const s = home.s + (L.fs - home.s) * Math.max(at.w, linger);
       const seat = L.opponents.find((o) => o.seat === p.seat);
@@ -585,7 +585,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const feltUnder = (d: Drag, centre: { x: number; y: number } | null): (Target & { ok: boolean }) | undefined => {
     if (d.held.k !== 'card' || !d.held.ace || !centre) return undefined;
     const at = toTable(L.felt, centre.x, centre.y);
-    if (offFelt(at) > cardSize(game.players.length).h / 2) return undefined;
+    if (offFelt(at, game.players.length) > cardSize(game.players.length).h / 2) return undefined;
     const to: PileRef = { k: 'felt', x: round3(at.x), y: round3(at.y) };
     const rect = landingAt(L, centre);
     return { key: 'felt', to, rect, hit: rect, ok: canDrop(game, you, d.held.id, to) };
@@ -638,7 +638,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** After every movement of the hand: which pile it is over, whether the card should let the middle show through, and the report. */
   const aim = (d: Drag) => {
     const centre = centreOf(d);
-    const over = !!centre && offFelt(toTable(L.felt, centre.x, centre.y)) < 0;
+    const over = !!centre && offFelt(toTable(L.felt, centre.x, centre.y), game.players.length) < 0;
     for (const id of d.ids) reg.handles.get(id)?.o.set(over ? OVER_FELT : 1);
     const targets = targetsFor(d.held);
     // (An empty marked place is not somewhere the card is known to be going: an Ace fits them all.)
@@ -739,7 +739,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     // An Ace that may start a pile comes down to the size of a pile in the middle as it reaches the felt, about the
     // point it is held by: what you carry over the felt is exactly what would lie there.
     const home = byId.get(d.lead)?.s ?? 1;
-    const near = d.held.k === 'card' && d.held.ace ? clamp(1 - (offFelt(toTable(L.felt, d.px, d.py)) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
+    const near = d.held.k === 'card' && d.held.ace ? clamp(1 - (offFelt(toTable(L.felt, d.px, d.py), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
     const k = 1 + (L.fs / home - 1) * near;
     d.ids.forEach((id, i) => {
       const h = reg.handles.get(id);

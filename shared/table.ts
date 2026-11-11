@@ -33,7 +33,10 @@ export interface Spot extends Pt {
 export type TableMode = 'spots' | 'free';
 export const TABLE_MODES: readonly TableMode[] = ['spots', 'free'];
 
-/** The felt: half its width (half its height is 1) and the radius of its corners. */
+/**
+ * The felt: half its width at its widest (half its height is always 1) and the radius of its corners. How wide it is
+ * depends on how many are playing (`feltHw`): `hw` is the widest it ever is, and what a message may name.
+ */
 export const TABLE = { hw: 2.8, corner: 0.62 } as const;
 /** Height over width of a playing card (client/cards/Face.tsx draws 90 x 126). */
 export const CARD_RATIO = 1.4;
@@ -41,10 +44,16 @@ export const CARD_RATIO = 1.4;
 const GAP = 0.14;
 /** The share of the felt that the cards of a full table (four piles per player) cover. */
 const COVER = 0.3;
-/** The area of the felt. */
-const AREA = 4 * TABLE.hw - (4 - Math.PI) * TABLE.corner ** 2;
-
 const seatsOf = (n: number): number => Math.max(2, Math.min(6, Math.round(n) || 2));
+
+/**
+ * Half the width of the felt of a table for `n` players. Up to three, nobody sits at the sides and the felt is wide.
+ * From four on there are hands to the left and right of it: the felt is squarer, so that it can be taller on a screen
+ * (and its cards larger) in the room they leave.
+ */
+export const feltHw = (n: number): number => (seatsOf(n) >= 4 ? 2.2 : TABLE.hw);
+/** The area of the felt. */
+const area = (n: number): number => 4 * feltHw(n) - (4 - Math.PI) * TABLE.corner ** 2;
 
 /**
  * The widest a card ever is, however few the players: such that a row of piles
@@ -62,16 +71,16 @@ const WIDEST = 0.4;
  * carelessly (shared/table.test.ts measures it).
  */
 export function cardSize(n: number): { w: number; h: number } {
-  const w = Math.min(WIDEST, Math.sqrt((COVER * AREA) / (4 * seatsOf(n) * CARD_RATIO)));
+  const w = Math.min(WIDEST, Math.sqrt((COVER * area(n)) / (4 * seatsOf(n) * CARD_RATIO)));
   return { w, h: w * CARD_RATIO };
 }
 
 /** The clear felt kept between two piles of a table for `n` players, in table units. */
 export const pileGap = (n: number): number => GAP * cardSize(n).w;
 
-/** How far `p` is outside the felt (negative: that far inside its edge). */
-export function offFelt(p: Pt): number {
-  const x = Math.abs(p.x) - (TABLE.hw - TABLE.corner);
+/** How far `p` is outside the felt of a table for `n` players (negative: that far inside its edge). */
+export function offFelt(p: Pt, n: number): number {
+  const x = Math.abs(p.x) - (feltHw(n) - TABLE.corner);
   const y = Math.abs(p.y) - (1 - TABLE.corner);
   return Math.hypot(Math.max(x, 0), Math.max(y, 0)) + Math.min(Math.max(x, y), 0) - TABLE.corner;
 }
@@ -88,7 +97,7 @@ export function onTable(p: Pt, n: number): boolean {
   if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
   const { w, h } = cardSize(n);
   // The felt is convex and the same in all four quarters: the corner farthest from the middle decides.
-  return offFelt({ x: Math.abs(p.x) + w / 2, y: Math.abs(p.y) + h / 2 }) <= 1e-9;
+  return offFelt({ x: Math.abs(p.x) + w / 2, y: Math.abs(p.y) + h / 2 }, n) <= 1e-9;
 }
 
 /** Repeatable noise in [-1, 1) from two integers. */
@@ -141,13 +150,16 @@ export function spots(n: number): Spot[] {
 }
 
 /** Candidate places for a new pile, the middle of the table first. */
-const SCAN: readonly Pt[] = (() => {
+const scanOf = (n: number): readonly Pt[] => {
+  const hw = feltHw(n);
   const step = 0.05;
   const pts: Pt[] = [];
-  for (let i = -Math.floor(TABLE.hw / step); i * step <= TABLE.hw; i++) for (let j = -Math.floor(1 / step); j * step <= 1; j++) pts.push({ x: round3(i * step), y: round3(j * step) });
-  const from = (p: Pt) => Math.hypot(p.x / TABLE.hw, p.y);
-  return pts.filter((p) => offFelt(p) < 0).sort((a, b) => from(a) - from(b));
-})();
+  for (let i = -Math.floor(hw / step); i * step <= hw; i++) for (let j = -Math.floor(1 / step); j * step <= 1; j++) pts.push({ x: round3(i * step), y: round3(j * step) });
+  const from = (p: Pt) => Math.hypot(p.x / hw, p.y);
+  return pts.filter((p) => offFelt(p, n) < 0).sort((a, b) => from(a) - from(b));
+};
+const SCANS = [2, 3, 4, 5, 6].map(scanOf);
+const scan = (n: number): readonly Pt[] => SCANS[seatsOf(n) - 2]!;
 
 /** May a new pile go at `p`, given the piles already `placed`? On the table, and clear of every one of them. */
 export const roomAt = (p: Pt, placed: readonly Pt[], n: number): boolean => onTable(p, n) && !placed.some((q) => clash(p, q, n));
@@ -158,10 +170,10 @@ export const roomAt = (p: Pt, placed: readonly Pt[], n: number): boolean => onTa
  * is clear: the table is full. Deterministic.
  */
 export function openPlace(placed: readonly Pt[], n: number, near?: Pt): Pt | null {
-  if (!near) return SCAN.find((p) => roomAt(p, placed, n)) ?? null;
+  if (!near) return scan(n).find((p) => roomAt(p, placed, n)) ?? null;
   let best: Pt | null = null;
   let bestD = Infinity;
-  for (const p of SCAN) {
+  for (const p of scan(n)) {
     const d = Math.hypot(p.x - near.x, p.y - near.y);
     if (d < bestD && roomAt(p, placed, n)) [best, bestD] = [p, d];
   }

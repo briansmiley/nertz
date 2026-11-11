@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { DEAL_MS, isHidden } from '../shared/engine';
-import { cardSize, pileGap, TABLE, type Pt } from '../shared/table';
+import { cardSize, feltHw, pileGap, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -275,6 +275,13 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   };
 }
 
+/** Your own card is this share of the window's height wide (if the width allows), and never wider than OWN_MAX. */
+const OWN_K = 0.108;
+const OWN_MAX = 150;
+/** The widest an opponent's card is drawn, on however large a screen. */
+const OPP_MAX = 96;
+/** The widest a card in the middle is drawn, in widths of your own. */
+const CENTRE_MAX = 1.2;
 /** Width of a hand in card widths, for the gaps used below. */
 const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
@@ -316,7 +323,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const edge = 16;
 
   // Your hand: bottom, as large as the window allows.
-  const ow = mine ? clamp(Math.min((W - 2 * edge) / (OWN_UNITS + 0.4), H * 0.132), 34, 104) : 0;
+  const ow = mine ? clamp(Math.min((W - 2 * edge) / (OWN_UNITS + 0.4), H * OWN_K), 34, OWN_MAX) : 0;
   const oh = ow * RATIO;
   const ownTop = mine ? H - 12 - oh * 2.2 : H - 12;
   const handX = (W - OWN_UNITS * ow) / 2;
@@ -331,12 +338,12 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const mw = clamp(
     Math.min(
       H * OPP_SIZE[Math.min(5, others.length)]!,
-      mine ? ow * 0.62 : 64,
+      mine ? ow * 0.62 : OPP_MAX,
       (W - 2 * CORNER - (tops.length - 1) * 18) / (Math.max(1, tops.length) * OPP_UNITS), // the top row fits between the corners
-      sides ? (W * 0.21 - edge) / OPP_UNITS : 64, // two side hands leave most of the width to the felt
+      sides ? (W * 0.21 - edge) / OPP_UNITS : OPP_MAX, // two side hands leave most of the width to the felt
     ),
     16,
-    64,
+    OPP_MAX,
   );
   const mh = mw * RATIO;
   const handW = OPP_UNITS * mw;
@@ -381,12 +388,13 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // makes its cards the size of your own.
   const size = cardSize(n);
   const room = W - 2 * (sides ? edge + handW + CLEAR : edge);
-  const u = Math.max(40, Math.min(room / (2 * TABLE.hw), (bandBottom - bandTop) / 2, (mine ? ow * 0.92 : 90) / size.w));
+  const hw = feltHw(n);
+  const u = Math.max(40, Math.min(room / (2 * hw), (bandBottom - bandTop) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
   const felt: Felt = { cx: W / 2, cy, u };
   const fw = size.w * u;
   const fh = fw * RATIO;
   const fs = fw / CARD_W;
-  const middle: Rect = { x: felt.cx - TABLE.hw * u, y: cy - u, w: 2 * TABLE.hw * u, h: 2 * u };
+  const middle: Rect = { x: felt.cx - hw * u, y: cy - u, w: 2 * hw * u, h: 2 * u };
   const slots = game.places.map((at): SlotRect | null => {
     if (!at) return null;
     const c = toScreen(felt, at);

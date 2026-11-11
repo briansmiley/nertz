@@ -193,7 +193,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 ## The table
 
 **Table space.** The middle of the table is defined once, in `shared/table.ts`, for everybody: one felt, a wide
-rectangle with rounded corners, 5.6 units wide and 2 high (corner radius 0.62), centre (0, 0), y down the screen, one
+rectangle with rounded corners, 2 units high and 5.6 wide with up to three players, 4.4 wide from four on (`feltHw`:
+there are hands at its sides then, and a squarer felt can be taller on the screen), corner radius 0.62, centre (0, 0), y down the screen, one
 unit the same distance both ways. A centre pile is a point of it (the middle of its cards), kept in the game state
 (`GameState.places`, one per slot, in every snapshot). Nothing in the state says where anything is on a screen.
 
@@ -231,9 +232,13 @@ kept free for the chat button and the grace countdown, the bottom corners for th
 
 | Window | 2 players | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- |
-| 1280 x 720 | 46, 45 | 49, 40 | 49, 30 | 45, 29 | 44, 25 |
-| 1440 x 900 | 71, 56 | 74, 50 | 55, 34 | 49, 34 | 47, 32 |
-| 1920 x 1080 | 96, 64 | 96, 60 | 74, 46 | 69, 43 | 68, 38 |
+| 1280 x 720 | 57, 45 | 59, 40 | 54, 30 | 49, 29 | 46, 25 |
+| 1440 x 900 | 75, 56 | 78, 50 | 62, 34 | 55, 34 | 53, 32 |
+| 1920 x 1080 | 93, 67 | 97, 60 | 83, 46 | 78, 43 | 75, 38 |
+| 2560 x 1440 | 133, 89 | 138, 81 | 112, 62 | 105, 58 | 103, 50 |
+
+Your own cards are 0.108 of the window's height wide, up to 150 px; an opponent's up to 96 px; a centre card up to 1.2
+times your own. `npx tsx scripts/sizes.ts` prints this table.
 
 (While the felt was a round table turned to each chair these were, at 1280 x 720, 65/52/45/29/38 with marked places
 and 49/37/36/25/28 without. Two players with the grid is the one case that got smaller.)
@@ -645,10 +650,10 @@ would still need one of the options above, and serving both from one origin is s
   the bottom of theirs) says little about that; so it is drawn lifted out of their hand, and comes over to its true
   place when they hold it still over the felt for a moment, or flies there when it lands. A card moved quickly is
   mostly seen as that last flight.
-- **The felt has one shape** (2.8 times as wide as high), so it does not use all of a window that is tall for its
-  width: at 1440 x 900 with four to six players it is as wide as the hands at the sides allow and leaves some height
-  unused. In a window narrower than 1280 px the side hands leave it less still (31 px cards for six at 1024 x 700).
-- **Two players with the grid have smaller cards than before** (46 px at 1280 x 720, from 65): both kinds of table
+- **The felt has one shape per table size** (2.8 times as wide as high up to three players, 2.2 times from four
+  on), the same for every window: a window much taller or wider than 16:9 leaves some of its room unused, and a
+  window narrower than 1280 px leaves the felt little between the side hands.
+- **Two players with the grid have smaller cards than on the old round table** (57 px at 1280 x 720, from 65): both kinds of table
   now share one card size, chosen so that eight piles put down anywhere still fit.
 - **A table can fill up before every Ace is out** if piles are put down wastefully enough: at random they all fit
   at least 99 times in 100, but it is not impossible to shut the last Ace out. It then waits until a pile is
