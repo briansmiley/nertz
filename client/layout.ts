@@ -2,7 +2,7 @@
 // visible card sits. Every card is absolutely positioned on one layer and
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
-import { DEAL_MS, isHidden } from '../shared/engine';
+import { DEAL_MS, isHidden, NERTZ_SIZE } from '../shared/engine';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -107,7 +107,8 @@ export function countdownTop(L: Layout, W: number): number {
 /** Faces narrower than this on screen use the large-print rendition. */
 export const MINI_BELOW = 52;
 
-const STOCK_SHOWN = 4;
+/** The stock shows one edge for every this many cards left, so you can see it getting thin. */
+const STOCK_PER_EDGE = 3;
 const WASTE_SHOWN = 4;
 /** A face-down card in a work pile shows this much of the strip a face-up card shows. */
 const DOWN_STEP = 0.45;
@@ -182,8 +183,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   });
 
   const stockX = workX + 4 * h.w + 3 * h.gap + h.wide;
-  const stockFrom = Math.max(0, p.stock.length - STOCK_SHOWN);
-  p.stock.slice(stockFrom).forEach((c, k, shown) => put(c, stockX, h.y + (shown.length - 1 - k) * lean, 20 + k, 'stock'));
+  const stockFrom = p.stock.length - Math.ceil(p.stock.length / STOCK_PER_EDGE);
+  p.stock.slice(stockFrom).forEach((c, k, shown) => put(c, stockX, h.y + (shown.length - 1 - k) * lean * 2, 20 + k, 'stock'));
 
   const wasteX = stockX + h.w + h.gap;
   const n = p.waste.length;
@@ -349,12 +350,13 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
 // ---------------------------------------------------------------- the deal
 
 /**
- * The deal at the start of a round: after `lead` ms a card leaves each deck
- * every `step` ms and takes `duration` s to land. 23 cards leave (13 nertz, 10
- * work), so the last is down a beat before the server's DEAL_MS is up and the
- * face-up cards turn over.
+ * The deal at the start of a round. After `lead` ms the nertz pile is counted
+ * off each deck as one quick ribbon (a card every `stream` ms), then after a
+ * `pause` the work piles are dealt at a calmer `step`. Each card takes
+ * `duration` s to land, and the last is down a beat before the server's
+ * DEAL_MS is up and the face-up cards turn over.
  */
-export const DEAL = { lead: 120, step: 72, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
+export const DEAL = { lead: 120, stream: 38, pause: 160, step: 95, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
 
 /**
  * How long until the `i`th card of a deck leaves it, in a window that was told
@@ -362,6 +364,7 @@ export const DEAL = { lead: 120, step: 72, duration: 0.38, ease: [0.2, 0.8, 0.2,
  * arrived late): that card is simply in its place.
  */
 export function dealWait(i: number, dealMs: number): number | null {
-  const wait = DEAL.lead + i * DEAL.step - (DEAL_MS - dealMs);
+  const at = i < NERTZ_SIZE ? i * DEAL.stream : NERTZ_SIZE * DEAL.stream + DEAL.pause + (i - NERTZ_SIZE) * DEAL.step;
+  const wait = DEAL.lead + at - (DEAL_MS - dealMs);
   return wait >= 0 ? wait : null;
 }

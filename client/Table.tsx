@@ -7,7 +7,7 @@
 // centre) and fits there; there is no click-to-play and nothing is rerouted.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { canDrop, completedBy, GRACE_MS, grab, isHidden } from '../shared/engine';
+import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
 import { Finale, TIMING } from './Finale';
@@ -247,14 +247,32 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const mine = game.players.find((p) => p.seat === you);
   const called = game.nertzCalledBy !== null;
-  const dealing = game.dealing;
+  // Development aid: Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
+  const [replay, setReplay] = useState(0);
+  const [replaying, setReplaying] = useState(false);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyD' || !e.shiftKey || e.repeat || (e.target as Element).closest?.('input,textarea')) return;
+      setReplay((n) => n + 1);
+      setReplaying(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  useEffect(() => {
+    if (!replaying) return;
+    const t = setTimeout(() => setReplaying(false), DEAL_MS);
+    return () => clearTimeout(t);
+  }, [replay, replaying]);
+  const dealing = game.dealing || replaying;
   /** Nothing can be started: the cards are still being dealt, or Nertz has been called. (A card already in hand may still land during grace.) */
   const frozen = dealing || called || results;
 
   // The deal. Every player's cards start as one deck where their stock lies, and the nertz pile and the work piles
   // are dealt off it one card after another, everyone's at once. `dealMs` says how far along the server is: in a
   // window that arrives late (a reload) the cards already dealt are simply in place and the rest follow on time.
-  const dealMs = room.dealMs;
+  const dealMs = replaying ? DEAL_MS : room.dealMs;
   const deck = useMemo(() => {
     const plan = new Map<string, Dealt>();
     if (!dealing || dealMs === null || calm) return plan;
@@ -546,7 +564,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         const known = isHidden(c.card) ? null : c.card;
         return (
           <CardView
-            key={c.card.id}
+            key={replay ? `${c.card.id}:${replay}` : c.card.id}
             id={c.card.id}
             owner={c.card.owner}
             suit={known?.suit}
@@ -555,7 +573,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             y={c.y}
             s={c.s}
             z={c.z}
-            up={c.up}
+            up={c.up && !replaying}
             mini={c.s * CARD_W < MINI_BELOW}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             cls={cardClass(c)}
