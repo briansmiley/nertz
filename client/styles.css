@@ -414,6 +414,10 @@ button {
   white-space: nowrap;
 }
 
+.tag.end {
+  justify-content: flex-end;
+}
+
 .tag .name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1431,6 +1435,58 @@ label.check {
 
 .level:has(input:disabled) {
   color: #9a9482;
+}
+
+/* The (i) beside a setting: its explanation drops down under the whole row on hover, focus or tap. */
+.info {
+  display: inline-grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: 0.3rem;
+  vertical-align: 0.05rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-soft);
+  color: var(--ink-soft);
+  font: italic 700 0.72rem/1 Georgia, serif;
+  cursor: help;
+  outline: none;
+}
+
+.info:hover,
+.info:focus-visible,
+.info:focus {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.info .tip {
+  display: none;
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: var(--ink);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  color: var(--paper);
+  font: 400 0.85rem/1.35 var(--ui);
+  font-style: normal;
+  white-space: normal;
+  text-align: left;
+  cursor: default;
+}
+
+.info:hover .tip,
+.info:focus .tip {
+  display: block;
+}
+
+.rules .check {
+  position: relative;
 }
 
 /* The table's house rules, on the lobby and score sheets. */

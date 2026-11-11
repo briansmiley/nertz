@@ -75,20 +75,29 @@ export function seatDir(k: number, n: number): Pt {
   return { x: -Math.sin(a), y: Math.cos(a) };
 }
 
+/** A card's place: x, y, w, h as if upright (its middle is the middle of the rect), turned `rot` degrees about its middle. */
+export interface CardRect extends Rect {
+  rot?: number;
+}
+
 export interface Seat {
   seat: number;
   s: number;
   /** Where the top card of each pile sits (or would sit, for an empty pile). */
-  nertz: Rect;
-  work: Rect[];
+  nertz: CardRect;
+  work: CardRect[];
+  /** Where the first card of each work pile sits: the row. */
+  workAt: CardRect[];
   /** Drop area of each work pile: its whole column. Neighbours never touch. */
   workHit: Rect[];
-  stock: Rect;
-  waste: Rect;
+  stock: CardRect;
+  waste: CardRect;
   /** Bounding box of the whole hand. */
   box: Rect;
   /** Laid out the other way round, nertz pile on the right: how the hand of someone sitting across the table looks from here. */
   flip: boolean;
+  /** A neighbour's hand runs down the side of the window, turned to face the felt: 90 on your left, -90 on your right. */
+  turn: 0 | 90 | -90;
   nertzCount: number;
 }
 
@@ -234,6 +243,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const workX = h.x + h.w + h.wide;
   const margin = h.gap * 0.4;
   const workHit: Rect[] = [];
+  const workAt = p.work.map((_, i) => rect(workX + i * (h.w + h.gap), h.y));
   const work = p.work.map((pile, i) => {
     const x = workX + i * (h.w + h.gap);
     const down = p.down[i] ?? 0;
@@ -266,12 +276,49 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     s,
     nertz: rect(h.x, h.y),
     work,
+    workAt,
     workHit,
     stock: rect(stockX, h.y),
     waste: rect(wasteX, h.y),
     box: { x: h.x, y: h.y, w: span, h: ch + h.workRoom },
     flip: !!h.flip,
+    turn: 0,
     nertzCount: p.nertz.length,
+  };
+}
+
+/**
+ * Turns a hand laid out at (0, 0) a quarter turn about its middle so it runs down the side of the window, and puts the
+ * top-left corner of what it then covers at (ox, oy). 90: clockwise, its owner's left at the top and their side of
+ * the hand at the left edge (a neighbour on your left); -90: the other way (on your right).
+ */
+function turnHand(seat: Seat, cards: Placed[], turn: 90 | -90, ox: number, oy: number): Seat {
+  const { w: span, h: deep } = seat.box;
+  // Clockwise: (x, y) -> (-y, x), so the box goes to x in [-deep, 0], y in [0, span]. Anticlockwise: (x, y) -> (y, -x).
+  const at = (x: number, y: number): Pt => (turn === 90 ? { x: ox + deep - y, y: oy + x } : { x: ox + y, y: oy + span - x });
+  const card = (r: CardRect): CardRect => {
+    const c = at(r.x + r.w / 2, r.y + r.h / 2);
+    return { x: c.x - r.w / 2, y: c.y - r.h / 2, w: r.w, h: r.h, rot: turn };
+  };
+  const area = (r: Rect): Rect => {
+    const c = at(r.x + r.w / 2, r.y + r.h / 2);
+    return { x: c.x - r.h / 2, y: c.y - r.w / 2, w: r.h, h: r.w };
+  };
+  for (const c of cards) {
+    const w = c.s * CARD_W;
+    const r = card({ x: c.x, y: c.y, w, h: w * RATIO });
+    [c.x, c.y, c.rot] = [r.x, r.y, turn];
+  }
+  return {
+    ...seat,
+    nertz: card(seat.nertz),
+    work: seat.work.map(card),
+    workAt: seat.workAt.map(card),
+    workHit: seat.workHit.map(area),
+    stock: card(seat.stock),
+    waste: card(seat.waste),
+    box: { x: ox, y: oy, w: deep, h: span },
+    turn,
   };
 }
 
@@ -325,7 +372,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // Your hand: bottom, as large as the window allows.
   const ow = mine ? clamp(Math.min((W - 2 * edge) / (OWN_UNITS + 0.4), H * OWN_K), 34, OWN_MAX) : 0;
   const oh = ow * RATIO;
-  const ownTop = mine ? H - 12 - oh * 2.2 : H - 12;
+  // Room below the row for work piles to fan into is kept short: a long pile squeezes, or rises into the cloth above.
+  const ownTop = mine ? H - 12 - oh * 1.85 : H - 12;
   const handX = (W - OWN_UNITS * ow) / 2;
 
   // Everyone else, by the direction their seat lies in as seen from yours: (0, 1) is straight down, towards you.
@@ -340,7 +388,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       H * OPP_SIZE[Math.min(5, others.length)]!,
       mine ? ow * 0.62 : OPP_MAX,
       (W - 2 * CORNER - (tops.length - 1) * 18) / (Math.max(1, tops.length) * OPP_UNITS), // the top row fits between the corners
-      sides ? (W * 0.21 - edge) / OPP_UNITS : OPP_MAX, // two side hands leave most of the width to the felt
+      sides ? (W * 0.16 - edge) / (1.85 * RATIO) : OPP_MAX, // two side hands, turned, leave most of the width to the felt
+      sides ? (H * 0.62) / OPP_UNITS : OPP_MAX, // and run down no more than most of its height
     ),
     16,
     OPP_MAX,
@@ -358,36 +407,41 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const closest = Math.min(Infinity, ...xs.slice(1).map((x, i) => x - xs[i]!));
   const widest = Math.max(0.001, ...xs.map(Math.abs));
   const spread = Math.max(Number.isFinite(closest) ? (handW + 18) / closest : 0, Math.min(W * 0.3, (W / 2 - CORNER - handW / 2) / widest));
+  const span = OPP_UNITS * mw; // a side hand, turned, runs this far down the window
   const opponents = seats.map(({ p, dir, where }, i) => {
-    const x = where === 'side' ? (dir.x < 0 ? edge : W - edge - handW) : W / 2 + (where === 'top' ? dir.x * spread : 0) - handW / 2;
-    // A neighbour sits beside the felt: level with its middle if they are straight to one side, lower down the nearer they are to you.
-    const beside = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - handH / 2, bandTop + TAG_H, bandBottom - handH);
-    return placeHand(
-      p,
-      {
-        x,
-        y: where === 'top' ? topY : where === 'side' ? beside : H - 12 - handH,
-        w: mw,
-        gap: mw * OPP.gap,
-        wide: mw * OPP.wide,
-        fan: 0,
-        workFan: mh * 0.4,
-        workRoom: mh * 0.85,
-        workRise: 0,
-        minStrip: 0,
-        z: 1000 + i * 200,
-        mine: false,
-        // Across the table a hand is seen from the other side: its owner's left is your right.
-        flip: where === 'top',
-      },
-      cards,
-    );
+    const spec: HandSpec = {
+      x: 0,
+      y: 0,
+      w: mw,
+      gap: mw * OPP.gap,
+      wide: mw * OPP.wide,
+      fan: 0,
+      workFan: mh * 0.4,
+      workRoom: mh * 0.85,
+      workRise: 0,
+      minStrip: 0,
+      z: 1000 + i * 200,
+      mine: false,
+      // Across the table a hand is seen from the other side: its owner's left is your right.
+      flip: where === 'top',
+    };
+    if (where === 'side') {
+      // A neighbour sits beside the felt, their hand turned to face it: level with its middle if they are straight to
+      // one side, lower down the nearer they are to you. Clear of the chat button above and your hand below.
+      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, (mine ? ownTop : H - 12) - 8 - span);
+      const local: Placed[] = [];
+      const seat = placeHand(p, spec, local);
+      const turned = turnHand(seat, local, dir.x < 0 ? 90 : -90, dir.x < 0 ? edge : W - edge - handH, y);
+      cards.push(...local);
+      return turned;
+    }
+    return placeHand(p, { ...spec, x: W / 2 + (where === 'top' ? dir.x * spread : 0) - handW / 2, y: where === 'top' ? topY : H - 12 - handH }, cards);
   });
 
   // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than
   // makes its cards the size of your own.
   const size = cardSize(n);
-  const room = W - 2 * (sides ? edge + handW + CLEAR : edge);
+  const room = W - 2 * (sides ? edge + handH + CLEAR : edge);
   const hw = feltHw(n);
   const u = Math.max(40, Math.min(room / (2 * hw), (bandBottom - bandTop) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
   const felt: Felt = { cx: W / 2, cy, u };
@@ -510,7 +564,7 @@ export function aloftAt(
   felt: Felt,
   home: Pt,
   hw: number,
-  hand: Pick<Seat, 'box' | 'flip'> | undefined,
+  hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined,
   at: { h: readonly [number, number]; p: readonly [number, number]; w: number },
   pile: Pt | undefined,
   linger: number,
@@ -522,12 +576,14 @@ export function aloftAt(
   // Along the row (a hand across the table is drawn the other way round) counts for a card going from pile to pile,
   // not for one that is on its way out of the hand: which way is sideways on its owner's screen says nothing about
   // where on the felt it is going.
-  const along = at.h[0] * (hand?.flip ? -1 : 1) * clamp(1 - at.h[1] / 0.8, 0, 1);
+  const along = at.h[0] * clamp(1 - at.h[1] / 0.8, 0, 1);
+  // Which way the row runs here: across, the other way round for a hand across the table, down or up for a turned one.
+  const row = hand?.turn === 90 ? { x: 0, y: 1 } : hand?.turn === -90 ? { x: 0, y: -1 } : { x: hand?.flip ? -1 : 1, y: 0 };
   // Towards the middle: as far as its owner has it, up to a card's width or so out of the hand, and never most of the
   // way to where it really is. (No further: how far up its owner's screen it is says little about where it is going.)
   const out = Math.min(at.h[1], LIFT, (0.6 * Math.hypot(there.x - home.x, there.y - home.y)) / hw);
-  let x = home.x + (along + (out * to.x) / len) * hw;
-  let y = home.y + ((out * to.y) / len) * hw;
+  let x = home.x + (along * row.x + (out * to.x) / len) * hw;
+  let y = home.y + (along * row.y + (out * to.y) / len) * hw;
   if (pile) [x, y] = [x + (pile.x - x) * at.w, y + (pile.y - y) * at.w];
   return { x: x + (there.x - x) * linger, y: y + (there.y - y) * linger };
 }

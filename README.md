@@ -223,8 +223,8 @@ for more, each row set half a place to one side of the next like bricks, each pl
 given up to two and a half degrees of tilt, always the same way. Same card size as without.
 
 **Hands.** Your own hand is laid out as it always was. Everyone else's is a compact row where they sit as you see
-it, in seat order clockwise from your left: along the top edge for seats across from you, at the left or right edge
-for your neighbours, lower down the nearer they sit to you. A hand across the table is drawn the other way round
+it, in seat order clockwise from your left: along the top edge for seats across from you, at the left or right edge (turned to face the felt)
+for your neighbours (turned a quarter turn to face the felt, running down the edge), lower down the nearer they sit to you. A hand across the table is drawn the other way round
 (its owner's left is your right, as at a real table), a neighbour's the same way round as yours. The top corners are
 kept free for the chat button and the grace countdown, the bottom corners for the settings and the tray.
 
@@ -232,12 +232,13 @@ kept free for the chat button and the grace countdown, the bottom corners for th
 
 | Window | 2 players | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- |
-| 1280 x 720 | 57, 45 | 59, 40 | 54, 30 | 49, 29 | 46, 25 |
-| 1440 x 900 | 75, 56 | 78, 50 | 62, 34 | 55, 34 | 53, 32 |
-| 1920 x 1080 | 93, 67 | 97, 60 | 83, 46 | 78, 43 | 75, 38 |
-| 2560 x 1440 | 133, 89 | 138, 81 | 112, 62 | 105, 58 | 103, 50 |
+| 1280 x 720 | 65, 45 | 67, 40 | 59, 33 | 55, 29 | 51, 25 |
+| 1440 x 900 | 85, 56 | 88, 50 | 78, 41 | 72, 36 | 67, 32 |
+| 1920 x 1080 | 105, 67 | 108, 60 | 96, 50 | 88, 43 | 83, 38 |
+| 2560 x 1440 | 148, 89 | 153, 81 | 135, 66 | 124, 58 | 116, 50 |
 
-Your own cards are 0.108 of the window's height wide, up to 150 px; an opponent's up to 96 px; a centre card up to 1.2
+Your own cards are 0.108 of the window's height wide (with room for 0.85 of a card below the row: a work pile of more
+than about eight cards squeezes its older cards to slivers), up to 150 px; an opponent's up to 96 px; a centre card up to 1.2
 times your own. `npx tsx scripts/sizes.ts` prints this table.
 
 (While the felt was a round table turned to each chair these were, at 1280 x 720, 65/52/45/29/38 with marked places

@@ -310,6 +310,8 @@ function useViewport(): [number, number] {
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
+/** How wide the name line of a neighbour whose hand runs down the side may be. */
+const TAG_SIDE_W = 210;
 const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(r.w, r.h) * 0.08, rotate: r.rot ? `${r.rot}deg` : undefined });
 
 /** `sheet` (the scores) is laid over the table when the end-of-round sequence has played out. */
@@ -825,14 +827,17 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         const st = game.players.find((g) => g.seat === o.seat);
         return (
           <div key={o.seat}>
-            <div className={`tag${p?.connected === false ? ' away' : ''}`} style={{ left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}>
+            <div
+              className={`tag${p?.connected === false ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
+              style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
+            >
               <i className="chip" style={{ background: backColour(o.seat) }} />
               <span className="name">{name(o.seat)}</span>
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && <em className="bot">bot</em>}
               {p?.connected === false ? <em className="flag">away</em> : st?.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
-            {[o.nertz, ...o.work.map((w) => ({ ...w, y: o.nertz.y })), o.stock, o.waste].map((r, i) => (
+            {[o.nertz, ...o.workAt, o.stock, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
             ))}
             {!dealing && (

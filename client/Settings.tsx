@@ -31,6 +31,28 @@ function Gear() {
   );
 }
 
+/**
+ * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
+ * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box.
+ */
+function Info({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className="info"
+      role="button"
+      tabIndex={0}
+      aria-label="More about this"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.focus();
+      }}
+    >
+      i<span className="tip" role="tooltip">{children}</span>
+    </span>
+  );
+}
+
 const percent = (v: number) => `${Math.round(v * 100)}%`;
 
 /** The corner controls. Rendered once, by App, over whatever screen is up. */
@@ -127,13 +149,13 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
       <label className="check">
         <input type="checkbox" checked={room.settings.fewerDown} disabled={!mine} onChange={(e) => set({ fewerDown: e.target.checked })} />
         <span>
-          Fewer face-down cards for small tables <small>With two or three players the work piles start with 0, 0, 1 and 2 cards face-down, not 0, 1, 2 and 3.</small>
+          Fewer face-down cards for small tables <Info>With two or three players the work piles start with 0, 0, 1 and 2 cards face-down, not 0, 1, 2 and 3.</Info>
         </span>
       </label>
       <label className="check">
         <input type="checkbox" checked={room.settings.centre === 'spots'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'spots' : 'free' })} />
         <span>
-          Use grid for piles <small>Off: an Ace starts its pile wherever you put it down in the middle, as long as there is room for the card. On: the middle has a marked place for every pile.</small>
+          Use grid for piles <Info>Off: an Ace starts its pile wherever you put it down in the middle, as long as there is room for the card. On: the middle has a marked place for every pile.</Info>
         </span>
       </label>
       {children}

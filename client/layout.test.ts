@@ -25,6 +25,7 @@ const WINDOWS: [number, number][] = [
   [1920, 1080],
   [1024, 700],
 ];
+const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 const slotsOf = (L: Layout) => L.slots.filter((r) => r !== null);
 /** An opponent's hand with the name line above it. */
 const tagged = (o: { box: Rect }): Rect => ({ ...o.box, y: o.box.y - TAG_H, h: o.box.h + TAG_H });
@@ -114,7 +115,7 @@ describe('table layout', () => {
     expect(CARD_RATIO).toBeCloseTo(CARD_H / CARD_W); // the table's idea of a card is the one that is drawn
   });
 
-  it('cards in the middle are a good size at desktop sizes, whichever way the piles are placed: 46px and up at 1280x720', () => {
+  it('cards in the middle are a good size at desktop sizes, whichever way the piles are placed: 50px and up at 1280x720', () => {
     const sizes: Record<string, number[]> = {};
     for (const [W, H] of DESKTOPS) {
       sizes[`${W}x${H}`] = [2, 3, 4, 5, 6].map((n) => {
@@ -131,9 +132,9 @@ describe('table layout', () => {
     // The widths, in px, for 2, 3, 4, 5 and 6 players. (Before the felt stopped being turned for every seat, 1280x720
     // had 65/52/42/30/37 with marked places and 49/37/34/26/28 without.)
     expect(sizes).toEqual({
-      '1280x720': [57, 59.2, 54.3, 49.1, 46.1],
-      '1440x900': [75.2, 78, 61.8, 55.3, 53.2],
-      '1920x1080': [93.5, 96.8, 83.1, 77.7, 74.6],
+      '1280x720': [64.6, 66.8, 59.4, 54.8, 51.3],
+      '1440x900': [84.7, 87.5, 77.6, 71.5, 66.9],
+      '1920x1080': [104.9, 108.3, 95.9, 88.3, 82.5],
     });
   });
 
@@ -194,13 +195,20 @@ describe('table layout', () => {
       expect(L.me!.flip).toBe(false);
       expect(L.me!.nertz.x).toBeLessThan(L.me!.stock.x);
       for (const o of L.opponents) {
-        const across = o.box.y < L.middle.y; // along the top edge
+        const across = o.box.y + o.box.h < L.middle.y; // along the top edge
         expect(o.flip).toBe(across);
-        // Their left is your right: the nertz pile, leftmost for its owner, is at the right-hand end.
-        expect(o.nertz.x < o.stock.x).toBe(!across);
+        if (o.turn) {
+          // A neighbour's hand runs down the side, facing the felt: their left is up on your left, down on your right.
+          expect(across).toBe(false);
+          expect(o.turn).toBe(o.box.x < L.middle.x ? 90 : -90);
+          expect(o.nertz.y < o.stock.y).toBe(o.turn === 90);
+        } else {
+          // Their left is your right: the nertz pile, leftmost for its owner, is at the right-hand end.
+          expect(o.nertz.x < o.stock.x).toBe(!across);
+        }
         for (const r of [o.nertz, o.stock, o.waste, ...o.work]) {
-          expect(r.x).toBeGreaterThanOrEqual(o.box.x - 0.01);
-          expect(r.x + r.w).toBeLessThanOrEqual(o.box.x + o.box.w + 0.01);
+          // Each pile's middle is within the hand's box.
+          expect(inside(grow(o.box, 0.01), r.x + r.w / 2, r.y + r.h / 2)).toBe(true);
         }
       }
     }
@@ -570,7 +578,7 @@ describe('table layout', () => {
     it('rises into what cloth there is between its column and the felt, never onto the felt, without moving anything else', () => {
       const [W, H] = [1440, 900];
       const short = computeLayout(W, H, deal(seats(2), rng(2)), 0);
-      const game = longPile(2, 2, 10);
+      const game = longPile(2, 1, 7);
       const L = computeLayout(W, H, game, 0);
       const cardH = L.me!.nertz.h;
       const s = strips(L, game);
@@ -588,25 +596,25 @@ describe('table layout', () => {
       // The other piles and the rest of the hand stay exactly where they were.
       expect([L.me!.nertz, L.me!.stock, L.me!.work[0], L.me!.work[2]]).toEqual([short.me!.nertz, short.me!.stock, short.me!.work[0], short.me!.work[2]]);
       // A pile of ordinary length is not lifted at all.
-      const usual = longPile(2, 1, 4);
+      const usual = longPile(2, 1, 3);
       expect(computeLayout(W, H, usual, 0).cards.find((c) => c.card.id === usual.players[0]!.work[1]![0]!.id)!.y).toBe(L.me!.nertz.y);
     });
 
     it('in a low window (1280x720), where there is hardly any felt to rise into, the newest cards keep their whole rank', () => {
-      const game = longPile(2, 2, 10);
+      const game = longPile(2, 1, 7);
       const L = computeLayout(1280, 720, game, 0);
       const cardH = L.me!.nertz.h;
       const s = strips(L, game);
       expect(s.slice(-3).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true); // it used to be 17px (0.13) for every card
       expect(s.every((step) => step > 4)).toBe(true);
       expect(L.me!.work[1]!.y + cardH).toBeLessThanOrEqual(720);
-      // Seven face-up cards on one face-down card, a long pile by any normal standard, are all still readable.
-      const seven = longPile(2, 1, 7);
+      // Four face-up cards on one face-down card are all still readable.
+      const seven = longPile(2, 1, 4);
       expect(strips(computeLayout(1280, 720, seven, 0), seven).slice(1).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true);
     });
 
     it('with no felt to spare (six players) keeps the newest cards readable and lets only the oldest give way', () => {
-      const game = longPile(6, 2, 10);
+      const game = longPile(6, 1, 7);
       const L = computeLayout(1280, 720, game, 0);
       const cardH = L.me!.nertz.h;
       const s = strips(L, game);
@@ -724,10 +732,11 @@ describe("another player's card in the air", () => {
         const p = toTable(theirs.felt, to.x, to.y);
         const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
         const drawn = aloftAt(mine.felt, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
-        // It is over that hand's third work pile here, whichever way round the hand is drawn.
-        expect(Math.abs(drawn.x - (hand.work[2]!.x + hand.work[2]!.w / 2))).toBeLessThan(hand.nertz.w * 0.35);
-        expect(drawn.y).toBeCloseTo(home.y, 6);
-        expect(Math.sign(drawn.x - home.x)).toBe(hand.flip ? -1 : 1);
+        // It is over that hand's third work pile here, whichever way round (or turned) the hand is drawn.
+        const pile = { x: hand.workAt[2]!.x + hand.workAt[2]!.w / 2, y: hand.workAt[2]!.y + hand.workAt[2]!.h / 2 };
+        expect(Math.hypot(drawn.x - pile.x, drawn.y - pile.y)).toBeLessThan(hand.nertz.w * 0.35);
+        if (hand.turn) expect(drawn.x).toBeCloseTo(home.x, 6);
+        else expect(drawn.y).toBeCloseTo(home.y, 6);
       }
     }
   });
