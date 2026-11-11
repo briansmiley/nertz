@@ -853,7 +853,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         );
       })}
 
-      <ClearNotice must={must} rect={L.slots[must.slot] ?? undefined} />
+      {/* (Not while the pile is in hand, on its way: that is what the notice asks for.) */}
+      <ClearNotice must={must} rect={held?.k === 'pile' ? undefined : (L.slots[must.slot] ?? undefined)} />
       <Opening room={room} at={{ x: L.disc.cx, y: L.disc.cy }} />
 
       {callerBox && (

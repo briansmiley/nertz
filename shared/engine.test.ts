@@ -1398,6 +1398,29 @@ describe('a table without fixed places', () => {
     expect(legalDrops(s, 0, '0:S2')).toEqual([slot(0)]);
   });
 
+  it('free placement keeps to the opening and to clear-first like everything else: nothing lands before play, and a seat with a finished pile may only clear it', () => {
+    const s = freeGame(two(aces, theirAces));
+    for (const stage of ['dealing', 'ready', 'countdown'] as const) {
+      // (Before play the nertz tops are hidden in a real round; the reducer refuses by stage before it looks at any card.)
+      const closed = { ...s, stage };
+      rejected(applyIntent(closed, 0, move('0:SA', felt(0, 0))));
+      rejected(applyIntent(closed, 0, hold('0:SA')));
+      expect(canDrop(closed, 0, '0:SA', felt(0, 0))).toBe(false);
+    }
+    // Seat 0 finished the hearts and has not carried them off: its Ace stays in its hand, on felt that is free for anyone else.
+    const waiting = freeGame(two({ work: [cs('SA'), cs('C9'), cs('DA'), cs('C5')] }, theirAces), [[pile('HK', 0), 0.5, 0]]);
+    expect(mustClear(waiting, 0)).toBe(true);
+    expect(feltFree(waiting, { x: -0.5, y: 0 })).toBe(true);
+    expect(applyIntent(waiting, 0, move('0:SA', felt(-0.5, 0)))).toEqual({ ok: false, reason: CLEAR_FIRST });
+    expect(applyIntent(waiting, 0, { k: 'flip' })).toEqual({ ok: false, reason: CLEAR_FIRST });
+    expect(canDrop(waiting, 0, '0:SA', felt(-0.5, 0))).toBe(false);
+    ok(applyIntent(waiting, 1, move('1:SA', felt(-0.5, 0)))); // nobody else is held up
+    const cleared = ok(applyIntent(waiting, 0, { k: 'clear', slot: 0 }));
+    expect(cleared.places[0]).toBeNull(); // the felt it lay on is anybody's again
+    ok(applyIntent(cleared, 0, move('0:SA', felt(0.5, 0))));
+    wellFormed(cleared);
+  });
+
   it('refuses an Ace on an empty slot (there are none to aim at), and a patch of felt on a table with spots', () => {
     const s = freeGame(two(aces, theirAces));
     for (let i = 0; i < 8; i++) rejected(applyIntent(s, 0, move('0:SA', slot(i))));

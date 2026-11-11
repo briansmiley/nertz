@@ -197,8 +197,8 @@ export function deal(delay = 0): void {
 }
 
 /** The deal at the start of a round: a flick as each card of your layout lands, on the animation's own schedule. */
-export function dealBurst(cards = 23): void {
-  for (let i = 0; i < cards; i++) deal(((dealWait(i, DEAL_MS) ?? 0) + DEAL.duration * 700) / 1000);
+export function dealBurst(work = 10, nertz = 13): void {
+  for (let i = 0; i < work + nertz; i++) deal(((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
 }
 
 export function pickup(who: Who = 'me'): void {
@@ -297,7 +297,7 @@ export function stage(from: Stage, to: Stage): void {
 function play(cue: Cue): void {
   switch (cue.k) {
     case 'deal':
-      return dealBurst();
+      return dealBurst(cue.work);
     case 'pickup':
       return pickup(cue.who);
     case 'work':

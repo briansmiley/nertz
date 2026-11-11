@@ -264,10 +264,17 @@ describe('sound cues from rendered state', () => {
     const game = rigged();
     const lobby = roomOf(game, 0, { phase: 'lobby', round: 0, game: null });
     const first = roomOf(game, 0);
-    expect(soundCues({ room: lobby, online: true }, { room: first, online: true })).toEqual([{ k: 'deal' }]);
+    expect(soundCues({ room: lobby, online: true }, { room: first, online: true })).toEqual([{ k: 'deal', work: 4 }]); // (the rigged hand: four single cards)
     const sheet: RoomView = { ...first, phase: 'results' };
     const second = roomOf(deal([0, 1], rng(8)), 0, { round: 2 });
-    expect(soundCues({ room: sheet, online: true }, { room: second, online: true })).toEqual([{ k: 'deal' }]);
+    expect(soundCues({ room: sheet, online: true }, { room: second, online: true })).toEqual([{ k: 'deal', work: 10 }]);
+    // The flicks follow the cards that really leave the deck: 7 to the work piles under the small-table rule, else 10
+    // (then the 13 of the nertz pile). Someone sitting the round out hears the first hand's.
+    const small = roomOf(dealRound([0, 1], rng(9), { fewerDown: true }), 0, { round: 3 });
+    expect(soundCues({ room: sheet, online: true }, { room: small, online: true })).toEqual([{ k: 'deal', work: 7 }]);
+    const four = roomOf(dealRound([0, 1, 2, 3], rng(9), { fewerDown: true }), 2, { round: 3 });
+    expect(soundCues({ room: sheet, online: true }, { room: four, online: true })).toEqual([{ k: 'deal', work: 10 }]);
+    expect(soundCues({ room: sheet, online: true }, { room: { ...small, you: 5 }, online: true })).toEqual([{ k: 'deal', work: 7 }]);
     // The round being scored is not a deal, and the scored table makes no card sounds.
     expect(soundCues({ room: first, online: true }, { room: sheet, online: true })).toEqual([]);
     expect(soundCues({ room: sheet, online: true }, { room: { ...sheet, players: [] }, online: true })).toEqual([]);

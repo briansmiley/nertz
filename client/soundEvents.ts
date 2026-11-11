@@ -16,8 +16,8 @@ import type { GameState, RoomView } from '../shared/types';
 export type Who = 'me' | 'other';
 
 export type Cue =
-  /** A new round's cards appeared. */
-  | { k: 'deal' }
+  /** A new round's cards appeared. `work` is how many cards go to the work piles of the hand you watch (7 under the small-table rule, else 10): they leave the deck first, then the 13 of the nertz pile. */
+  | { k: 'deal'; work: number }
   /** A card (or run) was picked up. */
   | { k: 'pickup'; who: Who }
   /** A card or run landed on a work pile. */
@@ -86,7 +86,11 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const a = prev?.room;
   const b = next.room;
   if (!a || !b || !prev.online || !next.online || a.code !== b.code) return [];
-  if (a.round !== b.round) return b.phase === 'playing' && b.game ? [{ k: 'deal' }] : [];
+  if (a.round !== b.round) {
+    if (b.phase !== 'playing' || !b.game) return [];
+    const hand = b.game.players.find((p) => p.seat === b.you) ?? b.game.players[0];
+    return [{ k: 'deal', work: hand?.work.flat().length ?? 10 }];
+  }
   if (!a.game || !b.game || a.phase !== 'playing') return []; // nothing moves on a table that was already scored
   const you = b.you;
   const who = (seat: number): Who => (seat === you ? 'me' : 'other');

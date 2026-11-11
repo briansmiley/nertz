@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
 import { CARD_RATIO, seatDir, toView, type TableMode } from '../shared/table';
 import type { Card, GameState } from '../shared/types';
-import { planFinale } from './Finale';
+import { LABEL, planFinale } from './Finale';
 import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -309,7 +309,61 @@ describe('table layout', () => {
     expect(plan.movers).toHaveLength(4 * 13 + 3);
     expect(plan.piles.map((p) => p.total)).toEqual([16, 13, 13, 13]);
     for (const m of plan.movers) expect(plan.piles[m.pile]!.seat).toBe(m.owner);
-    for (const [i, a] of plan.piles.entries()) for (const b of plan.piles.slice(i + 1)) expect(Math.abs(a.x - b.x)).toBeGreaterThan(plan.w);
+    for (const [i, a] of plan.piles.entries()) for (const b of plan.piles.slice(i + 1)) expect(overlap(a, b)).toBe(false);
+  });
+
+  it('gathers each pile out in front of its player, on the disc and clear of the wash, with a label that touches nothing else: 2 to 6 players, every chair', () => {
+    for (const [W, H] of [[1280, 720], [1440, 900]] as const) {
+      for (const centre of ['spots', 'free'] as const) {
+        for (let n = 2; n <= 6; n++) {
+          const game = played(deal(seats(n), rng(n), centre));
+          for (let you = 0; you < n; you++) {
+            const L = computeLayout(W, H, game, you, 'wash');
+            const plan = planFinale(L, game);
+            const where = `${n} players at ${W}x${H} (${centre}), seat ${you}`;
+            const d = L.disc;
+            expect(plan.piles.map((p) => p.seat), where).toEqual(game.players.map((p) => p.seat));
+            const hands = [...L.opponents.map(tagged), { ...L.me!.box, h: H - L.me!.box.y }];
+            for (const [i, pile] of plan.piles.entries()) {
+              const at = `${where}, pile of seat ${pile.seat}`;
+              // On the disc, every corner of it.
+              for (const [x, y] of [[pile.x, pile.y], [pile.x + pile.w, pile.y], [pile.x, pile.y + pile.h], [pile.x + pile.w, pile.y + pile.h]] as const) {
+                expect(((x - d.cx) / d.rx) ** 2 + ((y - d.cy) / d.ry) ** 2, at).toBeLessThan(1);
+              }
+              // Out towards its own seat: the way from the middle of the disc to the pile is the way to that player
+              // (as this chair sees the table), most of the way to the rim, so nearer to them than to anyone else.
+              const v = toView(seatDir(i, n), game.players.findIndex((p) => p.seat === you), n);
+              const out = { x: (pile.x + pile.w / 2 - d.cx) / d.rx, y: (pile.y + pile.h / 2 - d.cy) / d.ry };
+              expect(Math.hypot(out.x, out.y), at).toBeGreaterThan(0.45);
+              expect((out.x * v.x + out.y * v.y) / Math.hypot(out.x, out.y), at).toBeGreaterThan(0.999);
+              const hand = pile.seat === you ? L.me! : L.opponents.find((o) => o.seat === pile.seat)!;
+              const gap = (r: Rect) => Math.hypot(Math.max(r.x - (pile.x + pile.w / 2), 0, pile.x + pile.w / 2 - (r.x + r.w)), Math.max(r.y - (pile.y + pile.h / 2), 0, pile.y + pile.h / 2 - (r.y + r.h)));
+              // (Your own hand runs the whole width of the window under the disc, so it is near every pile low on the
+              // disc: a neighbour's pile is compared with the other opponents' hands only.)
+              for (const other of pile.seat === you ? L.opponents : L.opponents.filter((o) => o !== hand)) expect(gap(hand.box), `${at} vs the hand of seat ${other.seat}`).toBeLessThan(gap(other.box));
+              // Clear of the wash once it has been drawn in, and of every other pile.
+              expect(overlap(pile, plan.heap), at).toBe(false);
+              for (const other of plan.piles.slice(i + 1)) expect(overlap(pile, other), at).toBe(false);
+              // Its label: the right size, right beside it, inside the window, and over nothing: no hand (the
+              // NERTZ! stamp lies across a hand), no name, not the tray, not the wash, no pile, no other label.
+              const label = pile.label;
+              expect([label.w, label.h], at).toEqual([LABEL.w, LABEL.h]);
+              expect(gap(label), at).toBeLessThan(Math.hypot(pile.w, pile.h) / 2 + 8);
+              expect(label.x >= 0 && label.y >= 0 && label.x + label.w <= W && label.y + label.h <= H, at).toBe(true);
+              for (const hand of hands) expect(overlap(label, hand), `${at}: label over a hand`).toBe(false);
+              expect(overlap(label, L.tray), `${at}: label over the tray`).toBe(false);
+              expect(overlap(label, plan.heap), `${at}: label over the wash`).toBe(false);
+              for (const other of plan.piles) expect(overlap(label, other), `${at}: label over the pile of seat ${other.seat}`).toBe(false);
+              for (const other of plan.piles.slice(i + 1)) expect(overlap(label, other.label), `${at}: label over the label of seat ${other.seat}`).toBe(false);
+            }
+            // The wash itself stays on the disc.
+            expect(plan.rx + plan.w / 2, where).toBeLessThanOrEqual(d.rx);
+            expect(plan.ry + plan.h / 2, where).toBeLessThanOrEqual(d.ry);
+            expect(plan.heap.y >= d.cy - d.ry && plan.heap.y + plan.heap.h <= d.cy + d.ry, where).toBe(true);
+          }
+        }
+      }
+    }
   });
 
   // Regression: a drop was judged only by the centre of the grabbed card, so a card held by its corner and

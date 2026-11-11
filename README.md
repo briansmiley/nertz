@@ -23,7 +23,8 @@ Then open **http://localhost:5173** in two browser windows (two tabs of the same
 2. Window 2: paste the invite link (or open the home page and type the code), type a different name, press **Join table**.
    A code that no table has is refused with a message; it never opens a new table.
 3. Window 1: press **Deal the first round**. The cards are dealt and the table waits.
-4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays.
+4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays. Cards come off the stock one at a
+   time: drag the top one onto the waste, three times for a group of three (or click, if the host set the table so).
 
 On your own? In the lobby press **Add bot** and deal: one person and one bot make a round (see [Bots](#bots)).
 
@@ -68,24 +69,28 @@ What you see around a round:
   its card simply crosses the table at a pace you can follow.
 
 - **The deal.** Every round opens with each player's deck, in their own back colour, lying where their stock goes. The
-  nertz pile and then the four work piles are dealt off it one card after another, everyone's at the same time, yours
-  large and the others' small. It takes about two and a half seconds and nothing can be touched meanwhile. Then the
-  four work tops of every hand turn over at the same moment on every screen, so that everyone can look at their layout.
-  The nertz piles stay face-down. With "reduce motion" switched on the cards simply fade in where they belong; the wait
-  and the turn are the same.
+  four work piles and then the nertz pile are dealt off it one card after another, everyone's at the same time, yours
+  large and the others' small (a hand across the table is dealt the other way round, like the hand itself). It takes
+  about three seconds and nothing can be touched meanwhile. Then the four work tops of every hand turn over at the same
+  moment on every screen, so that everyone can look at their layout. The nertz piles stay face-down. With "reduce
+  motion" switched on the cards simply fade in where they belong; the wait and the turn are the same.
 - **The start.** The table now waits, for as long as it takes, for the dealer. The dealer has a big **Start** button in
-  the middle of the table (Space or Enter does the same); everyone else reads "Waiting for Brian to start". Pressing it
-  counts "1", "2", "3" in the middle of every screen, about 0.7 seconds each, and on "NERTZ!" every nertz pile's top card
-  turns over and play is open. Nothing can be touched before the word. With "reduce motion" the numbers do not bounce.
-- **The waste** is one squared-up pile: you see its top card and nothing of what is under it, in your own hand and in
-  everyone else's. While a group is being dealt its cards lie on it face-down, and all turn over when the third lands.
+  the middle of the disc (Space or Enter does the same); everyone else reads "Waiting for Brian to start" there. Pressing
+  it counts "1", "2", "3" in the middle of every screen, about 0.7 seconds each, and on "NERTZ!" every nertz pile's top
+  card turns over and play is open. Nothing can be touched before the word: no card, no stock, no patch of felt, and
+  nobody's card is shown moving. With "reduce motion" the numbers do not bounce.
+- **The stock and the waste.** The stock shows one edge for every three cards left, so you can see it getting thin. The
+  waste is one squared-up pile: you see its top card and nothing of what is under it, in your own hand and in everyone
+  else's (mirrored with the rest of the hand for the players across the table). While a group is being dealt its cards
+  lie squarely on it face-down, and all turn over when the third lands.
 - **Face-down work cards** lie under each work pile, yours and everyone's, and turn over when the cards above them leave.
-- **A long work pile** of yours starts higher up, into the free felt above its column, rather than being squeezed. When
-  there is no felt left, the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
+- **A long work pile** of yours may start a little higher up, into what felt there is between your hand and the disc.
+  Past that the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
 - **A pile you finished** (you placed its King) glows and says "Drag to tray"; other people's finished piles are dimmed and
   ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
-  NERTZ! first, nothing moves, the pile shakes, the tray flashes, there is a soft tap and a small notice by the pile says
-  "Move your finished pile to the tray first" for a couple of seconds. Your cards do not look grabbable meanwhile.
+  NERTZ! first, or try to deal from the stock or to start a pile on the felt, nothing moves, the pile shakes, the tray
+  flashes, there is a soft tap and a small notice right by the pile, wherever on the table it lies, says "Move your
+  finished pile to the tray first" for a couple of seconds. Your cards do not look grabbable meanwhile.
   The **tray** runs off the right edge of the window beside your hand: finished piles are pushed half
   off-screen there, the near side of every King peeking out from under the next. While you carry a finished pile it
   lights up and comes a little way in; let go anywhere from just short of it to the edge of the screen.
@@ -93,11 +98,17 @@ What you see around a round:
 - **The grace window**: a small countdown ring in the top right, for everyone, while cards that were in hand at the call may
   still land, with "Put it down!" or the name of whoever is being waited for. Nobody is ever seated in that corner. If
   you are holding a card you simply keep dragging; if the server takes it out of your hand it slides home.
-- **The end of the round** is played on the table before the scores: the centre piles turn face-down where they lie, the tray
-  piles turn over and come out, everything is washed around the middle, and the cards sort themselves by back colour into
-  one pile per player with the count and the nertz penalty underneath. Then the score sheet. It takes about five seconds; a
-  click skips it, and with "reduce motion" switched on it is skipped altogether. The totals beside the names do not change
-  until the sheet is up.
+- **The end of the round** is played on the table before the scores. The centre piles turn face-down where they lie, the
+  tray piles turn over and come out, and everything is washed on the disc, backs up. Then the wash is drawn in to a heap
+  in the middle of the disc and sorted by back colour, one player at a time, the round's lowest score first: each
+  player's cards go out to a pile **in front of that player's seat**, on the rim of the disc between their hand and
+  the middle, as your window sees the table (yours at the bottom, the player opposite at the top). Beside each pile, on
+  whichever side is clear, are its player's colour and name, "+N played" and "−N nertz left" in the same size, and
+  largest the net score for the round; when the last pile is in, the round's best is picked out in gold ("★ ... wins the
+  round") and the others dim. The labels are placed so that they cover no hand, no name, not the tray, not the NERTZ!
+  stamp and not each other. Then the score sheet. The sequence takes about four seconds, a second and a half per
+  player, and a pause of six and a half seconds to read it; a click skips it, and with "reduce motion" switched on it
+  is skipped altogether. The totals beside the names do not change until the sheet is up.
 
 Other scripts:
 
@@ -115,7 +126,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - 2 to 6 players. Each has their own 52-card deck with its own back colour.
 - Deal, per player: a 13-card **nertz pile** (only the top card face up), 4 **work piles** with 0, 1, 2 and 3 face-down
   cards under one face-up card (10 cards), the other 29 cards face down as the **stock**, and an empty **waste**.
-  While the cards are being dealt (3 seconds) nobody can play, flip, vote or call, and nobody is shown a face.
+  While the cards are being dealt (3 seconds) nobody can play, deal from the stock, vote or call, and nobody is shown a face.
 - **The start.** When the cards are down the work piles' top cards are turned over; the nertz piles stay face-down and
   still nobody can do anything. The round begins when the dealer says so: "1, 2, 3, Nertz!" (about two seconds), and on
   the word every nertz top is turned over and play is open for everyone at once. There is no time limit on the dealer.
@@ -272,7 +283,10 @@ first, or the table is not open for play) it forgets it and looks again later. T
 The decision is one pure function, `chooseIntent(view, seat, memory, rng, observance)` in `server/bot.ts`; the room only
 owns the timers, which stop when the round ends, when the bot is removed and when the table is deleted.
 
-**One action per look.** Each look it takes the first of these that applies:
+**One action per look, a look late.** At each look the bot first does what it noticed at its previous look, then
+looks again: nothing it does is a reaction quicker than one pause, as with a person who has to see a card and then
+move it. If the table moved on meanwhile and the move is refused, it simply looks again. What it notices at a look is
+the first of these that applies:
 
 1. Carry a centre pile it finished (it placed the King) to the tray: before everything, as the rules demand.
 2. Its nertz pile is empty: call Nertz.
@@ -319,13 +333,15 @@ If you and the bot are both truly stuck, see "A round nobody ends" under [Known 
 
 ## Sound and settings
 
-**Sound.** Every card makes a noise: a flick per dealt card, a faint slide on pick-up, a thunk on a work pile, a flick
-for each card off the stock and three quick ones as the group turns up, a thunk and a soft ding for a card played to the middle (the ding steps up a pentatonic scale with the rank,
-Ace low to King high), a two-note chime for a King, a slide for a pile going to the tray, a dull tap when a card goes back
-(put down nowhere, or beaten to its pile, or tried while a finished pile of yours is waiting for the tray), a knock for
-each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud hit when Nertz is called at the end, a tick each second of the grace window for
-whoever still holds a card, and a riffle, flicks and a small flourish through the end-of-round sequence. Your own cards
-sound at full level, everyone else's much quieter.
+**Sound.** Every card makes a noise: a flick as each card of the deal lands (for exactly the cards that leave your
+deck: 7 or 10 to the work piles, then the 13 of the nertz pile), a faint slide on pick-up, a thunk on a work pile, one
+soft flick for each card dealt off the stock (the group turning up makes no sound of its own), the same firm card sound
+for every card played to the middle whatever its rank, a two-note chime for a King, a slide for a pile going to the
+tray, a dull tap when a card goes back (put down nowhere, or beaten to its pile, or tried while a finished pile of
+yours is waiting for the tray), a knock for each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud
+hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, and a
+riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
+else's much quieter (a quarter, until you move the slider).
 
 - The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
   tones are synthesised. Sources and licence: [`client/sounds/CREDITS.md`](client/sounds/CREDITS.md).
@@ -432,7 +448,7 @@ Nertz has not been called". While it holds, `applyIntent` refuses every intent f
 pile to the tray is a single intent; it never used `hold`). The client's replay applies the same rule, so after a
 predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the nudge and the notice.
 
-**The final table.** During `results` the snapshot still holds the finished round (`game`: slots, tray, hands) next to
+**The final table.** During `results` the snapshot still holds the finished round (`game`: piles and their places, tray, hands) next to
 `lastRound` (who called, and per player the name, the cards played, the nertz cards left and the running total), so the
 client can play the end-of-round sequence and draw the score sheet from it, even if a player has left since.
 
@@ -512,7 +528,7 @@ client/   Vite + React
   Table.tsx     the table: the deal, drag and drop, other players' cards in the air, the Nertz call, the grace countdown, the steps of the end-of-round sequence
   Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
-  Finale.tsx    the wash and the sorted piles at the end of a round, drawn on a canvas
+  Finale.tsx    the end of a round: the wash on the disc and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
   Settings.tsx  the mute button and gear (your settings), and the table rules on the lobby and score sheets
   prefs.ts      your settings: sound levels, reduced motion; localStorage
@@ -628,12 +644,21 @@ would still need one of the options above, and serving both from one origin is s
   rather than rising: at 1280 x 720 a pile of two face-down and ten face-up cards shows its newest five or six cards
   with the whole rank, and the oldest as slivers about 11 px tall, which are hard to read and to grab.
 - **The open chat panel** lies over a neighbour seated at the left edge. Hide it to see them.
+- **The end of the round on a small disc.** With two players the centre cards are large for the disc, so the sorted
+  piles are drawn smaller than the cards in the wash (about 0.6 of them at 1280 x 720), to leave the middle to the wash
+  while it is sorted. With five players at 1280 x 720 the piles are small (29 px) next to their labels, and one or two
+  labels sit above or below their pile instead of beside it; each has its player's colour chip. Label placement is
+  checked for 2 to 6 players at 1280 x 720 and 1440 x 900; in a smaller window labels may overlap something. The
+  NERTZ! stamp across your own hand is large and stays up through the sequence.
+- **Face-down cards of a half-dealt group** at the call stay face-down on the waste through the end of the round.
+- **In drag mode nothing on the table says the stock must be dragged**: a click on a stock that still has cards does
+  nothing. The rule is in the table rules and in this file.
 - **The wash is a canvas.** At the end of a round up to ~300 card backs move at once, so they are drawn on one canvas
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late
   frames), and draws the moving cards at 1x until they come to rest.
-- **The deal** is drawn from where each stock lies, and only the cards that leave it move (23 per player); the 29 that
-  stay are the stock. Resizing the window during the deal moves each deck, and the cards already out, to the new layout
+- **The deal** is drawn from where each stock lies, and only the cards that leave it move (23 per player, 20 under the
+  small-table rule); the rest stay: they are the stock. Resizing the window during the deal moves each deck, and the cards already out, to the new layout
   and the deal carries on. In a background tab the browser slows timers, so cards can leave the deck late there. The
   turn-over arrives with the snapshot that ends the deal, so on a slow connection it is late by that connection's
   latency.

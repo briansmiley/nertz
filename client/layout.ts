@@ -106,6 +106,8 @@ export interface Layout {
   out: Rect[];
   /** The box around the disc. */
   middle: Rect;
+  /** The window this was laid out for. */
+  window: { w: number; h: number };
   /** Scale of cards in the middle. */
   fs: number;
 }
@@ -415,7 +417,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
           fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan),
           workFan: oh * 0.3,
           workRoom: H - 8 - ownTop - oh,
-          // (Not once the wash begins: that felt is where the sorted piles' counts go.)
+          // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
           workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 6 - (cy + disc.ry)),
           minStrip: oh * 0.21,
           z: 3000,
@@ -438,7 +440,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, disc, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, fs };
+  return { cards, me, opponents, disc, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs };
 }
 
 // ---------------------------------------------------------------- the deal

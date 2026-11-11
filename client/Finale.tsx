@@ -1,12 +1,15 @@
 // The end of a round, played on the table: every card that reached the middle
-// is washed (spread and swirled, backs up) and then sorted into one pile per
-// player. Up to ~300 cards move at once, so they are drawn on one canvas from
-// pre-rendered back sprites instead of being 300 animated elements; the
-// labels under the piles are ordinary DOM.
+// is washed on the disc (spread and swirled, backs up), then the wash is drawn
+// in to the middle of the disc and sorted into one pile per player, each out
+// in front of its player's seat as this window sees the table. Up to ~300
+// cards move at once, so they are drawn on one canvas from pre-rendered back
+// sprites instead of being 300 animated elements; the labels beside the piles
+// are ordinary DOM.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { seatDir, toView } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backColour, CARD_H, CARD_W } from './cards/Face';
-import type { Layout } from './layout';
+import { TAG_H, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 800, out: 900, wash: 2400, sortEach: 1500, hold: 6500 };
@@ -14,8 +17,15 @@ export const TIMING = { flip: 800, out: 900, wash: 2400, sortEach: 1500, hold: 6
 export const sortMs = (n: number): number => n * TIMING.sortEach;
 const SPREAD_MS = 560; // a card's trip from its pile out into the wash
 const LAND_MS = 420; // a card's trip from the wash onto its owner's pile
-const LABEL_H = 104; // room under a sorted pile for its name, count and penalty
+const DRAW_IN_MS = 520; // the wash is drawn in to the middle of the disc as the sorting starts
 const SWIRL = 2.5; // radians the wash turns through
+/** The label beside a sorted pile (name, played, penalty, net score): it is laid out in a box of exactly this size. */
+export const LABEL = { w: 176, h: 62 };
+/** Clear felt between a sorted pile and the rim of the disc, and between it and the wash or its label. */
+const RIM = 5;
+const GAP = 6;
+/** How far the cards of the drawn-in wash still stray from the middle line of the disc. */
+const CORE_RY = 5;
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -46,28 +56,127 @@ interface Mover {
   tilt: number;
 }
 
-interface Plan {
+/** Where a pile's label lies relative to the pile: the text is set against the pile's side. */
+export type LabelSide = 'left' | 'right' | 'above' | 'below';
+
+export interface SortedPile extends Rect {
+  seat: number;
+  total: number;
+  /** The label's box, LABEL.w x LABEL.h, beside the pile on `side`. */
+  label: Rect;
+  side: LabelSide;
+}
+
+export interface Plan {
   /** The part of the window the cards can reach; the canvas covers only this. */
-  area: { x: number; y: number; w: number; h: number };
+  area: Rect;
   movers: Mover[];
-  piles: { seat: number; x: number; y: number; total: number }[];
+  /** One per player of the round, in the order of `game.players`. */
+  piles: SortedPile[];
+  /** A card in the wash. */
   w: number;
   h: number;
+  /** A card in a sorted pile, as a share of that (smaller where the disc is low for its cards: a table for two). */
+  scale: number;
+  /** The middle of the disc, and how far from it the centres of the washed cards go. */
   cx: number;
   cy: number;
   rx: number;
   ry: number;
+  /** The same once the wash has been drawn in for sorting, and the box that heap then lies within. */
+  core: { rx: number; ry: number };
+  heap: Rect;
 }
 
-/** Geometry of the whole sequence. Pure, so a resize mid-way just continues with new numbers. */
+const overlap = (a: Rect, b: Rect): number =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/**
+ * Geometry of the whole sequence. Pure, so a resize mid-way just continues with new numbers.
+ *
+ * The wash turns on the disc. Each player's pile is then gathered on the rim
+ * of the disc, out in front of that player's seat as this window draws the
+ * table: yours at the bottom, everyone else's where they sit. The label goes
+ * beside its pile, on whichever side is clear of every hand, the tray, the
+ * wash, the other piles and the other labels.
+ */
 export function planFinale(L: Layout, game: GameState): Plan {
   const w = L.fs * CARD_W;
   const h = L.fs * CARD_H;
-  const m = L.middle;
+  const d = L.disc;
   const n = game.players.length;
-  const step = Math.min(Math.max(w * 2.6, 150), m.w / n); // wide enough for the labels where the window allows
-  const y = m.y + Math.max(-h * 0.15, (m.h - h - LABEL_H) / 2); // pile and label together sit in the middle of the free felt
-  const piles = game.players.map((p, i) => ({ seat: p.seat, x: m.x + m.w / 2 + (i - (n - 1) / 2) * step - w / 2, y, total: 0 }));
+  // The drawn-in wash is a low heap along the middle of the disc. What is left of the disc's height above and below
+  // it is what a pile in front of the seats at the top and the bottom can have.
+  const coreHalf = h / 2 + CORE_RY;
+  const scale = Math.max(0.45, Math.min(1, (d.ry - RIM - GAP - coreHalf) / h));
+  const pw = w * scale;
+  const ph = h * scale;
+  const core = { rx: Math.max(pw, d.rx * (n > 3 ? 0.2 : 0.26)), ry: CORE_RY };
+  const heap: Rect = { x: d.cx - core.rx - w / 2, y: d.cy - coreHalf, w: 2 * core.rx + w, h: 2 * coreHalf };
+
+  // A pile goes as far out towards its seat as it still lies on the disc.
+  const onDisc = (cx: number, cy: number): boolean =>
+    [-1, 1].every((sx) => [-1, 1].every((sy) => Math.hypot((cx + (sx * pw) / 2 - d.cx) / (d.rx - RIM), (cy + (sy * ph) / 2 - d.cy) / (d.ry - RIM)) <= 1));
+  const spots = game.players.map((p, i) => {
+    const v = toView(seatDir(i, n), d.i, n);
+    let k = 0.96;
+    while (k > 0.3 && !onDisc(d.cx + v.x * d.rx * k, d.cy + v.y * d.ry * k)) k -= 0.01;
+    return { seat: p.seat, v, x: d.cx + v.x * d.rx * k - pw / 2, y: d.cy + v.y * d.ry * k - ph / 2, w: pw, h: ph };
+  });
+
+  // Labels. What a label must keep off: every hand with its name, your own hand down to the bottom edge, the tray,
+  // the drawn-in wash, every pile, the labels placed before it, and the edges of the window.
+  const hands: Rect[] = L.opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H }));
+  if (L.me) hands.push({ ...L.me.box, h: L.window.h - L.me.box.y });
+  const fixed: Rect[] = [...hands, L.tray, heap, ...spots];
+  const frame: Rect = { x: 4, y: 4, w: L.window.w - 8, h: L.window.h - 8 };
+  const choices = spots.map((pile) => {
+    const mid = { x: pile.x + pw / 2, y: pile.y + ph / 2 };
+    const across = { right: pile.x + pw + GAP, left: pile.x - GAP - LABEL.w };
+    const along = { below: pile.y + ph + GAP, above: pile.y - GAP - LABEL.h };
+    // In order of preference: the side away from the middle of the table (the right, for a seat straight above or
+    // below), the side towards it, then beyond the pile and before it. Level with the pile, or flush with an edge.
+    const outer: LabelSide = pile.v.x < -0.2 ? 'left' : 'right';
+    const inner: LabelSide = outer === 'left' ? 'right' : 'left';
+    const far: LabelSide = pile.v.y > 0 ? 'below' : 'above';
+    const near: LabelSide = far === 'below' ? 'above' : 'below';
+    const flushFar = far === 'below' ? pile.y + ph - LABEL.h : pile.y;
+    const flushNear = far === 'below' ? pile.y : pile.y + ph - LABEL.h;
+    const ys = [mid.y - LABEL.h / 2, flushFar, flushNear];
+    const xs = [mid.x - LABEL.w / 2, outer === 'right' ? pile.x : pile.x + pw - LABEL.w, outer === 'right' ? pile.x + pw - LABEL.w : pile.x];
+    const options: { side: LabelSide; box: Rect; cost: number }[] = [];
+    for (const side of [outer, inner, far, near]) {
+      for (const at of side === 'left' || side === 'right' ? ys : xs) {
+        const box: Rect = side === 'left' || side === 'right' ? { x: across[side], y: at, ...LABEL } : { x: at, y: along[side], ...LABEL };
+        // What it would lie over of the things that do not move, and how much of it would be off the window.
+        const cost = Math.round(LABEL.w * LABEL.h - overlap(box, frame) + fixed.reduce((sum, r) => sum + (r === pile ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
+        options.push({ side, box, cost });
+      }
+    }
+    return options;
+  });
+  // One label per pile with nothing overlapping, each on the best side that allows it: a search, since the first
+  // pile's favourite place may be the only one left for another's (there are at most six piles and twelve places
+  // each). If the window is too small for that, the arrangement that overlaps least.
+  let labels = choices.map((options) => options[0]!);
+  let least = Infinity;
+  const pick: (typeof labels)[number][] = [];
+  let tries = 0;
+  const search = (i: number, cost: number): void => {
+    if (cost >= least || ++tries > 20000) return;
+    if (i === choices.length) {
+      least = cost;
+      labels = [...pick];
+      return;
+    }
+    for (const option of choices[i]!) {
+      pick[i] = option;
+      search(i + 1, cost + option.cost + Math.round(pick.slice(0, i).reduce((sum, other) => sum + overlap(option.box, other.box), 0)));
+      if (least === 0) return;
+    }
+  };
+  search(0, 0);
+  const piles: SortedPile[] = spots.map((s, i) => ({ seat: s.seat, x: s.x, y: s.y, w: pw, h: ph, total: 0, label: labels[i]!.box, side: labels[i]!.side }));
   const pileOf = new Map(piles.map((p, i) => [p.seat, i]));
 
   const lying = [...game.slots.map((pile, i) => ({ pile, at: L.slots[i] })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i] }))];
@@ -90,8 +199,9 @@ export function planFinale(L: Layout, game: GameState): Plan {
   });
   for (const mv of shuffled) mv.of = piles[mv.pile]!.total;
   const reach = Math.hypot(w, h) / 2 + 8; // a card turned to any angle, plus its shadow
-  const area = { x: 0, y: Math.floor(m.y - reach - h * 0.3), w: m.x * 2 + m.w, h: Math.ceil(m.h + 2 * reach + h * 0.6) };
-  return { area, movers: shuffled, piles, w, h, cx: m.x + m.w / 2, cy: m.y + m.h / 2, rx: Math.max(w, Math.min(m.w * 0.42, m.h * 2.2) - w / 2), ry: Math.max(h * 0.3, m.h / 2 - h * 0.1) };
+  const area: Rect = { x: Math.floor(d.cx - d.rx - reach), y: Math.floor(d.cy - d.ry - reach), w: Math.ceil(2 * (d.rx + reach)), h: Math.ceil(2 * (d.ry + reach)) };
+  // The wash keeps to the disc: the centres of its cards stay well inside the rim.
+  return { area, movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), core, heap };
 }
 
 /** One card back, drawn once per colour and then stamped for every card of that deck. Matches `.back` in styles.css. */
@@ -161,43 +271,54 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   const landed = plan.piles.map(() => 0);
   const u = clamp01(t / TIMING.wash);
   const turn = SWIRL * easeInOut(u);
+  // When the swirl is done the wash is drawn in to a heap along the middle of the disc, clear of where the piles go.
+  const drawn = easeInOut(clamp01((t - TIMING.wash) / DRAW_IN_MS));
+  const rx = lerp(plan.rx, plan.core.rx, drawn);
+  const ry = lerp(plan.ry, plan.core.ry, drawn);
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, c.canvas.width, c.canvas.height);
-  const stamp = (mv: Mover, x: number, y: number, rot: number) => {
-    const cos = Math.cos(rot) * dpr;
-    const sin = Math.sin(rot) * dpr;
-    c.setTransform(cos, sin, -sin, cos, (x + w / 2 - plan.area.x) * dpr, (y + h / 2 - plan.area.y) * dpr);
+  /** A card with its centre at (x, y), turned by `rot`, `size` times as large as a card in the wash. */
+  const stamp = (mv: Mover, x: number, y: number, rot: number, size: number) => {
+    const cos = Math.cos(rot) * dpr * size;
+    const sin = Math.sin(rot) * dpr * size;
+    c.setTransform(cos, sin, -sin, cos, (x - plan.area.x) * dpr, (y - plan.area.y) * dpr);
     c.drawImage(sprites.get(mv.owner)!, -w / 2 - pad, -h / 2 - pad, w + 2 * pad, h + 2 * pad);
   };
-  type Stamp = [Mover, number, number, number];
+  type Stamp = [Mover, number, number, number, number];
   const flying: Stamp[] = [];
   const resting: Stamp[] = [];
   const arriving: Stamp[] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
-    const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
+    // (The first pile waits for the wash to be drawn in.)
+    const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - DRAW_IN_MS * 0.6 - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - DRAW_IN_MS * 0.6 - 150)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
-    const rise = Math.min(0.45, (h * 0.16) / mv.of) * mv.k;
+    const rise = Math.min(0.45, (pile.h * 0.16) / mv.of) * mv.k;
+    const px = pile.x + pile.w / 2 - rise * 0.4;
+    const py = pile.y + pile.h / 2 - rise;
     if (q >= 1) {
       landed[mv.pile]!++;
-      resting.push([mv, pile.x - rise * 0.4, pile.y - rise, mv.tilt]);
+      resting.push([mv, px, py, mv.tilt, plan.scale]);
       continue;
     }
     // In the wash: out from its pile to a spot on the disc, which then turns (the inside faster) and breathes.
     const spread = easeOut(clamp01((t - mv.delay * 280) / SPREAD_MS));
     const a = mv.angle + turn * (1.3 - 0.75 * mv.radius);
-    const r = mv.radius * (1 + 0.1 * Math.sin(u * Math.PI * 3 + mv.angle * 3));
-    let x = lerp(mv.x, plan.cx + Math.cos(a) * r * plan.rx - w / 2, spread);
-    let y = lerp(mv.y, plan.cy + Math.sin(a) * r * plan.ry - h / 2, spread);
-    let rot = mv.spin * (0.45 + 0.75 * u) * spread;
+    const r = mv.radius * (1 + 0.1 * Math.sin(u * Math.PI * 3 + mv.angle * 3) * (1 - drawn));
+    let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
+    let y = lerp(mv.y + h / 2, plan.cy + Math.sin(a) * r * ry, spread);
+    // (Drawn in, the cards are all but squared up: a heap, not a scatter.)
+    let rot = lerp(mv.spin * (0.45 + 0.75 * u) * spread, mv.tilt * 1.5, drawn);
+    let size = 1;
     if (q > 0) {
-      x = lerp(x, pile.x - rise * 0.4, q);
-      y = lerp(y, pile.y - rise, q);
+      x = lerp(x, px, q);
+      y = lerp(y, py, q);
       rot = lerp(rot, mv.tilt, q);
+      size = lerp(1, plan.scale, q);
     }
-    (q > 0 ? arriving : flying).push([mv, x, y, rot]);
+    (q > 0 ? arriving : flying).push([mv, x, y, rot, size]);
   }
-  // The wash turns underneath; the gathered piles lie on top of it; a card on its way down to its pile is above both.
+  // The wash turns underneath; the gathered piles lie on top of it; a card on its way out to its pile is above both.
   for (const f of [...flying, ...resting, ...arriving]) stamp(...f);
   return landed;
 }
@@ -277,13 +398,21 @@ export function Finale({ L, game, scores, name, instant }: Props) {
       <canvas ref={canvas} className="wash" style={{ left: plan.area.x, top: plan.area.y, width: plan.area.w, height: plan.area.h }} />
       {plan.piles.map((p, i) => {
         const left = scores.find((s) => s.seat === p.seat)?.nertzLeft ?? 0;
+        const won = done >= n && delta(p.seat) === best;
+        // Which end of its box the pile is at: the text is set against that end.
+        const off = p.label.x + p.label.w / 2 - (p.x + p.w / 2);
+        const set = p.side === 'right' || off > 2 ? 'start' : p.side === 'left' || off < -2 ? 'end' : 'mid';
         return (
           <div
             key={p.seat}
-            className={`heap${done >= turn[i]! ? ' on' : ''}${done > turn[i]! ? ' sorted' : ''}${done >= n ? ' all' : ''}${done >= n && delta(p.seat) === best ? ' best' : ''}`}
-            style={{ left: p.x + plan.w / 2, top: p.y + plan.h + 8 }}
+            className={`heap ${set}${done >= turn[i]! ? ' on' : ''}${done > turn[i]! ? ' sorted' : ''}${done >= n ? ' all' : ''}${won ? ' best' : ''}`}
+            style={{ left: p.label.x, top: p.label.y, width: p.label.w, height: p.label.h }}
           >
-            <span className="who">{done >= n && delta(p.seat) === best ? `★ ${name(p.seat)} wins the round` : name(p.seat)}</span>
+            <span className="who">
+              <i className="chip" style={{ background: backColour(p.seat) }} />
+              <span>{won ? `★ ${name(p.seat)}` : name(p.seat)}</span>
+              {won && <em>wins the round</em>}
+            </span>
             <span className="line got">
               <b>{signed(landed[i] ?? 0)}</b> played
             </span>
