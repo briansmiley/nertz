@@ -24,6 +24,8 @@ Then open **http://localhost:5173** in two browser windows (two tabs of the same
    A code that no table has is refused with a message; it never opens a new table.
 3. Window 1: press **Deal the first round**.
 
+On your own? In the lobby press **Add bot** and deal: one person and one bot make a round (see [Bots](#bots)).
+
 `npm run dev` runs the game server on port 8787 and Vite on 5173 (Vite proxies `/ws` to the server). Each window is its own
 player because identity lives in `sessionStorage`. Reloading a window keeps its seat and hand. Use a new window or tab for a
 second player, not "Duplicate tab": a duplicate copies the identity, takes over the seat, and the original tab is told so.
@@ -115,6 +117,59 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. New players cannot
   join during a round; they can between rounds. Someone who presses Leave on the score sheet stays on that sheet, but no
   longer counts towards the six seats: a newcomer can take the place.
+
+## Bots
+
+Whoever deals can seat bots, so that one person has something to play against. In the lobby, and on the score sheet between
+rounds, pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. A bot takes a seat
+with its own back colour and a name ("Bot Ada", "Bot Bix", ...), is marked "bot" in the lobby list and beside its name on
+the table, and counts as a connected player everywhere: for the two-player minimum, for the six seats, for the "everyone is
+stuck" vote and for scoring. A bot never deals, cannot be added or removed during a round, and does not keep a table alive:
+a lobby with only bots left is forgotten at once, and a table nobody is connected to expires as usual, bots or not.
+
+**It plays fair.** The bot lives on the server but is a player like any other. All it ever sees is `viewFor(state, itsSeat)`,
+the same redacted snapshot a person in that seat is sent, and all it can do is submit ordinary intents through the same
+`Room` code path as a person's, in the same single order, with the same refusals. If a move is refused (somebody got there
+first, or the table is not open for play) it forgets it and looks again later. There are no rules for bots in the engine.
+The decision is one pure function, `chooseIntent(view, seat, memory, rng, observance)` in `server/bot.ts`; the room only
+owns the timers, which stop when the round ends, when the bot is removed and when the table is deleted.
+
+**One action per look.** Each look it takes the first of these that applies:
+
+1. Its nertz pile is empty: call Nertz.
+2. Carry a centre pile it finished (it placed the King) to the tray.
+3. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
+4. Nertz top to the middle (an Ace to any empty slot, anything else to the exact pile).
+5. Waste top, or the top of a work pile, to the middle.
+6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
+   It never moves a run that gains nothing, and never undoes its own last run move.
+7. Waste top onto a work pile it builds down on (empty piles are kept for the nertz card).
+8. Otherwise flip the stock. Once it has flipped all the way round to where it started without making a single move, it
+   says "I'm stuck" (and keeps flipping, in case the middle changes). Any move starts the count again.
+
+Note 3 before 4: given the choice, it puts its nertz card on a work pile rather than in the middle.
+
+**Two numbers per level.**
+
+| Level | Mean pause between looks | Observance |
+| --- | --- | --- |
+| slow | 1.6 s | 0.6 |
+| medium | 1.0 s | 0.75 |
+| fast | 0.6 s | 0.9 |
+
+The pause is jittered between half and one and a half times the mean. *Observance* is how human it is: on each look, every
+move it could make is noticed, independently, with that probability, and it takes the first one in the list above that it
+noticed. A move it missed gets a fresh chance at the next look, so it finds things late rather than never. Moves with its own
+nertz card are noticed more reliably (probability `observance ^ 0.5`, which about halves the misses) and plays to the middle
+from the waste or a work pile a little less (`observance ^ 1.25`). Calling Nertz and flipping are never missed.
+
+A bot does not drag: its card is placed in the instant it decides. So it never sends `hold`, and can never be in the
+held-card grace window after a call.
+
+**It is a basic bot.** It does not plan, and it jams. In simulation, bots playing only each other finish nearly every deal
+at four to a table, but three get stuck for good in about one deal in three and two in about two deals in three: each sits
+on cards the others need, and reshuffling the stocks does not help. A person who plays well opens the middle for it.
+If you and the bot are both truly stuck, see "A round nobody ends" under [Known limits](#known-limits).
 
 ## How concurrency works
 
@@ -209,7 +264,8 @@ shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. 
   engine.ts     deal, finishDeal, applyIntent, refused, legalDrops, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types, limits, parsing and validation
 server/   Node http + ws
-  room.ts       one table: seats, host, rounds, intent handling, the deal and grace timers, snapshots. No IO.
+  room.ts       one table: seats, host, rounds, intent handling, the deal and grace timers, bot timers, snapshots. No IO.
+  bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
 client/   Vite + React
   net.ts        websocket store and prediction
@@ -320,7 +376,8 @@ would still need one of the options above, and serving both from one origin is s
 - **The grace countdown** avoids every opponent's hand, but with four or five opponents in one row it sits just below
   them and can lie over the top edge of the tray for the (at most four) seconds it is up.
 - **A round nobody ends.** If every card is played and nobody presses NERTZ!, the round just sits there. The call is
-  deliberate by design.
+  deliberate by design. The same goes for a table that is jammed for good (everyone stuck, and reshuffling changes
+  nothing), which is much more likely against one or two bots: there is no way yet to agree to end such a round.
 - **After a server restart** a reconnecting window is told its table no longer exists and is put back on the home page with
   the code filled in; somebody has to start a new table.
 - **Bundle size** is about 400 kB (130 kB gzipped), a third of it the animation library.

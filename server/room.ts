@@ -1,7 +1,8 @@
 // One game room. No IO: it is handed parsed messages for opaque connection
 // handles and decides what each connection is sent. Its only clocks are the
-// deal timer at the start of a round and the held-card grace timer at its end;
-// every rule about either lives in the engine.
+// deal timer at the start of a round, the held-card grace timer at its end, and
+// one timer per bot (see server/bot.ts); every rule about the first two lives in
+// the engine.
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
@@ -9,7 +10,8 @@
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
-import type { GameState, Phase, RoomView, RoundResult } from '../shared/types';
+import type { BotLevel, GameState, Phase, RoomView, RoundResult } from '../shared/types';
+import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -31,7 +33,13 @@ interface Player {
   dirty: boolean;
   /** Left on purpose after a round: listed until the next round is dealt, or until a newcomer needs the seat. */
   left: boolean;
+  /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
+  bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null };
 }
+
+/** What a bot has for a connection: it counts as connected and is told nothing (it looks for itself, on its timer). */
+const BOT_CONN: Conn = { send: () => {}, close: () => {} };
+const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay'];
 
 export interface RoomOptions {
   rng?: Rng;
@@ -75,9 +83,9 @@ export class Room {
     return this.conns.size;
   }
 
-  /** True when nobody is seated any more (everyone left from the lobby). */
+  /** True when nobody is seated any more (everyone left from the lobby). Bots do not count. */
   get empty(): boolean {
-    return this.players.length === 0;
+    return !this.players.some((p) => !p.bot);
   }
 
   /** Seats `conn`, or re-attaches it to the seat its token already holds. Returns an error message on refusal. */
@@ -86,16 +94,8 @@ export class Room {
     let player = this.players.find((p) => p.token === token);
     if (!player) {
       if (this.phase === 'playing') return 'A round is in progress. Try again when it ends.';
-      // Someone who pressed Leave on the score sheet no longer counts: their seat is given away if it is the last one.
-      if (this.players.filter((p) => !p.left).length >= MAX_PLAYERS) return 'That room is full.';
-      const taken = (seat: number, by: Player[]) => by.some((p) => p.seat === seat);
-      let seat = 0;
-      while (taken(seat, this.players)) seat++;
-      if (seat >= MAX_PLAYERS) {
-        seat = 0;
-        while (taken(seat, this.players.filter((p) => !p.left))) seat++;
-        this.players = this.players.filter((p) => p.seat !== seat); // the leaver's line on the score sheet stays (`lastRound`)
-      }
+      const seat = this.freeSeat();
+      if (seat === null) return 'That room is full.';
       player = { token, name, seat, score: 0, conn: null, ack: -1, dirty: false, left: false };
       this.players.push(player);
       this.players.sort((a, b) => a.seat - b.seat);
@@ -125,6 +125,10 @@ export class Room {
         return this.intent(player, msg.seq, msg.intent);
       case 'leave':
         return this.drop(conn, true);
+      case 'addBot':
+        return this.addBot(player, msg.level);
+      case 'removeBot':
+        return this.removeBot(player, msg.seat);
     }
   }
 
@@ -133,9 +137,10 @@ export class Room {
     this.drop(conn, false);
   }
 
-  /** The room is being forgotten: stops its timers. */
+  /** The room is being forgotten: stops its timers and its bots. */
   close(): void {
     this.stopTimers();
+    this.stopBots();
   }
 
   /** Sends every player who is owed one their latest snapshot. Runs once per event-loop turn. */
@@ -156,7 +161,7 @@ export class Room {
    * (a reload must not cost them the table).
    */
   private get dealer(): Player | null {
-    return this.host?.conn ? this.host : (this.players.find((p) => p.conn) ?? this.host);
+    return this.host?.conn ? this.host : (this.players.find((p) => p.conn && !p.bot) ?? this.host);
   }
 
   private start(player: Player): void {
@@ -184,6 +189,8 @@ export class Room {
     this.dealTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = finishDeal(this.game);
+    // Play is open: the bots start looking at their cards now, like everyone else.
+    for (const p of this.players) if (p.bot && this.game.players.some((g) => g.seat === p.seat)) this.wake(p, freshMemory());
     this.settle();
     this.changed();
   }
@@ -232,6 +239,7 @@ export class Room {
     });
     this.lastRound = { calledBy: this.game.nertzCalledBy, scores };
     this.phase = 'results';
+    this.stopBots();
   }
 
   private graceExpired(): void {
@@ -256,13 +264,84 @@ export class Room {
     player.conn = null;
     if (leaving && this.phase === 'lobby') {
       this.players = this.players.filter((p) => p !== player);
-      if (this.host === player) this.host = this.players.find((p) => p.conn) ?? this.players[0] ?? null;
+      if (this.host === player) this.host = this.players.find((p) => p.conn && !p.bot) ?? this.players.find((p) => !p.bot) ?? null;
     } else if (leaving) {
       player.left = true; // their cards are on the table; the seat is freed when the next round is dealt
     }
     this.letGo(player);
     this.settle(); // the remaining connected players may now all be stuck
     this.changed();
+  }
+
+  // ------------------------------------------------------------ bots
+
+  /** The lowest free seat, or null when the table is full. */
+  private freeSeat(): number | null {
+    // Someone who pressed Leave on the score sheet no longer counts: their seat is given away if it is the last one.
+    if (this.players.filter((p) => !p.left).length >= MAX_PLAYERS) return null;
+    const taken = (seat: number, by: Player[]) => by.some((p) => p.seat === seat);
+    let seat = 0;
+    while (taken(seat, this.players)) seat++;
+    if (seat >= MAX_PLAYERS) {
+      seat = 0;
+      while (taken(seat, this.players.filter((p) => !p.left))) seat++;
+      this.players = this.players.filter((p) => p.seat !== seat); // the leaver's line on the score sheet stays (`lastRound`)
+    }
+    return seat;
+  }
+
+  private addBot(by: Player, level: BotLevel): void {
+    if (by !== this.dealer || this.phase === 'playing') return;
+    const seat = this.freeSeat();
+    if (seat === null) return;
+    const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
+    // The token contains a character no client token may: nobody can join into a bot's seat.
+    this.players.push({ token: `bot:${seat}`, name, seat, score: 0, conn: BOT_CONN, ack: -1, dirty: false, left: false, bot: { level, memory: freshMemory(), timer: null } });
+    this.players.sort((a, b) => a.seat - b.seat);
+    this.changed();
+  }
+
+  private removeBot(by: Player, seat: number): void {
+    const player = this.players.find((p) => p.seat === seat);
+    if (by !== this.dealer || this.phase === 'playing' || !player?.bot) return;
+    if (player.bot.timer) clearTimeout(player.bot.timer);
+    this.players = this.players.filter((p) => p !== player); // its line on the score sheet stays (`lastRound`)
+    this.changed();
+  }
+
+  /** Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times. */
+  private wake(player: Player, memory?: BotMemory): void {
+    const bot = player.bot!;
+    if (memory) bot.memory = memory;
+    if (bot.timer) clearTimeout(bot.timer);
+    bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()));
+    bot.timer.unref?.();
+  }
+
+  /**
+   * One look, one action. The bot decides from the view a person in its seat
+   * would be sent, and its intent goes through `intent` like anyone's. If it is
+   * refused (someone got there first, or the table is not open) the bot keeps
+   * its old memory and tries again at its next look.
+   */
+  private look(player: Player): void {
+    const bot = player.bot!;
+    bot.timer = null;
+    if (this.phase !== 'playing' || !this.game) return;
+    const before = this.game;
+    const choice = chooseIntent(viewFor(before, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
+    if (choice) {
+      this.intent(player, player.ack + 1, choice.intent);
+      if (this.game !== before) bot.memory = choice.memory;
+    }
+    if (this.phase === 'playing') this.wake(player);
+  }
+
+  private stopBots(): void {
+    for (const p of this.players) {
+      if (p.bot?.timer) clearTimeout(p.bot.timer);
+      if (p.bot) p.bot.timer = null;
+    }
   }
 
   private connectedSeats(): number[] {
@@ -294,6 +373,7 @@ export class Room {
         score: p.score,
         isHost: p === dealer,
         stuck: stuck(p.seat),
+        bot: p.bot?.level,
       })),
       game,
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,

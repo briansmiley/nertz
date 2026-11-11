@@ -10,7 +10,7 @@
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
-import type { Intent, RoomView } from '../shared/types';
+import type { BotLevel, Intent, RoomView } from '../shared/types';
 
 // ---------------------------------------------------------------- pure reconciliation
 
@@ -183,6 +183,9 @@ export function leave(): void {
 export function start(): void {
   post({ t: 'start' });
 }
+
+export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
+export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
 
 /**
  * Plays an intent: applied locally at once, sent to the server, reconciled

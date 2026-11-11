@@ -122,6 +122,9 @@ export interface RoundResult {
 
 export type Phase = 'lobby' | 'playing' | 'results';
 
+/** How quick and how observant a bot is (the numbers are in server/bot.ts). */
+export type BotLevel = 'slow' | 'medium' | 'fast';
+
 export interface PlayerView {
   seat: number;
   name: string;
@@ -130,6 +133,8 @@ export interface PlayerView {
   score: number;
   isHost: boolean;
   stuck: boolean;
+  /** Set for a bot the host added (it always counts as connected); absent for a person. */
+  bot?: BotLevel;
 }
 
 /** Everything one client needs to render, personalised for seat `you`. */
