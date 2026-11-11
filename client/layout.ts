@@ -109,6 +109,8 @@ export const MINI_BELOW = 52;
 
 /** The stock shows one edge for every this many cards left, so you can see it getting thin. */
 const STOCK_PER_EDGE = 3;
+/** A stock this many edges high (or higher: the deck being dealt) has its top card level with the other piles. */
+const STOCK_FULL_EDGES = 10;
 const WASTE_SHOWN = 4;
 /** A face-down card in a work pile shows this much of the strip a face-up card shows. */
 const DOWN_STEP = 0.45;
@@ -183,8 +185,12 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   });
 
   const stockX = workX + 4 * h.w + 3 * h.gap + h.wide;
-  const stockFrom = p.stock.length - Math.ceil(p.stock.length / STOCK_PER_EDGE);
-  p.stock.slice(stockFrom).forEach((c, k, shown) => put(c, stockX, h.y + (shown.length - 1 - k) * lean * 2, 20 + k, 'stock'));
+  // Every third card shows an edge, and so does the top one. A card's height in the stack depends only on how many
+  // cards lie under it, so taking cards off the top never moves the ones that stay: the stack just gets lower.
+  const top = p.stock.length - 1;
+  p.stock.forEach((c, j) => {
+    if (j % STOCK_PER_EDGE === 0 || j === top) put(c, stockX, h.y + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock');
+  });
 
   const wasteX = stockX + h.w + h.gap;
   const n = p.waste.length;
