@@ -160,9 +160,9 @@ Note 3 before 4: given the choice, it puts its nertz card on a work pile rather 
 
 | Level | Mean pause between looks | Observance |
 | --- | --- | --- |
-| slow | 1.6 s | 0.6 |
-| medium | 1.0 s | 0.75 |
-| fast | 0.6 s | 0.9 |
+| slow | 3.2 s | 0.6 |
+| medium | 2.2 s | 0.75 |
+| fast | 1.4 s | 0.9 |
 
 The pause is jittered between half and one and a half times the mean. *Observance* is how human it is: on each look, every
 move it could make is noticed, independently, with that probability, and it takes the first one in the list above that it

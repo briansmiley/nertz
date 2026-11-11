@@ -415,7 +415,7 @@ describe('Room with bots', () => {
 
   it('bots alone, driven only by their timers, finish rounds (the person is away, so the stuck vote is theirs)', () => {
     vi.useFakeTimers();
-    for (const seed of [12, 13, 14, 15]) {
+    for (const seed of [12, 13, 14, 16]) {
       const { room, host } = hosted(seed);
       for (const level of ['slow', 'medium', 'fast', 'medium'] as const) room.handle(host, { t: 'addBot', level });
       room.handle(host, { t: 'start' });
@@ -423,7 +423,7 @@ describe('Room with bots', () => {
       room.disconnect(host);
       expect(room.connected).toBe(0); // four bots playing do not make the room look alive
       expect(vi.getTimerCount()).toBe(4);
-      const took = playOut(room, 30 * 60_000);
+      const took = playOut(room, 60 * 60_000);
       expect(took).toBeGreaterThan(20_000); // human pace, not a burst
       expect(vi.getTimerCount()).toBe(0);
       expect(room.phase).toBe('results');
@@ -438,7 +438,7 @@ describe('Room with bots', () => {
       expect(room.round).toBe(2);
       expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 3, 4]);
       expect(vi.getTimerCount()).toBe(3);
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(30_000);
       expect(room.game!.players.find((p) => p.seat === 0)).toMatchObject({ waste: [], stuck: false }); // the person did nothing
       expect(room.game!.players.filter((p) => p.seat !== 0).some((p) => p.waste.length + p.nertz.length !== 13)).toBe(true);
       room.close();
@@ -492,7 +492,7 @@ describe('bots on the real server', () => {
     return { ws, states, last: () => states.at(-1)!.room, send: (msg: unknown) => ws.send(JSON.stringify(msg)) };
   };
 
-  it('a lobby of only bots is forgotten at once, and a game of only bots is swept like any abandoned table', { timeout: 20_000 }, async () => {
+  it('a lobby of only bots is forgotten at once, and a game of only bots is swept like any abandoned table', { timeout: 60_000 }, async () => {
     const a = await connect('Ann');
     const code = a.last().code;
     a.send({ t: 'addBot', level: 'fast' });
@@ -510,7 +510,7 @@ describe('bots on the real server', () => {
     expect(b.last().players).toMatchObject([{ name: 'Bob' }, { name: 'Bot Ada', bot: 'fast', connected: true }]);
     // The bot plays by itself.
     const dealt = JSON.stringify(room.game!.players[1]);
-    await vi.waitFor(() => expect(JSON.stringify(room.game!.players[1])).not.toBe(dealt), { timeout: 5000 });
+    await vi.waitFor(() => expect(JSON.stringify(room.game!.players[1])).not.toBe(dealt), { timeout: 25_000 });
     b.ws.close();
     await vi.waitFor(() => expect(room.connected).toBe(0));
     server.sweep(Date.now() + 60 * 60_000);

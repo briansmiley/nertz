@@ -618,6 +618,44 @@ button {
   translate: 0 0;
 }
 
+/* Once every pile is gathered: each player's score for the round, and the best of them picked out. */
+.heap .net {
+  margin-top: 4px;
+  padding: 2px 12px 3px;
+  border-radius: 99px;
+  background: rgba(8, 28, 33, 0.55);
+  font: 700 24px/1 var(--num);
+  color: var(--chalk);
+  opacity: 0;
+  transition:
+    opacity 0.35s,
+    scale 0.35s;
+}
+
+.heap.all .net {
+  opacity: 1;
+}
+
+.heap.best .who {
+  max-width: none;
+  overflow: visible;
+  color: var(--marigold);
+  font-weight: 700;
+}
+
+.heap.best .net {
+  scale: 1.3;
+  margin-top: 8px;
+  background: var(--marigold);
+  color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(244, 180, 40, 0.25), 0 0 26px rgba(244, 180, 40, 0.55);
+  text-shadow: none;
+}
+
+.heap.all:not(.best) {
+  opacity: 0.72;
+}
+
 .heap .fine b {
   margin-right: 3px;
   font: 700 21px/1 var(--num);

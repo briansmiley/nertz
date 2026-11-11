@@ -9,10 +9,12 @@ import { backColour, CARD_H, CARD_W } from './cards/Face';
 import type { Layout } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
-export const TIMING = { flip: 520, out: 620, wash: 1600, sort: 1200, hold: 1150 };
+export const TIMING = { flip: 800, out: 900, wash: 2400, sortEach: 1500, hold: 6500 };
+/** The piles are gathered one player at a time: this long for `n` players. */
+export const sortMs = (n: number): number => n * TIMING.sortEach;
 const SPREAD_MS = 560; // a card's trip from its pile out into the wash
 const LAND_MS = 420; // a card's trip from the wash onto its owner's pile
-const LABEL_H = 70; // room under a sorted pile for its name, count and penalty
+const LABEL_H = 104; // room under a sorted pile for its name, count and penalty
 const SWIRL = 2.5; // radians the wash turns through
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -149,8 +151,11 @@ function backSprite(colour: string, w: number, h: number, dpr: number): HTMLCanv
   return sprite;
 }
 
-/** Draws the table `t` ms into the wash and returns how many cards have landed on each sorted pile. */
-function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTMLCanvasElement>, dpr: number, t: number): number[] {
+/**
+ * Draws the table `t` ms into the wash and returns how many cards have landed on each sorted pile.
+ * `order[i]` is when pile i is gathered (0 first): one player's cards at a time.
+ */
+function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTMLCanvasElement>, dpr: number, t: number, order: readonly number[] = []): number[] {
   const { w, h } = plan;
   const pad = Math.ceil(w * 0.08);
   const landed = plan.piles.map(() => 0);
@@ -167,7 +172,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   const flying: [Mover, number, number, number][] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
-    const q = easeInOut(clamp01((t - TIMING.wash - (mv.k / mv.of) * (TIMING.sort - LAND_MS)) / LAND_MS));
+    const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const rise = Math.min(0.45, (h * 0.16) / mv.of) * mv.k;
     if (q >= 1) {
@@ -209,8 +214,18 @@ export function Finale({ L, game, scores, name, instant }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const began = useRef(0);
   const [landed, setLanded] = useState<number[]>(() => plan.piles.map((p) => (instant ? p.total : 0)));
-  const [sorting, setSorting] = useState(instant);
-  const [sorted, setSorted] = useState(instant);
+  const n = plan.piles.length;
+  /** How many piles have been gathered so far; -1 while the wash is still turning. */
+  const [done, setDone] = useState(instant ? n : -1);
+  // The round's lowest score is gathered first and its best last.
+  const delta = (seat: number) => scores.find((s) => s.seat === seat)?.delta ?? 0;
+  const turn = useMemo(() => {
+    const by = plan.piles.map((_, i) => i).sort((a, b) => delta(plan.piles[a]!.seat) - delta(plan.piles[b]!.seat) || a - b);
+    const at: number[] = [];
+    by.forEach((i, k) => (at[i] = k));
+    return at;
+  }, [plan, scores]);
+  const best = Math.max(...plan.piles.map((p) => delta(p.seat)));
 
   useEffect(() => {
     const el = canvas.current;
@@ -227,7 +242,7 @@ export function Finale({ L, game, scores, name, instant }: Props) {
     };
     setup(full);
     began.current ||= performance.now();
-    const end = TIMING.wash + TIMING.sort;
+    const end = TIMING.wash + sortMs(n);
     let raf = 0;
     let shown = '';
     let last = 0;
@@ -240,18 +255,18 @@ export function Finale({ L, game, scores, name, instant }: Props) {
       if (scale > 1 && last && now - last > 24 && ++late >= 5) setup(1);
       last = now;
       if (t >= end && scale < full) setup(full);
-      const counts = paint(c, plan, sprites, scale, t);
+      const counts = paint(c, plan, sprites, scale, t, turn);
       if (counts.join() !== shown) {
         shown = counts.join();
         setLanded(counts);
       }
-      if (t >= TIMING.wash) setSorting(true);
-      if (t >= end) return setSorted(true);
+      setDone(t >= end ? n : t < TIMING.wash ? -1 : Math.floor((t - TIMING.wash) / TIMING.sortEach));
+      if (t >= end) return;
       raf = requestAnimationFrame(frame);
     };
     frame(performance.now());
     return () => cancelAnimationFrame(raf);
-  }, [plan, instant]);
+  }, [plan, instant, turn, n]);
 
   return (
     <>
@@ -259,8 +274,12 @@ export function Finale({ L, game, scores, name, instant }: Props) {
       {plan.piles.map((p, i) => {
         const left = scores.find((s) => s.seat === p.seat)?.nertzLeft ?? 0;
         return (
-          <div key={p.seat} className={`heap${sorting ? ' on' : ''}${sorted ? ' sorted' : ''}`} style={{ left: p.x + plan.w / 2, top: p.y + plan.h + 8 }}>
-            <span className="who">{name(p.seat)}</span>
+          <div
+            key={p.seat}
+            className={`heap${done >= turn[i]! ? ' on' : ''}${done > turn[i]! ? ' sorted' : ''}${done >= n ? ' all' : ''}${done >= n && delta(p.seat) === best ? ' best' : ''}`}
+            style={{ left: p.x + plan.w / 2, top: p.y + plan.h + 8 }}
+          >
+            <span className="who">{done >= n && delta(p.seat) === best ? `★ ${name(p.seat)} wins the round` : name(p.seat)}</span>
             <b className="got">{signed(landed[i] ?? 0)}</b>
             <span className={`fine${left ? '' : ' none'}`}>
               {left ? (
@@ -271,6 +290,7 @@ export function Finale({ L, game, scores, name, instant }: Props) {
                 'no nertz left'
               )}
             </span>
+            <b className="net">{signed(delta(p.seat))}</b>
           </div>
         );
       })}

@@ -10,7 +10,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
-import { Finale, TIMING } from './Finale';
+import { Finale, sortMs, TIMING } from './Finale';
 import { computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, MINI_BELOW, type Placed, type Rect, type Stage } from './layout';
 import { send } from './net';
 import { calm } from './prefs';
@@ -139,7 +139,7 @@ const CardView = memo(function CardView(p: CardProps) {
  * A window that was not watching the round (a reload, a latecomer) and anyone
  * who prefers reduced motion go straight to the sheet. `skip` jumps there.
  */
-function useStage(results: boolean, trayPiles: number): [Stage, () => void] {
+function useStage(results: boolean, trayPiles: number, players: number): [Stage, () => void] {
   const watched = useRef(!results);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [stage, setStage] = useState<Stage>(results ? 'sheet' : 'live');
@@ -155,7 +155,7 @@ function useStage(results: boolean, trayPiles: number): [Stage, () => void] {
     const steps: [Stage, number][] = [
       ['out', TIMING.flip],
       ['wash', trayPiles ? TIMING.out : 0],
-      ['sheet', TIMING.wash + TIMING.sort + TIMING.hold],
+      ['sheet', TIMING.wash + sortMs(players) + TIMING.hold],
     ];
     timers.current = steps.map(([next, ms]) => setTimeout(() => setStage(next), (at += ms)));
     return stop;
@@ -239,7 +239,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const you = room.you;
   const results = room.phase === 'results';
   const [W, H] = useViewport();
-  const [stage, skip] = useStage(results, game.tray.length);
+  const [stage, skip] = useStage(results, game.tray.length, game.players.length);
   const stageWas = useRef(stage);
   useEffect(() => {
     stageSound(stageWas.current, stage); // the riffle of the wash, the flourish of the score sheet

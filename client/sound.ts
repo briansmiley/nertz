@@ -19,7 +19,7 @@ const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '
 const MAX_VOICES = 18;
 /** Other players' cards at "100%" are still well under your own. */
 const OTHERS = 0.7;
-const { wash: WASH_MS, sort: SORT_MS } = TIMING;
+const { wash: WASH_MS, sortEach: SORT_MS } = TIMING; // flicks while the first couple of piles are gathered
 
 interface Sample {
   buffer: AudioBuffer;
@@ -263,7 +263,7 @@ export function wash(): void {
   finale.push(hit('shuffle', { gain: 0.5 }));
   const flicks = 16;
   for (let i = 0; i < flicks; i++) {
-    finale.push(hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay: (WASH_MS + (i / flicks) * SORT_MS * 0.9) / 1000 + rand(0, 0.03) }));
+    finale.push(hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay: (WASH_MS + (i / flicks) * SORT_MS * 2) / 1000 + rand(0, 0.03) }));
   }
 }
 

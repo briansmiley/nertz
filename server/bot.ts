@@ -8,9 +8,9 @@ import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/ty
 
 /** A level is exactly two numbers: the mean pause between looks, and the chance of noticing a move on one look. */
 export const BOTS: Record<BotLevel, { delayMs: number; observance: number }> = {
-  slow: { delayMs: 1600, observance: 0.6 },
-  medium: { delayMs: 1000, observance: 0.75 },
-  fast: { delayMs: 600, observance: 0.9 },
+  slow: { delayMs: 3200, observance: 0.6 },
+  medium: { delayMs: 2200, observance: 0.75 },
+  fast: { delayMs: 1400, observance: 0.9 },
 };
 
 /** Moves with its own nertz card are noticed more reliably (at these levels the miss chance is about halved)... */
