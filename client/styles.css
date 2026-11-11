@@ -1788,7 +1788,7 @@ label.check {
 
 /* One number of the count. Chalk, upright, in the middle: not the marigold stamp that lies across the hand of whoever ends the round. */
 .opening .beat {
-  font: 400 clamp(110px, 26vh, 240px) / 1 var(--display);
+  font: 400 clamp(80px, min(26vh, 50vw), 240px) / 1 var(--display);
   white-space: nowrap;
   color: var(--chalk);
   -webkit-text-stroke: 0.03em var(--ink);
@@ -1816,7 +1816,7 @@ label.check {
 }
 
 .opening .beat.word {
-  font-size: clamp(64px, 15vh, 150px);
+  font-size: clamp(40px, min(15vh, 14vw), 150px); /* (14vw: the whole word fits across a phone, even at its largest) */
   text-transform: uppercase;
   animation: word 0.65s ease-out both;
 }

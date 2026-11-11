@@ -15,7 +15,11 @@ turnarounds over long verification loops for small visual changes.
    players, own hand 0.108 of the window's height. Six players now 46 / 53 / 75 / 103 px at 720p / 900p / 1080p / 1440p.
    `npx tsx scripts/sizes.ts` prints the full table. Note: the long random-play tests time out on the 1-vCPU droplet
    (they do on the old code too); run `npm test` on a faster machine before deploying.
-2. **Mobile.** Not designed for yet. He reports the end-of-round score card is bigger than the screen and there is a lot
+2. **Mobile.** Not designed for yet (deferred until he has Fable usage: it is a design job). From a phone screenshot
+   (portrait, 2 bots): opponents squeezed into a strip at the top, the felt a short wide band mid-screen, half the
+   screen empty between them and the hand; your hand's name/"nertz pile" line under the corner buttons and cut off at
+   the bottom; the tray off the right edge. Since then: the felt is 2.2:1 from four players, side neighbours' hands
+   are turned to run down the edges (`turnHand`), and a work pile can be fanned out by hovering or tapping (`peek`). He reports the end-of-round score card is bigger than the screen and there is a lot
    of empty space. A phone needs its own layout. Open question he raised: whether live card movement can survive a
    different phone layout. It should: positions on the felt are in shared table coordinates and positions near a hand
    are hand-relative (`aloftAt`), so a phone can lay the table out differently and still map both.
