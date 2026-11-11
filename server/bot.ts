@@ -3,7 +3,7 @@
 // intent, or nothing. The Room owns the timers and submits the intent through
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
-import { completedBy, FLIP_COUNT, isHidden, legalDrops, type Rng } from '../shared/engine';
+import { completedBy, isHidden, legalDrops, type Rng } from '../shared/engine';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
 /** A level is exactly two numbers: the mean pause between looks, and the chance of noticing a move on one look. */
@@ -18,9 +18,16 @@ const NERTZ_FOCUS = 0.5;
 /** ...and plays to the middle from the waste or a work pile a bit less. Both are exponents on the observance. */
 const CENTRE_FOCUS = 1.25;
 
+/**
+ * Dealing a card off the stock is a small thing next to looking the table over: the look after a card it dealt comes
+ * after this fraction of its usual pause. Three cards (one group) cost one and a half pauses, where a flip of three
+ * used to cost one, and a fast bot gets through the stock about as quickly as a quick hand dragging card by card.
+ */
+export const DEAL_PACE = 0.5;
+
 /** What a bot carries from one look to the next. */
 export interface BotMemory {
-  /** Stock flips since its last real move. Not counted while it is flagged stuck, so a reshuffle starts a fresh count. */
+  /** Cards dealt off the stock (and turns of the waste) since its last real move. Not counted while it is flagged stuck, so a reshuffle starts a fresh count. */
   flips: number;
   /** Its last run move between work piles (the bottom card of the run and the pile it left), so it is never undone. */
   last: { cardId: string; from: number } | null;
@@ -41,7 +48,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  *   e. waste top or a work pile's top to the middle
  *   f. a work pile's whole face-up run onto another pile, if that turns over a face-down card or empties the pile
  *   g. waste top onto a work pile it builds down on
- *   h. flip the stock (always noticed); after a whole fruitless cycle, say "stuck" instead
+ *   h. deal one card off the stock (always noticed; three looks make a group); after a whole fruitless cycle, say "stuck" instead
  *
  * Returns the intent and the memory to keep IF the intent is accepted, or null
  * when there is nothing to do: the round is called, it is not in it, or it
@@ -51,7 +58,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const me = view.players.find((p) => p.seat === seat);
   if (!me || view.nertzCalledBy !== null) return null;
   const nertz = top(me.nertz);
-  const waste = top(me.waste);
+  const waste = me.dealt > 0 ? undefined : top(me.waste); // a group is half-dealt: the waste's top is face-down and out of play
   // Cards that are face-up in play but hidden in this view: the table is not open yet. Look again later.
   if ([nertz, waste, ...me.work.map(top)].some((c) => c && isHidden(c))) return null;
 
@@ -102,8 +109,9 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   if (shelf && noticed()) return acted(move(waste, shelf));
   // h
   if (me.stuck) return me.stock.length + me.waste.length > 0 ? { intent: { k: 'flip' }, memory } : null;
-  // From any point, this many flips bring the stock and waste back to the same state: every waste top has been seen.
-  const cycle = Math.ceil((me.stock.length + me.waste.length) / FLIP_COUNT) + 1;
+  // From any point, this many flips (one per card, and one to turn the waste over) bring the stock and waste back to
+  // the same state: every waste top has been seen.
+  const cycle = me.stock.length + me.waste.length + 1;
   if (memory.flips >= cycle || cycle === 1) return { intent: { k: 'stuck', on: true }, memory: { ...memory, flips: 0 } };
   return { intent: { k: 'flip' }, memory: { ...memory, flips: memory.flips + 1 } };
 }

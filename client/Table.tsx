@@ -196,13 +196,17 @@ function Countdown({ ms, text, label, top }: { ms: number; text: string; label: 
 /** Somewhere the thing in hand may be put down. `hit` is where it has to be released. */
 interface Target {
   key: string;
-  to: PileRef | 'tray';
+  to: PileRef | 'tray' | 'waste';
   rect: Rect;
   hit: Rect;
 }
 
-/** What is in hand: one of your cards (with any run on top of it), or a finished centre pile on its way to the tray. */
-type Held = { k: 'card'; id: string } | { k: 'pile'; slot: number };
+/**
+ * What is in hand: one of your cards (with any run on top of it), a finished centre pile on its way to the tray, or
+ * the top card of your stock on its way to the waste. That last one is face-down and nobody's business: the server
+ * is not told it is held (no `hold`), so it can never count for the grace window; only its landing is sent.
+ */
+type Held = { k: 'card'; id: string } | { k: 'pile'; slot: number } | { k: 'stock' };
 
 interface Drag {
   pointer: number;
@@ -309,9 +313,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** Finished piles waiting for you to carry them to the tray. */
   const toClear = (slot: number) => !frozen && completedBy(game.slots[slot] ?? []) === you;
 
-  // Space flips, like clicking the stock.
+  /** The table rule for dealing off the stock: drag each card to the waste, or click the stock once per card. */
+  const dragDeal = room.settings.stockDeal === 'drag';
+
+  // Where cards are dealt by clicking, Space deals one too. (Where they are dragged, it does nothing.)
   useEffect(() => {
-    if (frozen) return;
+    if (frozen || dragDeal) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return;
       e.preventDefault();
@@ -319,13 +326,18 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [frozen]);
+  }, [frozen, dragDeal]);
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
   /** Exactly the piles that would take what is in hand right now. */
   const targetsFor = (h: Held): Target[] => {
     if (h.k === 'pile') return [{ key: 'tray', to: 'tray', rect: trayOpen, hit: L.trayHit }];
+    if (h.k === 'stock') {
+      // No precision needed: on the waste or anywhere near it, as long as the card has clearly left the stock.
+      const w = L.me?.waste;
+      return w ? [{ key: 'waste', to: 'waste', rect: w, hit: { x: w.x - w.w * 0.1, y: w.y - w.h * 0.75, w: w.w * 2.2, h: w.h * 2.5 } }] : [];
+    }
     const out: Target[] = [];
     L.me?.work.forEach((rect, i) => {
       if (canDrop(game, you, h.id, { k: 'work', i })) out.push({ key: `w${i}`, to: { k: 'work', i }, rect, hit: L.me!.workHit[i]! });
@@ -366,7 +378,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   useEffect(() => {
     const d = drag.current;
     if (!d?.active) return;
-    if (d.held.k === 'card' ? mine?.holding !== d.held.id : !toClear(d.held.slot)) letGo(d);
+    const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : d.held.k === 'pile' ? !toClear(d.held.slot) : frozen || mine?.stock.at(-1)?.id !== d.lead;
+    if (gone) letGo(d);
   });
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -376,9 +389,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (!el) return;
     const id = el.getAttribute('data-id');
     const placed = id ? byId.get(id) : undefined;
-    if (!id || (placed?.mine && placed.pile === 'stock')) return void send({ k: 'flip' });
     let pick: Pick<Drag, 'held' | 'ids' | 'lead'> | null = null;
-    if (placed?.pile === 'slot' && toClear(placed.at)) {
+    if (!id || (placed?.mine && placed.pile === 'stock')) {
+      // The stock. Empty: a click turns the waste back over. Otherwise one card per action: a click deals it, or
+      // (the table rule) it has to be carried to the waste.
+      const card = mine?.stock.at(-1)?.id;
+      if (!card || !dragDeal) return void send({ k: 'flip' });
+      pick = { held: { k: 'stock' }, ids: [card], lead: card };
+    } else if (placed?.pile === 'slot' && toClear(placed.at)) {
       const ids = L.cards.filter((c) => c.pile === 'slot' && c.at === placed.at).map((c) => c.card.id);
       pick = { held: { k: 'pile', slot: placed.at }, ids, lead: ids[ids.length - 1]! };
     } else if (placed?.mine) {
@@ -433,7 +451,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = targetUnder(d);
     if (d.held.k === 'pile') {
       if (t) send({ k: 'clear', slot: d.held.slot });
-    } else if (!t || t.to === 'tray' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
+    } else if (d.held.k === 'stock') {
+      if (t) send({ k: 'flip' });
+    } else if (!t || t.to === 'tray' || t.to === 'waste' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
       send({ k: 'release' });
     }
     letGo(d);
@@ -451,7 +471,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (c.pile === 'tray' && stage !== 'out') cls += ' shelved';
     if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ' grab' : stage === 'live' ? ' done' : '';
     if (c.mine && !frozen) {
-      if (c.pile === 'stock') cls += ' tap';
+      if (c.pile === 'stock') cls += dragDeal ? ' grab' : ' tap';
       else if (c.up) cls += ' grab';
     }
     return cls;
@@ -541,7 +561,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               style={{ left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
               onClick={(e) => {
                 send({ k: 'stuck', on: !mine.stuck });
-                e.currentTarget.blur(); // keep Space for flipping
+                e.currentTarget.blur(); // keep Space for dealing
               }}
             >
               {mine.stuck ? (

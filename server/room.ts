@@ -11,7 +11,7 @@
 import { applyIntent, deal, expireGrace, finishDeal, isOver, refused, resolveStuck, scoreRound, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Phase, RoomView, RoundResult } from '../shared/types';
-import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
+import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import { Social } from './chat';
 
@@ -329,12 +329,15 @@ export class Room {
     this.changed();
   }
 
-  /** Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times. */
-  private wake(player: Player, memory?: BotMemory): void {
+  /**
+   * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times
+   * (times `pace`: shorter after dealing a card off the stock).
+   */
+  private wake(player: Player, memory?: BotMemory, pace = 1): void {
     const bot = player.bot!;
     if (memory) bot.memory = memory;
     if (bot.timer) clearTimeout(bot.timer);
-    bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()));
+    bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()) * pace);
     bot.timer.unref?.();
   }
 
@@ -350,11 +353,16 @@ export class Room {
     if (this.phase !== 'playing' || !this.game) return;
     const before = this.game;
     const choice = chooseIntent(viewFor(before, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
+    let pace = 1;
     if (choice) {
       this.intent(player, player.ack + 1, choice.intent);
-      if (this.game !== before) bot.memory = choice.memory;
+      if (this.game !== before) {
+        bot.memory = choice.memory;
+        // It dealt a card off the stock (not: turned the waste over). The next card follows sooner than a fresh look would.
+        if (choice.intent.k === 'flip' && before.players.find((p) => p.seat === player.seat)!.stock.length > 0) pace = DEAL_PACE;
+      }
     }
-    if (this.phase === 'playing') this.wake(player);
+    if (this.phase === 'playing') this.wake(player, undefined, pace);
   }
 
   private stopBots(): void {

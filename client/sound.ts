@@ -209,8 +209,14 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
+/** One card off the stock onto the waste. */
+export function stockCard(who: Who = 'me'): void {
+  hit(pick(FLICKS), { gain: rand(0.28, 0.36), rate: rand(0.95, 1.12), who });
+}
+
+/** The group on the waste turns face-up. */
 export function stockFlip(who: Who = 'me'): void {
-  for (let i = 0; i < 3; i++) hit(FLICKS[i]!, { gain: rand(0.28, 0.36), rate: rand(0.95, 1.12), delay: i * 0.065, who });
+  for (let i = 0; i < 3; i++) hit(FLICKS[i]!, { gain: rand(0.28, 0.36), rate: rand(0.95, 1.12), delay: 0.05 + i * 0.065, who });
 }
 
 export function recycle(who: Who = 'me'): void {
@@ -290,6 +296,8 @@ function play(cue: Cue): void {
       return pickup(cue.who);
     case 'work':
       return workDrop(cue.who);
+    case 'stock':
+      return stockCard(cue.who);
     case 'flip':
       return stockFlip(cue.who);
     case 'recycle':

@@ -123,7 +123,7 @@ interface HandSpec {
   w: number; // card width
   gap: number; // between neighbouring piles
   wide: number; // between the groups (nertz | work | stock+waste)
-  fan: number; // waste fan offset; 0 = stacked
+  fan: number; // room kept free to the right of the waste (it was once fanned; the pile itself is squared up)
   workFan: number; // preferred vertical offset in a work pile
   workRoom: number; // height available to a work pile below its first card
   workRise: number; // how far above the row a pile too long for that may start instead (free felt above the hand)
@@ -195,12 +195,10 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   });
 
   const wasteX = stockX + h.w + h.gap;
+  // The waste is one squared-up pile: only its top card shows, face-down while a group is being dealt onto it.
+  // (The few cards under the top are drawn too, exactly beneath it, so there is something there when the top leaves.)
   const n = p.waste.length;
-  const fanned = Math.min(3, n);
-  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) {
-    const pos = Math.max(0, fanned - 1 - (n - 1 - i));
-    put(p.waste[i]!, wasteX + pos * h.fan, h.y, 30 + (i - (n - WASTE_SHOWN)), 'waste');
-  }
+  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, h.y, 30 + (i - (n - WASTE_SHOWN)), 'waste');
 
   const right = wasteX + h.w + 2 * h.fan;
   return {
@@ -210,7 +208,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     work,
     workHit,
     stock: rect(stockX, h.y),
-    waste: rect(wasteX + Math.max(0, fanned - 1) * h.fan, h.y),
+    waste: rect(wasteX, h.y),
     box: { x: h.x, y: h.y, w: right - h.x, h: ch + h.workRoom },
     nertzCount: p.nertz.length,
   };
@@ -342,7 +340,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
           w: ow,
           gap: ow * OWN.gap,
           wide: ow * OWN.wide,
-          fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan), // large-print faces need a wider fan to show the rank
+          fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan),
           workFan: oh * 0.3,
           workRoom: H - 8 - ownTop - oh,
           // (Not once the wash begins: that felt is where the sorted piles' counts go.)

@@ -130,6 +130,12 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
           Fewer face-down cards for small tables <small>With two or three players the work piles start with 0, 0, 1 and 2 cards face-down, not 0, 1, 2 and 3.</small>
         </span>
       </label>
+      <label className="check">
+        <input type="checkbox" checked={room.settings.stockDeal === 'drag'} disabled={!mine} onChange={(e) => set({ stockDeal: e.target.checked ? 'drag' : 'click' })} />
+        <span>
+          Deal from the stock by dragging <small>Each card is dragged from the stock onto the waste. Off: one click on the stock (or Space) per card. Three cards make a group either way.</small>
+        </span>
+      </label>
       {children}
       {!mine && <p className="hint">{host?.name ?? 'The host'} sets these.</p>}
     </fieldset>

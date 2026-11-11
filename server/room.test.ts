@@ -187,7 +187,7 @@ describe('Room', () => {
     expect(b.sent.length).toBe(sentB + 1);
     expect(a.last).toMatchObject({ ack: 4, rev: rev + 5 });
     expect(b.last).toMatchObject({ ack: -1, rev: rev + 5 });
-    expect(a.last.room.game!.players[0]!.waste.length).toBe(15);
+    expect(a.last.room.game!.players[0]!).toMatchObject({ waste: { length: 5 }, dealt: 2 }); // one card per intent
 
     const before = room.game;
     sendIntent(room, a, 5, move('no-such-card', { k: 'work', i: 0 }));
@@ -349,12 +349,13 @@ describe('Room', () => {
     sendIntent(room, b, 0, { k: 'stuck', on: true });
     room.flush();
     expect(c.last.room.players.map((p) => p.stuck)).toEqual([true, true, false]);
-    expect(room.game!.players[0]!.waste).toHaveLength(3);
+    expect(room.game!.players[0]!).toMatchObject({ waste: { length: 1 }, dealt: 1 }); // a group left half-dealt
 
     room.disconnect(c); // the only hold-out leaves: the two who remain are both stuck
     room.flush();
     const p0 = room.game!.players[0]!;
     expect(p0.waste).toHaveLength(0);
+    expect(p0.dealt).toBe(0); // the half-dealt card went back with the rest
     expect(p0.stock).toHaveLength(32); // three players: the small-table deal (on by default)
     expect(p0.stock[0]!.id).toBe(firstTop); // old top card went to the bottom
     expect(a.last.room.players.map((p) => p.stuck)).toEqual([false, false, false]);
@@ -510,7 +511,7 @@ describe('Room', () => {
         expect(cardIds(conn.last.room.game!)).toEqual(cardIds(dealt)); // the same cards, turned over
       }
       sendIntent(room, a, 100, { k: 'flip' });
-      expect(room.game!.players[0]!.waste).toHaveLength(3);
+      expect(room.game!.players[0]!.waste).toHaveLength(1);
       expect(checkInvariants(room.game!)).toBeNull();
     });
 
@@ -539,7 +540,7 @@ describe('Room', () => {
       expect(a2.last.room).toMatchObject({ dealMs: null, game: { dealing: false } });
       expect(faces(a2.last)).toBe(true);
       sendIntent(room, a2, 0, { k: 'flip' });
-      expect(room.game!.players[0]!.waste).toHaveLength(3);
+      expect(room.game!.players[0]!.waste).toHaveLength(1);
     });
 
     it('someone sitting the round out sees the same redacted deal', () => {
@@ -1226,6 +1227,37 @@ describe('server over real sockets', () => {
       const back = await Client.open(limited.port, code, 'Flo', token);
       expect(back.seat).toBe(0);
       await back.close();
+    } finally {
+      await limited.close();
+    }
+  });
+
+  it('the default rate limit leaves plenty of room for dealing card by card: three whole laps of the stock in one burst', async () => {
+    const limited = await startServer({ port: 0, dist });
+    try {
+      const a = await Client.open(limited.port, null, 'P0');
+      const b = await Client.open(limited.port, a.code, 'P1');
+      a.send({ t: 'start' });
+      await vi.waitFor(() => expect(b.last.room.phase).toBe('playing'));
+      const room = limited.rooms.get(a.code)!;
+      room.game = finishDeal(room.game!);
+      const stock = room.game.players[1]!.stock.length;
+      // Nobody deals faster than a few cards a second; this is a lap of the stock (a flip per card, and one to turn the
+      // waste over) three times over, sent in the same instant, with a drag started and dropped between the laps.
+      const top = room.game.players[1]!.nertz.at(-1)!.id;
+      let last = 0;
+      for (let lap = 0; lap < 3; lap++) {
+        for (let i = 0; i <= stock; i++) last = b.intent({ k: 'flip' });
+        b.intent({ k: 'hold', cardId: top });
+        last = b.intent({ k: 'release' });
+      }
+      expect(last).toBeGreaterThan(100);
+      await vi.waitFor(() => expect(b.last.ack).toBe(last));
+      expect(b.ws.readyState).toBe(WebSocket.OPEN);
+      expect(room.game!.players[1]!).toMatchObject({ stock: { length: stock }, waste: [], dealt: 0 }); // each flip was one card
+      expect(checkInvariants(room.game!)).toBeNull();
+      await a.close();
+      await b.close();
     } finally {
       await limited.close();
     }
