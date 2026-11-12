@@ -9,6 +9,21 @@ as built.
 The owner reviews by playing and gives feedback in plain words; small tweaks are made directly, and he prefers quick
 turnarounds over long verification loops for small visual changes.
 
+## Done on 11-12 Nov 2026 (all deployed)
+
+- Bigger centre cards (`def509f`); side neighbours' hands turned to run down the edges and less room kept under your
+  hand (`5fc4b02`): piles past about eight cards squeeze; hover (380 ms) or tap a work pile to fan it out (`9d853ea`).
+- End-of-round: a solid block behind each player's pile and label (`b64614d`).
+- Table-rule explanations behind (i) icons (`5fc4b02`).
+- Half-dealt waste cards always drawn face-down (they flashed face-up after a recycle on a laggy link); a lost race
+  plays its own sound (`6dceeaf`). Note: the owner does NOT want stock cards revealed to the client to cut the
+  round-trip lag on the group turning up; ask before changing what the server reveals.
+- Countdown digits and NERTZ! word sized to the screen width (`e957da8`).
+- Stuck: a table where nothing can move ends at the first all-stuck vote (`canProgress`, `ended: 'jam'`); anyone can
+  vote to end a round from the gear menu (`ended: 'vote'`, everyone connected; bots go along) (`ed2701d`).
+- `npx tsx scripts/sizes.ts` prints card sizes per window and player count. The long random-play tests time out on the
+  1-vCPU droplet: run `npx vitest run --testTimeout=180000` there.
+
 ## To do, in the owner's priority order
 
 1. ~~**Centre cards are too small.**~~ Done in `def509f` (not yet seen in a browser): caps raised, felt 2.2:1 from four
