@@ -8,7 +8,7 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type ClientMsg, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
@@ -297,9 +297,10 @@ export class Room {
    */
   private settle(): void {
     if (this.phase !== 'playing' || !this.game) return;
-    this.game = resolveStuck(this.game, this.connectedSeats());
-    if (this.game.nertzCalledBy === null) return;
-    if (!isOver(this.game)) {
+    this.game = resolveEndVote(resolveStuck(this.game, this.connectedSeats()), this.players.filter((p) => p.conn && !p.bot).map((p) => p.seat));
+    // A round ended without a call (a jammed table, or everyone voted to end it) ends at once: nobody is in grace.
+    if (this.game.nertzCalledBy === null && !this.game.ended) return;
+    if (!this.game.ended && !isOver(this.game)) {
       if (this.graceTimer) return;
       this.graceEndsAt = Date.now() + GRACE_MS;
       this.graceTimer = setTimeout(() => this.graceExpired(), GRACE_MS);
@@ -313,7 +314,7 @@ export class Room {
       if (p) p.score += s.delta;
       return { ...s, name: p?.name ?? '', total: p?.score ?? s.delta };
     });
-    this.lastRound = { calledBy: this.game.nertzCalledBy, scores };
+    this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}) };
     this.phase = 'results';
     this.stopBots();
   }
@@ -467,6 +468,7 @@ export class Room {
         score: p.score,
         isHost: p === dealer,
         stuck: stuck(p.seat),
+        ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,
         bot: p.bot?.level,
       })),
       settings: this.settings,

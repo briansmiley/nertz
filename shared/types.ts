@@ -51,6 +51,8 @@ export interface PlayerState {
    */
   dealt: number;
   stuck: boolean;
+  /** Has voted to end the round where it stands (see `GameState.ended`). */
+  ending?: boolean;
   /**
    * Id of the card this player is dragging right now (the bottom card of the
    * lifted run), or null. Always a card they could pick up. Visible to everyone.
@@ -95,6 +97,11 @@ export interface GameState {
   /** Seat that called "Nertz!", or null while the round is in full swing. */
   nertzCalledBy: number | null;
   /**
+   * Set when the round ended without a Nertz call, scored as it stands: 'jam' when everyone said they were stuck and
+   * no card could move anywhere, at any shift of any stock; 'vote' when every connected person voted to end it.
+   */
+  ended?: 'jam' | 'vote';
+  /**
    * Held-card grace. Empty until Nertz is called. From then on: the seats that
    * were holding a playable card at the call and may still make exactly one
    * move with it. Everyone else is frozen. The round is over once Nertz has
@@ -127,6 +134,8 @@ export type Intent =
    */
   | { k: 'flip' }
   | { k: 'stuck'; on: boolean }
+  /** Vote (or stop voting) to end the round where it stands. */
+  | { k: 'end'; on: boolean }
   | { k: 'nertz' }
   /** Move the completed pile in `slot` to the tray. Only for the player who placed its King, and the only thing they may do until it is done. */
   | { k: 'clear'; slot: number }
@@ -153,7 +162,9 @@ export interface RoundLine extends RoundScore {
 }
 
 export interface RoundResult {
-  calledBy: number;
+  /** Who called Nertz; null if the round ended without a call (`ended` says how). */
+  calledBy: number | null;
+  ended?: 'jam' | 'vote';
   scores: RoundLine[];
 }
 
@@ -170,6 +181,8 @@ export interface PlayerView {
   score: number;
   isHost: boolean;
   stuck: boolean;
+  /** Has voted to end the round where it stands. */
+  ending: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
 }

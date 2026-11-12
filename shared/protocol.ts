@@ -141,6 +141,8 @@ export function parseIntent(raw: unknown): Intent | null {
       return { k: 'flip' };
     case 'stuck':
       return typeof raw.on === 'boolean' ? { k: 'stuck', on: raw.on } : null;
+    case 'end':
+      return typeof raw.on === 'boolean' ? { k: 'end', on: raw.on } : null;
     case 'nertz':
       return { k: 'nertz' };
     case 'clear':

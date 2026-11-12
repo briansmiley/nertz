@@ -18,6 +18,8 @@ import {
   mustClear,
   openPlay,
   refused,
+  canProgress,
+  resolveEndVote,
   resolveStuck,
   scoreRound,
   startCountdown,
@@ -770,6 +772,56 @@ describe('dealing off the stock and recycling', () => {
     expect(checkInvariants(fresh)).toBeNull();
     const early = { ...fresh, players: fresh.players.map((p, i) => (i === 0 ? { ...p, waste: p.stock.slice(-1), stock: p.stock.slice(0, -1), dealt: 1 } : p)) };
     expect(checkInvariants(early)).toMatch(/before the round was open/);
+  });
+});
+
+describe('everyone stuck: a table where nothing can move ends the round', () => {
+  // Every work pile taken by a black card, so nothing black lands on one; no Ace anywhere, so nothing goes to the middle
+  // except onto the hearts pile (A to 4) when there is one.
+  const blocked = (owner: number) => [cs('C9', owner), cs('C7', owner), cs('S5', owner), cs('S3', owner)];
+  const both = (s: GameState) => run(s, [0, { k: 'stuck', on: true }], [1, { k: 'stuck', on: true }]);
+
+  it('ends the round when nobody can move anything, at any shift of any stock', () => {
+    const s = game([
+      player(0, { work: blocked(0), stock: cs('SJ S9 S7 C5 CJ CQ'), nertz: cs('C2') }),
+      player(1, { work: blocked(1), stock: cs('SQ SK', 1), nertz: cs('S2', 1) }),
+    ]);
+    expect([0, 1].map((seat) => canProgress(s, seat))).toEqual([false, false]);
+    const r = resolveStuck(both(s), [0, 1]);
+    expect(r.ended).toBe('jam');
+    expect(r.players.every((p) => !p.stuck)).toBe(true);
+    expect(ids(r.players[0]!.stock)).toEqual(ids(s.players[0]!.stock)); // nothing is moved: it is scored as it lies
+    expect(resolveStuck(r, [0, 1])).toBe(r);
+  });
+
+  it('counts a run moved to turn up a face-down card, and a card from a work pile to the middle', () => {
+    const turnUp = game([player(0, { work: [cs('S9 H8'), cs('C9'), cs('S5'), cs('S3')], down: [1, 0, 0, 0] })]);
+    expect(canProgress(turnUp, 0)).toBe(true);
+    const toMiddle = game([player(0, { work: [cs('H5'), cs('C9'), cs('S5'), cs('S3')] })], [pile('H4', 1)]);
+    expect(canProgress(toMiddle, 0)).toBe(true);
+    // A run that could only move from one pile onto another, turning nothing up and emptying nothing, does not count.
+    const pointless = game([player(0, { work: [cs('C9 H8'), cs('S9'), cs('S5'), cs('S3')] })]);
+    expect(canProgress(pointless, 0)).toBe(false);
+    // ...but one that uncovers a card for the middle does: S4 off H5 onto D5, and H5 goes on the hearts.
+    const freeing = game([player(0, { work: [cs('H5 S4'), cs('D5'), cs('S5'), cs('S3')] })], [pile('H4', 1)]);
+    expect(canProgress(freeing, 0)).toBe(true);
+  });
+});
+
+describe('voting to end the round', () => {
+  const s = game([player(0, { stock: cs('S9 S8') }), player(1, { stock: cs('S9 S8', 1) }), player(2, { stock: cs('S9 S8', 2) })]);
+
+  it('ends it once every person voting has voted (a bot does not count), and a vote can be taken back', () => {
+    const one = run(s, [0, { k: 'end', on: true }]);
+    expect(one.players[0]!.ending).toBe(true);
+    expect(resolveEndVote(one, [0, 1])).toBe(one); // seat 1 has not voted
+    const back = run(one, [0, { k: 'end', on: false }]);
+    expect(back.players[0]!.ending).toBeUndefined();
+    const both = run(one, [1, { k: 'end', on: true }]);
+    expect(resolveEndVote(both, [0, 1]).ended).toBe('vote'); // seat 2 (a bot, say) is not asked
+    expect(resolveEndVote(both, [])).toBe(both);
+    const called = { ...both, nertzCalledBy: 0 };
+    expect(resolveEndVote(called, [0, 1])).toBe(called);
   });
 });
 
@@ -1767,7 +1819,7 @@ describe('greedy bots can finish a round', () => {
       const seats = [0, 1, 2, 3];
       let state = deal(seats, rng, rules);
       const idle = new Map(seats.map((s) => [s, 0]));
-      for (let step = 0; step < 20_000 && state.nertzCalledBy === null; step++) {
+      for (let step = 0; step < 20_000 && state.nertzCalledBy === null && !state.ended; step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const intent = botIntent(state, seat, idle.get(seat)!);
         const r = applyIntent(state, seat, intent);

@@ -189,8 +189,10 @@ describe('chooseIntent', () => {
     // Stuck, it keeps flipping (the middle may change) without saying so again.
     for (let i = 0; i < 2 * cycle; i++) step();
     expect(intents.slice(cycle + 1)).toEqual(Array(2 * cycle).fill('flip'));
-    // Everyone stuck: the table is reshuffled and the flags clear. It goes through the whole stock again before saying stuck.
-    state = resolveStuck({ ...state, players: state.players.map((p) => ({ ...p, stuck: true })) }, [0, 1]);
+    // Everyone stuck at this dead table ends the round (nothing can move anywhere). Were it only stuck for now, the flags
+    // would clear: it goes through the whole stock again before saying stuck.
+    expect(resolveStuck({ ...state, players: state.players.map((p) => ({ ...p, stuck: true })) }, [0, 1]).ended).toBe('jam');
+    state = { ...state, players: state.players.map((p) => ({ ...p, stuck: false })) };
     expect(state.players[0]!.stuck).toBe(false);
     intents.length = 0;
     for (let i = 0; i <= cycle; i++) step();
@@ -269,7 +271,7 @@ describe('chooseIntent', () => {
       const observance = [1, 0.9, 0.75, 0.6][seed % 4]!;
       const memory = new Map(seats.map((s) => [s, freshMemory()]));
       const sinceFlip = new Map(seats.map((s) => [s, 0]));
-      for (let step = 0; step < 6000 && state.nertzCalledBy === null; step++) {
+      for (let step = 0; step < 6000 && state.nertzCalledBy === null && !state.ended; step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const before = memory.get(seat)!;
         const choice = chooseIntent(viewFor(state, seat), seat, before, rng, observance);
@@ -337,10 +339,10 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'addBot', level: 'slow' });
     room.flush();
     expect(host.last.room.players).toEqual([
-      { seat: 0, name: 'Ann', connected: true, score: 0, isHost: true, stuck: false },
-      { seat: 1, name: 'Bea', connected: true, score: 0, isHost: false, stuck: false },
-      { seat: 2, name: 'Bot Ada', connected: true, score: 0, isHost: false, stuck: false, bot: 'fast' },
-      { seat: 3, name: 'Bot Bix', connected: true, score: 0, isHost: false, stuck: false, bot: 'slow' },
+      { seat: 0, name: 'Ann', connected: true, score: 0, isHost: true, stuck: false, ending: false },
+      { seat: 1, name: 'Bea', connected: true, score: 0, isHost: false, stuck: false, ending: false },
+      { seat: 2, name: 'Bot Ada', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'fast' },
+      { seat: 3, name: 'Bot Bix', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'slow' },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot

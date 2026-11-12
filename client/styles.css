@@ -1437,6 +1437,35 @@ label.check {
   color: #9a9482;
 }
 
+/* Voting to end the round, at the bottom of your settings slip. */
+.end-vote {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rule);
+}
+
+.end-vote button {
+  padding: 0.45rem 0.7rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: 600 0.95rem/1.1 var(--ui);
+  cursor: pointer;
+}
+
+.end-vote button.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.end-vote small {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
 /* The (i) beside a setting: its explanation drops down under the whole row on hover, focus or tap. */
 .info {
   display: inline-grid;

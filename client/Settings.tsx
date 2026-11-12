@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
-import { setTableSettings } from './net';
+import { send, setTableSettings } from './net';
 import { calm, setPrefs, usePrefs } from './prefs';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -55,8 +55,31 @@ function Info({ children }: { children: ReactNode }) {
 
 const percent = (v: number) => `${Math.round(v * 100)}%`;
 
+/**
+ * Ending the round where it stands, for a round that drags on (everyone voting: bots go along). Shown while a round
+ * is in play and you are in it.
+ */
+function EndVote({ room }: { room: RoomView }) {
+  const game = room.game;
+  const me = game?.players.find((p) => p.seat === room.you);
+  if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
+  const people = room.players.filter((p) => p.connected && !p.bot);
+  const voted = people.filter((p) => p.ending || (p.seat === room.you && me.ending)).length;
+  return (
+    <div className="end-vote">
+      <h3>This round</h3>
+      <button type="button" className={me.ending ? 'on' : ''} onClick={() => send({ k: 'end', on: !me.ending })}>
+        {me.ending ? 'Take back my vote' : 'Vote to end the round'}
+      </button>
+      <small>
+        {voted} of {people.length} voted. When everyone has, it ends where it stands and is scored as usual.
+      </small>
+    </div>
+  );
+}
+
 /** The corner controls. Rendered once, by App, over whatever screen is up. */
-export function Corner() {
+export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -129,6 +152,7 @@ export function Corner() {
               Reduce motion <small>{prefs.calm === null ? 'following your system setting' : 'cards jump instead of gliding'}</small>
             </span>
           </label>
+          {room && <EndVote room={room} />}
         </section>
       )}
     </div>

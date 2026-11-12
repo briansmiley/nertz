@@ -367,6 +367,20 @@ describe('Room', () => {
     expect(checkInvariants(room.game!)).toBeNull();
   });
 
+  it('ends the round where it stands when every connected person votes to end it, without a caller', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    room.flush();
+    expect(room.phase).toBe('playing');
+    expect(b.last.room.players.map((p) => p.ending)).toEqual([true, false]);
+    sendIntent(room, b, 0, { k: 'end', on: true });
+    room.flush();
+    expect(room.phase).toBe('results');
+    expect(room.lastRound).toMatchObject({ calledBy: null, ended: 'vote' });
+  });
+
   it('ends the round on "Nertz!" (at once when nobody holds a card), scores it, and deals the next round without players who left', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);

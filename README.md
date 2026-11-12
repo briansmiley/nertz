@@ -171,9 +171,15 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
   gains nothing. (The old "drag each card" rule still exists as the table setting `stockDeal: 'drag'`, but is no longer
   offered in the table rules.)
-- **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, each player's waste (a half-dealt
-  group included) goes back onto their stock, the top stock card moves to the bottom (so the threes come out differently), and all flags clear. Making any
-  move clears your own flag.
+- **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, the server (which knows every
+  card) checks whether anybody can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
+  waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
+  run that turns up a face-down card or empties a pile. If nobody can, **the table is jammed** and the round ends there,
+  scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
+  stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
+  flags clear. Making any move clears your own flag.
+- **Voting to end a round**: in the gear menu, while a round is on, anyone can vote to end it where it stands. When
+  every connected person has voted (bots go along), it ends and is scored as usual. A vote can be taken back.
 - **Ending a round**: once your nertz pile is empty you may press **NERTZ!**. It is a deliberate action, so you can keep
   playing cards to the middle first if you think it pays. Everyone is frozen at once, with one exception:
 - **Held-card grace.** A player who was in the middle of dragging a card at the moment of the call, and whose card has at
@@ -681,8 +687,7 @@ would still need one of the options above, and serving both from one origin is s
   turn-over arrives with the snapshot that ends the deal, so on a slow connection it is late by that connection's
   latency.
 - **A round nobody ends.** If every card is played and nobody presses NERTZ!, the round just sits there. The call is
-  deliberate by design. The same goes for a table that is jammed for good (everyone stuck, and reshuffling changes
-  nothing), which is much more likely against one or two bots: there is no way yet to agree to end such a round.
+  deliberate by design. (A table that is jammed for good ends by itself once everyone says they are stuck.)
 - **After a server restart** a reconnecting window is told its table no longer exists and is put back on the home page with
   the code filled in; somebody has to start a new table.
 - **Bundle size** is about 460 kB (160 kB gzipped), a third of it the animation library, plus 39 kB of sound files

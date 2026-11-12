@@ -239,6 +239,11 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
       me.stuck = intent.on;
       break;
     }
+    case 'end': {
+      if (intent.on) me.ending = true;
+      else delete me.ending;
+      break;
+    }
     case 'nertz': {
       if (me.nertz.length > 0) return 'Your nertz pile is not empty';
       me.holding = null; // the caller pressed a button, they are not dragging: the caller is never in grace
@@ -359,13 +364,14 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent): 
   const index = state.players.findIndex((p) => p.seat === seat);
   if (index < 0) return fail('Not playing in this round');
   if (state.stage !== 'play') return fail(CLOSED[state.stage]);
+  if (state.ended) return fail('The round is over');
   const called = state.nertzCalledBy !== null;
   if (called) {
     if (!state.grace.includes(seat)) return fail('The round is over');
     const held = state.players[index]!.holding;
     if (intent.k !== 'release' && !(intent.k === 'move' && intent.cardId === held)) return fail('Only the held card may be played');
   }
-  if (intent.k !== 'clear' && mustClear(state, seat)) return fail(CLEAR_FIRST);
+  if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   const next = play(state, index, intent);
   if (typeof next === 'string') return fail(next);
   if (called) return { ok: true, state: settleGrace(next, state.grace) };
@@ -396,25 +402,79 @@ export function expireGrace(state: GameState): GameState {
 // ---------------------------------------------------------------- stuck
 
 /**
- * If every seat in `activeSeats` (the connected players) has flagged "stuck",
- * unsticks the table: every player's waste is turned back onto their stock
- * (restoring the original order; a half-dealt group is waste like the rest), then the top stock card moves to the bottom
- * so the next flips come up differently, and all flags clear. Returns the SAME
- * state object when nothing happens (always, once Nertz has been called).
+ * Could `card`, one of `seat`'s stock or waste cards, do anything if it were on top of their waste? Go to the middle,
+ * or onto one of their work piles. (Judged on the full state: the server's question, not a client's.)
+ */
+function stockCardMoves(state: GameState, seat: number, card: Card): boolean {
+  const trial: GameState = { ...state, players: state.players.map((p) => (p.seat === seat ? { ...p, stock: [], waste: [card], dealt: 0, holding: null } : p)) };
+  return legalDrops(trial, seat, card.id).length > 0;
+}
+
+/**
+ * Is there a move for `seat` that gets anywhere? Their nertz top to the middle or a work pile; any card of their stock
+ * or waste (wherever it lies in them: shifting the stock brings any of them up) likewise; or from a work pile, a
+ * card to the middle, or a run onto another pile when that turns up a face-down card, empties the pile, or uncovers a
+ * card that can go to the middle. Shuffling runs between work piles to no purpose does not count.
+ */
+export function canProgress(state: GameState, seat: number): boolean {
+  const p = state.players.find((q) => q.seat === seat);
+  if (!p) return false;
+  const nertzTop = top(p.nertz);
+  if (nertzTop && !isHidden(nertzTop) && legalDrops(state, seat, nertzTop.id).length > 0) return true;
+  if ([...p.stock, ...p.waste].some((c) => !isHidden(c) && stockCardMoves(state, seat, c))) return true;
+  return p.work.some((pile, i) => {
+    const down = p.down[i]!;
+    const last = top(pile);
+    if (last && !isHidden(last) && legalDrops(state, seat, last.id).some((to) => to.k !== 'work')) return true;
+    // A run onto another work pile: the whole face-up part (turning up a face-down card, or emptying the pile), or
+    // part of it when the card it uncovers can then go to the middle.
+    return pile.some((c, j) => {
+      if (j < down || isHidden(c) || !legalDrops(state, seat, c.id).some((to) => to.k === 'work')) return false;
+      if (j === down) return true;
+      const under = pile[j - 1]!;
+      const trial: GameState = { ...state, players: state.players.map((q) => (q.seat === seat ? { ...q, work: q.work.map((w, k) => (k === i ? w.slice(0, j) : w)) } : q)) };
+      return legalDrops(trial, seat, under.id).some((to) => to.k !== 'work');
+    });
+  });
+}
+
+/**
+ * If every seat in `activeSeats` (the connected players) has flagged "stuck":
+ * - when nobody at the table can make a move that gets anywhere (`canProgress`), the table is jammed: the round ends
+ *   there (`jammed`), to be scored as it stands;
+ * - otherwise every player's waste is turned back onto their stock (restoring the original order; a half-dealt group
+ *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently, and
+ *   all flags clear.
+ * Returns the SAME state object when nothing happens (always, once Nertz has been called).
  */
 export function resolveStuck(state: GameState, activeSeats: Iterable<number>): GameState {
-  if (state.nertzCalledBy !== null) return state;
+  if (state.nertzCalledBy !== null || state.ended) return state;
   const active = new Set(activeSeats);
   const voters = state.players.filter((p) => active.has(p.seat));
   if (voters.length === 0 || !voters.every((p) => p.stuck)) return state;
+  if (!state.players.some((p) => canProgress(state, p.seat))) return { ...state, ended: 'jam', players: state.players.map((p) => ({ ...p, stuck: false })) };
   const players = state.players.map((p): PlayerState => {
     const stock = [...p.stock, ...p.waste.toReversed()];
+    // The top card goes to the bottom, so the next pass of threes brings up different cards (and the one after that
+    // the rest: three stuck votes show every card).
     if (stock.length > 1) stock.unshift(stock.pop()!);
     // A held waste card has just gone back into the stock: it is no longer in hand.
     const holding = p.waste.some((c) => c.id === p.holding) ? null : p.holding;
     return { ...p, stock, waste: [], dealt: 0, stuck: false, holding };
   });
   return { ...state, players };
+}
+
+/**
+ * If every seat in `people` (the connected players who are not bots: a bot goes along with it) has voted to end the
+ * round, it ends there, to be scored as it stands (`ended: 'vote'`). Same state object otherwise.
+ */
+export function resolveEndVote(state: GameState, people: Iterable<number>): GameState {
+  if (state.nertzCalledBy !== null || state.ended || state.stage !== 'play') return state;
+  const voters = new Set(people);
+  const them = state.players.filter((p) => voters.has(p.seat));
+  if (them.length === 0 || !them.every((p) => p.ending)) return state;
+  return { ...state, ended: 'vote' };
 }
 
 // ---------------------------------------------------------------- views, scoring, invariants

@@ -74,7 +74,7 @@ export function App() {
   }
   return (
     <>
-      <Corner />
+      <Corner room={room} />
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} />
@@ -282,7 +282,7 @@ function Results({ room }: { room: RoomView }) {
     <main className="solo over">
       <Pad wide>
         <h2>Round {room.round}</h2>
-        <p className="lead">{caller ? `${caller.seat === room.you ? 'You' : caller.name} called Nertz.` : 'Round over.'}</p>
+        <p className="lead">{caller ? `${caller.seat === room.you ? 'You' : caller.name} called Nertz.` : round?.ended === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : round?.ended === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>
         <table className="scores">
           <thead>
             <tr>
