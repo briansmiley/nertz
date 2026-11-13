@@ -2,6 +2,7 @@
 // in the bottom-left corner of every screen of a table. Collapsed it is one
 // small button (with a dot for unread lines), so it never lies over a pile;
 // open during a round, it is only as wide as the felt to the left of the piles.
+import { useViewport } from './viewport';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '../shared/chat';
 import type { RoomView } from '../shared/types';
@@ -21,12 +22,7 @@ const EDGE = 10;
  * lie over the edge of your nertz pile until it is hidden again.
  */
 function useWidth(room: RoomView, open: boolean): number {
-  const [size, setSize] = useState<[number, number]>([window.innerWidth, window.innerHeight]);
-  useEffect(() => {
-    const on = () => setSize([window.innerWidth, window.innerHeight]);
-    window.addEventListener('resize', on);
-    return () => window.removeEventListener('resize', on);
-  }, []);
+  const size = useViewport();
   const game = open && room.phase === 'playing' ? room.game : null;
   const [W, H] = size;
   return useMemo(() => {

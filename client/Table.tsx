@@ -10,6 +10,7 @@
 // each dragging client reports where its card is (`drag` messages, about 18 a
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
+import { useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
@@ -332,15 +333,6 @@ interface Drag {
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
-function useViewport(): [number, number] {
-  const [size, setSize] = useState<[number, number]>([window.innerWidth, window.innerHeight]);
-  useEffect(() => {
-    const on = () => setSize([window.innerWidth, window.innerHeight]);
-    window.addEventListener('resize', on);
-    return () => window.removeEventListener('resize', on);
-  }, []);
-  return size;
-}
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
