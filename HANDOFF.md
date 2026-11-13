@@ -53,6 +53,24 @@ turnarounds over long verification loops for small visual changes.
 - The dotted outline under the stock sits under its bottom card (`stockPad`), so it does not show as the stack thins.
 - The Start button's small print is just "Space".
 
+## Where the session of 13 Nov 2026 stopped (read this first)
+
+- Everything below is committed on local `main` only. `origin/main`, `origin/staging` and both Fly apps are behind:
+  the owner said to work locally and NOT push to `staging` or `main` until he says so.
+- Dev server: `npx concurrently -k "tsx watch server/index.ts" "vite --host"` from the repo (5173, on the network).
+- The owner is choosing among the card backs and decks at `/?decks`; nothing has been cut for good except what he
+  named (Poker, Night as a deck, four-colour, Aces, Votes for Women, Gem). Expect "keep these, drop those" next,
+  and perhaps grouping (drawn patterns / fractals / tiles / old prints).
+- Not cleared to deploy: the `ornate` back (unknown source), `bicycle` (Rider Back trademark), `lightcone` (their
+  logo). See `client/cards/CREDITS.md`.
+- TEMPORARY, to delete when he says: `/?decks-legacy`, `client/GalleryLegacy.tsx` and its rules at the end of
+  `client/styles.css`.
+- Open, by his own words: the Pixel deck's court cards are not good enough yet (he wants them to evoke Balatro's;
+  no copying its files); the Mosaic back reads as pixels; the fan-hover sound and the end-of-round backs are unheard
+  / unseen by anyone; mobile landscape and the home-screen launch were never checked on his phone after the rework.
+- He reviews by looking: take a screenshot of every visual change, in every state it has (expanded, hovered, small),
+  before saying it is done.
+
 ## Decks, lobby, bots and Aces (13 Nov 2026, local only: NOT pushed or deployed)
 
 - Decks (`DECKS` in `shared/protocol.ts`, drawn in `client/cards/Face.tsx`): Nertz, Big print,
