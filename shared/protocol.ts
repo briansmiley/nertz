@@ -40,6 +40,12 @@ export const CARD_BACKS = {
   honeycomb: 'Honeycomb',
   starcross: 'Star and cross',
   houndstooth: 'Houndstooth',
+  shards: 'Shards',
+  pinwheel: 'Pinwheel',
+  mosaic: 'Mosaic',
+  flowers: 'Flower tile',
+  compass: 'Compass rose',
+  lightcone: 'Lightcone',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',

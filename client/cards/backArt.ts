@@ -468,7 +468,149 @@ function houndstooth(small: boolean): string {
   return frame(clipped(`<path d="${d}" fill="#fff" stroke="none"/>`), 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth };
+const HALF = 'rgba(255,255,255,0.45)';
+
+/** Shards: every tile cut from one corner into three long wedges, white, half and bare; each tile turned the other way from its neighbours. */
+function shards(small: boolean): string {
+  const cols = small ? 2 : 3;
+  const rows = small ? 3 : 5;
+  const [w, h] = [F.w / cols, F.h / rows];
+  let white = '';
+  let half = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const [fx, fy] = [(r + c) % 2 ? -1 : 1, r % 2 ? -1 : 1];
+      const at = (px: number, py: number): [number, number] => [F.x + (c + 0.5) * w + fx * (px - 0.5) * w, F.y + (r + 0.5) * h + fy * (py - 0.5) * h];
+      white += poly([at(0, 1), at(0, 0), at(0.42, 0)]);
+      half += poly([at(0, 1), at(0.42, 0), at(1, 0)]);
+    }
+  }
+  return frame(`<path d="${white}" fill="#fff" stroke="none"/><path d="${half}" fill="${HALF}" stroke="none"/>`, 1, small);
+}
+
+/** Pinwheels: in every tile four blades round the middle, each a wedge with its tip cut off, all turning the same way. */
+function pinwheel(small: boolean): string {
+  const cols = small ? 2 : 3;
+  const rows = small ? 3 : 4;
+  const [w, h] = [F.w / cols, F.h / rows];
+  let d = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      for (let q = 0; q < 4; q++) {
+        // One blade, in a tile that is 2 by 2 with its middle at (0, 0), turned a quarter for each of the four.
+        const turn = ([x, y]: [number, number]): [number, number] => [[x, y], [-y, x], [-x, -y], [y, -x]][q] as [number, number];
+        d += poly(([[0, 0], [0, -0.7], [0.45, -0.7], [0.45, -0.45]] as [number, number][]).map(turn).map(([x, y]) => [F.x + (c + 0.5 + x / 2) * w, F.y + (r + 0.5 + y / 2) * h] as const));
+      }
+    }
+  }
+  return frame(`<path d="${d}" fill="#fff" stroke="none"/>`, 1, small);
+}
+
+/** A mosaic: little stones, none quite square or straight, and two bands of white ones winding down the card across each other, their middles a half tone. */
+function mosaic(small: boolean): string {
+  const size = small ? 6 : 3.6;
+  const cols = Math.round(F.w / size);
+  const rows = Math.round(F.h / size);
+  const [w, h] = [F.w / cols, F.h / rows];
+  const roll = dice(41);
+  const tones: Record<string, string> = { white: '', half: '', faint: '' };
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const [cx, cy] = [F.x + (c + 0.5) * w, F.y + (r + 0.5) * h];
+      const swing = F.w * 0.3 * Math.sin((2 * Math.PI * (cy - F.y)) / (F.h / 2));
+      const off = Math.min(Math.abs(cx - (W / 2 + swing)), Math.abs(cx - (W / 2 - swing)));
+      const band = small ? 7 : 5.5;
+      const tone = off < band * 0.38 ? 'half' : off < band ? 'white' : 'faint';
+      const turn = (roll() - 0.5) * 0.5;
+      const [rx, ry] = [(w / 2) * (0.74 + roll() * 0.14), (h / 2) * (0.74 + roll() * 0.14)];
+      tones[tone] += poly(([[-rx, -ry], [rx, -ry], [rx, ry], [-rx, ry]] as const).map(([x, y]) => [cx + x * Math.cos(turn) - y * Math.sin(turn), cy + x * Math.sin(turn) + y * Math.cos(turn)] as const));
+    }
+  }
+  return frame(`<path d="${tones.white}" fill="#fff" stroke="none"/><path d="${tones.half}" fill="${HALF}" stroke="none"/><path d="${tones.faint}" fill="rgba(255,255,255,0.2)" stroke="none"/>`, 1, small);
+}
+
+/** Flower tiles: an eight-petalled flower in every tile, and a small four-pointed star where four tiles meet. */
+function flowers(small: boolean): string {
+  const across = small ? 2 : 3;
+  const pitch = F.w / across;
+  const down = Math.round(F.h / pitch);
+  const y0 = F.y + (F.h - down * pitch) / 2;
+  const petal = (cx: number, cy: number, angle: number, long: number, wide: number): string => {
+    const at = (a: number, r: number): [number, number] => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+    return poly([at(angle, long * 0.12), at(angle - wide, long * 0.55), at(angle, long), at(angle + wide, long * 0.55)]);
+  };
+  let big = '';
+  let little = '';
+  for (let r = 0; r <= down; r++) {
+    for (let c = 0; c <= across; c++) {
+      if (r < down && c < across) for (let i = 0; i < 8; i++) big += petal(F.x + (c + 0.5) * pitch, y0 + (r + 0.5) * pitch, (i * Math.PI) / 4, pitch * 0.47, 0.3);
+      for (let i = 0; i < 4; i++) little += petal(F.x + c * pitch, y0 + r * pitch, (i * Math.PI) / 2 + Math.PI / 4, pitch * 0.24, 0.5);
+    }
+  }
+  return frame(clipped(`<path d="${big}" fill="#fff" stroke="none"/><path d="${little}" fill="${HALF}" stroke="none"/>`), 1, small);
+}
+
+/**
+ * A compass rose: four long points and four short ones between them, each point half white and half bare with a
+ * white edge, over two rings. (The short points are cut where the long ones lie over them, and the rings where any
+ * point does, so that the bare halves really are bare.)
+ */
+function compass(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2];
+  const at = (deg: number, r: number): [number, number] => [cx + r * Math.sin((deg * Math.PI) / 180), cy - r * Math.cos((deg * Math.PI) / 180)];
+  const waist = 6.5; // where two long points meet, on the diagonals
+  const reach = (deg: number): number => (deg % 180 === 0 ? F.h * 0.47 : F.w * 0.49); // north and south are longer: the card is
+  const short = F.w * 0.36;
+  const cross = (a: [number, number], b: [number, number], c: [number, number], e: [number, number]): [number, number] => {
+    const t = ((c[0] - a[0]) * (e[1] - c[1]) - (c[1] - a[1]) * (e[0] - c[0])) / ((b[0] - a[0]) * (e[1] - c[1]) - (b[1] - a[1]) * (e[0] - c[0]));
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+  let white = '';
+  let bare = '';
+  let all = '';
+  for (let k = 0; k < 4; k++) {
+    const deg = k * 90;
+    const tip = at(deg, reach(deg));
+    // A long point: its left half white, its right half bare.
+    white += poly([[cx, cy], at(deg - 45, waist), tip]);
+    bare += poly([[cx, cy], tip, at(deg + 45, waist)]);
+    all += poly([[cx, cy], at(deg - 45, waist), tip, at(deg + 45, waist)]);
+    // The short point between this one and the next: what shows of it beside the two long points.
+    const [p, corner] = [at(deg + 45, short), at(deg + 45, waist)];
+    const next = at(deg + 90, reach(deg + 90));
+    const left = cross(p, at(deg, 11), tip, corner); // where its edge meets this long point's edge
+    const right = cross(p, at(deg + 90, 11), next, corner);
+    white += poly([p, left, corner]);
+    bare += poly([p, corner, right]);
+    all += poly([p, left, corner, right]);
+  }
+  const rings = small ? `<circle cx="${cx}" cy="${cy}" r="${n(F.w * 0.4)}" stroke-width="2"/>` : `<circle cx="${cx}" cy="${cy}" r="${n(F.w * 0.43)}" stroke-width="0.9"/><circle cx="${cx}" cy="${cy}" r="${n(F.w * 0.34)}" stroke-width="2.2"/>`;
+  return frame(
+    `<mask id="m"><rect width="${W}" height="${H}" fill="#fff"/><path d="${all}" fill="#000" stroke="#000" stroke-width="1.6"/></mask><g mask="url(#m)">${rings}</g>` +
+      `<path d="${white}" fill="#fff" stroke="none"/><path d="${bare}" stroke-linejoin="miter"/>`,
+    small ? 1.3 : 0.7,
+    small,
+  );
+}
+
+/**
+ * The Lightcone mark (the owner's own choice of emblem; it is Lightcone's logo, not this project's drawing): its
+ * outlines as they are in the logo's file, 158.1 by 201.2, fitted into the middle of the card.
+ */
+function lightcone(small: boolean): string {
+  const shapes = [
+    'M79.1,100.6L131,8.5c-2.2,1-3.7,1.9-6.1,2.8L82.3,84.2l-3.3-29.7l-3.3,29.7L37.7,17.1c20.4,6,45.3,7,68,3.2L85.6,56.7l2.7,5.9l27.5-48.9c-24.6,6.1-56.8,5.2-79.4-2c21.7-9,57.2-8.2,81.3-2.1l2-4.4C91.5-2.9,54-1.3,27.1,8.5',
+    'M158.1,100.6 86.2,97.8 103.9,82.8 82.4,94.8 79.1,100.6Z',
+    'M0,100.6 72,97.8 54.3,82.8 75.8,94.8 79.1,100.6Z',
+    'M79.1,100.6l-51.9,92.1c2.2-1,3.7-1.9,6.1-2.8L75.8,117l3.3,29.7l3.3-29.7l38.1,67.1c-20.4-6-45.3-7-68-3.2l20.1-36.5l-2.7-5.9l-27.5,48.9c24.6-6.1,56.8-5.2,79.4,2c-21.7,9-57.2,8.2-81.3,2.1l-2,4.4c28.3,8.1,65.8,6.5,92.6-3.4',
+    'M158.1,100.6 86.2,103.4 103.9,118.4 82.4,106.4 79.1,100.6Z',
+    'M0,100.6 72,103.4 54.3,118.4 75.8,106.4 79.1,100.6Z',
+  ];
+  const k = Math.min((F.w * (small ? 0.98 : 0.94)) / 158.1, (F.h * 0.94) / 201.2);
+  return frame(`<g transform="translate(${n(W / 2 - (158.1 * k) / 2)} ${n(H / 2 - (201.2 * k) / 2)}) scale(${Math.round(k * 10000) / 10000})" fill="#fff" fill-rule="evenodd" stroke="none">${shapes.map((d) => `<path d="${d}"/>`).join('')}</g>`, 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
