@@ -11,7 +11,7 @@
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type ClientMsg, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
-import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
+import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import { Social } from './chat';
 
@@ -82,6 +82,8 @@ export class Room {
   /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
   private startTimer: ReturnType<typeof setTimeout> | null = null;
   private startEndsAt = 0;
+  /** Who paused the round in play, if it is paused. */
+  private pausedBy: Player | null = null;
   private readonly rng: Rng;
   private readonly schedule: (flush: () => void) => void;
   private readonly flipMs: number;
@@ -153,6 +155,8 @@ export class Room {
         return this.addBot(player, msg.level);
       case 'removeBot':
         return this.removeBot(player, msg.seat);
+      case 'pause':
+        return this.pause(player, msg.on);
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
     }
@@ -210,6 +214,7 @@ export class Room {
       this.settings,
     );
     this.phase = 'playing';
+    this.pausedBy = null;
     // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
     this.stopTimers();
     this.dealEndsAt = Date.now() + DEAL_MS;
@@ -255,7 +260,7 @@ export class Room {
   private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
     if (seq <= player.ack) return; // duplicate or out of order: already answered
     player.ack = seq;
-    if (this.phase !== 'playing' || !this.game) return this.changed(player);
+    if (this.phase !== 'playing' || !this.game || (this.pausedBy && intent.k !== 'end')) return this.changed(player); // while paused, only the vote to end the round
     if (intent.k === 'flip' && this.flipMs > 0 && !player.bot) {
       const now = Date.now();
       if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player); // too soon after their last card: refused
@@ -279,7 +284,7 @@ export class Room {
    * a card fly that is not in their hand; and only DRAG_RATE times a second.
    */
   private dragged(player: Player, at: { t: 'drag' } & DragAt): void {
-    if (this.phase !== 'playing' || this.game?.players.find((p) => p.seat === player.seat)?.holding !== at.id) return;
+    if (this.phase !== 'playing' || this.pausedBy || this.game?.players.find((p) => p.seat === player.seat)?.holding !== at.id) return;
     const now = Date.now();
     const drags = (player.drags ??= { left: DRAG_BURST, at: now });
     drags.left = Math.min(DRAG_BURST, drags.left + ((now - drags.at) / 1000) * DRAG_RATE);
@@ -316,7 +321,28 @@ export class Room {
     });
     this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}) };
     this.phase = 'results';
+    this.pausedBy = null;
     this.stopBots();
+  }
+
+  /**
+   * Anyone dealt into the round may pause it while it is being played (not once Nertz is called). Cards in hand go
+   * back, and the bots stop. The one who paused it carries on, or the dealer, or anyone once the one who paused is away.
+   */
+  private pause(player: Player, on: boolean): void {
+    if (this.phase !== 'playing' || !this.game || !this.game.players.some((p) => p.seat === player.seat)) return;
+    if (on) {
+      if (this.pausedBy || this.game.stage !== 'play' || this.game.nertzCalledBy !== null || this.game.ended) return;
+      this.pausedBy = player;
+      for (const p of this.players) this.letGo(p);
+      this.stopBots();
+    } else {
+      const by = this.pausedBy;
+      if (!by || (player !== by && player !== this.dealer && by.conn)) return;
+      this.pausedBy = null;
+      for (const p of this.players) if (p.bot && this.game.players.some((g) => g.seat === p.seat)) this.wake(p);
+    }
+    this.changed();
   }
 
   private graceExpired(): void {
@@ -388,17 +414,18 @@ export class Room {
   }
 
   /**
-   * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times
-   * (times `pace`: shorter after dealing a card off the stock).
+   * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times.
+   * In the middle of dealing a group (`dealing`), the next card instead follows at the same quick step for everyone.
    */
-  private wake(player: Player, memory?: BotMemory, pace = 1): void {
+  private wake(player: Player, memory?: BotMemory, dealing = false): void {
     const bot = player.bot!;
     if (memory) {
       bot.memory = memory;
       bot.pending = null;
     }
     if (bot.timer) clearTimeout(bot.timer);
-    bot.timer = setTimeout(() => this.look(player), BOTS[bot.level].delayMs * (0.5 + this.rng()) * pace);
+    const think = BOTS[bot.level].delayMs * (0.5 + this.rng());
+    bot.timer = setTimeout(() => this.look(player), dealing ? DEAL_STEP_MS : think);
     bot.timer.unref?.();
   }
 
@@ -415,7 +442,7 @@ export class Room {
     const bot = player.bot!;
     bot.timer = null;
     if (this.phase !== 'playing' || !this.game) return;
-    let pace = 1;
+    let midGroup = false;
     if (bot.pending) {
       const before = this.game;
       const { intent, memory } = bot.pending;
@@ -423,13 +450,13 @@ export class Room {
       this.intent(player, player.ack + 1, intent);
       if (this.game !== before) {
         bot.memory = memory;
-        // It dealt a card off the stock (not: turned the waste over). The next card follows sooner than a fresh look would.
-        if (intent.k === 'flip' && before.players.find((p) => p.seat === player.seat)!.stock.length > 0) pace = DEAL_PACE;
+        // It dealt a card off the stock and the group isn't finished: the rest of it comes at the common deal speed.
+        midGroup = intent.k === 'flip' && (this.game.players.find((p) => p.seat === player.seat)?.dealt ?? 0) > 0;
       }
     }
     if (this.phase !== 'playing' || !this.game) return;
     bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
-    this.wake(player, undefined, pace);
+    this.wake(player, undefined, midGroup && bot.pending?.intent.k === 'flip');
   }
 
   private stopBots(): void {
@@ -476,6 +503,7 @@ export class Room {
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
       dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
       startMs: this.startTimer ? Math.max(0, this.startEndsAt - Date.now()) : null,
+      paused: this.pausedBy ? { by: this.pausedBy.seat } : null,
       lastRound: this.lastRound,
     };
   }

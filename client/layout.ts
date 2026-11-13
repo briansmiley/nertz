@@ -154,6 +154,9 @@ export function stackOffset(k: number, j: number, w: number): { x: number; y: nu
   return { x: -j * w * 0.012 + wobble(1) * w * 0.035, y: -j * w * 0.018 + wobble(2) * w * 0.03, rot: wobble(3) * 4 };
 }
 
+/** A centre pile turned over at the end of a round, as a loose stack (seeded apart from the tray's piles). */
+export const slotStack = (i: number, j: number, w: number) => stackOffset(100 + i, j, w);
+
 /** Room the grace countdown is given on the table: its greatest width, its height, and its distance from the right edge. */
 export const COUNTDOWN = { w: 168, h: 44, right: 14 };
 /** Height of the name line above an opponent's hand. */
@@ -507,12 +510,23 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       )
     : null;
 
-  // The middle's cards. Only the top two of a pile are drawn: the one underneath stays visible while the next flies in.
-  // Once the wash starts they are drawn on the finale's canvas instead.
+  // The middle's cards. In play only the top two of a pile are drawn: the one underneath stays visible while the next
+  // flies in. When the round ends and the piles turn over, every card is drawn, each a little off the last
+  // (`stackOffset`), so each pile is a stack you can see the size of. Once the wash starts they are drawn on the
+  // finale's canvas instead.
   if (stage !== 'wash' && stage !== 'sheet') {
-    const put = (pile: readonly AnyCard[], r: Rect, z: number, kind: PileKind, i: number, up: boolean, rot: number) =>
-      pile.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: z + k, up, pile: kind, mine: false, at: i, rot }));
-    game.slots.forEach((pile, i) => slots[i] && put(pile, slots[i], 5000 + i * 4, 'slot', i, stage === 'live', slots[i].rot));
+    game.slots.forEach((pile, i) => {
+      const r = slots[i];
+      if (!r) return;
+      if (stage === 'live') {
+        pile.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, up: true, pile: 'slot', mine: false, at: i, rot: r.rot }));
+        return;
+      }
+      pile.forEach((card, j) => {
+        const o = slotStack(i, j, r.w);
+        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5000 + i * 14 + j, up: false, pile: 'slot', mine: false, at: i, rot: r.rot + o.rot });
+      });
+    });
     game.tray.forEach((pile, k) => {
       const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * tw, y: tray.y + pad + k * trayStep, w: tw, h: th };
       // Every card of a finished pile is drawn (squared up in the tray), so that when the pile comes out on the table

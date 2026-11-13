@@ -11,6 +11,7 @@
 // - nothing is compared across a reconnect, a reload or a change of table, so
 //   whatever happened meanwhile is not replayed.
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
+import { legalDrops } from '../shared/engine';
 import type { GameState, RoomView } from '../shared/types';
 
 export type Who = 'me' | 'other';
@@ -36,7 +37,10 @@ export type Cue =
   | { k: 'clear'; who: Who }
   /** A card went back where it came from: put down nowhere, refused by the server, or taken out of the hand. */
   | { k: 'home'; who: Who }
-  /** A move of ours that we showed as made was refused by the server after all: somebody got there first. */
+  /**
+   * Somebody got there first: a move of ours that we showed as made was refused by the server after all, or, while we
+   * hold a card, a pile in the middle it could have gone on was taken by someone else.
+   */
   | { k: 'lost' }
   | { k: 'nertz' }
   /** The dealer said go: one tick per number of "1, 2, 3" still to come, each `at` that many seconds from now. */
@@ -139,11 +143,21 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     if (n && p.dealt < (a.game.players.find((q) => q.seat === p.seat)?.dealt ?? 0) + n) add({ k: 'flip', who: who(p.seat) });
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;
     if (p.holding !== null && p.holding !== was) add({ k: 'pickup', who: who(p.seat) });
+    else if (p.seat === you && p.holding !== null && p.holding === was && sniped(a.game, b.game, you, p.holding)) add({ k: 'lost' });
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });
   }
 
   if (a.game.nertzCalledBy === null && b.game.nertzCalledBy !== null) add({ k: 'nertz' });
   return [...cues.values()];
+}
+
+/** Still holding `card`, it could have gone on a started pile in the middle a moment ago and now can't, because that pile grew. */
+function sniped(a: GameState, b: GameState, seat: number, card: string): boolean {
+  // Piles already started: an Ace losing one empty spot of many has lost nothing.
+  const was = legalDrops(a, seat, card).filter((to) => to.k === 'slot' && (a.slots[to.i]?.length ?? 0) > 0);
+  if (!was.length) return false;
+  const now = new Set(legalDrops(b, seat, card).map((to) => JSON.stringify(to)));
+  return was.some((to) => to.k === 'slot' && !now.has(JSON.stringify(to)) && (b.slots[to.i]?.length ?? 0) > (a.slots[to.i]?.length ?? 0));
 }
 
 /** The grace countdown ticks only for someone who still has a card to put down. */

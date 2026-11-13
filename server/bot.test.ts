@@ -5,7 +5,7 @@ import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, 
 import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
 import { spots } from '../shared/table';
 import type { Card, GameState, Intent, PlayerState, Suit } from '../shared/types';
-import { BOTS, chooseIntent, DEAL_PACE, freshMemory, type BotMemory } from './bot';
+import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 
@@ -502,7 +502,35 @@ describe('Room with bots', () => {
     }
   });
 
-  it('a bot acts at its level\'s pace: one look per delay (half to one and a half times the mean), and a card off the stock costs it half a look more', () => {
+  it('a pause stops the bots and every move until whoever paused (or the dealer) carries on', () => {
+    vi.useFakeTimers();
+    const { room, host } = hosted(5);
+    const guest = new FakeConn();
+    room.join(guest, 'Bo', 'tok-guest');
+    room.handle(host, { t: 'addBot', level: 'fast' });
+    room.handle(host, { t: 'start' });
+    opening(room, host);
+    room.handle(guest, { t: 'pause', on: true });
+    room.flush();
+    expect(host.last.room.paused).toEqual({ by: 1 });
+    const frozen = JSON.stringify(room.game);
+    vi.advanceTimersByTime(30_000);
+    room.handle(host, { t: 'intent', seq: 1, intent: { k: 'flip' } });
+    expect(JSON.stringify(room.game)).toBe(frozen); // no bot moved, and nobody can
+    room.handle(host, { t: 'pause', on: true }); // already paused: nothing changes
+    room.handle(host, { t: 'pause', on: false }); // the dealer may carry on
+    room.flush();
+    expect(guest.last.room.paused).toBeNull();
+    vi.advanceTimersByTime(10_000);
+    expect(JSON.stringify(room.game)).not.toBe(frozen); // the bot is playing again
+    room.handle(guest, { t: 'pause', on: true });
+    room.handle(guest, { t: 'pause', on: false });
+    room.flush();
+    expect(host.last.room.paused).toBeNull();
+    room.close();
+  });
+
+  it("a bot decides at its level's pace (half to one and a half times the mean), but deals the rest of a group at the same quick step whatever its level", () => {
     vi.useFakeTimers();
     for (const level of ['slow', 'medium', 'fast'] as const) {
       const { room, host } = hosted(3);
@@ -513,28 +541,25 @@ describe('Room with bots', () => {
       const bot = () => room.game!.players.find((p) => p.seat === 1)!;
       const gaps = { look: [] as number[], card: [] as number[] };
       let last = Date.now();
-      let afterCard = false; // the look before this one dealt a card off the stock
       for (let i = 0; i < 150; i++) {
         const stock = bot().stock.length;
+        const midGroup = bot().dealt > 0;
         vi.advanceTimersToNextTimer();
         const gap = Date.now() - last;
-        const pace = afterCard ? DEAL_PACE : 1;
-        expect(gap).toBeGreaterThanOrEqual(delay * pace * 0.5);
-        expect(gap).toBeLessThanOrEqual(delay * pace * 1.5);
-        gaps[afterCard ? 'card' : 'look'].push(gap);
         last = Date.now();
-        afterCard = bot().stock.length === stock - 1; // one card at most, whatever it did
-        expect(stock - bot().stock.length === 1 || bot().stock.length >= stock).toBe(true);
+        const dealtOne = bot().stock.length === stock - 1;
+        if (midGroup && dealtOne && gap === DEAL_STEP_MS) gaps.card.push(gap);
+        else {
+          expect(gap).toBeGreaterThanOrEqual(delay * 0.5);
+          expect(gap).toBeLessThanOrEqual(delay * 1.5);
+          gaps.look.push(gap);
+        }
       }
       const mean = (xs: number[]) => xs.reduce((n, x) => n + x, 0) / xs.length;
       expect(gaps.look.length).toBeGreaterThan(8);
-      expect(gaps.card.length).toBeGreaterThan(30);
+      expect(gaps.card.length).toBeGreaterThan(20);
       expect(mean(gaps.look)).toBeGreaterThan(delay * 0.7);
       expect(mean(gaps.look)).toBeLessThan(delay * 1.3);
-      // A group of three costs one and a half looks, never less than three quarters of one: no faster than a quick hand.
-      expect(mean(gaps.card)).toBeGreaterThan(delay * DEAL_PACE * 0.8);
-      expect(mean(gaps.card)).toBeLessThan(delay * DEAL_PACE * 1.2);
-      expect(Math.min(...gaps.card)).toBeGreaterThanOrEqual(150);
       room.close();
     }
   });

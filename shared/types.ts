@@ -219,5 +219,7 @@ export interface RoomView {
    * is `countdown`): play opens, on the word NERTZ!, when it reaches 0. Null otherwise.
    */
   startMs: number | null;
+  /** The round is paused (by this seat): every card is hidden, no move is taken and the bots wait. Null otherwise. */
+  paused: { by: number } | null;
   lastRound: RoundResult | null;
 }

@@ -46,6 +46,7 @@ const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): Ro
   graceMs: null,
   dealMs: null,
   startMs: null,
+  paused: null,
   lastRound: null,
   ...extra,
 });
@@ -148,6 +149,17 @@ describe('sound cues from rendered state', () => {
     expect(s.confirm()).toEqual([]); // the refusal itself changes nothing more
     expect(s.game.players[0]!.work[1]!.at(-1)!.id).toBe(two);
     expect(mine).toBe(top(s.game, 0, 0));
+  });
+
+  it('holding a card, however long, when someone else takes the pile it could have gone on: the disappointed sound', () => {
+    const s = session(rigged());
+    s.them(move(top(s.game, 1, 0), slot(3))); // their ace in the middle
+    const two = top(s.game, 0, 1);
+    s.me({ k: 'hold', cardId: two });
+    s.confirm();
+    const sniped = s.them(move(top(s.game, 1, 1), slot(3)));
+    expect(sniped).toContainEqual({ k: 'lost' });
+    expect(sniped).toContainEqual({ k: 'centre', who: 'other', rank: 2 });
   });
 
   it('a card picked up and put down nowhere gets the same quiet tap', () => {

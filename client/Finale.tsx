@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backColour, CARD_H, CARD_W } from './cards/Face';
-import { seatDir, stackOffset, TAG_H, type Layout, type Rect } from './layout';
+import { seatDir, slotStack, stackOffset, TAG_H, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 800, out: 900, wash: 1500, sortEach: 1500, hold: 6500 };
@@ -233,14 +233,14 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const piles: SortedPile[] = spots.map((s, i) => ({ seat: s.seat, x: s.x, y: s.y, w: pw, h: ph, total: 0, label: labels[i]!.box, side: labels[i]!.side }));
   const pileOf = new Map(piles.map((p, i) => [p.seat, i]));
 
-  const lying = [...game.slots.map((pile, i) => ({ pile, at: L.slots[i], tray: -1 })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i], tray: i }))];
-  const movers = lying.flatMap(({ pile, at, tray }) =>
+  const lying = [...game.slots.map((pile, i) => ({ pile, at: L.slots[i], tray: -1, slot: i })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i], tray: i, slot: -1 }))];
+  const movers = lying.flatMap(({ pile, at, tray, slot }) =>
     pile.flatMap((card, j): Mover[] => {
       const to = pileOf.get(card.owner);
       if (!at || to === undefined) return [];
-      // A finished pile starts the wash as the loose stack it came out of the tray as (see `stackOffset`).
-      const o = tray < 0 ? { x: 0, y: 0, rot: 0 } : stackOffset(tray, j, at.w);
-      return [{ owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, pile: to, k: 0, of: 0, tilt: 0, rot0: (o.rot * Math.PI) / 180 }];
+      // Every pile starts the wash as the loose stack it was turned over or came out of the tray as (see `stackOffset`).
+      const o = tray < 0 ? slotStack(slot, j, at.w) : stackOffset(tray, j, at.w);
+      return [{ owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, pile: to, k: 0, of: 0, tilt: 0, rot0: ((o.rot + ('rot' in at ? (at as { rot: number }).rot : 0)) * Math.PI) / 180 }];
     }),
   );
   // Draw order is shuffled so the colours mix in the wash; a card's place in its sorted pile follows the draw order.

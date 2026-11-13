@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
-import { send, setTableSettings } from './net';
+import { pause, send, setTableSettings } from './net';
 import { calm, setPrefs, usePrefs } from './prefs';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -109,6 +109,28 @@ export function Pop({ icon, label, children }: { icon: ReactNode; label: string;
   );
 }
 
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="6.5" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none" />
+      <rect x="13.9" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Can you pause the round right now? While it is being played, before anyone calls Nertz, if you were dealt in. */
+export function canPause(room: RoomView | null | undefined): boolean {
+  const g = room?.game;
+  return !!room && room.phase === 'playing' && !room.paused && !!g && g.stage === 'play' && g.nertzCalledBy === null && !g.ended && g.players.some((p) => p.seat === room.you);
+}
+
+/** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
+export function canResume(room: RoomView): boolean {
+  if (!room.paused) return false;
+  const by = room.players.find((p) => p.seat === room.paused!.by);
+  return room.paused.by === room.you || !!room.players.find((p) => p.seat === room.you)?.isHost || !by?.connected;
+}
+
 const percent = (v: number) => `${Math.round(v * 100)}%`;
 
 /**
@@ -140,16 +162,19 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
-  // M mutes from anywhere (except while typing a name); Escape puts the slip away.
+  const pausable = canPause(room);
+  const resumable = !!room && canResume(room);
+  // M mutes from anywhere (except while typing a name), P pauses or carries on; Escape puts the slip away.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'KeyM' && !typing(e.target)) setPrefs({ muted: !prefs.muted });
+      else if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
       else if (e.code === 'Escape') setOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [prefs.muted]);
+  }, [prefs.muted, pausable, resumable]);
 
   // A press anywhere else closes the slip (and still does whatever it was meant to do).
   useEffect(() => {
@@ -178,6 +203,20 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <Speaker off={prefs.muted} />
         {prefs.muted && <span>Muted</span>}
       </button>
+      {pausable && (
+        <button
+          type="button"
+          className="knob"
+          aria-label="Pause the round (P)"
+          title="Pause the round (P)"
+          onClick={(e) => {
+            pause(true);
+            e.currentTarget.blur();
+          }}
+        >
+          <PauseIcon />
+        </button>
+      )}
       <button type="button" className={`knob${open ? ' on' : ''}`} aria-expanded={open} aria-controls="your-settings" aria-label="Your settings" title="Your settings" onClick={() => setOpen(!open)}>
         <Gear />
       </button>

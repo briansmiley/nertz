@@ -875,6 +875,51 @@ button {
   bottom: 12px;
 }
 
+/* Paused: the whole table goes out of focus, so nobody can study their cards, and a card says who paused it. */
+.table.paused {
+  filter: blur(22px) saturate(0.6);
+  pointer-events: none;
+  user-select: none;
+}
+
+.paused-card {
+  position: fixed;
+  z-index: 40000;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  display: grid;
+  gap: 0.7rem;
+  justify-items: center;
+  width: min(20rem, calc(100vw - 32px));
+  padding: 1.6rem 1.4rem 1.3rem;
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+  text-align: center;
+  rotate: -0.6deg;
+}
+
+.paused-card h2 {
+  margin: 0;
+  font: 400 1.8rem/1.1 var(--display);
+}
+
+.paused-card p {
+  margin: 0;
+}
+
+.paused-card .go {
+  width: 100%;
+}
+
+.paused-card .go small {
+  margin-left: 0.4rem;
+  font: 600 0.8rem/1 var(--ui);
+  opacity: 0.6;
+}
+
 /* ------------------------------------------------------------ score-pad sheets (home, lobby, results) */
 
 .pad {

@@ -21,7 +21,8 @@ import { Finale, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
-import { onDrag, post } from './net';
+import { onDrag, pause, post } from './net';
+import { canResume } from './Settings';
 import { calm } from './prefs';
 import { stage as stageSound } from './sound';
 
@@ -482,7 +483,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [replay, replaying]);
   const dealing = game.stage === 'dealing' || replaying;
   /** Nothing can be started: the cards are still being dealt, play has not opened, or Nertz has been called. (A card already in hand may still land during grace.) */
-  const frozen = dealing || game.stage !== 'play' || called || results;
+  const paused = !!room.paused && !results;
+  const frozen = dealing || game.stage !== 'play' || called || results || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
   useEffect(() => {
     if (stage !== 'live' || frozen) setPeek(null);
@@ -855,7 +857,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   return (
     <>
     <div
-      className={`table${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}`}
+      className={`table${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
+      aria-hidden={paused || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -1013,6 +1016,19 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} />}
       {results && stage !== 'sheet' && <p className="skip">Esc skips to the scores</p>}
     </div>
+    {paused && (
+      <div className="paused-card" role="dialog" aria-label="Paused">
+        <h2>Paused</h2>
+        <p>{room.paused!.by === you ? 'You paused the round.' : `${name(room.paused!.by)} paused the round.`}</p>
+        {canResume(room) ? (
+          <button type="button" className="go" autoFocus onClick={() => pause(false)}>
+            Carry on <small>P</small>
+          </button>
+        ) : (
+          <p className="wait">Waiting for them to carry on.</p>
+        )}
+      </div>
+    )}
     {stage === 'sheet' && sheet}
     </>
   );

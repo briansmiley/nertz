@@ -206,6 +206,7 @@ export function start(): void {
 /** The dealer's Start, once the cards are dealt: "1, 2, 3, Nertz!". The server ignores it from anyone else, or at any other time. */
 export const go = (): void => void post({ t: 'go' });
 
+export const pause = (on: boolean): void => void post({ t: 'pause', on });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
 

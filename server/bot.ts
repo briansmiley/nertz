@@ -20,11 +20,11 @@ const NERTZ_FOCUS = 0.5;
 const CENTRE_FOCUS = 1.25;
 
 /**
- * Dealing a card off the stock is a small thing next to looking the table over: the look after a card it dealt comes
- * after this fraction of its usual pause. Three cards (one group) cost one and a half pauses, where a flip of three
- * used to cost one, and a fast bot gets through the stock about as quickly as a quick hand dragging card by card.
+ * Dealing a group off the stock goes at one speed for every bot: once it has dealt the first card of a group, the
+ * rest follow this many ms apart, like a quick hand tapping the stock. A bot's level only sets how long it takes to
+ * decide on an action (a move, or starting a group).
  */
-export const DEAL_PACE = 0.5;
+export const DEAL_STEP_MS = 250;
 
 /** What a bot carries from one look to the next. */
 export interface BotMemory {

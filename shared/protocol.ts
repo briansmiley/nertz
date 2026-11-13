@@ -16,6 +16,8 @@ export type ClientMsg =
   | { t: 'settings'; patch: Partial<TableSettings> }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
+  /** Pause the round for everyone (on), or carry on (off). */
+  | { t: 'pause'; on: boolean }
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
@@ -198,6 +200,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'go' };
     case 'leave':
       return { t: 'leave' };
+    case 'pause':
+      return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;

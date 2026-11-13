@@ -9,6 +9,21 @@ as built.
 The owner reviews by playing and gives feedback in plain words; small tweaks are made directly, and he prefers quick
 turnarounds over long verification loops for small visual changes.
 
+## Done on 13 Nov 2026
+
+- Score sheet: table rules behind a gear, a robot button opens "Add a bot", a faint × after each bot's name removes it,
+  a door icon leaves; columns read "Played" and "6 × −2 = −12". The grid rule is now called "Crystallized Nertz".
+- Bots: level only sets thinking time; once a bot starts a group off its stock, the rest come 250 ms apart
+  (`DEAL_STEP_MS` in server/bot.ts), the same at every level.
+- Pause: a pause button by mute/gear (or P) while a round is played, before a call. The server drops held cards,
+  stops bots and refuses moves (except the end vote); the table blurs with a "Paused" card. Whoever paused, the
+  dealer, or anyone once the pauser is away can carry on. With three corner buttons the gear can touch your
+  "Round N at table" line on small windows (part of the mobile item).
+- End of round: unfinished centre piles turn over as loose stacks showing their size (`slotStack`), and the wash starts
+  from there. Not yet seen in a browser.
+- The "lost" sound also plays while you hold a card and someone else plays on a started centre pile it could have gone
+  on (however long you held it), as well as when a drop you made loses the race at the server.
+
 ## Done on 11-12 Nov 2026 (all deployed)
 
 - Bigger centre cards (`def509f`); side neighbours' hands turned to run down the edges and less room kept under your
