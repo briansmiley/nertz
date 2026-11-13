@@ -23,9 +23,9 @@ const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green']);
  * How much larger a picture back is shown on a small card (another player's pile), so that only its middle shows:
  * a fine pattern needs more, and one that is a single figure (the two circles of the Rider back) is shown whole (1).
  */
-const SMALL: Record<string, number> = { bicycle: 1, suits: 1, lion: 1.25, ornate: 1.8, rosette: 1.8, chain: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, carpet: 1.8, 'plaid-blue': 2, 'plaid-green': 2 };
+const SMALL: Record<string, number> = { bicycle: 1, suits: 1, lion: 1.25, ornate: 1.8, rosette: 1.8, chain: 1.5, check: 2.2, stars: 2.4, cobble: 2.8, carpet: 1.8, 'plaid-blue': 2, 'plaid-green': 2 };
 /** Patterns with no frame of their own: they get the card's usual white edge. */
-const EDGED = new Set(['check']);
+const EDGED = new Set(['check', 'chain']);
 
 /**
  * The picture a back is made of (none for the plain one): whether it has colours of its own or is printed in the

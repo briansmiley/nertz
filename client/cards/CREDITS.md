@@ -33,6 +33,7 @@ white-on-nothing pattern that is printed in each player's colour.
 | `plaid-blue` | Atlas deck card back blue and brown.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
 | `plaid-green` | Atlas deck card back green and dark red.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
 
+- `chain` is only the middle of its source: the field of links, without the hand-printed striped border (which is not square on the card).
 - `ornate` is made from a picture the owner found; WHERE IT IS FROM AND ITS LICENCE ARE NOT YET KNOWN (it looks like
   stock art): it must be cleared, or replaced, before it is deployed.
 - `bicycle` is the Bicycle "Rider Back" of the United States Playing Card Company. The design is from 1887 and out of
