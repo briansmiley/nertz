@@ -117,6 +117,17 @@ button {
   background-color: var(--card);
 }
 
+/* On a small card (another player's pile) a picture back shows only its middle, larger, inside an edge of its own. */
+.back.tint.small,
+.back.pic.small {
+  background-size: 180% 180%;
+  background-position: center;
+}
+
+.back.tint.small {
+  border: 5px solid var(--card);
+}
+
 /* A card on the table: drawn at 90x126 and moved/scaled by transforms only. */
 .card {
   position: absolute;
@@ -2407,9 +2418,292 @@ label.check {
     column-gap: 1.4rem;
   }
 }
+.slip a.decks {
+  font-size: 12.5px;
+  color: inherit;
+  opacity: 0.8;
+}
 
-/* ------------------------------------------------------------ the decks, to look at (/?decks) */
+@media (min-width: 640px) {
+  /* (The lobby's sheet is wider for the two columns.) */
+  .pad:has(> .seats) {
+    width: min(100%, 35rem);
+  }
+}
 
+/* ------------------------------------------------------------ your cards, to look at and choose (/?decks) */
+
+/* (The page is longer than the window: the cloth goes all the way down.) */
+html:has(.showroom),
+body:has(.showroom),
+#root:has(.showroom) {
+  height: auto;
+  min-height: 100%;
+}
+
+.showroom {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 20px 90px;
+}
+
+.showroom header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.showroom h1 {
+  margin: 0;
+  font: 400 clamp(2rem, 6vw, 3.1rem)/1 var(--display);
+  letter-spacing: 0.01em;
+  color: var(--chalk);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+}
+
+.showroom .back-to {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  border-radius: 99px;
+  background: rgba(8, 28, 33, 0.6);
+}
+
+.showroom .back-to:hover {
+  border-color: var(--chalk);
+}
+
+.showroom .back-to svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--chalk);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A heading is chalked on the cloth, with a line running off to the right of it. */
+.showroom .heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 44px 0 26px;
+}
+
+.showroom .heading::after {
+  content: '';
+  flex: 1;
+  order: 1;
+  height: 0;
+  border-top: 2px dashed rgba(241, 234, 216, 0.22);
+}
+
+.showroom h2 {
+  margin: 0;
+  font: 400 1.5rem/1 var(--display);
+  color: var(--marigold);
+  letter-spacing: 0.02em;
+}
+
+/* The colour the backs are shown in: six counters. */
+.showroom .inks {
+  display: flex;
+  gap: 8px;
+  order: 2;
+}
+
+.showroom .inks button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 99px;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+.showroom .inks button.on {
+  border-color: #fff;
+  box-shadow:
+    0 0 0 3px var(--marigold),
+    0 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* The backs lie in a loose spread, as if dealt out: no boxes. Yours is lifted, with a counter on it. */
+.showroom .dealt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px 26px;
+  padding: 0 6px;
+}
+
+.showroom .lay {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--chalk);
+  cursor: pointer;
+}
+
+.showroom .lay > .mini:first-child {
+  transform: rotate(var(--lie));
+  transition: transform 0.16s ease-out;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+}
+
+.showroom .lay:hover > .mini:first-child,
+.showroom .lay.on > .mini:first-child {
+  transform: translateY(-8px) rotate(0deg);
+}
+
+/* Its small rendition, tucked against the corner. */
+.showroom .lay .mini.small {
+  position: absolute;
+  right: -12px;
+  top: 96px;
+  zoom: 0.34;
+  transform: rotate(8deg);
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.5));
+}
+
+.showroom .lay em {
+  font: 600 13px/1.1 var(--ui);
+  font-style: normal;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+
+.showroom .lay.on em {
+  opacity: 1;
+  padding: 3px 10px;
+  border-radius: 99px;
+  color: var(--ink);
+  background: var(--marigold);
+}
+
+/* A deck of faces: a hand fanned out on the cloth, its name and small cards beside it. */
+.showroom article {
+  display: grid;
+  grid-template-columns: minmax(280px, 400px) 1fr;
+  gap: 10px 36px;
+  align-items: center;
+  margin-bottom: 44px;
+}
+
+.showroom .fan {
+  position: relative;
+  height: 190px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.showroom .fan .leaf {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  margin-left: -45px;
+  transform-origin: 50% 190%;
+  transform: rotate(calc(var(--i) * 9deg));
+  transition: transform 0.18s ease-out;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+.showroom .fan:hover .leaf,
+.showroom article.on .fan .leaf {
+  transform: rotate(calc(var(--i) * 11deg)) translateY(-6px);
+}
+
+.showroom .about {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.showroom h3 {
+  margin: 0;
+  font: 400 1.9rem/1 var(--display);
+  color: var(--chalk);
+}
+
+.showroom article.on h3::after {
+  content: 'your deck';
+  margin-left: 12px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font: 600 13px/1 var(--ui);
+  vertical-align: middle;
+  color: var(--ink);
+  background: var(--marigold);
+}
+
+.showroom .smalls {
+  display: flex;
+  gap: 5px;
+}
+
+.showroom .smalls .mini {
+  zoom: 0.36;
+}
+
+.showroom details {
+  width: 100%;
+  font: 600 13px/1.2 var(--ui);
+  color: var(--chalk-dim);
+}
+
+.showroom summary {
+  cursor: pointer;
+  width: max-content;
+}
+
+.showroom details .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.showroom details .mini {
+  zoom: 0.5;
+}
+
+@media (max-width: 720px) {
+  .showroom article {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .showroom .fan {
+    width: 100%;
+  }
+
+  .showroom .about {
+    justify-items: center;
+  }
+
+  .showroom .dealt {
+    justify-content: center;
+    gap: 26px 18px;
+  }
+
+  .showroom .lay > .mini:first-child {
+    zoom: 0.85;
+  }
+}
+
+/* TEMPORARY: the gallery as it was before its redesign, kept at /?decks-legacy for a before-and-after picture. Remove with client/GalleryLegacy.tsx. */
 .gallery {
   max-width: 1100px;
   margin: 0 auto;
@@ -2458,20 +2752,6 @@ label.check {
   zoom: 0.3;
 }
 
-.slip a.decks {
-  font-size: 12.5px;
-  color: inherit;
-  opacity: 0.8;
-}
-
-@media (min-width: 640px) {
-  /* (The lobby's sheet is wider for the two columns.) */
-  .pad:has(> .seats) {
-    width: min(100%, 35rem);
-  }
-}
-
-/* (The gallery is longer than the window: the cloth goes all the way down.) */
 html:has(.gallery),
 body:has(.gallery),
 #root:has(.gallery) {
@@ -2479,7 +2759,6 @@ body:has(.gallery),
   min-height: 100%;
 }
 
-/* The gallery's way back: a round arrow button before its heading. */
 .gallery h1 {
   display: flex;
   align-items: center;
@@ -2511,7 +2790,6 @@ body:has(.gallery),
   stroke-linejoin: round;
 }
 
-/* The gallery's backs: each a button showing it in the six colours (three large, three small). */
 .gallery .hint {
   margin: 0 0 0.8rem;
   opacity: 0.75;
@@ -2553,4 +2831,11 @@ body:has(.gallery),
 
 .gallery .backs .mini.small {
   zoom: 0.28;
+}
+
+
+/* (The cloth's pool of light stays put while the long page scrolls: no seam where the first screen ends.) */
+body:has(.showroom),
+body:has(.gallery) {
+  background-attachment: fixed;
 }

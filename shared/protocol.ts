@@ -41,7 +41,6 @@ export const CARD_BACKS = {
   carpet: 'Carpet',
   'plaid-blue': 'Plaid, blue',
   'plaid-green': 'Plaid, green',
-  gem: 'Gem',
 } as const;
 export type Back = keyof typeof CARD_BACKS;
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);

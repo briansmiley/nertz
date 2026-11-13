@@ -1,5 +1,6 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
+import { GalleryLegacy } from './GalleryLegacy';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, RoomView } from '../shared/types';
@@ -65,6 +66,7 @@ export function App() {
     if (code) history.replaceState(null, '', `/?room=${code}`);
   }, [code]);
   useSounds(room, net.status === 'online');
+  if (!room && new URLSearchParams(location.search).has('decks-legacy')) return <GalleryLegacy />; // TEMPORARY
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   if (!room) {
     return (

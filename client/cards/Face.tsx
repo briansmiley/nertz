@@ -17,23 +17,27 @@ export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#2
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
 
 /** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */
-const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green', 'gem']);
+const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green']);
 
 /** The picture a back is made of (none for the plain one), and whether it has colours of its own or is printed in the player's. */
-export function backArt(back: string | undefined): { src: string; picture: boolean } | null {
+export function backArt(back: string | undefined, small = false): { src: string; picture: boolean; crop: boolean } | null {
   if (!back || back === 'plain') return null;
-  if (isDrawn(back)) return { src: drawnBack(back).slice(5, -2), picture: false };
+  if (isDrawn(back)) return { src: drawnBack(back, small).slice(5, -2), picture: false, crop: false };
   const picture = PICTURES.has(back);
-  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}`, picture };
+  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}`, picture, crop: small };
 }
 
+/** On a small card a back that is a picture shows only its middle, this many times larger (`.back.small` in the stylesheet does the same). */
+export const SMALL_CROP = 1.8;
+
 /** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
-export function backOf(colour: string, back: string | undefined): { className: string; style: CSSProperties } {
+export function backOf(colour: string, back: string | undefined, small = false): { className: string; style: CSSProperties } {
   const vars = { '--back': colour } as CSSProperties;
   if (!back || back === 'plain') return { className: 'back', style: vars };
-  if (isDrawn(back)) return { className: 'back tint', style: { ...vars, backgroundImage: drawnBack(back) } };
+  // A small card (another player's pile) gets a simpler picture: a drawn back has one of its own, a picture shows only its middle.
+  if (isDrawn(back)) return { className: 'back tint', style: { ...vars, backgroundImage: drawnBack(back, small) } };
   const picture = PICTURES.has(back);
-  return { className: `back ${picture ? 'pic' : 'tint'}`, style: { ...vars, backgroundImage: `url('/cards/backs/${back}.${picture ? 'jpg' : 'png'}')` } };
+  return { className: `back ${picture ? 'pic' : 'tint'}${small ? ' small' : ''}`, style: { ...vars, backgroundImage: `url('/cards/backs/${back}.${picture ? 'jpg' : 'png'}')` } };
 }
 
 const RED = '#cf2233';

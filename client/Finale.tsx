@@ -8,7 +8,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
-import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
+import { backArt, backColour, CARD_H, CARD_W, SMALL_CROP } from './cards/Face';
+import { MINI_BELOW } from './layout';
 import { seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
@@ -292,7 +293,7 @@ function pictureOf(src: string, loaded: () => void): HTMLImageElement | null {
 const plan0 = (game: GameState): number[] => game.players.map((p) => p.seat);
 
 /** One card's back, drawn once: the plain cross-hatch, or the back its owner chose (`art`) once its picture has arrived. */
-function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; picture: boolean }): HTMLCanvasElement {
+function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; picture: boolean; crop: boolean }): HTMLCanvasElement {
   const pad = Math.ceil(w * 0.08);
   const sprite = document.createElement('canvas');
   sprite.width = Math.ceil((w + 2 * pad) * dpr);
@@ -315,14 +316,19 @@ function backSprite(colour: string, w: number, h: number, dpr: number, art?: { i
 
   if (art) {
     // As `.back.tint` and `.back.pic` in the stylesheet: the pattern over the player's colour, or the picture framed in it.
-    const f = art.picture ? 5 * u : 0;
+    // (A small card shows only the middle of a picture, inside an edge of its own: `.back.small`.)
+    const f = art.picture || art.crop ? 5 * u : 0;
     c.save();
     c.beginPath();
     c.roundRect(0, 0, w, h, 7 * u);
     c.clip();
-    c.fillStyle = colour;
+    c.fillStyle = art.crop && !art.picture ? '#fffdf7' : colour;
     c.fillRect(0, 0, w, h);
-    c.drawImage(art.img, f, f, w - 2 * f, h - 2 * f);
+    c.fillStyle = colour;
+    c.fillRect(f, f, w - 2 * f, h - 2 * f);
+    const [iw, ih] = [art.img.naturalWidth || w, art.img.naturalHeight || h];
+    const k = art.crop ? SMALL_CROP : 1;
+    c.drawImage(art.img, (iw * (1 - 1 / k)) / 2, (ih * (1 - 1 / k)) / 2, iw / k, ih / k, f, f, w - 2 * f, h - 2 * f);
     c.restore();
     return sprite;
   }
@@ -466,9 +472,9 @@ export function Finale({ L, game, scores, name, instant, backs }: Props) {
       el.height = Math.round(plan.area.h * k);
       sprites = new Map(
         plan.piles.map((p) => {
-          const art = backArt(backs?.(p.seat));
+          const art = backArt(backs?.(p.seat), plan.w < MINI_BELOW);
           const img = art && pictureOf(art.src, () => setArrived((a) => a + 1));
-          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k, art && img ? { img, picture: art.picture } : undefined)];
+          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k, art && img ? { img, picture: art.picture, crop: art.crop } : undefined)];
         }),
       );
     };

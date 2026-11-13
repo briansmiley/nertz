@@ -63,6 +63,11 @@ turnarounds over long verification loops for small visual changes.
   large-print rendition for small cards. A player's choice (your settings, "Card faces") is told to the table
   (`{ t: 'deck' }`, `PlayerView.deck`) and their cards are drawn with it for everyone. Bots have the plain deck.
   `/?decks` shows every deck, full faces and small cards (`client/Gallery.tsx`); linked from your settings.
+- Backs: sixteen-odd candidates (`CARD_BACKS`), seven drawn in code (`client/cards/backArt.ts`: worked out once per
+  browser, the same for everyone), the rest pictures. Every back has a simpler small-card version (a simpler drawing,
+  or the picture's middle). The end-of-round canvas draws each player's back (`backSprite` in `Finale.tsx`; not yet
+  seen with a non-plain back). `/?decks` is redesigned (backs dealt on the cloth, decks as fanned hands);
+  `/?decks-legacy` and `client/GalleryLegacy.tsx` are TEMPORARY (the old layout, for a before-and-after picture).
 - Lobby: add-a-bot and leave are in the sheet's top corner; from 640 px wide the players are in two columns.
 - Face-down cards in the work piles are a fixed rule by how many are dealt in (`faceDown` in `shared/settings.ts`):
   none with two players, 0/0/1/2 with three, 0/1/2/3 from four. The "fewer face-down cards" option is gone.

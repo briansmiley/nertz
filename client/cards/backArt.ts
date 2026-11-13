@@ -9,11 +9,11 @@ const pts = (p: readonly (readonly [number, number])[]): string => p.map(([x, y]
 /** The field the pattern fills: inside the edge and the thin line. */
 const F = { x: 9, y: 9, w: W - 18, h: H - 18 };
 
-const frame = (body: string, stroke = 1.3): string =>
+const frame = (body: string, stroke = 1.3, small = false): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
   `<path fill="#fff" fill-rule="evenodd" d="M0 0H${W}V${H}H0ZM4.5 7.5a3 3 0 0 1 3-3H${W - 7.5}a3 3 0 0 1 3 3V${H - 7.5}a3 3 0 0 1-3 3H7.5a3 3 0 0 1-3-3Z"/>` +
   `<g fill="none" stroke="#fff" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">` +
-  `<rect x="6.6" y="6.6" width="${W - 13.2}" height="${H - 13.2}" rx="1.6" stroke-width="0.7"/>${body}</g></svg>`;
+  `${small ? '' : `<rect x="6.6" y="6.6" width="${W - 13.2}" height="${H - 13.2}" rx="1.6" stroke-width="0.7"/>`}${body}</g></svg>`;
 
 /** A fixed stream of numbers in 0..1: the same picture every time. */
 function dice(seed: number): () => number {
@@ -27,8 +27,8 @@ function dice(seed: number): () => number {
 }
 
 /** A Hilbert curve: one line that visits every cell of a 16 x 16 grid, stretched over the field. */
-function hilbert(): string {
-  const order = 16;
+function hilbert(small: boolean): string {
+  const order = small ? 8 : 16; // a small card has one nesting less
   const d2xy = (d: number): [number, number] => {
     let [x, y, t] = [0, 0, d];
     for (let s = 1; s < order; s *= 2) {
@@ -47,13 +47,13 @@ function hilbert(): string {
   const cw = (F.w - 4) / (order - 1);
   const ch = (F.h - 4) / (order - 1);
   const line = Array.from({ length: order * order }, (_, d) => d2xy(d)).map(([x, y]) => [F.x + 2 + x * cw, F.y + 2 + y * ch] as const);
-  return frame(`<path d="${pts(line)}"/>`, 1.2);
+  return frame(`<path d="${pts(line)}"/>`, small ? 2.5 : 1.2, small);
 }
 
 /** A Greek key: square spirals off a base line, row upon row, every other row turned round. */
-function key(): string {
-  const cols = 8;
-  const rows = 12;
+function key(small: boolean): string {
+  const cols = small ? 4 : 8;
+  const rows = small ? 6 : 12;
   const u = F.w / cols / 4; // a tile is 4 x 4 of these, and F.h / rows high
   const v = F.h / rows / 4;
   let d = '';
@@ -65,13 +65,13 @@ function key(): string {
       d += pts([at(0, 3.5), at(0, 0.5), at(3, 0.5), at(3, 2.5), at(1, 2.5), at(1, 1.5), at(2, 1.5)]) + pts([at(0, 3.5), at(4, 3.5)]);
     }
   }
-  return frame(`<path d="${d}"/>`, 1.25);
+  return frame(`<path d="${d}"/>`, small ? 2.4 : 1.25, small);
 }
 
 /** Braids: columns of two strands twisted round each other, each passing under the other in turn. */
-function braid(): string {
-  const cols = 5;
-  const turns = 9; // half-turns down the card
+function braid(small: boolean): string {
+  const cols = small ? 3 : 5;
+  const turns = small ? 5 : 9; // half-turns down the card
   const cw = F.w / cols;
   const amp = cw * 0.3;
   const half = F.h / turns;
@@ -87,7 +87,7 @@ function braid(): string {
         const y = F.y + t * F.h;
         const phase = (t * turns) % 1; // 0 at a crossing
         const crossing = Math.round(t * turns);
-        const under = (crossing + (side > 0 ? 0 : 1) + c) % 2 === 0 && Math.min(phase, 1 - phase) * half < 1.5 && crossing > 0 && crossing < turns;
+        const under = (crossing + (side > 0 ? 0 : 1) + c) % 2 === 0 && Math.min(phase, 1 - phase) * half < (small ? 3 : 1.5) && crossing > 0 && crossing < turns;
         if (under) {
           if (run.length > 1) d += pts(run);
           run = [];
@@ -96,13 +96,13 @@ function braid(): string {
       if (run.length > 1) d += pts(run);
     }
   }
-  return frame(`<path d="${d}"/>`, 1.7);
+  return frame(`<path d="${d}"/>`, small ? 3.2 : 1.7, small);
 }
 
 /** Loops: quarter-circles in every square of a grid, turned this way or that by a fixed roll of the dice, which join up into wandering loops. */
-function loops(): string {
-  const cols = 8;
-  const rows = 12;
+function loops(small: boolean): string {
+  const cols = small ? 4 : 8;
+  const rows = small ? 6 : 12;
   const cw = F.w / cols;
   const ch = F.h / rows;
   const roll = dice(7);
@@ -114,22 +114,23 @@ function loops(): string {
       d += roll() < 0.5 ? arc(x + cw / 2, y, x, y + ch / 2, 1) + arc(x + cw, y + ch / 2, x + cw / 2, y + ch, 1) : arc(x + cw / 2, y, x + cw, y + ch / 2, 0) + arc(x, y + ch / 2, x + cw / 2, y + ch, 0);
     }
   }
-  return frame(`<path d="${d}"/>`, 1.3);
+  return frame(`<path d="${d}"/>`, small ? 2.6 : 1.3, small);
 }
 
 /** Rings: rows of circles, each overlapping its neighbours, like mail. */
-function rings(): string {
-  const step = F.w / 6;
+function rings(small: boolean): string {
+  const across = small ? 3 : 6;
+  const step = F.w / across;
   const rad = step * 0.72;
   let body = `<clipPath id="f"><rect x="${F.x}" y="${F.y}" width="${F.w}" height="${F.h}"/></clipPath><g clip-path="url(#f)">`;
   for (let r = -1; r * step * 0.5 <= F.h + step; r++) {
-    for (let c = -1; c <= 7; c++) body += `<circle cx="${n(F.x + (c + (r % 2 ? 0.5 : 0)) * step)}" cy="${n(F.y + r * step * 0.5)}" r="${n(rad)}"/>`;
+    for (let c = -1; c <= across + 1; c++) body += `<circle cx="${n(F.x + (c + (r % 2 ? 0.5 : 0)) * step)}" cy="${n(F.y + r * step * 0.5)}" r="${n(rad)}"/>`;
   }
-  return frame(`${body}</g>`, 0.8);
+  return frame(`${body}</g>`, small ? 1.8 : 0.8, small);
 }
 
 /** A rosette such as is engraved on banknotes: one line wound round and round, inside another, with small ones in the corners. */
-function rosette(): string {
+function rosette(small: boolean): string {
   const wind = (cx: number, cy: number, rx: number, ry: number, lobes: number, depth: number, turns: number): string => {
     const line: [number, number][] = [];
     const steps = 360 * turns;
@@ -141,6 +142,7 @@ function rosette(): string {
     return `<path d="${pts(line)}Z"/>`;
   };
   const [cx, cy] = [W / 2, H / 2];
+  if (small) return frame(wind(cx, cy, F.w * 0.47, F.h * 0.42, 9, 0.45, 2), 1.5, true); // one winding, fewer lobes
   let body = wind(cx, cy, F.w * 0.47, F.h * 0.4, 17, 0.42, 4) + wind(cx, cy, F.w * 0.25, F.h * 0.21, 11, 0.5, 3);
   for (const [x, y] of [[F.x + 8, F.y + 8], [F.x + F.w - 8, F.y + 8], [F.x + 8, F.y + F.h - 8], [F.x + F.w - 8, F.y + F.h - 8]] as const) body += wind(x, y, 7, 7, 7, 0.45, 2);
   return frame(body, 0.55);
@@ -151,9 +153,9 @@ function rosette(): string {
  * of the dice), and round each the patch of the field that is nearer to it than to any other: drawn a little short
  * of its edges, like paving.
  */
-function voronoi(): string {
-  const cols = 6;
-  const rows = 8;
+function voronoi(small: boolean): string {
+  const cols = small ? 3 : 6;
+  const rows = small ? 4 : 8;
   const roll = dice(11);
   const sites: [number, number][] = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sites.push([F.x + ((c + 0.12 + 0.76 * roll()) * F.w) / cols, F.y + ((r + 0.12 + 0.76 * roll()) * F.h) / rows]);
@@ -178,20 +180,25 @@ function voronoi(): string {
     if (cell.length < 3) continue;
     const cx = cell.reduce((t, q) => t + q[0], 0) / cell.length;
     const cy = cell.reduce((t, q) => t + q[1], 0) / cell.length;
-    d += `${pts(cell.map(([x, y]) => [cx + (x - cx) * 0.86, cy + (y - cy) * 0.86] as const))}Z`;
+    d += `${pts(cell.map(([x, y]) => [cx + (x - cx) * (small ? 0.8 : 0.86), cy + (y - cy) * (small ? 0.8 : 0.86)] as const))}Z`;
   }
-  return frame(`<path d="${d}"/>`, 1.1);
+  return frame(`<path d="${d}"/>`, small ? 2.2 : 1.1, small);
 }
 
-const DRAW: Record<string, () => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi };
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
 export const isDrawn = (back: string): boolean => back in DRAW;
 
-/** A drawn back as a CSS image. */
-export function drawnBack(back: string): string {
-  let url = made.get(back);
-  if (!url) made.set(back, (url = `url("data:image/svg+xml,${encodeURIComponent(DRAW[back]!())}")`));
+/**
+ * A drawn back as a CSS image. Each is worked out once in this browser, the first time it is wanted, and kept; the
+ * dice are fixed, so it is the same picture for everybody. `small`: the simpler drawing of it, with heavier lines,
+ * for a card too small for the full one to read (other players' piles).
+ */
+export function drawnBack(back: string, small = false): string {
+  const k = `${back} ${small}`;
+  let url = made.get(k);
+  if (!url) made.set(k, (url = `url("data:image/svg+xml,${encodeURIComponent(DRAW[back]!(small))}")`));
   return url;
 }

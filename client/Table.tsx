@@ -219,7 +219,7 @@ const CardView = memo(function CardView(p: CardProps) {
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} /> : null}</div>
-        <div {...backOf(backColour(p.owner), p.back)} />
+        <div {...backOf(backColour(p.owner), p.back, p.mini)} />
       </motion.div>
     </motion.div>
   );

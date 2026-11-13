@@ -32,7 +32,6 @@ white-on-nothing pattern that is printed in each player's colour.
 | `carpet` | Russian style card back.jpg | Dondorf GmbH (Germany) | Public domain |
 | `plaid-blue` | Atlas deck card back blue and brown.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
 | `plaid-green` | Atlas deck card back green and dark red.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
-| `gem` | Quaternius - 3D Card Kit - Fantasy - 0 Card Back.png | Quaternius | CC0 |
 
 - `ornate` is made from a picture the owner found; WHERE IT IS FROM AND ITS LICENCE ARE NOT YET KNOWN (it looks like
   stock art): it must be cleared, or replaced, before it is deployed.
