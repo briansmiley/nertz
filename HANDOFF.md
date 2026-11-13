@@ -61,6 +61,10 @@ turnarounds over long verification loops for small visual changes.
   (`{ t: 'deck' }`, `PlayerView.deck`) and their cards are drawn with it for everyone. Bots have the plain deck.
   `/?decks` shows every deck, full faces and small cards (`client/Gallery.tsx`); linked from your settings.
 - Lobby: add-a-bot and leave are in the sheet's top corner; from 640 px wide the players are in two columns.
+- Face-down cards in the work piles are a fixed rule by how many are dealt in (`faceDown` in `shared/settings.ts`):
+  none with two players, 0/0/1/2 with three, 0/1/2/3 from four. The "fewer face-down cards" option is gone.
+- End of round: a card going out to its owner's pile keeps its place in the heap (slides out from under what lay on
+  it) and no longer jumps to the top (`paint` in `client/Finale.tsx`).
 - A bot never overlooks an Ace it could play to the middle (`ace` in `server/bot.ts`); other moves are still missed
   by chance, by level.
 

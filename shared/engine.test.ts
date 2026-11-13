@@ -34,7 +34,7 @@ import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, Suit } fro
 /** Walks a round through its opening to `play`: the deal over, the dealer's Start pressed, the count done. */
 const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
 /** A round in play. (The deal and the opening have their own tests.) */
-const deal = (seats: readonly number[], rng: () => number, rules?: { fewerDown?: boolean; centre?: TableMode }): GameState => toPlay(dealRound(seats, rng, rules));
+const deal = (seats: readonly number[], rng: () => number, rules?: { centre?: TableMode }): GameState => toPlay(dealRound(seats, rng, rules));
 
 function mulberry32(seed: number): Rng {
   let a = seed >>> 0;
@@ -255,14 +255,14 @@ describe('dealing', () => {
 describe('deal', () => {
   const state = deal([0, 1, 2], mulberry32(1));
 
-  it('gives every seat 13 nertz, work piles with 0, 1, 2 and 3 cards face-down under one face-up, 29 stock and an empty waste', () => {
+  it('gives every seat 13 nertz, work piles (at three players) with 0, 0, 1 and 2 cards face-down under one face-up, 32 stock and an empty waste', () => {
     expect(state.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     for (const p of state.players) {
       expect(p.nertz).toHaveLength(13);
-      expect(p.work.map((w) => w.length)).toEqual([1, 2, 3, 4]);
-      expect(p.down).toEqual([0, 1, 2, 3]);
-      expect(p.work.flat()).toHaveLength(10);
-      expect(p.stock).toHaveLength(29);
+      expect(p.work.map((w) => w.length)).toEqual([1, 1, 2, 3]);
+      expect(p.down).toEqual([0, 0, 1, 2]);
+      expect(p.work.flat()).toHaveLength(7);
+      expect(p.stock).toHaveLength(32);
       expect(p.waste).toHaveLength(0);
       expect(p.stuck).toBe(false);
       expect(p.holding).toBeNull();
@@ -1663,9 +1663,8 @@ function randomIntent(s: GameState, seat: number, rng: Rng): Intent {
   return move(card.id, pick(targets), 1 + Math.floor(rng() * 3));
 }
 
-// Everything from here on runs three times: under the standard deal, under the small-table rule (which changes the
-// deal of the two- and three-seat cases), and on a table without fixed places for the centre piles.
-for (const rules of [{ fewerDown: false }, { fewerDown: true }, { fewerDown: true, centre: 'free' as const }]) describe(`with fewerDown ${rules.fewerDown}${'centre' in rules ? ', free table' : ''}`, () => {
+// Everything from here on runs twice: on a table with marked places for the centre piles, and on one without.
+for (const rules of [{}, { centre: 'free' as const }]) describe(`on a ${'centre' in rules ? 'free' : 'marked'} table`, () => {
 const free = 'centre' in rules;
 
 /** A deal with only `n` cards in each nertz pile (the rest go under the stock), so that Nertz calls actually happen in random play. */
@@ -1745,7 +1744,7 @@ describe('random play keeps every invariant', () => {
       seen.centre += state.slots.flat().length;
       expect(seen.accepted).toBeGreaterThan(1500);
       expect(seen.centre + seen.rotations).toBeGreaterThan(0);
-      expect(seen.reveals).toBeGreaterThan(0);
+      if (seatCount > 2) expect(seen.reveals).toBeGreaterThan(0); // (two players have no face-down cards to turn up)
       expect(seen.started > 0).toBe(free);
       if (short) {
         expect(seen.rounds).toBeGreaterThan(0);

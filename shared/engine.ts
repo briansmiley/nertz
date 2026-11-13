@@ -4,7 +4,7 @@
 //
 // Pile convention: the TOP of every pile is the LAST array element.
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
-import { SMALL_TABLE } from './settings';
+import { faceDown } from './settings';
 import { openPlace, roomAt, spots, tiltAt, type Pt, type Spot, type TableMode } from './table';
 import type { AnyCard, Card, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
 
@@ -55,12 +55,11 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * starts out in stage `dealing`: closed to every intent and fully redacted
  * until `finishDeal`; see `openPlay`.
  *
- * `rules.fewerDown` is the small-table house rule: with fewer than four seats
- * every work pile gets one fewer face-down card (0/0/1/2: 7 cards in the work
- * piles, 32 in the stock). With four or more seats it changes nothing.
+ * A small table buries fewer cards (`faceDown` in settings.ts): with two seats
+ * no work pile has a face-down card (4 cards in the work piles, 35 in the
+ * stock), with three they have 0/0/1/2 (7 and 32), from four up 0/1/2/3.
  */
-export function deal(seats: readonly number[], rng: Rng, rules: { fewerDown?: boolean; centre?: TableMode } = {}): GameState {
-  const fewer = rules.fewerDown && seats.length < SMALL_TABLE ? 1 : 0;
+export function deal(seats: readonly number[], rng: Rng, rules: { centre?: TableMode } = {}): GameState {
   const pick = (n: number) => Math.min(n - 1, Math.max(0, Math.floor(rng() * n)));
   const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const used = new Set<string>();
@@ -81,7 +80,7 @@ export function deal(seats: readonly number[], rng: Rng, rules: { fewerDown?: bo
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
     }
     const nertz = deck.splice(0, NERTZ_SIZE);
-    const down = Array.from({ length: WORK_PILES }, (_, i) => Math.max(0, i - fewer));
+    const down = faceDown(seats.length).slice(0, WORK_PILES);
     const work = down.map((n) => deck.splice(0, n + 1));
     return { seat, nertz, work, down, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });

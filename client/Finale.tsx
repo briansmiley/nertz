@@ -353,9 +353,8 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
     c.drawImage(sprites.get(mv.owner)!, -w / 2 - pad, -h / 2 - pad, w + 2 * pad, h + 2 * pad);
   };
   type Stamp = [Mover, number, number, number, number];
-  const flying: Stamp[] = [];
+  const wash: Stamp[] = [];
   const resting: Stamp[] = [];
-  const arriving: Stamp[] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
     if (t < mv.from) continue; // still a pile in the tray, or on its way out of it: drawn by the table
@@ -381,10 +380,12 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
       rot = lerp(rot, mv.tilt, q);
       size = lerp(1, plan.scale, q);
     }
-    (q > 0 ? arriving : flying).push([mv, x, y, rot, size]);
+    wash.push([mv, x, y, rot, size]);
   }
-  // The wash lies underneath; the gathered piles lie on top of it; a card on its way out to its pile is above both.
-  for (const f of [...flying, ...resting, ...arriving]) stamp(...f);
+  // A card on its way out to its pile keeps its place in the heap: it slides out from under whatever lay on it, and
+  // never jumps to the top. The gathered piles are clear of the wash, and are drawn first, so it still lands on top
+  // of its own (cards land in the order they lie in the heap).
+  for (const f of [...resting, ...wash]) stamp(...f);
   return landed;
 }
 

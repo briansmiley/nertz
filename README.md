@@ -130,9 +130,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **The start.** When the cards are down the work piles' top cards are turned over; the nertz piles stay face-down and
   still nobody can do anything. The round begins when the dealer says so: "1, 2, 3, Nertz!" (about two seconds), and on
   the word every nertz top is turned over and play is open for everyone at once. There is no time limit on the dealer.
-- **Small tables** (a house rule, on by default): with fewer than four players in the round each work pile gets one fewer
-  face-down card, 0, 0, 1 and 2 (7 cards in the work piles, 32 in the stock). The nertz pile is 13 either way. The host
-  switches it under "Table rules" in the lobby or on the score sheet; it applies from the next deal.
+- **Small tables** bury fewer cards: with two players in the round no work pile has a face-down card (4 cards in the
+  work piles, 35 in the stock); with three they have 0, 0, 1 and 2 (7 and 32); from four up the standard 0, 1, 2 and 3.
+  The nertz pile is 13 either way. This is the rule, not an option (`faceDown` in `shared/settings.ts`).
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -378,8 +378,8 @@ storage they last until the page closes.
 
 **Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in every
 snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from whoever may
-deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Three options today, listed
-together under "Table rules": the small-table rule (`fewerDown`); "Crystallized Nertz" (`centre`: unticked is
+deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Two options today, listed
+together under "Table rules": "Crystallized Nertz" (`centre`: unticked is
 `'free'`, the default, an Ace starts its pile wherever it is put down; ticked is `'spots'`, the marked places); and how
 cards are dealt off the stock (`stockDeal`: `'drag'`, the default, or `'click'`; see the rules). The last is only a choice of gesture for the client. The next deal reads them,
 and a round keeps what it was dealt under, because settings cannot change during a round.

@@ -334,12 +334,6 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
     <fieldset className="rules">
       <legend>Table rules</legend>
       <label className="check">
-        <input type="checkbox" checked={room.settings.fewerDown} disabled={!mine} onChange={(e) => set({ fewerDown: e.target.checked })} />
-        <span>
-          Fewer face-down cards for small tables <Info>With two or three players the work piles start with 0, 0, 1 and 2 cards face-down, not 0, 1, 2 and 3.</Info>
-        </span>
-      </label>
-      <label className="check">
         <input type="checkbox" checked={room.settings.centre === 'spots'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'spots' : 'free' })} />
         <span>
           Crystallized Nertz <Info>On: the middle is a grid, with a marked place for every pile. Off: an Ace starts its pile wherever you put it down in the middle, as long as there is room for the card.</Info>

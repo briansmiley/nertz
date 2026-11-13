@@ -35,39 +35,33 @@ function roomWith(n: number): { room: Room; conns: FakeConn[] } {
 const seats = (n: number) => Array.from({ length: n }, (_, i) => i);
 
 describe('the small-table deal', () => {
-  it('deals 0/0/1/2 face-down below four players and 0/1/2/3 from four up; the nertz pile is 13 either way', () => {
+  it('deals no face-down cards at two players, 0/0/1/2 at three and 0/1/2/3 from four up; the nertz pile is 13 either way', () => {
     for (const n of [2, 3, 4, 6]) {
-      for (const fewerDown of [false, true]) {
-        const game = deal(seats(n), seeded(n), { fewerDown });
-        const small = fewerDown && n < 4;
-        expect(checkInvariants(game)).toBeNull();
-        expect(game.players).toHaveLength(n);
-        for (const p of game.players) {
-          expect(p.down, `${n} players, fewerDown ${fewerDown}`).toEqual(small ? [0, 0, 1, 2] : [0, 1, 2, 3]);
-          expect(p.work.map((w) => w.length)).toEqual(small ? [1, 1, 2, 3] : [1, 2, 3, 4]);
-          expect(p.nertz).toHaveLength(13);
-          expect(p.stock).toHaveLength(small ? 32 : 29);
-          expect(p.nertz.length + p.work.flat().length + p.stock.length).toBe(52);
-        }
+      const game = deal(seats(n), seeded(n));
+      const down = n === 2 ? [0, 0, 0, 0] : n === 3 ? [0, 0, 1, 2] : [0, 1, 2, 3];
+      const inWork = 4 + down.reduce((a, b) => a + b, 0);
+      expect(checkInvariants(game)).toBeNull();
+      expect(game.players).toHaveLength(n);
+      for (const p of game.players) {
+        expect(p.down, `${n} players`).toEqual(down);
+        expect(p.work.map((w) => w.length)).toEqual(down.map((d) => d + 1));
+        expect(p.nertz).toHaveLength(13);
+        expect(p.stock).toHaveLength(39 - inWork);
+        expect(p.nertz.length + p.work.flat().length + p.stock.length).toBe(52);
       }
     }
-  });
-
-  it('is the standard deal when the rule is not asked for', () => {
-    expect(deal(seats(2), seeded(1))).toEqual(deal(seats(2), seeded(1), { fewerDown: false }));
-    expect(deal(seats(2), seeded(1)).players[0]!.down).toEqual([0, 1, 2, 3]);
   });
 });
 
 describe('the settings message', () => {
   it('is parsed into a clean patch of known options', () => {
-    expect(parseClientMsg({ t: 'settings', patch: { fewerDown: false } })).toEqual({ t: 'settings', patch: { fewerDown: false } });
-    expect(parseClientMsg('{"t":"settings","patch":{"fewerDown":true,"cheat":1},"x":2}')).toEqual({ t: 'settings', patch: { fewerDown: true } });
-    expect(parseSettings({ fewerDown: true })).toEqual({ fewerDown: true });
+    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots' } })).toEqual({ t: 'settings', patch: { centre: 'spots' } });
+    expect(parseClientMsg('{"t":"settings","patch":{"centre":"free","cheat":1},"x":2}')).toEqual({ t: 'settings', patch: { centre: 'free' } });
+    expect(parseSettings({ fewerDown: true })).toBeNull(); // once an option, now simply the rule
     expect(parseClientMsg({ t: 'settings', patch: { stockDeal: 'click' } })).toEqual({ t: 'settings', patch: { stockDeal: 'click' } });
-    expect(parseSettings({ stockDeal: 'drag', fewerDown: false, x: 1 })).toEqual({ stockDeal: 'drag', fewerDown: false });
+    expect(parseSettings({ stockDeal: 'drag', fewerDown: false, x: 1 })).toEqual({ stockDeal: 'drag' });
     expect(parseSettings({ centre: 'free', other: 1 })).toEqual({ centre: 'free' });
-    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots', fewerDown: false } })).toEqual({ t: 'settings', patch: { fewerDown: false, centre: 'spots' } });
+    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots', stockDeal: 'drag' } })).toEqual({ t: 'settings', patch: { stockDeal: 'drag', centre: 'spots' } });
     for (const centre of ['FREE', 'anywhere', true, 1, null, undefined]) expect(parseSettings({ centre })).toBeNull();
   });
 
@@ -76,42 +70,42 @@ describe('the settings message', () => {
       { t: 'settings' },
       { t: 'settings', patch: null },
       { t: 'settings', patch: [] },
-      { t: 'settings', patch: 'fewerDown' },
+      { t: 'settings', patch: 'centre' },
       { t: 'settings', patch: {} },
       { t: 'settings', patch: { unknown: true } },
-      { t: 'settings', patch: { fewerDown: 1 } },
-      { t: 'settings', patch: { fewerDown: 'true' } },
-      { t: 'settings', patch: { fewerDown: null } },
+      { t: 'settings', patch: { centre: 1 } },
+      { t: 'settings', patch: { centre: 'true' } },
+      { t: 'settings', patch: { centre: null } },
       { t: 'settings', patch: { stockDeal: 'tap' } },
       { t: 'settings', patch: { stockDeal: true } },
       { t: 'settings', patch: { stockDeal: null } },
-      { t: 'settings', patch: { fewerDown: true, stockDeal: 'CLICK' } },
-      { t: 'settings', fewerDown: false },
+      { t: 'settings', patch: { centre: 'free', stockDeal: 'CLICK' } },
+      { t: 'settings', centre: 'spots' },
     ];
     for (const raw of bad) expect(parseClientMsg(raw), JSON.stringify(raw)).toBeNull();
   });
 });
 
 describe('table settings in a room', () => {
-  it('start out as the defaults (small-table rule on, the stock dealt by clicking, piles wherever their Aces are put down) and are in every view', () => {
+  it('start out as the defaults (the stock dealt by clicking, piles wherever their Aces are put down) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'free' });
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'free' });
+    expect(DEFAULT_SETTINGS).toEqual({ stockDeal: 'click', centre: 'free' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', centre: 'free' });
   });
 
   it('only the host changes them, and everyone is told', () => {
     const { room, conns } = roomWith(3);
     const [host, guest, other] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(guest, { t: 'settings', patch: { fewerDown: false } });
+    room.handle(guest, { t: 'settings', patch: { centre: 'spots' } });
     room.flush();
-    expect(room.settings.fewerDown).toBe(true);
-    expect(other.last!.settings.fewerDown).toBe(true);
+    expect(room.settings.centre).toBe('free');
+    expect(other.last!.settings.centre).toBe('free');
 
-    room.handle(host, { t: 'settings', patch: { fewerDown: false } });
+    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
     room.flush();
-    expect(room.settings.fewerDown).toBe(false);
-    for (const c of conns) expect(c.last!.settings).toEqual({ fewerDown: false, stockDeal: 'click', centre: 'free' });
+    expect(room.settings.centre).toBe('spots');
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', centre: 'spots' });
   });
 
   it('how the stock is dealt is for the host to choose, between rounds: the round on the table keeps the way it was dealt under', () => {
@@ -138,7 +132,7 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { stockDeal: 'drag' } });
     room.handle(host, { t: 'start' });
     room.flush();
-    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', round: 2, settings: { fewerDown: true, stockDeal: 'drag' } });
+    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', round: 2, settings: { stockDeal: 'drag' } });
     room.game = openPlay(startCountdown(finishDeal(room.game!)));
     for (let seq = 4; seq < 8; seq++) room.handle(guest, { t: 'intent', seq, intent: { k: 'flip' } });
     expect(room.game.players[1]).toMatchObject({ waste: { length: 4 }, dealt: 1 }); // the same one card per intent
@@ -149,36 +143,36 @@ describe('table settings in a room', () => {
     const { room, conns } = roomWith(3);
     const [host, guest] = conns as [FakeConn, FakeConn, FakeConn];
     room.disconnect(host);
-    room.handle(guest, { t: 'settings', patch: { fewerDown: false } });
-    expect(room.settings.fewerDown).toBe(false);
+    room.handle(guest, { t: 'settings', patch: { centre: 'spots' } });
+    expect(room.settings.centre).toBe('spots');
   });
 
-  it('apply to the next deal: 0/0/1/2 at two players by default, 0/1/2/3 once switched off, and never below four players', () => {
+  it('apply to the next deal, not to the round on the table', () => {
     const { room, conns } = roomWith(2);
     const [host, guest] = conns as [FakeConn, FakeConn];
     room.handle(host, { t: 'start' });
-    expect(room.game!.players.map((p) => p.down)).toEqual([[0, 0, 1, 2], [0, 0, 1, 2]]);
-    expect(room.game!.players[0]!.stock).toHaveLength(32);
+    expect(room.game!.table).toBe('free');
+    expect(room.game!.players.map((p) => p.down)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]);
+    expect(room.game!.players[0]!.stock).toHaveLength(35);
 
     // Not while a round is on: the cards on the table were dealt under the old rule.
-    room.handle(host, { t: 'settings', patch: { fewerDown: false } });
-    expect(room.settings.fewerDown).toBe(true);
+    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
+    expect(room.settings.centre).toBe('free');
 
     // End the round, then change it on the score sheet.
     const game = room.game!;
     room.game = openPlay(startCountdown(finishDeal({ ...game, players: game.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) })));
     room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
-    room.handle(guest, { t: 'settings', patch: { fewerDown: false } }); // still not the guest's to change
-    expect(room.settings.fewerDown).toBe(true);
-    room.handle(host, { t: 'settings', patch: { fewerDown: false } });
+    room.handle(guest, { t: 'settings', patch: { centre: 'spots' } }); // still not the guest's to change
+    expect(room.settings.centre).toBe('free');
+    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
     room.handle(host, { t: 'start' });
-    expect(room.game!.players.map((p) => p.down)).toEqual([[0, 1, 2, 3], [0, 1, 2, 3]]);
+    expect(room.game!.table).toBe('spots');
     expect(checkInvariants(room.game!)).toBeNull();
 
     const four = roomWith(4);
     four.room.handle(four.conns[0]!, { t: 'start' });
-    expect(four.room.settings.fewerDown).toBe(true);
     for (const p of four.room.game!.players) expect(p.down).toEqual([0, 1, 2, 3]);
   });
 
@@ -188,6 +182,6 @@ describe('table settings in a room', () => {
     room.disconnect(conns[3]!);
     room.handle(conns[0]!, { t: 'start' });
     expect(room.game!.players).toHaveLength(2);
-    for (const p of room.game!.players) expect(p.down).toEqual([0, 0, 1, 2]);
+    for (const p of room.game!.players) expect(p.down).toEqual([0, 0, 0, 0]);
   });
 });

@@ -92,7 +92,7 @@ describe('the host chooses how the middle works', () => {
     expect(next.room.settings.centre).toBe('free');
     next.room.handle(h2, { t: 'settings', patch: { centre: 'spots' } });
     next.room.flush();
-    expect(g2.room.settings).toEqual({ fewerDown: true, stockDeal: 'click', centre: 'spots' });
+    expect(g2.room.settings).toEqual({ stockDeal: 'click', centre: 'spots' });
     start(next.room, h2);
     next.room.flush();
     expect(next.room.game!.table).toBe('spots');
