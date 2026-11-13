@@ -85,10 +85,10 @@ const CROWN: Record<number, ReactElement> = {
   ),
 };
 
-function Index({ suit, rank }: { suit: Suit; rank: number }) {
+function Index({ suit, rank, font = INDEX_FONT }: { suit: Suit; rank: number; font?: string }) {
   return (
     <>
-      <text x="13.5" y="23" textAnchor="middle" fontSize="25" fontWeight="700" fontFamily={INDEX_FONT} letterSpacing={rank === 10 ? -2 : 0}>
+      <text x="13.5" y="23" textAnchor="middle" fontSize={font === INDEX_FONT ? 25 : 21} fontWeight="700" fontFamily={font} letterSpacing={rank === 10 ? -2 : 0}>
         {LABEL[rank]}
       </text>
       <Pip suit={suit} x={13.5} y={33} size={14} />
@@ -96,7 +96,7 @@ function Index({ suit, rank }: { suit: Suit; rank: number }) {
   );
 }
 
-function Court({ suit, rank, colour }: { suit: Suit; rank: number; colour: string }) {
+function Court({ suit, rank, colour, tint }: { suit: Suit; rank: number; colour: string; tint?: string }) {
   const half = (
     <>
       <g transform="translate(45 26)" fill={GOLD} stroke={colour} strokeWidth="0.7" strokeLinejoin="round">
@@ -111,7 +111,7 @@ function Court({ suit, rank, colour }: { suit: Suit; rank: number; colour: strin
   );
   return (
     <>
-      <rect x="24.5" y="13.5" width="41" height="99" rx="3.5" fill={colour === RED ? '#fbe6e2' : '#e6e9f0'} stroke={colour} strokeWidth="0.9" />
+      <rect x="24.5" y="13.5" width="41" height="99" rx="3.5" fill={tint ?? (colour === RED ? '#fbe6e2' : '#e6e9f0')} stroke={colour} strokeWidth="0.9" />
       <rect x="27" y="16" width="36" height="94" rx="2" fill="none" stroke={GOLD} strokeWidth="0.8" />
       <path d="M27 63H63" stroke={GOLD} strokeWidth="0.8" />
       {half}
@@ -124,40 +124,88 @@ function Court({ suit, rank, colour }: { suit: Suit; rank: number; colour: strin
 //
 // Every deck has two renditions of a card: the full face, and a large-print one for cards drawn too small for a face
 // to be read (`mini`: other players' piles), which goes with it in colour and lettering.
+// Drawn here:
 // - modern: this file's own drawing.
 // - big: the large-print rendition at every size.
-// - classic: a set of picture files (public/cards/classic, see CREDITS.md), one a card, named rank then suit; its
-//   large-print rendition is drawn with the deck's own index figures and suit marks (classicGlyphs.ts).
+// - night: the same drawing, light on a dark card.
+// - cute: one big suit mark with a face on it (the court cards' wear their headgear), in pink and plum, rounded letters.
+// Sets of picture files (public/cards/<deck>, one a card, named rank then suit; see CREDITS.md):
+// - classic, poker. Their large-print rendition is a white card drawn with the Classic deck's own index
+//   figures and suit marks (classicGlyphs.ts).
 
+interface Theme {
+  /** The card itself, when it is not the usual cream. */
+  paper?: string;
+  red: string;
+  black: string;
+  font: string;
+  /** Behind a court card's figure: for a red suit, for a black one. */
+  tint?: [string, string];
+  cute?: boolean;
+}
+const CUTE_FONT = "'Fredoka', 'Baloo 2', 'Arial Rounded MT Bold', 'Helvetica Rounded', Arial, sans-serif";
+const THEMES: Record<string, Theme> = {
+  modern: { red: RED, black: BLACK, font: INDEX_FONT },
+  big: { red: RED, black: BLACK, font: INDEX_FONT },
+  night: { paper: '#1b2132', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
+  cute: { paper: '#fff5f9', red: '#ff5a8c', black: '#4b4573', font: CUTE_FONT, cute: true },
+};
+const FILES = new Set(['classic', 'poker']);
 
 const CODE = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
-const classic = (suit: Suit, rank: number): string => `/cards/classic/${CODE[rank]}${suit}.svg`;
+const picture = (deck: string, suit: Suit, rank: number): string => `/cards/${deck}/${CODE[rank]}${suit}.svg`;
 
-// The whole deck is fetched as soon as it is chosen (by you, or by anyone at your table), so that no card is blank the
-// first time it is turned up.
-let warmed = false;
+// A deck of pictures is fetched whole as soon as it is chosen (by you, or by anyone at your table), so that no card is
+// blank the first time it is turned up.
+const warmed = new Set<string>();
 export function warm(deck: string = getPrefs().deck): void {
-  if (warmed || deck !== 'classic' || typeof Image === 'undefined') return;
-  warmed = true;
-  for (const suit of ['C', 'D', 'H', 'S'] as const) for (let rank = 1; rank <= 13; rank++) new Image().src = classic(suit, rank);
+  if (warmed.has(deck) || !FILES.has(deck) || typeof Image === 'undefined') return;
+  warmed.add(deck);
+  for (const suit of ['C', 'D', 'H', 'S'] as const) for (let rank = 1; rank <= 13; rank++) new Image().src = picture(deck, suit, rank);
 }
 warm();
 watchPrefs(() => warm());
 
+const Paper = ({ fill }: { fill?: string }) => (fill ? <rect width={CARD_W} height={CARD_H} rx="7" fill={fill} /> : null);
+
+// Where the face sits on each suit mark (in the mark's own box of -50..50), and how wide apart its eyes are.
+const FACE: Record<Suit, { y: number; eyes: number; k: number }> = { H: { y: 2, eyes: 13, k: 1 }, D: { y: -2, eyes: 9, k: 0.85 }, S: { y: 10, eyes: 13, k: 1 }, C: { y: 9, eyes: 15, k: 0.9 } };
+
+/** A suit mark with a face: two eyes, a smile, and a blush on each cheek. */
+function Friend({ suit, x, y, size, ink }: { suit: Suit; x: number; y: number; size: number; ink: string }) {
+  const f = FACE[suit];
+  const red = suit === 'H' || suit === 'D';
+  return (
+    <g transform={`translate(${x} ${y}) scale(${size / 100})`}>
+      {SHAPE[suit]}
+      <g transform={`translate(0 ${f.y}) scale(${f.k})`}>
+        <circle cx={-f.eyes} cy="0" r="4.2" fill={red ? '#6e1836' : '#fff'} />
+        <circle cx={f.eyes} cy="0" r="4.2" fill={red ? '#6e1836' : '#fff'} />
+        <circle cx={-f.eyes + 1.4} cy="-1.4" r="1.4" fill={red ? '#fff' : ink} />
+        <circle cx={f.eyes + 1.4} cy="-1.4" r="1.4" fill={red ? '#fff' : ink} />
+        <path d="M-5 6Q0 11.5 5 6" fill="none" stroke={red ? '#6e1836' : '#fff'} strokeWidth="2.4" strokeLinecap="round" />
+        <circle cx={-f.eyes - 7} cy="7" r="4" fill={red ? '#ffd0de' : '#ff9cba'} opacity={red ? 0.75 : 0.8} />
+        <circle cx={f.eyes + 7} cy="7" r="4" fill={red ? '#ffd0de' : '#ff9cba'} opacity={red ? 0.75 : 0.8} />
+      </g>
+    </g>
+  );
+}
+
 /** Large print: a big rank, the suit beside it and again below. */
-function Large({ suit, rank, colour }: { suit: Suit; rank: number; colour: string }) {
+function Large({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour: string; theme: Theme }) {
   return (
     <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
-      <text x="25" y="45" textAnchor="middle" fontSize="50" fontWeight="700" fontFamily={INDEX_FONT} letterSpacing={rank === 10 ? -5 : 0}>
+      <Paper fill={theme.paper} />
+      <text x="25" y="45" textAnchor="middle" fontSize={theme.cute ? 44 : 50} fontWeight="700" fontFamily={theme.font} letterSpacing={rank === 10 ? -5 : 0}>
         {LABEL[rank]}
       </text>
       <Pip suit={suit} x={67} y={27} size={36} />
-      <Pip suit={suit} x={45} y={89} size={54} />
+      {theme.cute ? <Friend suit={suit} x={45} y={89} size={58} ink={colour} /> : <Pip suit={suit} x={45} y={89} size={54} />}
     </svg>
   );
 }
 
-/** The Classic deck in large print: its own white card, index figure and suit marks. */
+/** A deck of pictures in large print: a white card with the Classic deck's index figure and suit marks. */
 function ClassicLarge({ suit, rank }: { suit: Suit; rank: number }) {
   const colour = suit === 'H' || suit === 'D' ? 'red' : 'black';
   const mark = (x: number, y: number, size: number) => <path d={CLASSIC_SUIT[suit]} fill={colour} transform={`translate(${x} ${y}) scale(${size / 1000})`} />;
@@ -171,6 +219,25 @@ function ClassicLarge({ suit, rank }: { suit: Suit; rank: number }) {
   );
 }
 
+/** The Cute deck's full face: the corner indices, and one big suit mark with a face (a court card's wears its headgear). */
+function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour: string; theme: Theme }) {
+  return (
+    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
+      <Paper fill={theme.paper} />
+      <Index suit={suit} rank={rank} font={theme.font} />
+      <g transform="rotate(180 45 63)">
+        <Index suit={suit} rank={rank} font={theme.font} />
+      </g>
+      <Friend suit={suit} x={45} y={rank > 10 ? 70 : 64} size={rank > 10 ? 50 : 54} ink={colour} />
+      {rank > 10 && (
+        <g transform="translate(45 37) scale(1.7)" fill={GOLD} stroke={colour} strokeWidth="0.7" strokeLinejoin="round">
+          {CROWN[rank]}
+        </g>
+      )}
+    </svg>
+  );
+}
+
 /**
  * The face of one card. `mini` picks the large-print rendition. A card belongs to its owner's deck, and is drawn as
  * they chose for everyone (`deck`); without one, as you chose yourself.
@@ -178,11 +245,15 @@ function ClassicLarge({ suit, rank }: { suit: Suit; rank: number }) {
 export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: Suit; rank: number; mini: boolean; deck?: string }) {
   const own = usePrefs().deck;
   const deck = of ?? own;
-  if (deck === 'classic') return mini ? <ClassicLarge suit={suit} rank={rank} /> : <img className="art" src={classic(suit, rank)} alt="" draggable={false} />;
-  const colour = suit === 'H' || suit === 'D' ? RED : BLACK;
-  if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} />;
+  if (FILES.has(deck)) return mini ? <ClassicLarge suit={suit} rank={rank} /> : <img className="art" src={picture(deck, suit, rank)} alt="" draggable={false} />;
+  const theme = THEMES[deck] ?? THEMES.modern!;
+  const red = suit === 'H' || suit === 'D';
+  const colour = red ? theme.red : theme.black;
+  if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} theme={theme} />;
+  if (theme.cute) return <Cute suit={suit} rank={rank} colour={colour} theme={theme} />;
   return (
     <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
+      <Paper fill={theme.paper} />
       <Index suit={suit} rank={rank} />
       <g transform="rotate(180 45 63)">
         <Index suit={suit} rank={rank} />
@@ -190,7 +261,7 @@ export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: S
       {rank === 1 ? (
         <Pip suit={suit} x={C} y={YM} size={44} />
       ) : rank > 10 ? (
-        <Court suit={suit} rank={rank} colour={colour} />
+        <Court suit={suit} rank={rank} colour={colour} tint={theme.tint?.[red ? 0 : 1]} />
       ) : (
         SPOTS[rank]!.map(([x, y], i) => <Pip key={i} suit={suit} x={x} y={y} size={18} flip={y > YM} />)
       )}
