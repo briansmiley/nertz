@@ -48,7 +48,15 @@ turnarounds over long verification loops for small visual changes.
 - The dotted outline under the stock sits under its bottom card (`stockPad`), so it does not show as the stack thins.
 - The Start button's small print is just "Space".
 
-## Mobile (branch `mobile`, 13 Nov 2026, NOT merged or deployed)
+## Bots carry their cards (merged to main 13 Nov 2026, NOT deployed)
+
+A bot's move used to be applied in one step when its think timer fired, so nobody could beat it to a pile. Now it
+picks the card up (a real hold), the server sends made-up drag reports for the carry (`shared/flight.ts`: 650 ms to
+the middle, 300 ms along its own row, taken out of its thinking pause), and only then sends the move; if the spot
+was taken meanwhile the drop is refused like anyone's. The flight time does not go by distance, and a bot does not
+change course in the air.
+
+## Mobile (merged to main 13 Nov 2026 as a first pass the owner calls bad, to be fixed later; NOT deployed)
 
 A phone held upright (narrower than 640 px and at least 1.2 times as tall: `isTall`, `TALL` in `client/layout.ts`) gets
 its own table: a bar across the top for the buttons (chat left; sound, pause, gear right), everyone else in rows under
@@ -74,7 +82,7 @@ rects, so drags, live card movement and the deal needed no change.
    players, own hand 0.108 of the window's height. Six players now 46 / 53 / 75 / 103 px at 720p / 900p / 1080p / 1440p.
    `npx tsx scripts/sizes.ts` prints the full table. Note: the long random-play tests time out on the 1-vCPU droplet
    (they do on the old code too); run `npm test` on a faster machine before deploying.
-2. **Mobile.** Not designed for yet (deferred until he has Fable usage: it is a design job). From a phone screenshot
+2. **Mobile.** A first pass is in (see "Mobile" above); the owner finds it bad and wants it redone. Before it: not designed for yet (deferred until he has Fable usage: it is a design job). From a phone screenshot
    (portrait, 2 bots): opponents squeezed into a strip at the top, the felt a short wide band mid-screen, half the
    screen empty between them and the hand; your hand's name/"nertz pile" line under the corner buttons and cut off at
    the bottom; the tray off the right edge. Since then: the felt is 2.2:1 from four players, side neighbours' hands
