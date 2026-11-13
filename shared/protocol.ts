@@ -46,6 +46,9 @@ export const CARD_BACKS = {
   flowers: 'Flower tile',
   compass: 'Compass rose',
   lightcone: 'Lightcone',
+  waves: 'Waves',
+  flow: 'Flow',
+  life: 'Game of Life',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',

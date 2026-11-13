@@ -633,7 +633,101 @@ function lightcone(small: boolean): string {
   return frame(`<g transform="translate(${n(W / 2 - (158.1 * k) / 2)} ${n(H / 2 - (201.2 * k) / 2)}) scale(${Math.round(k * 10000) / 10000})" fill="#fff" fill-rule="evenodd" stroke="none">${shapes.map((d) => `<path d="${d}"/>`).join('')}</g>`, 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone };
+/**
+ * Waves, as on Japanese cloth (seigaiha): rows of overlapping scales, each row half a scale along from the last, and
+ * each scale three arcs one inside another. Only as much of a scale is drawn as the rows below it leave showing.
+ */
+function waves(small: boolean): string {
+  const across = small ? 3 : 5;
+  const r = F.w / (across * 2); // a scale's radius; scales are 2r apart, rows r / 2
+  const rings = small ? [1, 0.55] : [1, 0.68, 0.36];
+  let d = '';
+  const centre = (row: number, k: number): [number, number] => [F.x + (k * 2 + (row % 2 ? 1 : 0)) * r, F.y + row * (r / 2) + r * 0.4];
+  for (let row = -1; row * (r / 2) < F.h + r; row++) {
+    for (let k = -1; k <= across + 1; k++) {
+      const [cx, cy] = centre(row, k);
+      // What lies over this scale: its neighbours in the next two rows down.
+      const over: [number, number][] = [centre(row + 1, row % 2 ? k : k - 1), centre(row + 1, row % 2 ? k + 1 : k), centre(row + 2, k)];
+      for (const ring of rings) {
+        let run: [number, number][] = [];
+        for (let a = -180; a <= 0; a += 4) {
+          const p: [number, number] = [cx + ring * r * Math.cos((a * Math.PI) / 180), cy + ring * r * Math.sin((a * Math.PI) / 180)];
+          if (over.some(([ox, oy]) => Math.hypot(p[0] - ox, p[1] - oy) < r * 0.995)) {
+            if (run.length > 1) d += pts(run);
+            run = [];
+          } else run.push(p);
+        }
+        if (run.length > 1) d += pts(run);
+      }
+    }
+  }
+  return frame(clipped(`<path d="${d}"/>`), small ? 1.6 : 0.85, small);
+}
+
+/** Flow: lines across the card that rise and fall together, each a little out of step with the one above, and swelling towards the middle of the card, like water over a stone. */
+function flow(small: boolean): string {
+  const lines = small ? 9 : 19;
+  let d = '';
+  for (let i = 0; i < lines; i++) {
+    const y0 = F.y + ((i + 0.5) / lines) * F.h;
+    const swell = Math.exp(-(((i + 0.5) / lines - 0.5) ** 2) / 0.07); // most in the middle of the card
+    const line: [number, number][] = [];
+    for (let x = 0; x <= F.w; x += 1.5) {
+      const u = x / F.w;
+      line.push([F.x + x, y0 + (2.2 + 6.5 * swell) * Math.sin(2 * Math.PI * (u * 1.5 + i * 0.045)) * Math.sin(Math.PI * u) + 1.6 * Math.sin(2 * Math.PI * (u * 3.2 - i * 0.07))]);
+    }
+    d += pts(line);
+  }
+  return frame(clipped(`<path d="${d}"/>`), small ? 1.7 : 0.9, small);
+}
+
+/**
+ * The Game of Life: a squared board with some of its well-known inhabitants on it (gliders, a spaceship, and still
+ * and blinking things), and a few stray cells scattered between them.
+ */
+function life(small: boolean): string {
+  const cell = small ? 8 : 4;
+  const cols = Math.floor(F.w / cell);
+  const rows = Math.floor(F.h / cell);
+  const [x0, y0] = [W / 2 - (cols * cell) / 2, H / 2 - (rows * cell) / 2];
+  const SHAPES: Record<string, string[]> = {
+    glider: ['.#.', '..#', '###'],
+    glider2: ['###', '#..', '.#.'],
+    ship: ['.#..#', '#....', '#...#', '####.'],
+    beehive: ['.##.', '#..#', '.##.'],
+    loaf: ['.##.', '#..#', '.#.#', '..#.'],
+    block: ['##', '##'],
+    blinker: ['###'],
+    toad: ['.###', '###.'],
+  };
+  const put: [string, number, number][] = small
+    ? [['glider', 1, 1], ['block', 6, 5], ['blinker', 2, 7], ['glider2', 5, 9]]
+    : [['glider', 2, 2], ['block', 13, 2], ['glider2', 11, 6], ['ship', 3, 10], ['beehive', 12, 13], ['blinker', 3, 17], ['toad', 10, 18], ['loaf', 2, 21], ['glider', 12, 22]];
+  const live = new Set<string>();
+  for (const [name, cx, cy] of put) SHAPES[name]!.forEach((row, j) => [...row].forEach((ch, i) => ch === '#' && live.add(`${cx + i},${cy + j}`)));
+  // A few cells by themselves, clear of everything else.
+  const roll = dice(9);
+  const near = (i: number, j: number): boolean => [-2, -1, 0, 1, 2].some((a) => [-2, -1, 0, 1, 2].some((b) => live.has(`${i + a},${j + b}`)));
+  for (let tries = 0, strays = 0; tries < 200 && strays < (small ? 3 : 9); tries++) {
+    const [i, j] = [Math.floor(roll() * cols), Math.floor(roll() * rows)];
+    if (near(i, j)) continue;
+    live.add(`${i},${j}`);
+    strays++;
+  }
+  let cells = '';
+  const gap = small ? 0.8 : 0.45;
+  for (const at of live) {
+    const [i, j] = at.split(',').map(Number) as [number, number];
+    if (i < 0 || j < 0 || i >= cols || j >= rows) continue;
+    cells += `M${n(x0 + i * cell + gap)} ${n(y0 + j * cell + gap)}h${n(cell - 2 * gap)}v${n(cell - 2 * gap)}h${n(-(cell - 2 * gap))}z`;
+  }
+  let grid = '';
+  for (let i = 0; i <= cols; i++) grid += `M${n(x0 + i * cell)} ${n(y0)}v${n(rows * cell)}`;
+  for (let j = 0; j <= rows; j++) grid += `M${n(x0)} ${n(y0 + j * cell)}h${n(cols * cell)}`;
+  return frame(`<path d="${grid}" stroke-width="${small ? 0.5 : 0.3}" opacity="0.4"/><path d="${cells}" fill="#fff" stroke="none"/>`, 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, waves, flow, life };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
