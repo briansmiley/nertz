@@ -4,7 +4,10 @@ State: `main` is deployed to https://nertz.fly.dev (Fly app `nertz`, org `person
 suspends when idle). Deploy with `fly deploy --app nertz --ha=false` when nobody is connected
 (`curl https://nertz.fly.dev/healthz` shows connections); a deploy drops live games. Staging: branch `staging` goes to
 https://nertz-staging.fly.dev (Fly app `nertz-staging`, same `fly.toml`, one machine, suspends when idle): deploy it with
-`fly deploy --app nertz-staging --ha=false` from that branch. Neither app deploys by itself on a push yet. `npm run dev` for local work
+`fly deploy --app nertz-staging --ha=false` from that branch. A push deploys by itself
+(`.github/workflows/deploy.yml`): checks first, then `staging` at once, and `main` only once nobody is connected (it asks
+`/healthz` every 30 s for up to 90 minutes, then gives up: re-run the job). Fly deploy tokens are the GitHub secrets
+`FLY_API_TOKEN_PROD` and `FLY_API_TOKEN_STAGING` (they expire in November 2027). `npm run dev` for local work
 (server 8787, Vite 5173); `npm run typecheck`, `npm test`, `npm run build` must stay green. README.md describes the game
 as built.
 
