@@ -5,11 +5,12 @@ import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, RoomView } from './types';
 
 /**
- * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, light on dark,
- * one with faces on its suit marks, and a traditional deck of picture files. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
+ * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
+ * its suit marks, and a traditional deck of picture files. Any of them can also be had dark (`night`): light on a
+ * dark card. Where a deck is named for drawing, a dark one is its name with `:night` after it. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
  * suit must not be one colour in your hand and another in your neighbour's.)
  */
-export const DECKS = { modern: 'Nertz', big: 'Big print', night: 'Night', cute: 'Cute', classic: 'Classic' } as const;
+export const DECKS = { modern: 'Nertz', big: 'Big print', cute: 'Cute', classic: 'Classic' } as const;
 export type Deck = keyof typeof DECKS;
 export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object.hasOwn(DECKS, v);
 
@@ -28,6 +29,9 @@ export const CARD_BACKS = {
   rings: 'Rings',
   guilloche: 'Guilloche',
   voronoi: 'Voronoi',
+  tree: 'Binary tree',
+  dragon: 'Dragon curve',
+  koch: 'Koch snowflake',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',
@@ -60,10 +64,12 @@ export type ClientMsg =
   /** Pause the round for everyone (on), or carry on (off). */
   | { t: 'pause'; on: boolean }
   /** Which card faces I play with: everyone sees the cards of my deck drawn that way. */
-  | { t: 'deck'; deck: Deck; back?: Back }
+  | { t: 'deck'; deck: Deck; back?: Back; night?: boolean }
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
+  /** In the lobby: move to another seat nobody has, which is to take its colour. */
+  | { t: 'seat'; seat: number }
   /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
   | ({ t: 'drag' } & DragAt)
   /** Text chat, the host's chat switches, voice presence and WebRTC signalling: see chat.ts. */
@@ -251,13 +257,15 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':
-      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}) } : null;
+      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}) } : null;
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
+    case 'seat':
+      return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
     case 'settings': {
       const patch = parseSettings(v.patch);
       return patch ? { t: 'settings', patch } : null;

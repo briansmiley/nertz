@@ -18,10 +18,15 @@ export interface Prefs {
   deck: Deck;
   /** The backs of your cards, likewise. */
   back: Back;
+  /** Your cards dark: light on a dark card. */
+  night: boolean;
 }
 
+/** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
+export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => `${p.deck}${p.night ? ':night' : ''}`;
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain' };
+
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false };
 const KEY = 'nertz.prefs';
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
@@ -35,6 +40,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     others: unit(v.others, DEFAULT_PREFS.others),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
+    night: typeof v.night === 'boolean' ? v.night : v.deck === 'night', // ("night" was once a deck of its own)
     back: isBack(v.back) ? v.back : DEFAULT_PREFS.back,
   };
 }

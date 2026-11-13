@@ -52,8 +52,8 @@ function hilbert(small: boolean): string {
 
 /** A Greek key: square spirals off a base line, row upon row, every other row turned round. */
 function key(small: boolean): string {
-  const cols = small ? 4 : 8;
-  const rows = small ? 6 : 12;
+  const cols = small ? 3 : 5;
+  const rows = small ? 4 : 8;
   const u = F.w / cols / 4; // a tile is 4 x 4 of these, and F.h / rows high
   const v = F.h / rows / 4;
   let d = '';
@@ -65,7 +65,7 @@ function key(small: boolean): string {
       d += pts([at(0, 3.5), at(0, 0.5), at(3, 0.5), at(3, 2.5), at(1, 2.5), at(1, 1.5), at(2, 1.5)]) + pts([at(0, 3.5), at(4, 3.5)]);
     }
   }
-  return frame(`<path d="${d}"/>`, small ? 2.4 : 1.25, small);
+  return frame(`<path d="${d}"/>`, small ? 3 : 1.7, small);
 }
 
 /** Braids: columns of two strands twisted round each other, each passing under the other in turn. */
@@ -185,7 +185,83 @@ function voronoi(small: boolean): string {
   return frame(`<path d="${d}"/>`, small ? 2.2 : 1.1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi };
+/** Fits a line drawing into the field (keeping its shape), in the middle of it. */
+function fit(line: readonly (readonly [number, number])[], room = 0.94): [number, number][] {
+  const xs = line.map((p) => p[0]);
+  const ys = line.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const k = Math.min((F.w * room) / (x1 - x0 || 1), (F.h * room) / (y1 - y0 || 1));
+  return line.map(([x, y]) => [W / 2 + (x - (x0 + x1) / 2) * k, H / 2 + (y - (y0 + y1) / 2) * k]);
+}
+
+/** A binary tree: a trunk that forks in two, each branch forking again, shorter and shorter; one growing up from the bottom and one down from the top, so the card reads the same either way up. */
+function tree(small: boolean): string {
+  const depth = small ? 5 : 7;
+  const segs: [number, number, number, number][] = [];
+  const grow = (x: number, y: number, angle: number, len: number, d: number): void => {
+    const [nx, ny] = [x + Math.cos(angle) * len, y + Math.sin(angle) * len];
+    segs.push([x, y, nx, ny]);
+    if (d > 1) {
+      grow(nx, ny, angle - 0.52, len * 0.72, d - 1);
+      grow(nx, ny, angle + 0.52, len * 0.72, d - 1);
+    }
+  };
+  grow(0, 0, -Math.PI / 2, 1, depth);
+  // Fitted into the upper half of the field as it stands (its root at the middle), then again turned upside down below.
+  const ends = segs.flatMap(([a, b, c, d]) => [[a, b], [c, d]] as [number, number][]);
+  const xs = ends.map((p) => p[0]);
+  const ys = ends.map((p) => p[1]);
+  const [x0, x1, y0] = [Math.min(...xs), Math.max(...xs), Math.min(...ys)];
+  const k = Math.min((F.w * 0.94) / (x1 - x0), (F.h * 0.47) / -y0);
+  let d = '';
+  for (const flip of [1, -1]) for (const [a, b, c, e] of segs) d += `M${n(W / 2 + a * k * flip)} ${n(H / 2 + flip * (-y0 * k + b * k) * 1 - flip * 0)}L${n(W / 2 + c * k * flip)} ${n(H / 2 + flip * (-y0 * k + e * k))}`;
+  return frame(`<path d="${d}"/>`, small ? 1.8 : 0.9, small);
+}
+
+/** The dragon curve: a strip of paper folded in half again and again, always the same way, and opened out to right angles. */
+function dragon(small: boolean): string {
+  const folds = small ? 8 : 11;
+  let turns: number[] = [];
+  for (let i = 0; i < folds; i++) turns = [...turns, 1, ...turns.map((t) => -t).reverse()];
+  const line: [number, number][] = [[0, 0], [1, 0]];
+  let [dx, dy] = [1, 0];
+  for (const t of turns) {
+    [dx, dy] = t > 0 ? [-dy, dx] : [dy, -dx];
+    const last = line.at(-1)!;
+    line.push([last[0] + dx, last[1] + dy]);
+  }
+  // (It is longer one way than the other: stood on end if that fills the card better.)
+  const tall = line.map(([x, y]) => [y, -x] as [number, number]);
+  const span = (l: [number, number][]) => Math.max(...l.map((p) => p[0])) - Math.min(...l.map((p) => p[0]));
+  const height = (l: [number, number][]) => Math.max(...l.map((p) => p[1])) - Math.min(...l.map((p) => p[1]));
+  const use = height(line) / span(line) > height(tall) / span(tall) ? line : tall;
+  return frame(`<path d="${pts(fit(use))}"/>`, small ? 1.6 : 0.8, small);
+}
+
+/** Koch snowflakes: a triangle whose every side has a smaller triangle built on its middle third, and so on; a large one, and a smaller one above and below. */
+function koch(small: boolean): string {
+  const flake = (cx: number, cy: number, r: number, depth: number): string => {
+    let line: [number, number][] = [0, 1, 2, 0].map((i) => [cx + r * Math.sin((i * 2 * Math.PI) / 3), cy - r * Math.cos((i * 2 * Math.PI) / 3)]);
+    for (let d = 0; d < depth; d++) {
+      const next: [number, number][] = [line[0]!];
+      for (let i = 1; i < line.length; i++) {
+        const [a, b] = [line[i - 1]!, line[i]!];
+        const [ux, uy] = [(b[0] - a[0]) / 3, (b[1] - a[1]) / 3];
+        const p1: [number, number] = [a[0] + ux, a[1] + uy];
+        const p2: [number, number] = [a[0] + 2 * ux, a[1] + 2 * uy];
+        // The point of the new triangle, out from the side (the corners go round clockwise).
+        next.push(p1, [p1[0] + ux / 2 + (uy * Math.sqrt(3)) / 2, p1[1] + uy / 2 - (ux * Math.sqrt(3)) / 2], p2, b);
+      }
+      line = next;
+    }
+    return `<path d="${pts(line)}Z"/>`;
+  };
+  const r = F.w * 0.43;
+  if (small) return frame(flake(W / 2, H / 2, F.w * 0.48, 2), 1.7, true);
+  return frame(flake(W / 2, H / 2, r, 3) + flake(W / 2, F.y + 12, 9, 2) + flake(W / 2, F.y + F.h - 12, 9, 2) + flake(W / 2, H / 2, r * 0.38, 2), 0.8);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */

@@ -6,7 +6,7 @@ import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PL
 import type { BotLevel, RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
 import { Chat } from './Chat';
-import { addBot, create, join, leave, removeBot, start, useNet } from './net';
+import { addBot, create, join, leave, removeBot, sit, start, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
@@ -280,6 +280,18 @@ function Lobby({ room }: { room: RoomView }) {
             </li>
           ))}
         </ul>
+        {/* Your colour is your seat: any that nobody has is yours for the taking, until the first deal. */}
+        {me && room.round === 0 && (
+          <div className="colours" role="radiogroup" aria-label="Your colour">
+            <span>Your colour</span>
+            {BACKS.map((c, seat) => {
+              const by = room.players.find((p) => p.seat === seat);
+              return (
+                <button key={c} type="button" role="radio" aria-checked={seat === me.seat} aria-label={by && by !== me ? `Taken by ${by.name}` : `Colour ${seat + 1}`} title={by && by !== me ? `${by.name} has this one` : undefined} disabled={!!by && by !== me} className={seat === me.seat ? 'on' : ''} style={{ background: c }} onClick={() => sit(seat)} />
+              );
+            })}
+          </div>
+        )}
         <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!ready} onClick={start}>

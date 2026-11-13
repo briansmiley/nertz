@@ -68,6 +68,12 @@ turnarounds over long verification loops for small visual changes.
   or the picture's middle). The end-of-round canvas draws each player's back (`backSprite` in `Finale.tsx`; not yet
   seen with a non-plain back). `/?decks` is redesigned (backs dealt on the cloth, decks as fanned hands);
   `/?decks-legacy` and `client/GalleryLegacy.tsx` are TEMPORARY (the old layout, for a before-and-after picture).
+- Dark cards are a switch on every deck (`night` in your settings and the gallery; a dark deck is named `<deck>:night`
+  where it is drawn), not a deck of their own; Classic's dark pictures are the light ones inverted in CSS.
+- In the lobby (before the first deal) a player takes any free colour: it moves them to that seat (`{ t: 'seat' }`).
+  Not guarded against someone doing it while in voice chat, which goes by seat.
+- Three more drawn backs: binary tree, dragon curve, Koch snowflake. Per-back small-card treatment is `SMALL` in
+  `Face.tsx` (how far a picture is zoomed; 1 = whole).
 - Lobby: add-a-bot and leave are in the sheet's top corner; from 640 px wide the players are in two columns.
 - Face-down cards in the work piles are a fixed rule by how many are dealt in (`faceDown` in `shared/settings.ts`):
   none with two players, 0/0/1/2 with three, 0/1/2/3 from four. The "fewer face-down cards" option is gone.

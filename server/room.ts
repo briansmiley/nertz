@@ -39,6 +39,7 @@ interface Player {
   /** The card faces this player chose; everyone sees their cards drawn so. */
   deck?: Deck;
   back?: Back;
+  night?: boolean;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
   /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
@@ -167,10 +168,17 @@ export class Room {
         return this.removeBot(player, msg.seat);
       case 'pause':
         return this.pause(player, msg.on);
+      case 'seat':
+        // A seat is a colour, and a place round the table. Only before the first deal (scores and the last round go by seat), and only an empty one.
+        if (this.phase !== 'lobby' || this.players.some((p) => p.seat === msg.seat)) return;
+        player.seat = msg.seat;
+        this.players.sort((a, b) => a.seat - b.seat);
+        return this.changed();
       case 'deck':
-        if (player.deck === msg.deck && player.back === (msg.back ?? player.back)) return;
+        if (player.deck === msg.deck && player.back === (msg.back ?? player.back) && !!player.night === (msg.night ?? !!player.night)) return;
         player.deck = msg.deck;
         player.back = msg.back ?? player.back;
+        player.night = msg.night ?? player.night;
         return this.changed();
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
@@ -588,7 +596,7 @@ export class Room {
         stuck: stuck(p.seat),
         ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,
         bot: p.bot?.level,
-        deck: p.deck,
+        deck: p.deck && `${p.deck}${p.night ? ':night' : ''}`,
         back: p.back,
       })),
       settings: this.settings,

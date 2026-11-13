@@ -310,6 +310,10 @@ export function Corner({ room }: { room?: RoomView | null }) {
                 </option>
               ))}
             </select>
+            <label className="check">
+              <input type="checkbox" checked={prefs.night} onChange={(e) => setPrefs({ night: e.target.checked })} />
+              <span>Dark cards</span>
+            </label>
             <select value={prefs.back} onChange={(e) => setPrefs({ back: e.target.value as Back })} aria-label="Card backs">
               {Object.entries(CARD_BACKS).map(([k, label]) => (
                 <option key={k} value={k}>

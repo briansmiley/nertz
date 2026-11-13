@@ -124,8 +124,8 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 // A change of deck in the settings is passed on to the table.
 let toldDeck: string | null = null;
 watchPrefs(() => {
-  const { deck, back } = getPrefs();
-  if (`${deck} ${back}` !== toldDeck && post({ t: 'deck', deck, back })) toldDeck = `${deck} ${back}`;
+  const { deck, back, night } = getPrefs();
+  if (`${deck} ${back} ${night}` !== toldDeck && post({ t: 'deck', deck, back, night })) toldDeck = `${deck} ${back} ${night}`;
 });
 
 /** Sends one message if the socket is open. Game intents go through `send` instead. */
@@ -153,8 +153,9 @@ function connect(): void {
   ws.onopen = () => {
     if (socket === ws && session) {
       post(hello(session.room, session.name, token()));
-      post({ t: 'deck', deck: getPrefs().deck, back: getPrefs().back }); // my cards' faces and backs, for everyone at the table
-      toldDeck = `${getPrefs().deck} ${getPrefs().back}`;
+      const mine = getPrefs();
+      post({ t: 'deck', deck: mine.deck, back: mine.back, night: mine.night }); // my cards' faces and backs, for everyone at the table
+      toldDeck = `${mine.deck} ${mine.back} ${mine.night}`;
     }
   };
   ws.onmessage = (e) => {
@@ -219,6 +220,9 @@ export function start(): void {
 export const go = (): void => void post({ t: 'go' });
 
 export const pause = (on: boolean): void => void post({ t: 'pause', on });
+
+/** In the lobby: take another colour (a seat nobody has). */
+export const sit = (seat: number): void => void post({ t: 'seat', seat });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
 

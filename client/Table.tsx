@@ -24,7 +24,7 @@ import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, pause, post } from './net';
 import { canResume } from './Settings';
-import { calm, usePrefs } from './prefs';
+import { calm, deckOf, usePrefs } from './prefs';
 import { beaten, stage as stageSound } from './sound';
 import { beatenTo } from './soundEvents';
 
@@ -1072,7 +1072,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             mine={c.mine}
             up={c.up && !replaying}
             mini={c.s * CARD_W < MINI_BELOW}
-            deck={c.card.owner === you ? prefs.deck : info(c.card.owner)?.deck}
+            deck={c.card.owner === you ? deckOf(prefs) : info(c.card.owner)?.deck}
             back={c.card.owner === you ? prefs.back : info(c.card.owner)?.back}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}

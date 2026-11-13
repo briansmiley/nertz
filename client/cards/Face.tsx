@@ -4,7 +4,7 @@
 // which is just a big rank and suit.
 import { memo, type CSSProperties, type ReactElement } from 'react';
 import type { Suit } from '../../shared/types';
-import { getPrefs, usePrefs, watchPrefs } from '../prefs';
+import { deckOf, getPrefs, usePrefs, watchPrefs } from '../prefs';
 import { drawnBack, isDrawn } from './backArt';
 import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
 
@@ -19,25 +19,36 @@ export const backColour = (seat: number): string => BACKS[((seat % BACKS.length)
 /** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */
 const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green']);
 
-/** The picture a back is made of (none for the plain one), and whether it has colours of its own or is printed in the player's. */
-export function backArt(back: string | undefined, small = false): { src: string; picture: boolean; crop: boolean } | null {
-  if (!back || back === 'plain') return null;
-  if (isDrawn(back)) return { src: drawnBack(back, small).slice(5, -2), picture: false, crop: false };
-  const picture = PICTURES.has(back);
-  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}`, picture, crop: small };
-}
+/**
+ * How much larger a picture back is shown on a small card (another player's pile), so that only its middle shows:
+ * a fine pattern needs more, and one that is a single figure (the two circles of the Rider back) is shown whole (1).
+ */
+const SMALL: Record<string, number> = { bicycle: 1, suits: 1, lion: 1.25, ornate: 1.8, rosette: 1.8, chain: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, carpet: 1.8, 'plaid-blue': 2, 'plaid-green': 2 };
+/** Patterns with no frame of their own: they get the card's usual white edge. */
+const EDGED = new Set(['check']);
 
-/** On a small card a back that is a picture shows only its middle, this many times larger (`.back.small` in the stylesheet does the same). */
-export const SMALL_CROP = 1.8;
+/**
+ * The picture a back is made of (none for the plain one): whether it has colours of its own or is printed in the
+ * player's, how many times larger than the card it is shown (`zoom`: more than 1 on a small card), and whether it
+ * lies inside a white edge.
+ */
+export function backArt(back: string | undefined, small = false): { src: string; picture: boolean; zoom: number; edge: boolean } | null {
+  if (!back || back === 'plain') return null;
+  if (isDrawn(back)) return { src: drawnBack(back, small).slice(5, -2), picture: false, zoom: 1, edge: false };
+  const picture = PICTURES.has(back);
+  const zoom = small ? (SMALL[back] ?? 1.8) : 1;
+  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}`, picture, zoom, edge: !picture && (zoom > 1 || EDGED.has(back)) };
+}
 
 /** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
 export function backOf(colour: string, back: string | undefined, small = false): { className: string; style: CSSProperties } {
   const vars = { '--back': colour } as CSSProperties;
-  if (!back || back === 'plain') return { className: 'back', style: vars };
-  // A small card (another player's pile) gets a simpler picture: a drawn back has one of its own, a picture shows only its middle.
-  if (isDrawn(back)) return { className: 'back tint', style: { ...vars, backgroundImage: drawnBack(back, small) } };
-  const picture = PICTURES.has(back);
-  return { className: `back ${picture ? 'pic' : 'tint'}${small ? ' small' : ''}`, style: { ...vars, backgroundImage: `url('/cards/backs/${back}.${picture ? 'jpg' : 'png'}')` } };
+  const art = backArt(back, small);
+  if (!art) return { className: 'back', style: vars };
+  return {
+    className: `back ${art.picture ? 'pic' : 'tint'}${art.edge ? ' edged' : ''}`,
+    style: { ...vars, backgroundImage: `url("${art.src}")`, ...(art.zoom > 1 ? { backgroundSize: `${art.zoom * 100}% ${art.zoom * 100}%`, backgroundPosition: 'center' } : {}) },
+  };
 }
 
 const RED = '#cf2233';
@@ -152,7 +163,6 @@ function Court({ suit, rank, colour, tint }: { suit: Suit; rank: number; colour:
 // Drawn here:
 // - modern: this file's own drawing.
 // - big: the large-print rendition at every size.
-// - night: the same drawing, light on a dark card.
 // - cute: one big suit mark with a face on it (the court cards' wear their headgear), in pink and plum, rounded letters.
 // Sets of picture files (public/cards/<deck>, one a card, named rank then suit; see CREDITS.md):
 // - classic. Its large-print rendition is a white card drawn with the Classic deck's own index
@@ -171,9 +181,12 @@ interface Theme {
 const CUTE_FONT = "'Fredoka', 'Baloo 2', 'Arial Rounded MT Bold', 'Helvetica Rounded', Arial, sans-serif";
 const THEMES: Record<string, Theme> = {
   modern: { red: RED, black: BLACK, font: INDEX_FONT },
-  big: { red: RED, black: BLACK, font: INDEX_FONT },
-  night: { paper: '#1b2132', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
   cute: { paper: '#fff5f9', red: '#ff5a8c', black: '#4b4573', font: CUTE_FONT, cute: true },
+};
+/** The same decks dark: light on a dark card. */
+const NIGHT: Record<string, Theme> = {
+  modern: { paper: '#1b2132', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
+  cute: { paper: '#27213f', red: '#ff7fa8', black: '#cfc8ff', font: CUTE_FONT, cute: true },
 };
 const FILES = new Set(['classic']);
 
@@ -183,7 +196,8 @@ const picture = (deck: string, suit: Suit, rank: number): string => `/cards/${de
 // A deck of pictures is fetched whole as soon as it is chosen (by you, or by anyone at your table), so that no card is
 // blank the first time it is turned up.
 const warmed = new Set<string>();
-export function warm(deck: string = getPrefs().deck): void {
+export function warm(named: string = getPrefs().deck): void {
+  const deck = named.split(':')[0]!;
   if (warmed.has(deck) || !FILES.has(deck) || typeof Image === 'undefined') return;
   warmed.add(deck);
   for (const suit of ['C', 'D', 'H', 'S'] as const) for (let rank = 1; rank <= 13; rank++) new Image().src = picture(deck, suit, rank);
@@ -231,12 +245,13 @@ function Large({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour
 }
 
 /** A deck of pictures in large print: a white card with the Classic deck's index figure and suit marks. */
-function ClassicLarge({ suit, rank }: { suit: Suit; rank: number }) {
-  const colour = suit === 'H' || suit === 'D' ? 'red' : 'black';
+function ClassicLarge({ suit, rank, night }: { suit: Suit; rank: number; night: boolean }) {
+  const red = suit === 'H' || suit === 'D';
+  const colour = night ? (red ? '#ff5d6c' : '#f2f2f2') : red ? 'red' : 'black';
   const mark = (x: number, y: number, size: number) => <path d={CLASSIC_SUIT[suit]} fill={colour} transform={`translate(${x} ${y}) scale(${size / 1000})`} />;
   return (
     <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`}>
-      <rect x="0.5" y="0.5" width={CARD_W - 1} height={CARD_H - 1} rx="6" fill="white" stroke="black" strokeWidth="0.6" />
+      <rect x="0.5" y="0.5" width={CARD_W - 1} height={CARD_H - 1} rx="6" fill={night ? '#16181d' : 'white'} stroke={night ? '#4a4f5c' : 'black'} strokeWidth="0.6" />
       <path d={CLASSIC_FIGURE[rank]} fill="none" stroke={colour} strokeWidth="95" strokeLinecap="square" strokeMiterlimit="1.5" transform="translate(24 29) scale(0.04)" />
       {mark(67, 27, 36)}
       {mark(45, 89, 56)}
@@ -268,10 +283,13 @@ function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour:
  * they chose for everyone (`deck`); without one, as you chose yourself.
  */
 export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: Suit; rank: number; mini: boolean; deck?: string }) {
-  const own = usePrefs().deck;
-  const deck = of ?? own;
-  if (FILES.has(deck)) return mini ? <ClassicLarge suit={suit} rank={rank} /> : <img className="art" src={picture(deck, suit, rank)} alt="" draggable={false} />;
-  const theme = THEMES[deck] ?? THEMES.modern!;
+  const own = deckOf(usePrefs());
+  // (A dark deck is named with `:night` after it.)
+  const [deck = 'modern', mode] = (of ?? own).split(':');
+  const night = mode === 'night';
+  // (A deck of pictures has no dark pictures: the light ones are turned inside out, and their colours turned back.)
+  if (FILES.has(deck)) return mini ? <ClassicLarge suit={suit} rank={rank} night={night} /> : <img className={`art${night ? ' night' : ''}`} src={picture(deck, suit, rank)} alt="" draggable={false} />;
+  const theme = (night ? NIGHT : THEMES)[deck === 'big' ? 'modern' : deck] ?? THEMES.modern!;
   const red = suit === 'H' || suit === 'D';
   const colour = red ? theme.red : theme.black;
   if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} theme={theme} />;

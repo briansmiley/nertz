@@ -185,7 +185,7 @@ export interface PlayerView {
   ending: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
-  /** The card faces this player chose (shared/protocol.ts `DECKS`): the cards of their deck are drawn so for everyone. Absent: the plain one. */
+  /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. Absent: the plain one. */
   deck?: string;
   /** The backs of this player's cards (`CARD_BACKS`), for everyone likewise. Absent: the plain one. */
   back?: string;
