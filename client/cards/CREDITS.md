@@ -41,7 +41,8 @@ white-on-nothing pattern that is printed in each player's colour.
   do not call it "Bicycle" in the game. The scan is CC BY-SA 4.0 (credit it, here).
 - The CC BY-SA file (`bicycle`) needs this credit kept, and the changed picture stays under the same licence.
 
-The "Night" and "Cute" decks are drawn in `Face.tsx` like the first, and are original to this project.
+The "Cute" and "Pixel" decks (and every deck's dark version but Classic's) are drawn in code like the first, and are
+original to this project. The Pixel deck is in the manner of old video-game cards; it uses no other game's artwork.
 
 Typefaces are loaded from Google Fonts and are licensed under the SIL Open
 Font License 1.1:

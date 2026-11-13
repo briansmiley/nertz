@@ -10,7 +10,7 @@ import type { BotLevel, Intent, PileRef, RoomView } from './types';
  * dark card. Where a deck is named for drawing, a dark one is its name with `:night` after it. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
  * suit must not be one colour in your hand and another in your neighbour's.)
  */
-export const DECKS = { modern: 'Nertz', big: 'Big print', cute: 'Cute', classic: 'Classic' } as const;
+export const DECKS = { modern: 'Nertz', big: 'Big print', cute: 'Cute', pixel: 'Pixel', classic: 'Classic' } as const;
 export type Deck = keyof typeof DECKS;
 export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object.hasOwn(DECKS, v);
 

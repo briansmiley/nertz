@@ -7,6 +7,7 @@ import type { Suit } from '../../shared/types';
 import { deckOf, getPrefs, usePrefs, watchPrefs } from '../prefs';
 import { drawnBack, isDrawn } from './backArt';
 import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
+import { Pixel, PIXEL, PIXEL_NIGHT } from './pixel';
 
 /** Cards are drawn at this size (CSS px) and scaled by the table. */
 export const CARD_W = 90;
@@ -163,6 +164,7 @@ function Court({ suit, rank, colour, tint }: { suit: Suit; rank: number; colour:
 // Drawn here:
 // - modern: this file's own drawing.
 // - big: the large-print rendition at every size.
+// - pixel: every card built out of little squares (pixel.tsx).
 // - cute: one big suit mark with a face on it (the court cards' wear their headgear), in pink and plum, rounded letters.
 // Sets of picture files (public/cards/<deck>, one a card, named rank then suit; see CREDITS.md):
 // - classic. Its large-print rendition is a white card drawn with the Classic deck's own index
@@ -293,6 +295,7 @@ export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: S
   const night = mode === 'night';
   // (A deck of pictures has no dark pictures: the light ones are turned inside out, and their colours turned back.)
   if (FILES.has(deck)) return mini ? <ClassicLarge suit={suit} rank={rank} night={night} /> : <img className={`art${night ? ' night' : ''}`} src={picture(deck, suit, rank)} alt="" draggable={false} />;
+  if (deck === 'pixel') return <Pixel suit={suit} rank={rank} mini={mini} ink={night ? PIXEL_NIGHT : PIXEL} />;
   const theme = (night ? NIGHT : THEMES)[deck === 'big' ? 'modern' : deck] ?? THEMES.modern!;
   const red = suit === 'H' || suit === 'D';
   const colour = red ? theme.red : theme.black;
