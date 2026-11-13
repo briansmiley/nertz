@@ -1126,7 +1126,96 @@ button {
   color: var(--ink-soft);
 }
 
-/* Whoever deals can seat a bot: level, Add, and one Remove per bot. */
+/* Under a sheet's main button: small round icon buttons (table rules, add a bot, leave). */
+.tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 50%;
+  color: var(--ink-soft);
+  background: none;
+  cursor: pointer;
+}
+
+.icon:hover,
+.icon.on {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.icon.on {
+  background: rgba(242, 179, 32, 0.3);
+}
+
+.icon svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The slip an icon button opens, just above it. */
+.pop-at {
+  position: relative;
+}
+
+.pop {
+  position: absolute;
+  z-index: 60;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  gap: 0.6rem;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 32px));
+  padding: 0.9rem 1rem;
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow:
+    0 0 0 1px #cfc4a6,
+    0 10px 24px rgba(0, 0, 0, 0.35);
+  text-align: left;
+}
+
+.pop h3 {
+  margin: 0;
+  font: 500 0.85rem/1.2 var(--ui);
+  color: var(--ink-soft);
+}
+
+/* A bot's remove button, a quiet × after its name. */
+.unseat {
+  margin-left: 0.4rem;
+  padding: 0 0.3rem;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-soft);
+  font: 400 1.1rem/1 var(--ui);
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.unseat:hover,
+.unseat:focus-visible {
+  opacity: 1;
+  color: var(--red);
+}
+
+/* Seating a bot: level and Add. */
 .bots {
   display: flex;
   flex-wrap: wrap;

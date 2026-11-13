@@ -5,7 +5,7 @@ import type { BotLevel, RoomView } from '../shared/types';
 import { backColour, BACKS, Face } from './cards/Face';
 import { Chat } from './Chat';
 import { addBot, create, join, leave, removeBot, start, useNet } from './net';
-import { Corner, TableRules } from './Settings';
+import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
 
@@ -110,28 +110,47 @@ function Mini({ seat, suit, rank, style }: { seat?: number; suit?: 'S' | 'H' | '
   );
 }
 
-/** For whoever deals, between rounds: seat a bot to play against, or send one away. */
-function Bots({ room }: { room: RoomView }) {
+/** For whoever deals, between rounds: a robot button that opens a slip for seating a bot. */
+function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const bots = room.players.filter((p) => p.bot);
+  const full = room.players.length >= MAX_PLAYERS;
   return (
-    <div className="bots">
-      <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
-        {BOT_LEVELS.map((l) => (
-          <option key={l} value={l}>
-            {l} bot
-          </option>
-        ))}
-      </select>
-      <button type="button" className="plain" disabled={room.players.length >= MAX_PLAYERS} onClick={() => addBot(level)}>
-        Add bot
-      </button>
-      {bots.map((p) => (
-        <button key={p.seat} type="button" className="quiet" onClick={() => removeBot(p.seat)}>
-          Remove {p.name}
-        </button>
-      ))}
-    </div>
+    <Pop icon={<Robot />} label="Add a bot">
+      <h3>Add a bot</h3>
+      {full ? (
+        <p className="hint">The table is full.</p>
+      ) : (
+        <div className="bots">
+          <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
+            {BOT_LEVELS.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="plain" onClick={() => addBot(level)}>
+            Add
+          </button>
+        </div>
+      )}
+    </Pop>
+  );
+}
+
+/** A small × beside a bot's name, for whoever deals. */
+function Unseat({ name, seat }: { name: string; seat: number }) {
+  return (
+    <button type="button" className="unseat" aria-label={`Remove ${name}`} title={`Remove ${name}`} onClick={() => removeBot(seat)}>
+      ×
+    </button>
+  );
+}
+
+function Leave() {
+  return (
+    <button type="button" className="icon" aria-label="Leave table" title="Leave table" onClick={exit}>
+      <Door />
+    </button>
   );
 }
 
@@ -249,6 +268,7 @@ function Lobby({ room }: { room: RoomView }) {
               <Mini seat={p.seat} />
               <span className="name">{p.name}</span>
               <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `bot, ${p.bot}`].filter(Boolean).join(', ')}</span>
+              {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
             </li>
           ))}
         </ul>
@@ -260,10 +280,10 @@ function Lobby({ room }: { room: RoomView }) {
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
         )}
-        {me?.isHost && <Bots room={room} />}
-        <button type="button" className="quiet" onClick={exit}>
-          Leave table
-        </button>
+        <div className="tools">
+          {me?.isHost && <AddBot room={room} />}
+          <Leave />
+        </div>
       </Pad>
     </main>
   );
@@ -287,7 +307,7 @@ function Results({ room }: { room: RoomView }) {
           <thead>
             <tr>
               <th scope="col">Player</th>
-              <th scope="col">In the middle</th>
+              <th scope="col">Played</th>
               <th scope="col">Nertz pile</th>
               <th scope="col">Round</th>
               <th scope="col">Total</th>
@@ -299,16 +319,16 @@ function Results({ room }: { room: RoomView }) {
                 <th scope="row">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
                   {s.name}
+                  {me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) && <Unseat name={s.name} seat={s.seat} />}
                 </th>
                 <td>{signed(s.played)}</td>
-                <td>{s.nertzLeft ? `${s.nertzLeft} left, ${signed(-2 * s.nertzLeft)}` : 'out'}</td>
+                <td>{s.nertzLeft ? `${s.nertzLeft} × −2 = ${signed(-2 * s.nertzLeft)}` : 'out'}</td>
                 <td>{signed(s.delta)}</td>
                 <td className="total">{s.total < 0 ? `−${-s.total}` : s.total}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
             {enoughToDeal(room) ? 'Deal the next round' : 'Waiting for a second player'}
@@ -316,10 +336,13 @@ function Results({ room }: { room: RoomView }) {
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
         )}
-        {me?.isHost && <Bots room={room} />}
-        <button type="button" className="quiet" onClick={exit}>
-          Leave table
-        </button>
+        <div className="tools">
+          <Pop icon={<Gear />} label="Table rules">
+            <TableRules room={room} />
+          </Pop>
+          {me?.isHost && <AddBot room={room} />}
+          <Leave />
+        </div>
       </Pad>
     </main>
   );

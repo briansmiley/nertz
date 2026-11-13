@@ -21,7 +21,7 @@ export interface TableSettings {
    * The middle of the table: on a 'free' one a pile lies wherever its Ace is
    * put down, as long as it is clear of every other pile; 'spots' gives every
    * centre pile a marked place (an Ace goes on an empty one). The lobby's
-   * checkbox for 'spots' reads "Use grid for piles".
+   * checkbox for 'spots' reads "Crystallized Nertz".
    */
   centre: TableMode;
 }

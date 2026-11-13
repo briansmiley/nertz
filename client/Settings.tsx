@@ -1,8 +1,9 @@
 // Settings. Two kinds, kept apart:
 // - `Corner`: your own (sound, motion), on every screen, bottom left: a
 //   one-click mute button (also the M key) and a gear that opens a small slip.
-// - `TableRules`: the table's house rules, on the lobby and score sheets. The
-//   host changes them; everyone else reads them.
+// - `TableRules`: the table's house rules, in the lobby and behind a gear on the
+//   score sheet. The host changes them; everyone else reads them.
+// Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
@@ -21,7 +22,7 @@ function Speaker({ off }: { off: boolean }) {
   );
 }
 
-function Gear() {
+export function Gear() {
   const teeth = Array.from({ length: 8 }, (_, i) => <rect key={i} x="10.6" y="2.6" width="2.8" height="4.4" rx="0.9" transform={`rotate(${i * 45} 12 12)`} fill="currentColor" stroke="none" />);
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -49,6 +50,61 @@ function Info({ children }: { children: ReactNode }) {
       }}
     >
       i<span className="tip" role="tooltip">{children}</span>
+    </span>
+  );
+}
+
+export function Robot() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3.5" y="8" width="13" height="10" rx="2.5" />
+      <path d="M10 8V5" />
+      <circle cx="10" cy="4.2" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="7.6" cy="12.6" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="12.4" cy="12.6" r="1.25" fill="currentColor" stroke="none" />
+      <path d="M20.5 9v6M17.5 12h6" />
+    </svg>
+  );
+}
+
+export function Door() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M13 4.5h5.5v15H13" />
+      <path d="M14.5 12H4.5M8 8.5 4.5 12 8 15.5" />
+    </svg>
+  );
+}
+
+/**
+ * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away.
+ */
+export function Pop({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return (
+    <span className="pop-at" ref={root}>
+      <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen(!open)}>
+        {icon}
+      </button>
+      {open && (
+        <div className="pop" role="dialog" aria-label={label}>
+          {children}
+        </div>
+      )}
     </span>
   );
 }
@@ -160,7 +216,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
 }
 
 /**
- * The table's house rules, on the lobby and score sheets. One row per option
+ * The table's house rules, in the lobby and behind the score sheet's gear. One row per option
  * of `TableSettings`; further table-wide controls (`children`) go underneath.
  */
 export function TableRules({ room, children }: { room: RoomView; children?: ReactNode }) {
@@ -179,7 +235,7 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
       <label className="check">
         <input type="checkbox" checked={room.settings.centre === 'spots'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'spots' : 'free' })} />
         <span>
-          Use grid for piles <Info>Off: an Ace starts its pile wherever you put it down in the middle, as long as there is room for the card. On: the middle has a marked place for every pile.</Info>
+          Crystallized Nertz <Info>On: the middle is a grid, with a marked place for every pile. Off: an Ace starts its pile wherever you put it down in the middle, as long as there is room for the card.</Info>
         </span>
       </label>
       {children}

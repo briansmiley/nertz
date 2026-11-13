@@ -38,7 +38,7 @@ Controls:
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
 | Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there |
-| ...or, at a table with "Use grid for piles", drag an Ace onto an empty marked place | start a centre pile on that place |
+| ...or, at a table with "Crystallized Nertz", drag an Ace onto an empty marked place | start a centre pile on that place |
 | Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
@@ -146,7 +146,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
     struck through, and a cross), and every pile shows the room it keeps round itself. Let go where there is no room
     and the Ace goes back. Two Aces for the same patch of felt: the first lands, the second goes back. The table
     still holds at most 4 piles per player.
-  - **Use grid for piles**: the middle has a marked place for every pile, laid out as a loose cluster. An Ace starts
+  - **Crystallized Nertz**: the middle has a marked place for every pile, laid out as a loose cluster. An Ace starts
     a pile on the specific empty place it is dropped on.
 - **Precise placement.** A card lands only when released on the one pile where it legally fits. If someone got there first
   (the pile moved on, or the empty place was taken), the card returns to where it came from. Nothing is ever rerouted.
@@ -224,7 +224,7 @@ the felt, and never more than 0.4 units wide however few the players, so that a 
 middle still leaves room for a pile above and below every one of them. Put down anywhere at random that happens to
 be free, all four piles per player fit at least 99 times in 100 (`shared/table.test.ts`).
 
-**Use grid for piles.** Four marked places per player, the same for everyone: two rows for up to three players, three
+**Crystallized Nertz.** Four marked places per player, the same for everyone: two rows for up to three players, three
 for more, each row set half a place to one side of the next like bricks, each place nudged a little off its mark and
 given up to two and a half degrees of tilt, always the same way. Same card size as without.
 
@@ -379,7 +379,7 @@ storage they last until the page closes.
 **Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in every
 snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from whoever may
 deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Three options today, listed
-together under "Table rules": the small-table rule (`fewerDown`); "Use grid for piles" (`centre`: unticked is
+together under "Table rules": the small-table rule (`fewerDown`); "Crystallized Nertz" (`centre`: unticked is
 `'free'`, the default, an Ace starts its pile wherever it is put down; ticked is `'spots'`, the marked places); and how
 cards are dealt off the stock (`stockDeal`: `'drag'`, the default, or `'click'`; see the rules). The last is only a choice of gesture for the client. The next deal reads them,
 and a round keeps what it was dealt under, because settings cannot change during a round.
