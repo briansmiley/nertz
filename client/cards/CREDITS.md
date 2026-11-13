@@ -26,16 +26,16 @@ white-on-nothing pattern that is printed in each player's colour.
 | `cobble` | Niebieska Koszulka z Wzoru Berlińskiego.png | Joh. Müller (Schaffhausen) | Public domain |
 | `stars` | Swiss card deck - 1850 - Back side.jpg | Unknown author | Public domain |
 | `lion` | Koszulka z wzoru rzymskiego.png | Marteau i Georges | CC0 |
-| `chain` | Piedmontese tarot deck - Solesio - 1865 - Back side.jpg | F. F. Solesio (editor) | Public domain |
 | `check` | Back03.svg | Nicu Buculei | CC0 |
 | `suits` | Back09.svg | Nicu Buculei | CC0 |
 | `carpet` | Russian style card back.jpg | Dondorf GmbH (Germany) | Public domain |
 | `plaid-blue` | Atlas deck card back blue and brown.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
 | `plaid-green` | Atlas deck card back green and dark red.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
 
-- `chain` is only the middle of its source: the field of links, without the hand-printed striped border (which is not square on the card).
 - `lightcone` (drawn in `backArt.ts`) is the logo of Lightcone Infrastructure, taken from the owner's own copy of its
   file. It is their mark, not this project's: the owner's choice to include; check with them before it is deployed publicly.
+- `hat` (the aperiodic "einstein" tiling, drawn in `backArt.ts`) is built by the method of Craig S. Kaplan's hatviz,
+  https://github.com/isohedral/hatviz (BSD 3-Clause, Copyright (c) 2023 Craig S. Kaplan), rewritten here in TypeScript.
 - `ornate` is made from a picture the owner found; WHERE IT IS FROM AND ITS LICENCE ARE NOT YET KNOWN (it looks like
   stock art): it must be cleared, or replaced, before it is deployed.
 - `bicycle` is the Bicycle "Rider Back" of the United States Playing Card Company. The design is from 1887 and out of

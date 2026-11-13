@@ -49,6 +49,10 @@ export const CARD_BACKS = {
   waves: 'Waves',
   flow: 'Flow',
   life: 'Game of Life',
+  penrose: 'Penrose',
+  hat: 'Einstein hat',
+  chain: 'Chain',
+  pulsar: 'Pulsar',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',
@@ -56,7 +60,6 @@ export const CARD_BACKS = {
   cobble: 'Cobble',
   stars: 'Stars',
   lion: 'Lion',
-  chain: 'Chain',
   check: 'Check',
   suits: 'Suits',
   carpet: 'Carpet',

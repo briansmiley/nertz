@@ -53,25 +53,27 @@ function hilbert(small: boolean): string {
 /**
  * A Greek key: bands of meander, each one unbroken line. In every turn of it the line winds into the middle of a
  * square, doubles back there, and winds out again between its own coils, to run on along the foot of the band into
- * the next turn. Every other band runs the other way.
+ * the next turn. Every line is the same distance from the next, within a turn, from turn to turn and from band to
+ * band. Every other band runs the other way.
  */
 function key(small: boolean): string {
-  const across = small ? 1 : 2; // turns of the key in a band
-  const bands = small ? 2 : 4;
-  // One turn is 16 across and 10 high, in steps of the gap between one line and the next.
-  const TURN: [number, number][] = [[0, 10], [0, 0], [12, 0], [12, 8], [4, 8], [4, 4], [8, 4], [8, 6], [10, 6], [10, 2], [2, 2], [2, 10], [16, 10]];
-  const u = F.w / (across * 16 + 0.6);
-  const pitch = F.h / bands;
+  const across = small ? 2 : 3; // turns of the key in a band
+  // One turn is 12 across and 10 high, in steps of half the gap between one line and the next.
+  const TURN: [number, number][] = [[0, 10], [0, 0], [10, 0], [10, 8], [4, 8], [4, 4], [6, 4], [6, 6], [8, 6], [8, 2], [2, 2], [2, 10], [12, 10]];
+  const u = (F.w * 0.97) / (across * 12);
+  const bands = Math.floor((F.h + 2 * u) / (12 * u)); // a band and the gap under it are 12 high
+  const top0 = H / 2 - ((bands * 12 - 2) * u) / 2;
   let d = '';
   for (let b = 0; b < bands; b++) {
-    const top = F.y + b * pitch + (pitch - 10 * u) / 2;
     const line: [number, number][] = [];
-    for (let k = 0; k < across; k++) for (const [x, y] of k ? TURN.slice(1) : TURN) line.push([k * 16 + x, y]);
-    // (It ends by turning up into the band's last upright, as if into another turn.)
-    line.push([across * 16, 0]);
-    d += pts(line.map(([x, y]) => [b % 2 ? W / 2 + (across * 8 - x) * u : W / 2 + (x - across * 8) * u, top + y * u] as const));
+    for (let k = 0; k < across; k++) for (const [x, y] of k ? TURN.slice(1) : TURN) line.push([k * 12 + x, y]);
+    // (Both its ends run off along the foot of the band into the card's border.)
+    const out = (W / 2 - (small ? 4.5 : 6.6)) / u - across * 6;
+    line.unshift([-out, 10]);
+    line.push([across * 12 + out, 10]);
+    d += pts(line.map(([x, y]) => [b % 2 ? W / 2 + (across * 6 - x) * u : W / 2 + (x - across * 6) * u, top0 + (b * 12 + y) * u] as const));
   }
-  return frame(`<path d="${d}" stroke-linecap="square" stroke-linejoin="miter"/>`, small ? 2.6 : 1.4, small);
+  return frame(`<path d="${d}" stroke-linecap="butt" stroke-linejoin="miter"/>`, small ? 1.9 : 1.15, small);
 }
 
 /** Braids: columns of two strands twisted round each other, each passing under the other in turn. */
@@ -493,40 +495,46 @@ function houndstooth(small: boolean): string {
 
 const HALF = 'rgba(255,255,255,0.45)';
 
-/** Shards: every tile cut from one corner into three long wedges, white, half and bare; each tile turned the other way from its neighbours. */
+/** Shards: rows of long spikes, like the points of a backgammon board, each with a light side and a shaded one; every other row hangs down from above, half a spike along. */
 function shards(small: boolean): string {
-  const cols = small ? 2 : 3;
-  const rows = small ? 3 : 5;
-  const [w, h] = [F.w / cols, F.h / rows];
+  const across = small ? 3 : 4;
+  const rows = small ? 2 : 3;
+  const [w, h] = [F.w / across, F.h / rows];
   let white = '';
   let half = '';
   for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const [fx, fy] = [(r + c) % 2 ? -1 : 1, r % 2 ? -1 : 1];
-      const at = (px: number, py: number): [number, number] => [F.x + (c + 0.5) * w + fx * (px - 0.5) * w, F.y + (r + 0.5) * h + fy * (py - 0.5) * h];
-      white += poly([at(0, 1), at(0, 0), at(0.42, 0)]);
-      half += poly([at(0, 1), at(0.42, 0), at(1, 0)]);
+    const down = r % 2 === 1;
+    for (let k = -1; k <= across; k++) {
+      const x = F.x + (k + (down ? 0.5 : 0)) * w;
+      const [foot, tip] = down ? [F.y + r * h, F.y + (r + 1) * h - 1.5] : [F.y + (r + 1) * h, F.y + r * h + 1.5];
+      // The spike's two faces: the left one catches the light.
+      white += poly([[x, foot], [x + w / 2, foot], [x + w / 2, tip]]);
+      half += poly([[x + w / 2, foot], [x + w, foot], [x + w / 2, tip]]);
     }
   }
-  return frame(`<path d="${white}" fill="#fff" stroke="none"/><path d="${half}" fill="${HALF}" stroke="none"/>`, 1, small);
+  return frame(clipped(`<path d="${white}" fill="#fff" stroke="none"/><path d="${half}" fill="${HALF}" stroke="none"/>`), 1, small);
 }
 
-/** Pinwheels: in every tile four blades round the middle, each a wedge with its tip cut off, all turning the same way. */
+/** Pinwheels: in every tile four blades from its middle almost out to its edges, each a wedge with its tip cut off, two white and two shaded, all turning the same way. */
 function pinwheel(small: boolean): string {
   const cols = small ? 2 : 3;
-  const rows = small ? 3 : 4;
-  const [w, h] = [F.w / cols, F.h / rows];
-  let d = '';
+  const size = F.w / cols;
+  const rows = Math.round(F.h / size);
+  const y0 = F.y + (F.h - rows * size) / 2;
+  let white = '';
+  let half = '';
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       for (let q = 0; q < 4; q++) {
         // One blade, in a tile that is 2 by 2 with its middle at (0, 0), turned a quarter for each of the four.
         const turn = ([x, y]: [number, number]): [number, number] => [[x, y], [-y, x], [-x, -y], [y, -x]][q] as [number, number];
-        d += poly(([[0, 0], [0, -0.7], [0.45, -0.7], [0.45, -0.45]] as [number, number][]).map(turn).map(([x, y]) => [F.x + (c + 0.5 + x / 2) * w, F.y + (r + 0.5 + y / 2) * h] as const));
+        const blade = poly(([[0, 0], [0, -1], [0.5, -1], [0.5, -0.5]] as [number, number][]).map(([x, y]): [number, number] => turn([x, y])).map(([x, y]) => [F.x + (c + 0.5 + (x / 2) * 0.86) * size, y0 + (r + 0.5 + (y / 2) * 0.86) * size] as const));
+        if (q % 2) half += blade;
+        else white += blade;
       }
     }
   }
-  return frame(`<path d="${d}" fill="#fff" stroke="none"/>`, 1, small);
+  return frame(clipped(`<path d="${white}" fill="#fff" stroke="none"/><path d="${half}" fill="${HALF}" stroke="none"/>`), 1, small);
 }
 
 /** A mosaic: little stones, none quite square or straight, and two bands of white ones winding down the card across each other, their middles a half tone. */
@@ -727,7 +735,259 @@ function life(small: boolean): string {
   return frame(`<path d="${grid}" stroke-width="${small ? 0.5 : 0.3}" opacity="0.4"/><path d="${cells}" fill="#fff" stroke="none"/>`, 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, waves, flow, life };
+/**
+ * A Penrose tiling: fat and thin diamonds that fill the plane without ever repeating, with fivefold symmetry about
+ * the middle of the card. Made the usual way: ten triangles round a point, each cut again and again into smaller ones
+ * in the golden ratio; two triangles back to back are a diamond. The thin diamonds are white.
+ */
+function penrose(small: boolean): string {
+  const phi = (1 + Math.sqrt(5)) / 2;
+  type P = [number, number];
+  type Tri = [0 | 1, P, P, P]; // kind (0: half a thin diamond, 1: half a fat one), apex, and the two base corners
+  const mix = (a: P, b: P, t: number): P => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  let tris: Tri[] = [];
+  const reach = 72; // far enough to cover the corners of the field
+  for (let i = 0; i < 10; i++) {
+    const at = (k: number): P => [reach * Math.cos(((2 * k - 1) * Math.PI) / 10), reach * Math.sin(((2 * k - 1) * Math.PI) / 10)];
+    const [b, c] = i % 2 ? [at(i), at(i + 1)] : [at(i + 1), at(i)];
+    tris.push([0, [0, 0], b, c]);
+  }
+  for (let step = 0; step < (small ? 4 : 5); step++) {
+    const next: Tri[] = [];
+    for (const [kind, a, b, c] of tris) {
+      if (kind === 0) {
+        const p = mix(a, b, 1 / phi);
+        next.push([0, c, p, b], [1, p, c, a]);
+      } else {
+        const q = mix(b, a, 1 / phi);
+        const r = mix(b, c, 1 / phi);
+        next.push([1, r, c, a], [1, q, r, b], [0, r, q, a]);
+      }
+    }
+    tris = next;
+  }
+  let thin = '';
+  let edges = '';
+  const at = ([x, y]: P): P => [W / 2 + x, H / 2 + y];
+  for (const [kind, a, b, c] of tris) {
+    // (Only what could show in the field.)
+    if (Math.abs(a[0]) > F.w / 2 + 12 || Math.abs(a[1]) > F.h / 2 + 12) continue;
+    if (kind === 0) thin += poly([at(a), at(b), at(c)]);
+    // A diamond's sides: the two from the apex. (The base is the middle of the diamond, where its halves meet.)
+    edges += pts([at(b), at(a), at(c)]);
+  }
+  return frame(clipped(`<path d="${thin}" fill="#fff" stroke="none"/><path d="${edges}" stroke-linecap="butt"/>`), small ? 1 : 0.55, small);
+}
+
+// ---------------------------------------------------------------- the hat
+//
+// The "einstein": one shape, the hat (thirteen sides, made of eight kites), that tiles the plane but never in a
+// repeating pattern (Smith, Myers, Kaplan and Goodman-Strauss, 2023). A patch of it is built as in their paper: four
+// clusters of hats (H, T, P, F) are put together by rule into larger clusters of the same four kinds, again and
+// again. This follows Craig S. Kaplan's hatviz (https://github.com/isohedral/hatviz, BSD 3-Clause; see CREDITS.md).
+type Pt2 = { x: number; y: number };
+type Mat = [number, number, number, number, number, number];
+interface Meta {
+  shape: Pt2[];
+  children: { T: Mat; geom: Meta | string }[]; // a string: a hat, of that kind
+}
+const HR3 = Math.sqrt(3) / 2;
+const hexPt = (x: number, y: number): Pt2 => ({ x: x + 0.5 * y, y: HR3 * y });
+const mInv = (T: Mat): Mat => {
+  const det = T[0] * T[4] - T[1] * T[3];
+  return [T[4] / det, -T[1] / det, (T[1] * T[5] - T[2] * T[4]) / det, -T[3] / det, T[0] / det, (T[2] * T[3] - T[0] * T[5]) / det];
+};
+const mMul = (A: Mat, B: Mat): Mat => [A[0] * B[0] + A[1] * B[3], A[0] * B[1] + A[1] * B[4], A[0] * B[2] + A[1] * B[5] + A[2], A[3] * B[0] + A[4] * B[3], A[3] * B[1] + A[4] * B[4], A[3] * B[2] + A[4] * B[5] + A[5]];
+const mRot = (a: number): Mat => [Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a), 0];
+const mMove = (x: number, y: number): Mat => [1, 0, x, 0, 1, y];
+const mAt = (M: Mat, P: Pt2): Pt2 => ({ x: M[0] * P.x + M[1] * P.y + M[2], y: M[3] * P.x + M[4] * P.y + M[5] });
+const add2 = (p: Pt2, q: Pt2): Pt2 => ({ x: p.x + q.x, y: p.y + q.y });
+const sub2 = (p: Pt2, q: Pt2): Pt2 => ({ x: p.x - q.x, y: p.y - q.y });
+const rotAbout = (p: Pt2, a: number): Mat => mMul(mMove(p.x, p.y), mMul(mRot(a), mMove(-p.x, -p.y)));
+const matchSeg = (p: Pt2, q: Pt2): Mat => [q.x - p.x, p.y - q.y, p.x, q.y - p.y, q.x - p.x, p.y];
+const matchTwo = (p1: Pt2, q1: Pt2, p2: Pt2, q2: Pt2): Mat => mMul(matchSeg(p2, q2), mInv(matchSeg(p1, q1)));
+const meet = (p1: Pt2, q1: Pt2, p2: Pt2, q2: Pt2): Pt2 => {
+  const d = (q2.y - p2.y) * (q1.x - p1.x) - (q2.x - p2.x) * (q1.y - p1.y);
+  const uA = ((q2.x - p2.x) * (p1.y - p2.y) - (q2.y - p2.y) * (p1.x - p2.x)) / d;
+  return { x: p1.x + uA * (q1.x - p1.x), y: p1.y + uA * (q1.y - p1.y) };
+};
+const HAT: Pt2[] = [hexPt(0, 0), hexPt(-1, -1), hexPt(0, -2), hexPt(2, -2), hexPt(2, -1), hexPt(4, -2), hexPt(5, -1), hexPt(4, 0), hexPt(3, 0), hexPt(2, 2), hexPt(0, 3), hexPt(0, 2), hexPt(-1, 2)];
+
+/** The four clusters to begin with: H (four hats, one of them turned over), T (one), P and F (two each). */
+function firstClusters(): [Meta, Meta, Meta, Meta] {
+  const pt = (x: number, y: number): Pt2 => ({ x, y });
+  const Ho = [pt(0, 0), pt(4, 0), pt(4.5, HR3), pt(2.5, 5 * HR3), pt(1.5, 5 * HR3), pt(-0.5, HR3)];
+  const H: Meta = {
+    shape: Ho,
+    children: [
+      { T: matchTwo(HAT[5]!, HAT[7]!, Ho[5]!, Ho[0]!), geom: 'H' },
+      { T: matchTwo(HAT[9]!, HAT[11]!, Ho[1]!, Ho[2]!), geom: 'H' },
+      { T: matchTwo(HAT[5]!, HAT[7]!, Ho[3]!, Ho[4]!), geom: 'H' },
+      { T: mMul(mMove(2.5, HR3), mMul([-0.5, -HR3, 0, HR3, -0.5, 0], [0.5, 0, 0, 0, -0.5, 0])), geom: 'H1' },
+    ],
+  };
+  const T: Meta = { shape: [pt(0, 0), pt(3, 0), pt(1.5, 3 * HR3)], children: [{ T: [0.5, 0, 0.5, 0, 0.5, HR3], geom: 'T' }] };
+  const two = (kind: string): Meta['children'] => [
+    { T: [0.5, 0, 1.5, 0, 0.5, HR3], geom: kind },
+    { T: mMul(mMove(0, 2 * HR3), mMul([0.5, HR3, 0, -HR3, 0.5, 0], [0.5, 0, 0, 0, 0.5, 0])), geom: kind },
+  ];
+  const P: Meta = { shape: [pt(0, 0), pt(4, 0), pt(3, 2 * HR3), pt(-1, 2 * HR3)], children: two('P') };
+  const F: Meta = { shape: [pt(0, 0), pt(3, 0), pt(3.5, HR3), pt(3, 2 * HR3), pt(-1, 2 * HR3)], children: two('F') };
+  return [H, T, P, F];
+}
+
+/** One round of putting clusters together: a patch of 29 of them, laid edge to edge by rule, and out of it the four larger clusters. */
+function largerClusters([H, T, P, F]: [Meta, Meta, Meta, Meta]): [Meta, Meta, Meta, Meta] {
+  const kinds: Record<string, Meta> = { H, T, P, F };
+  // Each rule: which cluster already placed, and which side of it, the next one is laid against (and by which of its own sides).
+  const rules: (string | number)[][] = [['H'], [0, 0, 'P', 2], [1, 0, 'H', 2], [2, 0, 'P', 2], [3, 0, 'H', 2], [4, 4, 'P', 2], [0, 4, 'F', 3], [2, 4, 'F', 3], [4, 1, 3, 2, 'F', 0], [8, 3, 'H', 0], [9, 2, 'P', 0], [10, 2, 'H', 0], [11, 4, 'P', 2], [12, 0, 'H', 2], [13, 0, 'F', 3], [14, 2, 'F', 1], [15, 3, 'H', 4], [8, 2, 'F', 1], [17, 3, 'H', 0], [18, 2, 'P', 0], [19, 2, 'H', 2], [20, 4, 'F', 3], [20, 0, 'P', 2], [22, 0, 'H', 2], [23, 4, 'F', 3], [23, 0, 'F', 3], [16, 0, 'P', 2], [9, 4, 0, 2, 'T', 2], [4, 0, 'F', 3]];
+  const patch: { T: Mat; geom: Meta }[] = [];
+  for (const r of rules) {
+    if (r.length === 1) patch.push({ T: [1, 0, 0, 0, 1, 0], geom: kinds[r[0] as string]! });
+    else if (r.length === 4) {
+      const on = patch[r[0] as number]!;
+      const side = on.geom.shape;
+      const [p, q] = [mAt(on.T, side[((r[1] as number) + 1) % side.length]!), mAt(on.T, side[r[1] as number]!)];
+      const next = kinds[r[2] as string]!;
+      patch.push({ T: matchTwo(next.shape[r[3] as number]!, next.shape[((r[3] as number) + 1) % next.shape.length]!, p, q), geom: next });
+    } else {
+      const [chP, chQ] = [patch[r[0] as number]!, patch[r[2] as number]!];
+      const [p, q] = [mAt(chQ.T, chQ.geom.shape[r[3] as number]!), mAt(chP.T, chP.geom.shape[r[1] as number]!)];
+      const next = kinds[r[4] as string]!;
+      patch.push({ T: matchTwo(next.shape[r[5] as number]!, next.shape[((r[5] as number) + 1) % next.shape.length]!, p, q), geom: next });
+    }
+  }
+  const corner = (n: number, i: number): Pt2 => mAt(patch[n]!.T, patch[n]!.geom.shape[i]!);
+  const made = (shape: Pt2[], from: number[]): Meta => {
+    // (Each new cluster is moved so that its middle is at the origin.)
+    const cx = shape.reduce((t, p) => t + p.x, 0) / shape.length;
+    const cy = shape.reduce((t, p) => t + p.y, 0) / shape.length;
+    return { shape: shape.map((p) => ({ x: p.x - cx, y: p.y - cy })), children: from.map((n) => ({ T: mMul(mMove(-cx, -cy), patch[n]!.T), geom: patch[n]!.geom })) };
+  };
+  const bps1 = corner(8, 2);
+  const bps2 = corner(21, 2);
+  const rbps = mAt(rotAbout(bps1, (-2 * Math.PI) / 3), bps2);
+  const p72 = corner(7, 2);
+  const p252 = corner(25, 2);
+  const llc = meet(bps1, rbps, corner(6, 2), p72);
+  let w = sub2(corner(6, 2), llc);
+  const Ho = [llc, bps1];
+  w = mAt(mRot(-Math.PI / 3), w);
+  Ho.push(add2(Ho[1]!, w));
+  Ho.push(corner(14, 2));
+  w = mAt(mRot(-Math.PI / 3), w);
+  Ho.push(sub2(Ho[3]!, w));
+  Ho.push(corner(6, 2));
+  const newH = made(Ho, [0, 9, 16, 27, 26, 6, 1, 8, 10, 15]);
+  const newP = made([p72, add2(p72, sub2(bps1, llc)), bps1, llc], [7, 2, 3, 4, 28]);
+  const newF = made([bps2, corner(24, 2), corner(25, 0), p252, add2(p252, sub2(llc, bps1))], [21, 20, 22, 23, 24, 25]);
+  const AAA = Ho[2]!;
+  const BBB = add2(Ho[1]!, sub2(Ho[4]!, Ho[5]!));
+  const CCC = mAt(rotAbout(BBB, -Math.PI / 3), AAA);
+  const newT = made([BBB, CCC, AAA], [11]);
+  return [newH, newT, newP, newF];
+}
+
+/** The hat tiling: a patch of it over the card, each hat outlined; the hats that are turned over (about one in seven) are white, and the three round each of them shaded. */
+function hat(small: boolean): string {
+  let clusters = firstClusters();
+  for (let i = 0; i < 3; i++) clusters = largerClusters(clusters);
+  const hats: { kind: string; at: Pt2[] }[] = [];
+  const gather = (m: Meta, T: Mat): void => {
+    for (const ch of m.children) {
+      const M = mMul(T, ch.T);
+      if (typeof ch.geom === 'string') hats.push({ kind: ch.geom, at: HAT.map((p) => mAt(M, p)) });
+      else gather(ch.geom, M);
+    }
+  };
+  gather(clusters[0], [1, 0, 0, 0, 1, 0]);
+  // One step of the hat's own grid is `u` px; the patch's middle is put at the middle of the card.
+  const u = small ? 6.4 : 3.6;
+  const cx = hats.reduce((t, h) => t + h.at[0]!.x, 0) / hats.length;
+  const cy = hats.reduce((t, h) => t + h.at[0]!.y, 0) / hats.length;
+  const fill: Record<string, string> = { H1: '', H: '' };
+  let lines = '';
+  for (const h of hats) {
+    const at = h.at.map((p): [number, number] => [W / 2 + (p.x - cx) * u, H / 2 + (p.y - cy) * u]);
+    if (at.every(([x, y]) => x < F.x - 2 || x > F.x + F.w + 2 || y < F.y - 2 || y > F.y + F.h + 2)) continue;
+    const d = poly(at);
+    lines += d;
+    if (h.kind in fill) fill[h.kind] += d;
+  }
+  return frame(clipped(`<path d="${fill.H1}" fill="#fff" stroke="none"/><path d="${fill.H}" fill="rgba(255,255,255,0.3)" stroke="none"/><path d="${lines}" stroke-linejoin="round"/>`), small ? 1.2 : 0.6, small);
+}
+
+/** Chains: rows of oval links, each through the next: where two cross, one passes over and the other is broken off short of it. Every other row is half a link along. */
+function chain(small: boolean): string {
+  const across = small ? 3 : 5;
+  const step = F.w / across; // from one link to the next
+  const [rx, ry] = [step * 0.72, step * 0.36];
+  const rows = Math.floor(F.h / (ry * 2 + step * 0.34));
+  const pitch = F.h / rows;
+  const gap = small ? 2 : 1.25;
+  let d = '';
+  for (let r = 0; r < rows; r++) {
+    const cy = F.y + (r + 0.5) * pitch;
+    for (let k = -1; k <= across + 1; k++) {
+      const cx = F.x + (k + (r % 2 ? 0.5 : 0)) * step;
+      // How far a point is from the outline of the link `n` along from this one.
+      const off = (x: number, y: number, n: number): number => Math.abs(Math.hypot((x - cx - n * step) / rx, (y - cy) / ry) - 1) * ry;
+      let run: [number, number][] = [];
+      for (let a = 0; a <= 360; a += 5) {
+        const [x, y] = [cx + rx * Math.cos((a * Math.PI) / 180), cy + ry * Math.sin((a * Math.PI) / 180)];
+        // It goes under the next link along the top, and under the last one along the bottom.
+        if ((y < cy && off(x, y, 1) < gap) || (y > cy && off(x, y, -1) < gap)) {
+          if (run.length > 1) d += pts(run);
+          run = [];
+        } else run.push([x, y]);
+      }
+      if (run.length > 1) d += pts(run);
+    }
+  }
+  return frame(clipped(`<path d="${d}"/>`), small ? 2.2 : 1.35, small);
+}
+
+/**
+ * Pulsar: lines of signal one above another, flat at the sides and leaping in the middle, each in front of the ones
+ * above it and hiding them where it rises (a made-up signal, by a fixed roll of the dice).
+ */
+function pulsar(small: boolean): string {
+  const lines = small ? 13 : 30;
+  const roll = dice(77);
+  const samples = Math.round(F.w / 0.75);
+  const top = F.y + F.h * 0.17;
+  const pitch = (F.h * 0.76) / (lines - 1);
+  // Each line: a few peaks of different heights and widths, somewhere in the middle half.
+  const traces: number[][] = [];
+  for (let i = 0; i < lines; i++) {
+    const peaks = Array.from({ length: 4 + Math.floor(roll() * 4) }, () => ({ at: 0.3 + roll() * 0.4, wide: 0.012 + roll() * 0.035, high: (0.3 + roll()) * pitch * (small ? 1.6 : 2.6) }));
+    traces.push(
+      Array.from({ length: samples + 1 }, (_, k) => {
+        const u = k / samples;
+        const lift = peaks.reduce((t, p) => t + p.high * Math.exp(-((u - p.at) ** 2) / (2 * p.wide ** 2)), 0);
+        return top + i * pitch - lift - 0.5 * Math.sin(u * 40 + i) * Math.exp(-((u - 0.5) ** 2) / 0.05);
+      }),
+    );
+  }
+  // From the front (the lowest line) back: a line shows only where it is above everything in front of it.
+  const horizon = new Array<number>(samples + 1).fill(Infinity);
+  let d = '';
+  for (let i = lines - 1; i >= 0; i--) {
+    let run: [number, number][] = [];
+    traces[i]!.forEach((y, k) => {
+      if (y < horizon[k]! - 0.3) run.push([F.x + (k / samples) * F.w, y]);
+      else {
+        if (run.length > 1) d += pts(run);
+        run = [];
+      }
+      horizon[k] = Math.min(horizon[k]!, y);
+    });
+    if (run.length > 1) d += pts(run);
+  }
+  return frame(clipped(`<path d="${d}"/>`), small ? 1.3 : 0.7, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, waves, flow, life, penrose, hat, chain, pulsar };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
