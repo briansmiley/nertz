@@ -208,6 +208,8 @@ const STOCK_FULL_EDGES = 10;
 const WASTE_SHOWN = 4;
 /** Where a group is held while it is counted off the stock, in card widths / heights from the stock's place. */
 const HELD = { x: 0.12, y: 0.16 };
+/** The held cards are this far above the stock they came off in the stacking: never level with its top card, whatever is on the move. */
+const HELD_Z = 100;
 /** The held group is a nearly square stack: each card a touch off the one under it (card widths, card heights, degrees). */
 const HELD_OFF = [
   { x: 0, y: 0, rot: -2.5 },
@@ -325,8 +327,9 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // turning the stack over is what leaves the last one showing. (`low`: it comes up beneath the ones already held.)
   p.waste.slice(n).forEach((c, k) => {
     const o = HELD_OFF[k % HELD_OFF.length]!;
-    put(c, stockX + h.w * (HELD.x + o.x), h.y - ch * (HELD.y - o.y), Math.max(20 + p.stock.length, 34) + (lifted - 1 - k), 'stock', true); // above the stock and the waste
-    Object.assign(out.at(-1)!, { rot: (h.flip ? -1 : 1) * o.rot, low: true });
+    put(c, stockX + h.w * (HELD.x + o.x), h.y - ch * (HELD.y - o.y), Math.max(20 + p.stock.length, 34) + HELD_Z + (lifted - 1 - k), 'stock', true); // well above the stock and the waste
+    // (The first has nothing to slip under: it comes up over everything, like any card on the move.)
+    Object.assign(out.at(-1)!, { rot: (h.flip ? -1 : 1) * o.rot, low: k > 0 });
   });
   // The waste is one squared-up pile: only its top card shows, face-down while a group is being dealt onto it.
   // (The few cards under the top are drawn too, exactly beneath it, so there is something there when the top leaves.)
