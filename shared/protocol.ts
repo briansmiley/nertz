@@ -32,6 +32,7 @@ export const CARD_BACKS = {
   tree: 'Binary tree',
   dragon: 'Dragon curve',
   koch: 'Koch snowflake',
+  mandelbrot: 'Mandelbrot',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',

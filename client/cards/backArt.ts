@@ -194,7 +194,7 @@ function fit(line: readonly (readonly [number, number])[], room = 0.94): [number
   return line.map(([x, y]) => [W / 2 + (x - (x0 + x1) / 2) * k, H / 2 + (y - (y0 + y1) / 2) * k]);
 }
 
-/** A binary tree: a trunk that forks in two, each branch forking again, shorter and shorter; one growing up from the bottom and one down from the top, so the card reads the same either way up. */
+/** A binary tree: a trunk that forks in two, each branch forking again, shorter and shorter; two of them, rooted together at the middle of the card, one growing up and one down, so the card reads the same either way up. */
 function tree(small: boolean): string {
   const depth = small ? 5 : 7;
   const segs: [number, number, number, number][] = [];
@@ -207,20 +207,24 @@ function tree(small: boolean): string {
     }
   };
   grow(0, 0, -Math.PI / 2, 1, depth);
-  // Fitted into the upper half of the field as it stands (its root at the middle), then again turned upside down below.
+  // Fitted into the upper half of the field, its root at the very middle; then again turned upside down below.
   const ends = segs.flatMap(([a, b, c, d]) => [[a, b], [c, d]] as [number, number][]);
   const xs = ends.map((p) => p[0]);
   const ys = ends.map((p) => p[1]);
   const [x0, x1, y0] = [Math.min(...xs), Math.max(...xs), Math.min(...ys)];
   const k = Math.min((F.w * 0.94) / (x1 - x0), (F.h * 0.47) / -y0);
   let d = '';
-  for (const flip of [1, -1]) for (const [a, b, c, e] of segs) d += `M${n(W / 2 + a * k * flip)} ${n(H / 2 + flip * (-y0 * k + b * k) * 1 - flip * 0)}L${n(W / 2 + c * k * flip)} ${n(H / 2 + flip * (-y0 * k + e * k))}`;
+  for (const flip of [1, -1]) for (const [a, b, c, e] of segs) d += `M${n(W / 2 + a * k * flip)} ${n(H / 2 + flip * b * k)}L${n(W / 2 + c * k * flip)} ${n(H / 2 + flip * e * k)}`;
   return frame(`<path d="${d}"/>`, small ? 1.8 : 0.9, small);
 }
 
-/** The dragon curve: a strip of paper folded in half again and again, always the same way, and opened out to right angles. */
+/**
+ * The dragon curve: a strip of paper folded in half again and again, always the same way, and opened out to right
+ * angles. Drawn through the middle of each straight piece, not round its corners: the corners are cut off, so the
+ * line never touches itself and its winding can be followed (drawn corner to corner it closes up into solid squares).
+ */
 function dragon(small: boolean): string {
-  const folds = small ? 8 : 11;
+  const folds = small ? 7 : 9;
   let turns: number[] = [];
   for (let i = 0; i < folds; i++) turns = [...turns, 1, ...turns.map((t) => -t).reverse()];
   const line: [number, number][] = [[0, 0], [1, 0]];
@@ -235,7 +239,8 @@ function dragon(small: boolean): string {
   const span = (l: [number, number][]) => Math.max(...l.map((p) => p[0])) - Math.min(...l.map((p) => p[0]));
   const height = (l: [number, number][]) => Math.max(...l.map((p) => p[1])) - Math.min(...l.map((p) => p[1]));
   const use = height(line) / span(line) > height(tall) / span(tall) ? line : tall;
-  return frame(`<path d="${pts(fit(use))}"/>`, small ? 1.6 : 0.8, small);
+  const mids = use.slice(1).map((p, i): [number, number] => [(p[0] + use[i]![0]) / 2, (p[1] + use[i]![1]) / 2]);
+  return frame(`<path d="${pts(fit(mids))}"/>`, small ? 2 : 1.15, small);
 }
 
 /** Koch snowflakes: a triangle whose every side has a smaller triangle built on its middle third, and so on; a large one, and a smaller one above and below. */
@@ -261,7 +266,52 @@ function koch(small: boolean): string {
   return frame(flake(W / 2, H / 2, r, 3) + flake(W / 2, F.y + 12, 9, 2) + flake(W / 2, F.y + F.h - 12, 9, 2) + flake(W / 2, H / 2, r * 0.38, 2), 0.8);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch };
+/**
+ * The Mandelbrot set: the numbers c for which z -> z*z + c, begun at nothing, never runs away. Two of them, the usual
+ * way round above and turned right round below, so the card reads the same either way up (a small card has one).
+ * Worked out on a grid of square cells and drawn as rows of filled strips; the needle, which is thinner than any
+ * cell, is drawn in as a line.
+ */
+function mandelbrot(small: boolean): string {
+  const inside = (re: number, im: number): boolean => {
+    let [x, y] = [0, 0];
+    for (let i = 0; i < 90; i++) {
+      [x, y] = [x * x - y * y + re, 2 * x * y + im];
+      if (x * x + y * y > 4) return false;
+    }
+    return true;
+  };
+  // The set lies between -2.05 and 0.55 across and -1.15 and 1.15 up and down: `u` px to one of those units.
+  const u = Math.min((F.w * 0.97) / 2.6, (F.h * (small ? 0.9 : 0.47)) / 2.3);
+  const cell = small ? 1.4 : 0.75;
+  const cols = Math.ceil((2.6 * u) / cell);
+  const rows = Math.ceil((2.3 * u) / cell);
+  let d = '';
+  let needle = '';
+  for (const turn of small ? [1] : [1, -1]) {
+    // The middle of this one (the point -0.75 + 0i is put at the middle of the card's width).
+    const cy = small ? H / 2 : H / 2 - turn * F.h * 0.25;
+    const at = (re: number, im: number): [number, number] => [W / 2 + turn * (re + 0.75) * u, cy - turn * im * u];
+    for (let r = 0; r < rows; r++) {
+      const im = 1.15 - ((r + 0.5) / rows) * 2.3;
+      let from = -1;
+      for (let c = 0; c <= cols; c++) {
+        const on = c < cols && inside(-2.05 + ((c + 0.5) / cols) * 2.6, im);
+        if (on && from < 0) from = c;
+        if (!on && from >= 0) {
+          const [x0, y0] = at(-2.05 + (from / cols) * 2.6, 1.15 - (r / rows) * 2.3);
+          const [x1, y1] = at(-2.05 + (c / cols) * 2.6, 1.15 - ((r + 1) / rows) * 2.3);
+          d += `M${n(x0)} ${n(y0)}H${n(x1)}V${n(y1 + turn * 0.12)}H${n(x0)}Z`; // (a hair too deep: no cloth between the rows)
+          from = -1;
+        }
+      }
+    }
+    needle += pts([at(-2, 0), at(-1.4, 0)]);
+  }
+  return frame(`<path d="${d}" fill="#fff" stroke="none"/><path d="${needle}" stroke-width="${small ? 1 : 0.5}"/>`, 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
