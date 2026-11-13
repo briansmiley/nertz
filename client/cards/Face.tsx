@@ -171,6 +171,8 @@ function Court({ suit, rank, colour, tint }: { suit: Suit; rank: number; colour:
 interface Theme {
   /** The card itself, when it is not the usual cream. */
   paper?: string;
+  /** A dark card: the class its drawing carries, by which the stylesheet makes the card under it dark too (no light at its edge). */
+  dark?: string;
   red: string;
   black: string;
   font: string;
@@ -185,8 +187,8 @@ const THEMES: Record<string, Theme> = {
 };
 /** The same decks dark: light on a dark card. */
 const NIGHT: Record<string, Theme> = {
-  modern: { paper: '#1b2132', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
-  cute: { paper: '#27213f', red: '#ff7fa8', black: '#cfc8ff', font: CUTE_FONT, cute: true },
+  modern: { paper: '#1b2132', dark: 'dark', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
+  cute: { paper: '#27213f', dark: 'dark dark-cute', red: '#ff7fa8', black: '#cfc8ff', font: CUTE_FONT, cute: true },
 };
 const FILES = new Set(['classic']);
 
@@ -211,18 +213,20 @@ const Paper = ({ fill }: { fill?: string }) => (fill ? <rect width={CARD_W} heig
 const FACE: Record<Suit, { y: number; eyes: number; k: number }> = { H: { y: 2, eyes: 13, k: 1 }, D: { y: -2, eyes: 9, k: 0.85 }, S: { y: 10, eyes: 13, k: 1 }, C: { y: 9, eyes: 15, k: 0.9 } };
 
 /** A suit mark with a face: two eyes, a smile, and a blush on each cheek. */
-function Friend({ suit, x, y, size, ink }: { suit: Suit; x: number; y: number; size: number; ink: string }) {
+function Friend({ suit, x, y, size, ink, night = false }: { suit: Suit; x: number; y: number; size: number; ink: string; night?: boolean }) {
   const f = FACE[suit];
-  const red = suit === 'H' || suit === 'D';
+  // (Its features are dark on a light mark and light on a dark one: on a dark card the black suits are the light ones.)
+  const red = suit === 'H' || suit === 'D' || night;
+  const feature = suit === 'H' || suit === 'D' ? '#6e1836' : '#2b2547';
   return (
     <g transform={`translate(${x} ${y}) scale(${size / 100})`}>
       {SHAPE[suit]}
       <g transform={`translate(0 ${f.y}) scale(${f.k})`}>
-        <circle cx={-f.eyes} cy="0" r="4.2" fill={red ? '#6e1836' : '#fff'} />
-        <circle cx={f.eyes} cy="0" r="4.2" fill={red ? '#6e1836' : '#fff'} />
+        <circle cx={-f.eyes} cy="0" r="4.2" fill={red ? feature : '#fff'} />
+        <circle cx={f.eyes} cy="0" r="4.2" fill={red ? feature : '#fff'} />
         <circle cx={-f.eyes + 1.4} cy="-1.4" r="1.4" fill={red ? '#fff' : ink} />
         <circle cx={f.eyes + 1.4} cy="-1.4" r="1.4" fill={red ? '#fff' : ink} />
-        <path d="M-5 6Q0 11.5 5 6" fill="none" stroke={red ? '#6e1836' : '#fff'} strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M-5 6Q0 11.5 5 6" fill="none" stroke={red ? feature : '#fff'} strokeWidth="2.4" strokeLinecap="round" />
         <circle cx={-f.eyes - 7} cy="7" r="4" fill={red ? '#ffd0de' : '#ff9cba'} opacity={red ? 0.75 : 0.8} />
         <circle cx={f.eyes + 7} cy="7" r="4" fill={red ? '#ffd0de' : '#ff9cba'} opacity={red ? 0.75 : 0.8} />
       </g>
@@ -233,13 +237,13 @@ function Friend({ suit, x, y, size, ink }: { suit: Suit; x: number; y: number; s
 /** Large print: a big rank, the suit beside it and again below. */
 function Large({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour: string; theme: Theme }) {
   return (
-    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
+    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour} className={theme.dark}>
       <Paper fill={theme.paper} />
       <text x="25" y="45" textAnchor="middle" fontSize={theme.cute ? 44 : 50} fontWeight="700" fontFamily={theme.font} letterSpacing={rank === 10 ? -5 : 0}>
         {LABEL[rank]}
       </text>
       <Pip suit={suit} x={67} y={27} size={36} />
-      {theme.cute ? <Friend suit={suit} x={45} y={89} size={58} ink={colour} /> : <Pip suit={suit} x={45} y={89} size={54} />}
+      {theme.cute ? <Friend suit={suit} x={45} y={89} size={58} ink={colour} night={!!theme.dark} /> : <Pip suit={suit} x={45} y={89} size={54} />}
     </svg>
   );
 }
@@ -262,13 +266,13 @@ function ClassicLarge({ suit, rank, night }: { suit: Suit; rank: number; night: 
 /** The Cute deck's full face: the corner indices, and one big suit mark with a face (a court card's wears its headgear). */
 function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour: string; theme: Theme }) {
   return (
-    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
+    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour} className={theme.dark}>
       <Paper fill={theme.paper} />
       <Index suit={suit} rank={rank} font={theme.font} />
       <g transform="rotate(180 45 63)">
         <Index suit={suit} rank={rank} font={theme.font} />
       </g>
-      <Friend suit={suit} x={45} y={rank > 10 ? 70 : 64} size={rank > 10 ? 50 : 54} ink={colour} />
+      <Friend suit={suit} x={45} y={rank > 10 ? 70 : 64} size={rank > 10 ? 50 : 54} ink={colour} night={!!theme.dark} />
       {rank > 10 && (
         <g transform="translate(45 37) scale(1.7)" fill={GOLD} stroke={colour} strokeWidth="0.7" strokeLinejoin="round">
           {CROWN[rank]}
@@ -295,7 +299,7 @@ export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: S
   if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} theme={theme} />;
   if (theme.cute) return <Cute suit={suit} rank={rank} colour={colour} theme={theme} />;
   return (
-    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
+    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour} className={theme.dark}>
       <Paper fill={theme.paper} />
       <Index suit={suit} rank={rank} />
       <g transform="rotate(180 45 63)">

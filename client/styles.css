@@ -78,9 +78,26 @@ button {
   height: 100%;
 }
 
-/* A deck of pictures, dark: turned inside out, and the colours turned back, so red is still red. */
+/* A deck of pictures, dark: turned inside out, and the colours turned back, so red is still red. The picture's own
+   outline (black, so now white) is pushed just off the card, and the card under it is dark too, so no light shows at
+   the edge or in the corners. */
 .front img.art.night {
   filter: invert(1) hue-rotate(180deg);
+  transform: scale(1.035);
+}
+
+.front:has(> img.art.night) {
+  overflow: hidden;
+  background: #000;
+}
+
+/* A dark card drawn here: the card under the drawing is its colour too, so no cream shows at the edge or in the corners. */
+.front:has(> svg.dark) {
+  background: #1b2132;
+}
+
+.front:has(> svg.dark-cute) {
+  background: #27213f;
 }
 
 /* A deck of picture files: the picture is the whole card, and takes no pointer (the card under it is what is dragged). */
@@ -2641,9 +2658,13 @@ body:has(.showroom),
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
 }
 
-.showroom .fan:hover .leaf,
-.showroom article.on .fan .leaf {
-  transform: translate(calc(var(--i) * 40px), calc(var(--i) * var(--i) * 1.6px - 6px)) rotate(calc(var(--i) * 3.5deg));
+/* Under the pointer the hand opens right out, over its neighbours, so that most of every face shows. */
+.showroom .fan:hover {
+  z-index: 5;
+}
+
+.showroom .fan:hover .leaf {
+  transform: translate(calc(var(--i) * 68px), calc(var(--i) * var(--i) * 1.2px - 6px)) rotate(calc(var(--i) * 2.5deg));
 }
 
 .showroom .about {
