@@ -250,11 +250,12 @@ export function home(who: Who = 'me'): void {
   hit(pick(TAPS), { gain: 0.36, rate: rand(0.8, 0.9), dull: 900, who });
 }
 
-/** A move we showed as made was refused after all (somebody got there first): the card's tap, then a soft falling sigh. */
+/** Somebody got there first: the card's tap, then a little "wah-wah-wahh", three falling semitones, the last held. */
 export function lost(): void {
   home('me');
-  tone(493.88, { gain: 0.07, dur: 0.22, delay: 0.04, partials: BELL });
-  tone(392, { gain: 0.07, dur: 0.38, delay: 0.16, partials: BELL });
+  tone(311.13, { gain: 0.1, dur: 0.2, delay: 0.05, partials: BELL });
+  tone(293.66, { gain: 0.1, dur: 0.2, delay: 0.21, partials: BELL });
+  tone(277.18, { gain: 0.11, dur: 0.65, delay: 0.37, partials: BELL });
 }
 
 /**
