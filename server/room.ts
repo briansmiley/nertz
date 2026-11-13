@@ -55,6 +55,9 @@ export interface RoomOptions {
   flipMs?: number;
 }
 
+/** How long a bot takes to change its mind when the move it had settled on is no longer there, ms (about: 0.6 to 1.4 times this). */
+const RETHINK_MS = 500;
+
 export class Room {
   phase: Phase = 'lobby';
   round = 0;
@@ -446,6 +449,9 @@ export class Room {
     if (bot.pending) {
       const before = this.game;
       const { intent, memory } = bot.pending;
+      // The table moved on while it was making up its mind and the move it meant to make is gone (someone took the
+      // pile): it does not go through the motions of a move it can see is lost. It thinks again, briefly.
+      if (intent.k === 'move' && !applyIntent(before, player.seat, intent).ok) return this.rethink(player);
       bot.pending = null;
       this.intent(player, player.ack + 1, intent);
       if (this.game !== before) {
@@ -457,6 +463,15 @@ export class Room {
     if (this.phase !== 'playing' || !this.game) return;
     bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
     this.wake(player, undefined, midGroup && bot.pending?.intent.k === 'flip');
+  }
+
+  /** The bot's plan came to nothing before it acted on it: it picks another and acts on that after a short pause, not a whole one. */
+  private rethink(player: Player): void {
+    const bot = player.bot!;
+    bot.pending = chooseIntent(viewFor(this.game!, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
+    if (bot.timer) clearTimeout(bot.timer);
+    bot.timer = setTimeout(() => this.look(player), RETHINK_MS * (0.6 + 0.8 * this.rng()));
+    bot.timer.unref?.();
   }
 
   private stopBots(): void {

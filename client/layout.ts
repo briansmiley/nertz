@@ -150,16 +150,22 @@ export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], point
  * up and to the left as it rises, and no card sits quite square on the one below. The same for every frame and for
  * the wash that starts from it. `w` is the card's width on screen; `rot` is in degrees.
  */
-export function stackOffset(k: number, j: number, w: number): { x: number; y: number; rot: number } {
+export function stackOffset(k: number, j: number, w: number, loose = 1): { x: number; y: number; rot: number } {
   const wobble = (salt: number) => {
     const v = Math.sin((k * 31 + j) * 12.9898 + salt * 78.233) * 43758.5453;
     return (v - Math.floor(v)) * 2 - 1;
   };
-  return { x: -j * w * 0.012 + wobble(1) * w * 0.035, y: -j * w * 0.018 + wobble(2) * w * 0.03, rot: wobble(3) * 4 };
+  // (`loose`: how much further off the one below each card lies, and with it how much more it is turned.)
+  return { x: -j * w * 0.012 + wobble(1) * w * 0.035 * loose, y: -j * w * 0.018 + wobble(2) * w * 0.03 * loose, rot: wobble(3) * 4 * Math.sqrt(loose) };
 }
 
 /** A centre pile turned over at the end of a round, as a loose stack (seeded apart from the tray's piles). */
-export const slotStack = (i: number, j: number, w: number) => stackOffset(100 + i, j, w);
+/**
+ * (Sloppier than a pile from the tray: cards from every deck went onto it in a hurry, and with each a little further
+ * off the last the backs underneath show at its edges, in their owners' colours.)
+ */
+const SLOT_LOOSE = 3.6;
+export const slotStack = (i: number, j: number, w: number) => stackOffset(100 + i, j, w, SLOT_LOOSE);
 
 /** Room the grace countdown is given on the table: its greatest width, its height, and its distance from the right edge. */
 export const COUNTDOWN = { w: 168, h: 44, right: 14 };

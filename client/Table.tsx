@@ -65,6 +65,8 @@ interface Handle {
   s: MotionValue<number>;
   /** Opacity. */
   o: MotionValue<number>;
+  /** Tilt, degrees. */
+  r: MotionValue<number>;
   /** Animate to wherever the layout currently wants this card. */
   settle(): void;
 }
@@ -118,6 +120,7 @@ const CardView = memo(function CardView(p: CardProps) {
   const goal = useRef({ x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot });
   const mine = useRef(p.mine);
   const flight = useRef(0);
+  const upWas = useRef(p.up);
   const low = useRef(p.low);
   low.current = p.low;
   const el = useRef<HTMLDivElement>(null);
@@ -137,7 +140,9 @@ const CardView = memo(function CardView(p: CardProps) {
     animate(x, g.x, move);
     animate(y, g.y, move);
     animate(s, g.s, move);
-    animate(r, g.rot, move);
+    // Someone else's card crossing the table comes upright as it leaves their hand, not as it lands: a hand at the
+    // side of the table is turned to face it, and a card on its way to the middle is read by whoever is watching.
+    animate(r, g.rot, passing ? { ...move, duration: move.duration * 0.3 } : move);
     setTimeout(() => {
       if (flight.current !== n) return;
       flying.current = false;
@@ -170,9 +175,22 @@ const CardView = memo(function CardView(p: CardProps) {
       if (p.deal) [x, y, s].forEach((v, i) => v.set([p.deal!.x, p.deal!.y, p.s][i]!));
       return;
     }
-    if (was.x !== p.x || was.y !== p.y || was.s !== p.s || was.rot !== p.rot) go(wasMine || p.mine);
-    else if (!flying.current) z.set(p.z);
+    if (was.x !== p.x || was.y !== p.y || was.s !== p.s || was.rot !== p.rot) {
+      go(wasMine || p.mine);
+      // Turning face-up on the way (a group off the stock going over onto the waste): a stack turned over shows the
+      // back of the card that was on top of it until the faces come round, and only then the card that ends on top.
+      // So for the first half of the turn the cards keep the order they were held in, which is the other way round.
+      if (!upWas.current && p.up && !calm()) {
+        const n = flight.current;
+        z.set(p.z - 2 * (p.z % 100) + 99 + Z_FLYING);
+        setTimeout(() => flight.current === n && z.set(goal.current.z + Z_FLYING), FLIP().duration * 500);
+      }
+    } else if (!flying.current) z.set(p.z);
   }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.slow, p.id, p.reg, p.deal?.x, p.deal?.y, go, x, y, s, z]);
+
+  useEffect(() => {
+    upWas.current = p.up; // (after the effect above, which asks what it was)
+  }, [p.up]);
 
   // Its turn to be dealt: out of the deck, to its place in the layout.
   useEffect(() => {
@@ -185,9 +203,9 @@ const CardView = memo(function CardView(p: CardProps) {
   }, [fly]);
 
   useEffect(() => {
-    p.reg.handles.set(p.id, { x, y, z, s, o, settle: () => go(mine.current) });
+    p.reg.handles.set(p.id, { x, y, z, s, o, r, settle: () => go(mine.current) });
     return () => void p.reg.handles.delete(p.id);
-  }, [p.id, p.reg, x, y, z, s, o, go]);
+  }, [p.id, p.reg, x, y, z, s, o, r, go]);
 
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
@@ -475,6 +493,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         h.s.set(f.s);
         h.z.set(Z_FLYING + 5000 + i);
         h.o.set(ALOFT);
+        // Upright for whoever is watching once it is out of the hand (a neighbour's hand is turned to face the felt).
+        h.r.set(c.rot * (1 - clamp(Math.max(at.h[1] / 0.6, at.w * 4, linger), 0, 1)));
       });
     }
     loop.frame = waiting || flights.size > 0 ? requestAnimationFrame(tick) : 0;
