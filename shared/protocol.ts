@@ -34,6 +34,11 @@ export const CARD_BACKS = {
   koch: 'Koch snowflake',
   mandelbrot: 'Mandelbrot',
   walk: 'Random walk',
+  mondrian: 'Mondrian',
+  diamonds: 'Diamond tile',
+  herringbone: 'Herringbone',
+  honeycomb: 'Honeycomb',
+  starcross: 'Star and cross',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',

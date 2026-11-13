@@ -339,7 +339,110 @@ function walk(small: boolean): string {
   return frame(`<path d="${pts(line.map(at))}${cross}" stroke-linecap="square" stroke-linejoin="miter"/><circle cx="${n(sx)}" cy="${n(sy)}" r="${small ? 3 : 1.8}" fill="#fff" stroke="none"/>`, small ? 1.5 : 0.7, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk };
+/** Everything in `body` is cut off at the edge of the field. */
+const clipped = (body: string): string => `<clipPath id="f"><rect x="${F.x}" y="${F.y}" width="${F.w}" height="${F.h}"/></clipPath><g clip-path="url(#f)">${body}</g>`;
+const poly = (p: readonly (readonly [number, number])[]): string => `${pts(p)}Z`;
+
+/** In the manner of Mondrian: the field cut again and again into rectangles by heavy lines, a few of them filled, some solid and some half. */
+function mondrian(small: boolean): string {
+  const roll = dice(small ? 3 : 14);
+  const leaves: [number, number, number, number][] = [];
+  const cut = (x: number, y: number, w: number, h: number, depth: number): void => {
+    const least = small ? 22 : 13;
+    if (depth === 0 || (w < least * 2 && h < least * 2) || (depth < 3 && roll() < 0.18)) {
+      leaves.push([x, y, w, h]);
+      return;
+    }
+    const at = [0.34, 0.5, 0.62, 0.7][Math.floor(roll() * 4)]!;
+    // (Across the longer side, unless that would leave a sliver.)
+    if (w * 1.15 > h && w >= least * 2) {
+      cut(x, y, w * at, h, depth - 1);
+      cut(x + w * at, y, w * (1 - at), h, depth - 1);
+    } else {
+      cut(x, y, w, h * at, depth - 1);
+      cut(x, y + h * at, w, h * (1 - at), depth - 1);
+    }
+  };
+  cut(F.x, F.y, F.w, F.h, small ? 3 : 5);
+  let body = '';
+  for (const [x, y, w, h] of leaves) {
+    const r = roll();
+    const fill = r < 0.2 ? '#fff' : r < 0.36 ? 'rgba(255,255,255,0.45)' : 'none';
+    body += `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" fill="${fill}"/>`;
+  }
+  return frame(body, small ? 3.4 : 2.1, small);
+}
+
+/** Diamond tiles: in every square a diamond of the card's colour, the four corners round it white with their tips cut off, so a small diamond stands where four tiles meet; thin lines of colour between the tiles. */
+function diamonds(small: boolean): string {
+  const cols = small ? 2 : 3;
+  const rows = small ? 3 : 4;
+  const [w, h] = [F.w / cols, F.h / rows];
+  const g = small ? 1.1 : 0.7; // half the line between two tiles
+  const c = Math.min(w, h) * 0.16; // how much of a corner is cut off
+  let d = '';
+  for (let r = 0; r < rows; r++) {
+    for (let k = 0; k < cols; k++) {
+      const [x, y] = [F.x + k * w, F.y + r * h];
+      // One corner piece, and the same turned into the other three corners.
+      for (const [fx, fy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+        const at = (px: number, py: number): [number, number] => [x + w / 2 + fx * (px - w / 2), y + h / 2 + fy * (py - h / 2)];
+        d += poly([at(g + c, g), at(w / 2, g), at(g, h / 2), at(g, g + c)]);
+      }
+    }
+  }
+  return frame(`<path d="${d}" fill="#fff" stroke="none"/>`, 1, small);
+}
+
+/** Herringbone: bricks twice as long as they are wide, laid in a zigzag, as a floor is. */
+function herringbone(small: boolean): string {
+  const a = small ? 9 : 5.2;
+  let body = '';
+  const span = Math.ceil((F.w + F.h) / a) + 6;
+  for (let k = -span; k < span; k++) {
+    for (let i = -span; i < span; i++) {
+      const [x, y] = [F.x + (i + 4 * k) * a, F.y + i * a];
+      if (x > F.x + F.w + 2 * a || x < F.x - 4 * a || y > F.y + F.h + a || y < F.y - 2 * a) continue;
+      body += `<rect x="${n(x)}" y="${n(y)}" width="${n(2 * a)}" height="${n(a)}"/><rect x="${n(x + 2 * a)}" y="${n(y - a)}" width="${n(a)}" height="${n(2 * a)}"/>`;
+    }
+  }
+  return frame(clipped(body), small ? 1.5 : 0.8, small);
+}
+
+/** Honeycomb: six-sided tiles, each row half a tile along from the last. */
+function honeycomb(small: boolean): string {
+  const across = small ? 3 : 6;
+  const wide = F.w / across; // across the flats
+  const r = wide / Math.sqrt(3);
+  let d = '';
+  for (let row = -1; row * 1.5 * r < F.h + r; row++) {
+    for (let c = -1; c <= across; c++) {
+      const [cx, cy] = [F.x + (c + (row % 2 ? 0.5 : 0) + 0.5) * wide, F.y + row * 1.5 * r + r];
+      d += poly(Array.from({ length: 6 }, (_, i) => [cx + r * Math.sin((i * Math.PI) / 3), cy - r * Math.cos((i * Math.PI) / 3)] as const));
+    }
+  }
+  return frame(clipped(`<path d="${d}"/>`), small ? 1.8 : 0.9, small);
+}
+
+/** Star and cross: eight-pointed stars (a square, and the same square turned an eighth), white, tip to tip; the cloth left between four of them is a cross. */
+function starCross(small: boolean): string {
+  const across = small ? 2 : 4;
+  const pitch = F.w / across;
+  const out = (pitch / 2) * 0.985; // a tip (the stars all but touch)
+  const inn = (out * Math.SQRT1_2) / Math.cos(Math.PI / 8); // where the two squares cross
+  let d = '';
+  const down = Math.round(F.h / pitch);
+  const y0 = F.y + (F.h - down * pitch) / 2;
+  for (let r = 0; r < down; r++) {
+    for (let c = 0; c < across; c++) {
+      const [cx, cy] = [F.x + (c + 0.5) * pitch, y0 + (r + 0.5) * pitch];
+      d += poly(Array.from({ length: 16 }, (_, i) => [cx + (i % 2 ? inn : out) * Math.sin((i * Math.PI) / 8), cy - (i % 2 ? inn : out) * Math.cos((i * Math.PI) / 8)] as const));
+    }
+  }
+  return frame(`<path d="${d}" fill="#fff" stroke="none"/>`, 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
