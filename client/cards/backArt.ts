@@ -267,48 +267,42 @@ function koch(small: boolean): string {
 }
 
 /**
- * The Mandelbrot set: the numbers c for which z -> z*z + c, begun at nothing, never runs away. Two of them, the usual
- * way round above and turned right round below, so the card reads the same either way up (a small card has one).
- * Worked out on a grid of square cells and drawn as rows of filled strips; the needle, which is thinner than any
- * cell, is drawn in as a line.
+ * The Mandelbrot set: the numbers c for which z -> z*z + c, begun at nothing, never runs away. One, stood on end
+ * (its needle pointing up), which is how it fills a card best. Worked out on a grid of square cells and drawn as rows
+ * of filled strips; the needle, which is thinner than any cell, is drawn in as a line.
  */
 function mandelbrot(small: boolean): string {
   const inside = (re: number, im: number): boolean => {
     let [x, y] = [0, 0];
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 120; i++) {
       [x, y] = [x * x - y * y + re, 2 * x * y + im];
       if (x * x + y * y > 4) return false;
     }
     return true;
   };
-  // The set lies between -2.05 and 0.55 across and -1.15 and 1.15 up and down: `u` px to one of those units.
-  const u = Math.min((F.w * 0.97) / 2.6, (F.h * (small ? 0.9 : 0.47)) / 2.3);
-  const cell = small ? 1.4 : 0.75;
-  const cols = Math.ceil((2.6 * u) / cell);
-  const rows = Math.ceil((2.3 * u) / cell);
+  // The set lies between -2.05 and 0.55 (here: from the top down) and between -1.15 and 1.15 (across): `u` px to one of those units.
+  // (A little wider than the field: only the tips of its two side buds reach that far, and they may cross the thin line.)
+  const u = Math.min((F.w * 1.08) / 2.3, (F.h * 0.96) / 2.6);
+  const cell = small ? 1.3 : 0.6;
+  const rows = Math.ceil((2.6 * u) / cell);
+  const cols = Math.ceil((2.3 * u) / cell);
+  const at = (re: number, im: number): [number, number] => [W / 2 + im * u, H / 2 + (re + 0.75) * u];
   let d = '';
-  let needle = '';
-  for (const turn of small ? [1] : [1, -1]) {
-    // The middle of this one (the point -0.75 + 0i is put at the middle of the card's width).
-    const cy = small ? H / 2 : H / 2 - turn * F.h * 0.25;
-    const at = (re: number, im: number): [number, number] => [W / 2 + turn * (re + 0.75) * u, cy - turn * im * u];
-    for (let r = 0; r < rows; r++) {
-      const im = 1.15 - ((r + 0.5) / rows) * 2.3;
-      let from = -1;
-      for (let c = 0; c <= cols; c++) {
-        const on = c < cols && inside(-2.05 + ((c + 0.5) / cols) * 2.6, im);
-        if (on && from < 0) from = c;
-        if (!on && from >= 0) {
-          const [x0, y0] = at(-2.05 + (from / cols) * 2.6, 1.15 - (r / rows) * 2.3);
-          const [x1, y1] = at(-2.05 + (c / cols) * 2.6, 1.15 - ((r + 1) / rows) * 2.3);
-          d += `M${n(x0)} ${n(y0)}H${n(x1)}V${n(y1 + turn * 0.12)}H${n(x0)}Z`; // (a hair too deep: no cloth between the rows)
-          from = -1;
-        }
+  for (let r = 0; r < rows; r++) {
+    const re = -2.05 + ((r + 0.5) / rows) * 2.6;
+    let from = -1;
+    for (let c = 0; c <= cols; c++) {
+      const on = c < cols && inside(re, -1.15 + ((c + 0.5) / cols) * 2.3);
+      if (on && from < 0) from = c;
+      if (!on && from >= 0) {
+        const [x0, y0] = at(-2.05 + (r / rows) * 2.6, -1.15 + (from / cols) * 2.3);
+        const [x1, y1] = at(-2.05 + ((r + 1) / rows) * 2.6, -1.15 + (c / cols) * 2.3);
+        d += `M${n(x0)} ${n(y0)}H${n(x1)}V${n(y1 + 0.12)}H${n(x0)}Z`; // (a hair too deep: no cloth between the rows)
+        from = -1;
       }
     }
-    needle += pts([at(-2, 0), at(-1.4, 0)]);
   }
-  return frame(`<path d="${d}" fill="#fff" stroke="none"/><path d="${needle}" stroke-width="${small ? 1 : 0.5}"/>`, 1, small);
+  return frame(`<path d="${d}" fill="#fff" stroke="none"/><path d="${pts([at(-2, 0), at(-1.4, 0)])}" stroke-width="${small ? 1.2 : 0.6}"/>`, 1, small);
 }
 
 const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot };
