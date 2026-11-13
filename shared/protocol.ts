@@ -39,6 +39,7 @@ export const CARD_BACKS = {
   herringbone: 'Herringbone',
   honeycomb: 'Honeycomb',
   starcross: 'Star and cross',
+  houndstooth: 'Houndstooth',
   // Pictures (public/cards/backs):
   bicycle: 'Rider',
   ornate: 'Ornate',

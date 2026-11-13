@@ -7,6 +7,7 @@ import { CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 import type { Suit } from '../shared/types';
 import { BACKS, backOf, Face } from './cards/Face';
 import { setPrefs, usePrefs } from './prefs';
+import { riffle } from './sound';
 
 const SUITS: Suit[] = ['S', 'H', 'C', 'D'];
 const RANKS = Array.from({ length: 13 }, (_, i) => i + 1);
@@ -71,11 +72,10 @@ export function Gallery() {
       <section>
         <div className="heading">
           <h2>Faces</h2>
-          <div className="modes" role="radiogroup" aria-label="Light or dark cards">
+          {/* Light or dark cards: two counters, as the backs have for their colour. */}
+          <div className="inks" role="radiogroup" aria-label="Light or dark cards">
             {([false, true] as const).map((night) => (
-              <button key={String(night)} type="button" role="radio" aria-checked={prefs.night === night} className={prefs.night === night ? 'on' : ''} onClick={() => setPrefs({ night })}>
-                {night ? 'Dark' : 'Light'}
-              </button>
+              <button key={String(night)} type="button" role="radio" aria-checked={prefs.night === night} aria-label={night ? 'Dark cards' : 'Light cards'} title={night ? 'Dark cards' : 'Light cards'} className={prefs.night === night ? 'on' : ''} style={{ background: night ? '#1b2132' : '#fffdf7' }} onClick={() => setPrefs({ night })} />
             ))}
           </div>
         </div>
@@ -83,7 +83,7 @@ export function Gallery() {
           {(Object.keys(DECKS) as Deck[]).map((deck) => (
             <Fragment key={deck}>
               <article className={`${prefs.deck === deck ? 'on' : ''}${all === deck ? ' open' : ''}`}>
-                <button type="button" className="fan" aria-pressed={prefs.deck === deck} aria-label={`Use the ${DECKS[deck]} deck`} onClick={() => setPrefs({ deck })}>
+                <button type="button" className="fan" aria-pressed={prefs.deck === deck} aria-label={`Use the ${DECKS[deck]} deck`} onClick={() => setPrefs({ deck })} onPointerEnter={(e) => e.pointerType === 'mouse' && riffle()}>
                   {HAND.map(([suit, rank], i) => (
                     <span key={i} className="leaf" style={{ '--i': i - (HAND.length - 1) / 2 } as CSSProperties}>
                       <Card deck={named(deck)} suit={suit} rank={rank} mini={false} />

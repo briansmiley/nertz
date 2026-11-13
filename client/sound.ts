@@ -225,6 +225,11 @@ export function stockCard(who: Who = 'me'): void {
   hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, who });
 }
 
+/** A hand opened out (the decks page): a short quiet riffle, seven thin flicks run together. */
+export function riffle(): void {
+  for (let i = 0; i < 7; i++) hit(pick(FLICKS), { gain: rand(0.05, 0.08), rate: rand(1.3, 1.6), thin: 2200, attack: 0.006, delay: i * 0.024 });
+}
+
 export function recycle(who: Who = 'me'): void {
   hit('slide-2', { gain: 0.3, rate: 1.1, who });
 }

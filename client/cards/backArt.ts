@@ -442,7 +442,33 @@ function starCross(small: boolean): string {
   return frame(`<path d="${d}" fill="#fff" stroke="none"/>`, 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross };
+/**
+ * Houndstooth, as it is woven: threads four of one colour and four of the other, both ways, in a twill where each
+ * thread goes over two and under two, stepping one along each row. What shows at a crossing is whichever thread is on
+ * top there; the broken checks with their teeth come of that. One repeat is eight threads by eight.
+ */
+function houndstooth(small: boolean): string {
+  const white = (i: number, j: number): boolean => {
+    const over = (((i - j) % 4) + 4) % 4 < 2; // the upright thread is on top here
+    return (over ? i : j) % 8 < 4;
+  };
+  const across = small ? 3 : 5; // repeats across the card
+  const cell = F.w / (across * 8);
+  let d = '';
+  const down = Math.ceil(F.h / cell);
+  for (let j = 0; j < down; j++) {
+    for (let i = 0; i < across * 8; i++) {
+      if (!white(i, j)) continue;
+      let end = i;
+      while (end + 1 < across * 8 && white(end + 1, j)) end++;
+      d += `M${n(F.x + i * cell)} ${n(F.y + j * cell)}h${n((end - i + 1) * cell)}v${n(cell + 0.1)}h${n(-(end - i + 1) * cell)}z`;
+      i = end;
+    }
+  }
+  return frame(clipped(`<path d="${d}" fill="#fff" stroke="none"/>`), 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
