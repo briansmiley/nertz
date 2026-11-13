@@ -1446,8 +1446,9 @@ button {
 .corner {
   position: fixed;
   z-index: 45000; /* over the score sheet, under the connection banner */
-  left: 12px;
-  bottom: 10px;
+  /* (The page runs to the edges of the screen, viewport-fit=cover: clear of a notch and of the bar at the bottom.) */
+  left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1712,7 +1713,7 @@ label.check {
 .chat {
   position: fixed;
   z-index: 45000;
-  left: 10px;
+  left: max(10px, env(safe-area-inset-left, 0px));
   top: 10px; /* the bottom-left corner belongs to the mute button and the gear */
   font-size: 14px;
   line-height: 1.35;
@@ -2288,7 +2289,66 @@ label.check {
   }
 }
 
-/* A phone on its side: under your hand there is room for your name and nothing else. */
+/* A phone on its side: the stuck button is a small pill beside your hand; the clock stands in line after the buttons. */
+.table.short .stuck {
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.table.short .stuck small {
+  font-size: 10.5px;
+}
+
+.table.short .tag {
+  gap: 5px;
+  font-size: 12px;
+}
+
+@media (max-height: 499px) and (orientation: landscape) {
+  /* The clock stands beside the chat button: above the sound and settings buttons is a neighbour's hand. */
+  .corner .clock {
+    position: fixed;
+    left: calc(max(10px, env(safe-area-inset-left, 0px)) + 68px);
+    top: 20px;
+    bottom: auto;
+    font-size: 16px;
+  }
+
+  .slip {
+    max-height: calc(100dvh - 64px);
+    overflow-y: auto;
+  }
+
+  /* (Open, the slip reaches the top of the screen: it lies over the chat button.) */
+  .corner:has(.slip) {
+    z-index: 45001;
+  }
+}
+
+/* In your settings, on a phone: how to be rid of the browser's bars. */
+.whole {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.whole small {
+  font-size: 12.5px;
+  line-height: 1.35;
+  opacity: 0.8;
+}
+
+.whole .go {
+  justify-self: start;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Under your hand there is room for your name and nothing else. */
 .table.short .mine .left,
 .table.short .mine .where {
   display: none;

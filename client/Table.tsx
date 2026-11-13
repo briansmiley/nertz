@@ -10,7 +10,7 @@
 // each dragging client reports where its card is (`drag` messages, about 18 a
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
-import { useViewport } from './viewport';
+import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
@@ -38,8 +38,6 @@ const Z_HELD = 30000;
 const DRAG_SLOP = 6; // px of travel before a press becomes a drag
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
 const TOUCH_RISE_PX = 44;
-/** A window lower than this (a phone on its side) has no room under your hand for more than your name: the nertz pile wears its count. */
-const SHORT_BELOW = 500;
 const TOUCH_CLEAR_PX = 10;
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
@@ -400,7 +398,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = setTimeout(() => setTurned((n) => n + 1), Math.max(0, until - performance.now()) + 1);
     return () => clearTimeout(t);
   }, [groupHeld, turning]);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld), [W, H, game, you, stage, peek, packet, groupHeld]);
+  // (The screen's own edges are read again whenever the window changes: turning a phone moves its notch.)
+  const pad = useMemo(() => insets(), [W, H]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld, pad), [W, H, game, you, stage, peek, packet, groupHeld, pad]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
   const drag = useRef<Drag | null>(null);
@@ -929,7 +929,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   return (
     <>
     <div
-      className={`table${L.tall ? ' tall' : H < SHORT_BELOW ? ' short' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
+      className={`table${L.tall ? ' tall' : L.low ? ' short' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
       aria-hidden={paused || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -961,7 +961,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               <i className="chip" style={{ background: backColour(o.seat) }} />
               <span className="name">{name(o.seat)}</span>
               <span className="pts">{points(total(o.seat))}</span>
-              {p?.bot && !(L.tall && o.box.w < 150) && <em className="bot">bot</em>}
+              {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.connected === false ? <em className="flag">away</em> : st?.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
@@ -989,7 +989,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           </div>
           <div className="slot" style={box(me.waste)} />
           {/* Upright, your line stands between the nertz pile and the stock, and the pile wears its count as everyone else's does. */}
-          {(L.tall || H < SHORT_BELOW) && !dealing && me.nertzCount > 0 && (
+          {(L.tall || L.low) && !dealing && me.nertzCount > 0 && (
             <b className="count" style={{ left: me.nertz.x + me.nertz.w - 14, top: me.nertz.y + me.nertz.h - 14 }}>
               {me.nertzCount}
             </b>
@@ -1012,7 +1012,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             <button
               type="button"
               className={`stuck${mine.stuck ? ' on' : ''}`}
-              style={L.tall ? { left: 74, top: 9, height: 32 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
+              style={L.tall ? { left: 74, top: 9, height: 32 } : L.low ? { left: me.box.x + me.box.w + 10, top: me.stock.y + oh - 32, height: 32 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
               onClick={(e) => {
                 send({ k: 'stuck', on: !mine.stuck });
                 e.currentTarget.blur(); // keep Space for dealing
@@ -1020,11 +1020,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             >
               {mine.stuck ? (
                 <>
-                  Stuck <small>{waitingOn > 0 ? (L.tall ? `${waitingOn} to go` : `waiting on ${waitingOn} more`) : 'reshuffling'}</small>
+                  Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
                 </>
               ) : (
                 <>
-                  I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn} {L.tall ? 'already' : 'stuck already'}</small>}
+                  I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
                 </>
               )}
             </button>

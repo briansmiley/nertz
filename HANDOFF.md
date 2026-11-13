@@ -70,6 +70,16 @@ rects, so drags, live card movement and the deal needed no change.
 - The end of a round can be skipped with a button (it was Escape only); labels of the sorted piles are kept on screen.
 - Score sheet, lobby, home, settings slip and chat panel fit a 360 px screen; inputs are 16 px on touch (no iOS zoom).
 - A phone on its side keeps the desktop arrangement with a shorter label under the hand (`.table.short`).
+- A phone on its side (`LOW`, `isLow` in `client/layout.ts`: not upright and lower than 500 px): everyone else is a
+  small upright hand in a column at each side of the felt (clockwise, up the left column and down the right), so the
+  felt has the whole height above your hand. The stuck button is a pill beside your hand; the clock stands beside Chat.
+- The stuck button reads x/n (how many are stuck, of how many playing) everywhere; upright it is a pill in the top bar.
+- The page runs to the screen's edges (`viewport-fit=cover`); `insets()` in `client/viewport.ts` reads the notch and
+  bottom-bar insets and `computeLayout` keeps hands and your own row out of them (`keep`). Untested on a real notch.
+- Home screen: `public/manifest.json`, icons and the Apple tags make the game open with no browser bars once added to
+  a phone's home screen. Your settings has a "Whole screen" section on touch devices: a full-screen button where the
+  browser allows it (Android), the home-screen steps where it does not (iPhone).
+- `useViewport` (`client/viewport.ts`) reads the window's size again after a phone is turned.
 - Checked only in headless Chromium at phone sizes (360x640 to 390x844, 2 to 6 players, touch events through CDP):
   NOT on a real phone, not in Safari. Scripts for that are not in the repo.
 - Known limits: cards on the felt are about 23 to 29 px wide on a phone (the felt is a fixed wide shape shared by every

@@ -138,6 +138,8 @@ export interface Layout {
    */
   tall: boolean;
   bar: number;
+  /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
+  low: boolean;
 }
 
 const RATIO = CARD_H / CARD_W;
@@ -443,6 +445,23 @@ const CLEAR = 14;
 export const TALL = { below: 640, ratio: 1.2, bar: 50, edge: 10, cols: 3, gap: 0.14, tray: 0.56, room: 0.8, between: 0.12, share: 0.42, oppShare: 0.62 } as const;
 export const isTall = (W: number, H: number): boolean => W < TALL.below && H >= W * TALL.ratio;
 
+/**
+ * A phone on its side: wide, and too low for a row of hands above the felt. Everyone else sits in two columns, one at
+ * each side of the felt (small upright hands, clockwise from the bottom of the left column), so the felt has the whole
+ * height above your own hand. Each column is kept at least `col` wide (a hand whose cards are about 14 px), the left
+ * one starts `top` down (under the chat button) and ends `knobs` above the bottom (over the sound and settings buttons).
+ */
+export const LOW = { below: 500, col: 118, top: 50, knobs: 52 } as const;
+export const isLow = (W: number, H: number): boolean => !isTall(W, H) && H < LOW.below;
+
+/** What the screen keeps for itself at its edges (a notch at the side of a phone on its side, the bar at the bottom): nothing is put there. */
+export interface Insets {
+  l: number;
+  r: number;
+  b: number;
+}
+const NO_INSETS: Insets = { l: 0, r: 0, b: 0 };
+
 /** An opponent's card is this share of the window's height wide, by how many opponents there are. */
 const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
 
@@ -454,7 +473,8 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, packet = true, held?: ReadonlyMap<number, number>): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, packet = true, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS): Layout {
+  const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
   const n = game.players.length;
   const mine = game.players.find((p) => p.seat === you);
@@ -463,6 +483,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // Opponents in seat order starting after you: clockwise round the table, from your left.
   const others = mine ? [...game.players.slice(view + 1), ...game.players.slice(0, view)] : game.players;
   const tall = isTall(W, H);
+  const low = isLow(W, H);
   const edge = tall ? TALL.edge : 16;
 
   // Your hand: bottom, as large as the window allows. (Upright: in two rows, see TALL.)
@@ -481,7 +502,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // Everyone else, by the direction their seat lies in as seen from yours: (0, 1) is straight down, towards you.
   const seats = others.map((p) => {
     const dir = seatDir((game.players.indexOf(p) - view + n) % n, n);
-    return { p, dir, where: tall ? ('top' as const) : dir.y > 0.9 ? ('bottom' as const) : dir.y < -0.4 ? ('top' as const) : ('side' as const) };
+    return { p, dir, where: tall ? ('top' as const) : low ? ('col' as const) : dir.y > 0.9 ? ('bottom' as const) : dir.y < -0.4 ? ('top' as const) : ('side' as const) };
   });
   const size = cardSize(n);
   const hw = feltHw(n);
@@ -498,11 +519,25 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       if (w > grid.w + 0.5) Object.assign(grid, { cols, w });
     }
   }
+  // On its side: the felt is sized first (it has the height above your hand, and the width the two columns leave),
+  // then the hands of the others, as large as their columns and the number in each allow.
+  const sideL = Math.max(8, keep.l);
+  const sideR = Math.max(8, keep.r);
+  const col = { u: 0, w: 0, left: Math.ceil(seats.length / 2), topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: (mine ? ownTop : H - 12) - 6 };
+  if (low) {
+    const most = W - sideL - sideR - 2 * (LOW.col + CLEAR);
+    col.u = Math.max(40, Math.min(most / (2 * hw), ((mine ? ownTop : H - 12) - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
+    const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
+    const each = (room: number, k: number) => (k ? (room / k - TAG_H - 6) / (RATIO * 1.85) : Infinity);
+    col.w = Math.min(wide / OPP_UNITS, each(col.botL - col.topL, col.left), each(col.botR - col.topR, seats.length - col.left), mine ? ow * 0.62 : OPP_MAX);
+  }
   const tops = seats.filter((s) => s.where === 'top');
   const sides = seats.some((s) => s.where === 'side');
   const mw = tall
     ? clamp(grid.w, 11, OPP_MAX)
-    : clamp(
+    : low
+      ? clamp(col.w, 11, OPP_MAX)
+      : clamp(
     Math.min(
       H * OPP_SIZE[Math.min(5, others.length)]!,
       mine ? ow * 0.62 : OPP_MAX,
@@ -520,7 +555,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   const rowStep = handH + TAG_H + 10; // upright: from one row of hands to the next
   const rows = tall ? Math.ceil(seats.length / grid.cols) : 1;
   // The band of the window the felt may use: under the top row, above your hand.
-  const bandTop = tall ? topY + (rows - 1) * rowStep + handH + CLEAR : tops.length ? topY + handH + CLEAR : 30;
+  const bandTop = tall ? topY + (rows - 1) * rowStep + handH + CLEAR : low ? 6 : tops.length ? topY + handH + CLEAR : 30;
   const bandBottom = (mine ? ownTop : seats.some((s) => s.where === 'bottom') ? H - 12 - handH - TAG_H : H - 12) - CLEAR - 4;
   const cy = (bandTop + bandBottom) / 2;
   // The top row is spread out when there is room (three across the top sit shoulder to shoulder), and stays out of the corners.
@@ -558,6 +593,17 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       cards.push(...local);
       return turned;
     }
+    if (where === 'col') {
+      // Clockwise from your left: up the left column, then down the right one. Each has an equal share of its column.
+      const left = i < col.left;
+      const count = left ? col.left : seats.length - col.left;
+      const k = left ? col.left - 1 - i : i - col.left; // from the top
+      const [top, bottom] = left ? [col.topL, col.botL] : [col.topR, col.botR];
+      const share = (bottom - top) / count;
+      const y = top + k * share + TAG_H + Math.max(0, (share - TAG_H - handH) / 2);
+      // (On the right the hand is mirrored: either way the nertz pile is at the outer edge.)
+      return placeHand(p, { ...spec, flip: !left, x: left ? sideL : W - sideR - handW, y }, cards);
+    }
     if (tall) {
       // In seat order, left to right and row by row: whoever is on your left comes first. A short last row is centred.
       const row = Math.floor(i / grid.cols);
@@ -571,7 +617,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than
   // makes its cards the size of your own.
   const room = tall ? feltRoom : W - 2 * (sides ? edge + handH + CLEAR : edge);
-  const u = Math.max(40, Math.min(room / (2 * hw), (bandBottom - bandTop) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
+  const u = low ? col.u : Math.max(40, Math.min(room / (2 * hw), (bandBottom - bandTop) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
   const felt: Felt = { cx: W / 2, cy, u };
   const fw = size.w * u;
   const fh = fw * RATIO;
@@ -665,7 +711,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0 };
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low };
 }
 
 // ---------------------------------------------------------------- an Ace in hand on a table without marked places
