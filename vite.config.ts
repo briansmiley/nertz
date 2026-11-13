@@ -7,10 +7,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: Number(process.env.VITE_PORT) || 5173, // (VITE_PORT and PORT: a second checkout can run beside the first)
     strictPort: true,
     proxy: {
-      '/ws': { target: 'ws://localhost:8787', ws: true },
+      '/ws': { target: `ws://localhost:${Number(process.env.PORT) || 8787}`, ws: true },
     },
   },
   build: { outDir: 'dist', emptyOutDir: true },

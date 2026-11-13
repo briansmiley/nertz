@@ -846,9 +846,27 @@ button {
   padding: 4px 12px;
   border-radius: 99px;
   font-size: 12.5px;
+  border: 0;
   color: var(--chalk-dim);
   background: rgba(8, 28, 33, 0.6);
-  pointer-events: none;
+  white-space: nowrap;
+}
+
+.skip small {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+@media (pointer: coarse) {
+  .skip {
+    padding: 8px 14px;
+    font-size: 14px;
+    color: var(--chalk);
+  }
+
+  .skip small {
+    display: none;
+  }
 }
 
 .banner {
@@ -2114,4 +2132,167 @@ label.check {
 .calm .card.nudge,
 .calm .card.nudge2 {
   animation: none;
+}
+
+/* ------------------------------------------------------------ a phone held upright */
+
+/* The table lays itself out for a narrow upright screen (client/layout.ts, TALL): what stands around it follows. */
+.table.tall .mine {
+  justify-items: center;
+  gap: 3px;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.table.tall .mine .left,
+.table.tall .mine .where {
+  display: none;
+}
+
+.table.tall .mine .who {
+  max-width: 100%;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table.tall .stuck {
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  font-size: 14px;
+}
+
+.table.tall .stuck small {
+  font-size: 11px;
+}
+
+.table.tall .tag {
+  gap: 5px;
+  font-size: 13px;
+}
+
+.table.tall .tag .pts {
+  font-size: 15px;
+}
+
+@media (max-width: 639px) and (min-aspect-ratio: 0/1) and (max-aspect-ratio: 5/6) {
+  /* The buttons go to the bar across the top: the bottom of the screen is your hand. */
+  .corner {
+    left: auto;
+    right: 8px;
+    top: 7px;
+    bottom: auto;
+  }
+
+  /* (No room in the bar for the round's clock.) */
+  .corner .clock {
+    display: none;
+  }
+
+  .slip {
+    left: auto;
+    right: 0;
+    top: 46px;
+    bottom: auto;
+    max-height: calc(100dvh - 70px);
+    overflow: auto;
+  }
+
+  .chat {
+    left: 8px;
+    top: 7px;
+  }
+
+  .chat-bar button,
+  .chat-bar .mic {
+    min-height: 36px;
+    padding: 4px 14px 5px;
+  }
+}
+
+.table.tall .skip {
+  top: 9px;
+  bottom: auto;
+}
+
+@media (max-width: 480px) {
+  /* The score pad on a narrow screen: less margin, and the sheet's sums in short. */
+  .solo {
+    padding: 3.6rem 0.6rem 1rem;
+  }
+
+  .pad {
+    padding: 2.3rem 1rem 1.3rem 2.2rem;
+    background-image:
+      linear-gradient(90deg, transparent 1.5rem, rgba(207, 34, 51, 0.45) 1.5rem, rgba(207, 34, 51, 0.45) calc(1.5rem + 1.5px), transparent calc(1.5rem + 1.5px)),
+      repeating-linear-gradient(transparent 0 calc(2rem - 1px), var(--rule) calc(2rem - 1px) 2rem);
+    rotate: none;
+  }
+
+  .scores {
+    font-size: 0.85rem;
+  }
+
+  .scores th,
+  .scores td {
+    padding: 0 0.25rem;
+  }
+
+  .scores thead th {
+    font-size: 0.72rem;
+    white-space: normal;
+    line-height: 1.05;
+  }
+
+  .scores tbody th {
+    max-width: 7.5rem;
+    font-size: 0.95rem;
+  }
+
+  .scores td {
+    font-size: 1rem;
+  }
+
+  .scores td.total {
+    font-size: 1.25rem;
+  }
+
+  .scores .calc {
+    display: none;
+  }
+
+  .hero h1 {
+    font-size: 4rem;
+  }
+
+  .home {
+    gap: 1.25rem;
+    padding-top: 3.5rem;
+  }
+}
+
+/* Touch screens: a double tap is two taps, never a zoom, and typing never zooms the page in (iOS does below 16px). */
+@media (pointer: coarse) {
+  html {
+    touch-action: manipulation;
+    overscroll-behavior: none;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* A phone on its side: under your hand there is room for your name and nothing else. */
+.table.short .mine .left,
+.table.short .mine .where {
+  display: none;
+}
+
+.table.short .mine .who {
+  margin-top: 0;
 }

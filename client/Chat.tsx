@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
-import { computeLayout } from './layout';
+import { computeLayout, isTall } from './layout';
 import { say, setOpen, setSocial, useSocial } from './social';
 import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
 
@@ -30,6 +30,7 @@ function useWidth(room: RoomView, open: boolean): number {
   const game = open && room.phase === 'playing' ? room.game : null;
   const [W, H] = size;
   return useMemo(() => {
+    if (isTall(W, H)) return Math.min(WIDEST, W - 2 * EDGE); // upright there is no room beside the table: the panel lies over it
     if (!game) return WIDEST;
     const L = computeLayout(W, H, game, room.you);
     const left = Math.min(L.middle.x, ...(L.me ? [L.me.box.x] : []));

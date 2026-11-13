@@ -322,7 +322,16 @@ function Results({ room }: { room: RoomView }) {
                   {me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) && <Unseat name={s.name} seat={s.seat} />}
                 </th>
                 <td>{signed(s.played)}</td>
-                <td>{s.nertzLeft ? `${s.nertzLeft} × −2 = ${signed(-2 * s.nertzLeft)}` : 'out'}</td>
+                <td>
+                  {s.nertzLeft ? (
+                    <>
+                      <span className="calc">{s.nertzLeft} × −2 = </span>
+                      {signed(-2 * s.nertzLeft)}
+                    </>
+                  ) : (
+                    'out'
+                  )}
+                </td>
                 <td>{signed(s.delta)}</td>
                 <td className="total">{s.total < 0 ? `−${-s.total}` : s.total}</td>
               </tr>

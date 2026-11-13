@@ -3,7 +3,7 @@ import { applyIntent, canDrop, deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZ
 import { CARD_RATIO, cardSize, feltHw, offFelt, pileGap, roomAt, TABLE, tiltAt, type TableMode } from '../shared/table';
 import type { Card, GameState } from '../shared/types';
 import { LABEL, planFinale, restAt, TILT } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, keepOut, landingAt, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
+import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
@@ -839,5 +839,49 @@ describe('a group dealt off the stock', () => {
     const L = computeLayout(1280, 720, g, 0, 'live', null, false);
     const c = at(L, g.players[0]!.waste.at(-1)!.id)!;
     expect(c.pile === 'waste' && !c.up).toBe(true);
+  });
+});
+
+describe('a phone held upright', () => {
+  const sizes = [
+    [360, 640],
+    [375, 667],
+    [390, 844],
+    [430, 932],
+  ] as const;
+  const apart = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+
+  it('is laid out its own way only when the window is narrow and tall', () => {
+    expect(isTall(390, 844)).toBe(true);
+    expect(isTall(844, 390)).toBe(false);
+    expect(isTall(1280, 720)).toBe(false);
+    expect(isTall(700, 1000)).toBe(false);
+  });
+
+  it('keeps every hand and the felt on the screen and clear of each other, for two to six players', () => {
+    for (const [W, H] of sizes) {
+      for (let n = 2; n <= 6; n++) {
+        const L = computeLayout(W, H, deal(seats(n), rng(n)), 0);
+        const at = `${W}x${H}, ${n} players`;
+        expect(L.tall, at).toBe(true);
+        const me = L.me!;
+        // Your hand: two rows, the work piles over the nertz pile and the stock, all of it on the screen.
+        expect(me.workAt.every((r) => r.y < me.nertz.y && r.x >= 0 && r.x + r.w <= W), at).toBe(true);
+        expect(me.nertz.x < me.stock.x && me.stock.x < me.waste.x && me.waste.x + me.waste.w <= W && me.nertz.y + me.nertz.h <= H, at).toBe(true);
+        expect(me.work.every((r) => r.y + r.h <= me.nertz.y), at).toBe(true); // a dealt pile ends above the second row
+        expect(me.nertz.w, at).toBeGreaterThanOrEqual(56); // cards a thumb can take hold of
+        // The felt: on the screen, under the others and above your hand.
+        expect(L.middle.x >= 0 && L.middle.x + L.middle.w <= W, at).toBe(true);
+        expect(L.middle.y + L.middle.h <= me.box.y, at).toBe(true);
+        for (const o of L.opponents) {
+          const box = { ...o.box, y: o.box.y - TAG_H, h: o.box.h + TAG_H };
+          expect(box.x >= 0 && box.x + box.w <= W && box.y >= L.bar, at).toBe(true); // under the bar of buttons
+          expect(box.y + box.h <= L.middle.y, at).toBe(true);
+          expect(L.opponents.every((p) => p === o || apart(o.box, p.box)), at).toBe(true);
+        }
+        // Nothing of anyone's is drawn off the sides.
+        expect(L.cards.filter((c) => c.pile !== 'tray').every((c) => c.x >= -1 && c.x + c.s * 90 <= W + 1), at).toBe(true);
+      }
+    }
   });
 });

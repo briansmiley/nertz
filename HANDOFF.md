@@ -48,6 +48,26 @@ turnarounds over long verification loops for small visual changes.
 - The dotted outline under the stock sits under its bottom card (`stockPad`), so it does not show as the stack thins.
 - The Start button's small print is just "Space".
 
+## Mobile (branch `mobile`, 13 Nov 2026, NOT merged or deployed)
+
+A phone held upright (narrower than 640 px and at least 1.2 times as tall: `isTall`, `TALL` in `client/layout.ts`) gets
+its own table: a bar across the top for the buttons (chat left; sound, pause, gear right), everyone else in rows under
+it (one to three hands to a row, whichever leaves their cards largest), the felt the width of the screen, and your hand
+in two rows: four work piles with the tray beside them, and under them the nertz pile (left), your name and the stuck
+button (middle), the stock and waste (right). `placeHand` takes `rows` for that. Everything else follows the `Seat`
+rects, so drags, live card movement and the deal needed no change.
+
+- Touch: a dragged card rises until its lower edge is just above the fingertip, and is aimed by its own middle, not
+  by the finger (`Drag.touch`, `pointOf` in `Table.tsx`).
+- The end of a round can be skipped with a button (it was Escape only); labels of the sorted piles are kept on screen.
+- Score sheet, lobby, home, settings slip and chat panel fit a 360 px screen; inputs are 16 px on touch (no iOS zoom).
+- A phone on its side keeps the desktop arrangement with a shorter label under the hand (`.table.short`).
+- Checked only in headless Chromium at phone sizes (360x640 to 390x844, 2 to 6 players, touch events through CDP):
+  NOT on a real phone, not in Safari. Scripts for that are not in the repo.
+- Known limits: cards on the felt are about 23 to 29 px wide on a phone (the felt is a fixed wide shape shared by every
+  screen, so its size goes by the screen's width); at 360x640 with three or more opponents their cards are about 13 px.
+  The end-of-round pile labels can lie over a hand. `VITE_PORT` / `PORT` let a second checkout run its own dev servers.
+
 ## To do, in the owner's priority order
 
 1. ~~**Centre cards are too small.**~~ Done in `def509f` (not yet seen in a browser): caps raised, felt 2.2:1 from four

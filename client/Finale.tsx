@@ -28,6 +28,8 @@ const LAND_MS = 420; // a card's trip from the wash onto its owner's pile
 const WASH_SPREAD = { x: 0.62, y: 0.6 };
 /** The label beside a sorted pile (name, played, penalty, net score): it is laid out in a box of exactly this size. */
 export const LABEL = { w: 176, h: 62 };
+/** A label lying partly off the window is this many times worse than one lying over a hand: off the window it cannot be read at all. */
+const OFF_WINDOW = 8;
 /** Clear felt between a sorted pile and the edge of the felt, and between it and the wash or its label. */
 const RIM = 5;
 /** How far the solid block behind a pile and its label reaches beyond the two. */
@@ -212,7 +214,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
       for (const at of side === 'left' || side === 'right' ? ys : xs) {
         const box: Rect = side === 'left' || side === 'right' ? { x: across[side], y: at, ...LABEL } : { x: at, y: along[side], ...LABEL };
         // What it would lie over of the things that do not move, and how much of it would be off the window.
-        const cost = Math.round(LABEL.w * LABEL.h - overlap(box, frame) + fixed.reduce((sum, r) => sum + (r === drawn ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
+        const cost = Math.round(OFF_WINDOW * (LABEL.w * LABEL.h - overlap(box, frame)) + fixed.reduce((sum, r) => sum + (r === drawn ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
         options.push({ side, box, cost });
       }
     }

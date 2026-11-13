@@ -35,6 +35,11 @@ const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const
 const Z_FLYING = 10000;
 const Z_HELD = 30000;
 const DRAG_SLOP = 6; // px of travel before a press becomes a drag
+/** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
+const TOUCH_RISE_PX = 44;
+/** A window lower than this (a phone on its side) has no room under your hand for more than your name: the nertz pile wears its count. */
+const SHORT_BELOW = 500;
+const TOUCH_CLEAR_PX = 10;
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
@@ -318,6 +323,8 @@ interface Drag {
   px: number;
   py: number;
   base: { x: number; y: number }[];
+  /** A finger, not a mouse: the card is carried above it, where it can be seen, and is aimed by its own middle. */
+  touch: boolean;
   active: boolean;
   /** The last report of where it is, when one was last sent, and the timer for one that is waiting its turn. */
   report: ({ t: 'drag' } & DragAt) | null;
@@ -650,6 +657,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const c = byId.get(d.lead);
     return h && c ? { x: h.x.get() + (h.s.get() * CARD_W) / 2, y: h.y.get() + (h.s.get() * CARD_H) / 2 } : null;
   };
+  /** What a drag points with: the pointer, or under a finger (which hides what is beneath it) the middle of the card it carries. */
+  const pointOf = (d: Drag, centre: { x: number; y: number } | null): { x: number; y: number } => (d.touch && centre ? centre : { x: d.px, y: d.py });
   /**
    * On a table without marked places an Ace that is over no pile of yours
    * aims at the felt under its own centre: that very point, nothing snaps.
@@ -666,7 +675,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   };
   const targetUnder = (d: Drag): Target | undefined => {
     const centre = centreOf(d);
-    const pile = dropTarget(targetsFor(d.held), { x: d.px, y: d.py }, centre);
+    const pile = dropTarget(targetsFor(d.held), pointOf(d, centre), centre);
     if (pile) return pile;
     const felt = feltUnder(d, centre);
     return felt?.ok ? felt : undefined;
@@ -717,7 +726,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const targets = targetsFor(d.held);
     // (An empty marked place is not somewhere the card is known to be going: an Ace fits them all.)
     if (centre) report(d, centre, targets.filter((t) => typeof t.to === 'object' && t.to.k === 'slot' && game.slots[t.to.i]!.length > 0));
-    const pile = dropTarget(targets, { x: d.px, y: d.py }, centre);
+    const pile = dropTarget(targets, pointOf(d, centre), centre);
     const felt = pile ? undefined : feltUnder(d, centre);
     setHot(pile?.key ?? (felt?.ok ? felt.key : null));
     const el = preview.current;
@@ -788,6 +797,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       px: e.clientX,
       py: e.clientY,
       base: pick.ids.map((i) => ({ x: byId.get(i)!.x, y: byId.get(i)!.y })),
+      touch: e.pointerType !== 'mouse',
       active: false,
       report: null,
       sent: 0,
@@ -849,12 +859,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     // An Ace that may start a pile comes down to the size of a pile in the middle as it reaches the felt, about the
     // point it is held by: what you carry over the felt is exactly what would lie there.
     const home = byId.get(d.lead)?.s ?? 1;
-    const near = d.held.k === 'card' && d.held.ace ? clamp(1 - (offFelt(toTable(L.felt, d.px, d.py), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
+    // Under a finger the card comes up as it is carried off, until its lower edge is just above the fingertip: you
+    // see the whole of it and what it is over. (Not a pile on its way to the tray: that is not a precision job.)
+    const grip = d.sy - d.base[0]!.y; // how far down the grabbed card it was taken
+    const rise = d.touch && d.held.k !== 'pile' ? clamp(Math.hypot(dx, dy) / TOUCH_RISE_PX, 0, 1) * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX - grip) : 0;
+    const near = d.held.k === 'card' && d.held.ace ? clamp(1 - (offFelt(toTable(L.felt, d.px, d.py - rise - (d.touch ? (home * CARD_H) / 2 : 0)), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
     const k = 1 + (L.fs / home - 1) * near;
     d.ids.forEach((id, i) => {
       const h = reg.handles.get(id);
       h?.x.set(d.px - (d.sx - d.base[i]!.x) * k);
-      h?.y.set(d.py - (d.sy - d.base[i]!.y) * k);
+      h?.y.set(d.py - rise * k - (d.sy - d.base[i]!.y) * k);
       h?.z.set(Z_HELD + i);
       if (d.held.k === 'card' && d.held.ace) h?.s.set(home * k);
     });
@@ -913,6 +927,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const waitingOn = active.filter((p) => !p.stuck).length;
   const oh = me ? me.nertz.h : 0;
   const waiting = game.slots.some((_, i) => toClear(i));
+  /** Upright: the room between your nertz pile and your stock, for your name and the stuck button. */
+  const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
   const callerBox = called ? (game.nertzCalledBy === you ? me?.box : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.box) : undefined;
   const finale = stage === 'spread' || stage === 'out' || stage === 'wash' || stage === 'sheet';
   /** An Ace is in hand on a table without marked places. */
@@ -921,7 +937,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   return (
     <>
     <div
-      className={`table${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
+      className={`table${L.tall ? ' tall' : H < SHORT_BELOW ? ' short' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
       aria-hidden={paused || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -953,14 +969,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               <i className="chip" style={{ background: backColour(o.seat) }} />
               <span className="name">{name(o.seat)}</span>
               <span className="pts">{points(total(o.seat))}</span>
-              {p?.bot && <em className="bot">bot</em>}
+              {p?.bot && !(L.tall && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.connected === false ? <em className="flag">away</em> : st?.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
             ))}
             {!dealing && (
-              <b className="count" style={{ left: o.nertz.x + o.nertz.w - 9, top: o.nertz.y + o.nertz.h - 6 }}>
+              <b className="count" style={{ left: Math.min(o.nertz.x + o.nertz.w - 9, W - 24), top: o.nertz.y + o.nertz.h - 6 }}>
                 {o.nertzCount}
               </b>
             )}
@@ -971,17 +987,23 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {me && mine && (
         <>
           <div className="slot" style={box(me.nertz)} />
-          {me.work.map((w, i) => (
-            <div key={i} className="slot" style={box({ ...w, y: me.nertz.y })} />
+          {me.workAt.map((w, i) => (
+            <div key={i} className="slot" style={box(w)} />
           ))}
           <div className={`slot stock${mine.stock.length === 0 && mine.waste.length > 0 ? ' turn' : ''}`} data-stock="" style={box(me.stockPad)}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 12a7 7 0 0 1 12-5l2-2v6h-6l2.3-2.3A4.6 4.6 0 0 0 7.4 12ZM19 12a7 7 0 0 1-12 5l-2 2v-6h6l-2.3 2.3A4.6 4.6 0 0 0 16.6 12Z" />
             </svg>
           </div>
-          <div className="slot" style={box({ ...me.waste, x: me.stock.x + me.stock.w * 1.2 })} />
+          <div className="slot" style={box(me.waste)} />
+          {/* Upright, your line stands between the nertz pile and the stock, and the pile wears its count as everyone else's does. */}
+          {(L.tall || H < SHORT_BELOW) && !dealing && me.nertzCount > 0 && (
+            <b className="count" style={{ left: me.nertz.x + me.nertz.w - 14, top: me.nertz.y + me.nertz.h - 14 }}>
+              {me.nertzCount}
+            </b>
+          )}
 
-          <div className="mine" style={{ right: W - (me.nertz.x + me.nertz.w), top: me.nertz.y + oh + 14 }}>
+          <div className="mine" style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + 2 } : { right: W - (me.nertz.x + me.nertz.w), top: me.nertz.y + oh + 14 }}>
             <span className="left" style={{ visibility: me.nertzCount && !dealing ? 'visible' : 'hidden' }}>
               <b>{me.nertzCount}</b> in your nertz pile
             </span>
@@ -998,7 +1020,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             <button
               type="button"
               className={`stuck${mine.stuck ? ' on' : ''}`}
-              style={{ left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
+              style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + oh - 40, height: 40 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
               onClick={(e) => {
                 send({ k: 'stuck', on: !mine.stuck });
                 e.currentTarget.blur(); // keep Space for dealing
@@ -1079,7 +1101,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       )}
 
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} />}
-      {results && stage !== 'sheet' && <p className="skip">Esc skips to the scores</p>}
+      {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
+      {results && stage !== 'sheet' && (
+        <button type="button" className="skip" onClick={skip}>
+          Skip to the scores <small>Esc</small>
+        </button>
+      )}
     </div>
     {paused && (
       <div className="paused-card" role="dialog" aria-label="Paused">
