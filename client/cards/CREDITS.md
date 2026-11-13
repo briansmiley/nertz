@@ -32,16 +32,14 @@ white-on-nothing pattern that is printed in each player's colour.
 | `carpet` | Russian style card back.jpg | Dondorf GmbH (Germany) | Public domain |
 | `plaid-blue` | Atlas deck card back blue and brown.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
 | `plaid-green` | Atlas deck card back green and dark red.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
-| `votes` | Votes for women 1909 card back design.jpg | Etteilla Foundation | CC BY-SA 4.0 |
 | `gem` | Quaternius - 3D Card Kit - Fantasy - 0 Card Back.png | Quaternius | CC0 |
-| `aces` | Back01.svg | Nicu Buculei | CC0 |
 
 - `ornate` is made from a picture the owner found; WHERE IT IS FROM AND ITS LICENCE ARE NOT YET KNOWN (it looks like
   stock art): it must be cleared, or replaced, before it is deployed.
 - `bicycle` is the Bicycle "Rider Back" of the United States Playing Card Company. The design is from 1887 and out of
   copyright, but Bicycle and the Rider Back are that company's trademarks: decide knowingly whether to ship it, and
   do not call it "Bicycle" in the game. The scan is CC BY-SA 4.0 (credit it, here).
-- CC BY-SA files (`bicycle`, `votes`) need this credit kept, and the changed pictures stay under the same licence.
+- The CC BY-SA file (`bicycle`) needs this credit kept, and the changed picture stays under the same licence.
 
 The "Night" and "Cute" decks are drawn in `Face.tsx` like the first, and are original to this project.
 

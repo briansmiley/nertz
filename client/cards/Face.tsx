@@ -5,6 +5,7 @@
 import { memo, type CSSProperties, type ReactElement } from 'react';
 import type { Suit } from '../../shared/types';
 import { getPrefs, usePrefs, watchPrefs } from '../prefs';
+import { drawnBack, isDrawn } from './backArt';
 import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
 
 /** Cards are drawn at this size (CSS px) and scaled by the table. */
@@ -16,12 +17,21 @@ export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#2
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
 
 /** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */
-const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green', 'votes', 'gem', 'aces']);
+const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green', 'gem']);
+
+/** The picture a back is made of (none for the plain one), and whether it has colours of its own or is printed in the player's. */
+export function backArt(back: string | undefined): { src: string; picture: boolean } | null {
+  if (!back || back === 'plain') return null;
+  if (isDrawn(back)) return { src: drawnBack(back).slice(5, -2), picture: false };
+  const picture = PICTURES.has(back);
+  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}`, picture };
+}
 
 /** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
 export function backOf(colour: string, back: string | undefined): { className: string; style: CSSProperties } {
   const vars = { '--back': colour } as CSSProperties;
   if (!back || back === 'plain') return { className: 'back', style: vars };
+  if (isDrawn(back)) return { className: 'back tint', style: { ...vars, backgroundImage: drawnBack(back) } };
   const picture = PICTURES.has(back);
   return { className: `back ${picture ? 'pic' : 'tint'}`, style: { ...vars, backgroundImage: `url('/cards/backs/${back}.${picture ? 'jpg' : 'png'}')` } };
 }

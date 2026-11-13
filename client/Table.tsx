@@ -1102,7 +1102,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} backs={(seat) => (seat === you ? prefs.back : info(seat)?.back)} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {results && stage !== 'sheet' && (
         <button type="button" className="skip" onClick={skip}>
