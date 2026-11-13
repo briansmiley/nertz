@@ -2,7 +2,9 @@
 
 State: `main` is deployed to https://nertz.fly.dev (Fly app `nertz`, org `personal`, region `sjc`, one machine,
 suspends when idle). Deploy with `fly deploy --app nertz --ha=false` when nobody is connected
-(`curl https://nertz.fly.dev/healthz` shows connections); a deploy drops live games. `npm run dev` for local work
+(`curl https://nertz.fly.dev/healthz` shows connections); a deploy drops live games. Staging: branch `staging` goes to
+https://nertz-staging.fly.dev (Fly app `nertz-staging`, same `fly.toml`, one machine, suspends when idle): deploy it with
+`fly deploy --app nertz-staging --ha=false` from that branch. Neither app deploys by itself on a push yet. `npm run dev` for local work
 (server 8787, Vite 5173); `npm run typecheck`, `npm test`, `npm run build` must stay green. README.md describes the game
 as built.
 
