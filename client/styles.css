@@ -2157,15 +2157,16 @@ label.check {
 }
 
 .table.tall .stuck {
-  flex-direction: column;
   align-items: center;
-  gap: 1px;
-  padding: 4px 6px;
-  font-size: 14px;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .table.tall .stuck small {
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 .table.tall .tag {

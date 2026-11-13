@@ -919,7 +919,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const waitingOn = active.filter((p) => !p.stuck).length;
   const oh = me ? me.nertz.h : 0;
   const waiting = game.slots.some((_, i) => toClear(i));
-  /** Upright: the room between your nertz pile and your stock, for your name and the stuck button. */
+  /** Upright: the room between your nertz pile and your stock, for your name. (The stuck button is a small pill in the top bar, after Chat.) */
   const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
   const callerBox = called ? (game.nertzCalledBy === you ? me?.box : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.box) : undefined;
   const finale = stage === 'spread' || stage === 'out' || stage === 'wash' || stage === 'sheet';
@@ -1012,7 +1012,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             <button
               type="button"
               className={`stuck${mine.stuck ? ' on' : ''}`}
-              style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + oh - 40, height: 40 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
+              style={L.tall ? { left: 74, top: 9, height: 32 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
               onClick={(e) => {
                 send({ k: 'stuck', on: !mine.stuck });
                 e.currentTarget.blur(); // keep Space for dealing
@@ -1020,11 +1020,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             >
               {mine.stuck ? (
                 <>
-                  Stuck <small>{waitingOn > 0 ? `waiting on ${waitingOn} more` : 'reshuffling'}</small>
+                  Stuck <small>{waitingOn > 0 ? (L.tall ? `${waitingOn} to go` : `waiting on ${waitingOn} more`) : 'reshuffling'}</small>
                 </>
               ) : (
                 <>
-                  I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn} stuck already</small>}
+                  I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn} {L.tall ? 'already' : 'stuck already'}</small>}
                 </>
               )}
             </button>
