@@ -79,7 +79,12 @@ export const DEAL_MS = 3000;
  * Dealing from the stock takes time, as it does with real cards: one click starts a group of three, and the cards
  * come off the stock one at a time, this far apart. The next group cannot start sooner than this after the last card.
  */
-export const STOCK_CARD_MS = 250;
+export const STOCK_CARD_MS = 170;
+/**
+ * The beat a completed group is held, counted off and still face-down, before it turns over onto the waste. Only how
+ * it is drawn: the server has turned the group up already. Two gaps and the beat are the half second a group takes.
+ */
+export const STOCK_TURN_MS = 160;
 /** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */
 export const START_BEAT_MS = 700;
 export const START_BEATS = 3;

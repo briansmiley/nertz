@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canDrop, deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
+import { applyIntent, canDrop, deal as dealRound, DEAL_MS, finishDeal, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
 import { CARD_RATIO, cardSize, feltHw, offFelt, pileGap, roomAt, TABLE, tiltAt, type TableMode } from '../shared/table';
 import type { Card, GameState } from '../shared/types';
 import { LABEL, planFinale, restAt, TILT } from './Finale';
@@ -782,5 +782,57 @@ describe('the deal', () => {
     expect(gone).toBeLessThan(LEAVING);
     waits.forEach((w, i) => expect(w).toBe(i < gone ? null : dealWait(i, DEAL_MS)! - late));
     expect(Array.from({ length: LEAVING }, (_, i) => dealWait(i, 0)).every((w) => w === null)).toBe(true); // nothing left to deal
+  });
+});
+
+describe('a group dealt off the stock', () => {
+  const flip = (g: GameState): GameState => {
+    const r = applyIntent(g, 0, { k: 'flip' });
+    if (!r.ok) throw new Error(r.reason);
+    return r.state;
+  };
+  const at = (L: Layout, id: string) => L.cards.find((c) => c.card.id === id);
+
+  it('is counted off card by card into a fan held over the stock, face-down, and turns over onto the waste when complete', () => {
+    const start = deal(seats(2), rng(7));
+    const three = start.players[0]!.stock.slice(-3).reverse().map((c) => c.id); // in the order dealt: the stock's top card first
+    let g = start;
+    for (let k = 1; k <= 2; k++) {
+      g = flip(g);
+      const L = computeLayout(1280, 720, g, 0);
+      const group = three.map((id) => at(L, id)!);
+      // Only the cards dealt so far have left the stock, each to its own place in the fan.
+      const held = group.slice(0, k);
+      expect(held.every((c) => c.pile === 'stock' && !c.up && c.x > L.me!.stock.x && c.x < L.me!.waste.x && c.y < L.me!.stock.y)).toBe(true);
+      expect(new Set(held.map((c) => `${c.x},${c.y}`)).size).toBe(k);
+      expect(held.every((c, i) => i === 0 || c.z < held[i - 1]!.z)).toBe(true); // each comes up under the one before
+      expect(group.slice(k).every((c) => !c || c.x === L.me!.stock.x)).toBe(true); // the rest still lie on the stock (drawn or not)
+      expect(L.cards.some((c) => c.pile === 'waste')).toBe(false);
+    }
+    g = flip(g);
+    // The whole group is held a beat, all three off the stock, before it lands.
+    const beat = computeLayout(1280, 720, g, 0, 'live', null, true, new Map([[0, 3]]));
+    const whole = three.map((id) => at(beat, id)!);
+    expect(whole.every((c) => c.pile === 'stock' && !c.up && c.y < beat.me!.stock.y)).toBe(true);
+    expect(new Set(whole.map((c) => `${c.x},${c.y}`)).size).toBe(3);
+    const L = computeLayout(1280, 720, g, 0);
+    const landed = three.map((id) => at(L, id)!);
+    expect(landed.every((c) => c.pile === 'waste' && c.x === L.me!.waste.x && c.y === L.me!.waste.y && c.rot === 0)).toBe(true);
+    expect(landed[2]!.up).toBe(true);
+    expect(landed[2]!.z).toBeGreaterThan(Math.max(landed[0]!.z, landed[1]!.z)); // the last card dealt covers the other two
+  });
+
+  it('keeps the outline under the stock where its bottom card lies, the size of a card', () => {
+    const g = deal(seats(2), rng(7));
+    const L = computeLayout(1280, 720, g, 0);
+    const bottom = at(L, g.players[0]!.stock[0]!.id)!;
+    expect(L.me!.stockPad).toMatchObject({ x: bottom.x, y: bottom.y, w: L.me!.stock.w, h: L.me!.stock.h });
+  });
+
+  it('is dealt card by card onto the waste on a table that carries each card there', () => {
+    const g = flip(deal(seats(2), rng(7)));
+    const L = computeLayout(1280, 720, g, 0, 'live', null, false);
+    const c = at(L, g.players[0]!.waste.at(-1)!.id)!;
+    expect(c.pile === 'waste' && !c.up).toBe(true);
   });
 });

@@ -13,7 +13,7 @@
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
-import { DRAG_HZ, STOCK_CARD_MS, type DragAt } from '../shared/protocol';
+import { DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
@@ -98,6 +98,8 @@ interface CardProps {
   up: boolean;
   mini: boolean;
   slow: boolean;
+  /** Travels at its own level, not above everything: a card coming up under the ones already held. */
+  low: boolean;
   cls: string;
   reg: Registry;
   /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
@@ -115,6 +117,8 @@ const CardView = memo(function CardView(p: CardProps) {
   const goal = useRef({ x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot });
   const mine = useRef(p.mine);
   const flight = useRef(0);
+  const low = useRef(p.low);
+  low.current = p.low;
   const el = useRef<HTMLDivElement>(null);
   const flying = useRef(!!dealt); // a card waiting in the deck keeps the deck's stacking until it has landed
   /** When this card leaves the deck (performance clock). 0 once it has, or if it was never in one: it is dealt once. */
@@ -124,7 +128,7 @@ const CardView = memo(function CardView(p: CardProps) {
     const g = goal.current;
     const n = ++flight.current;
     flying.current = true;
-    z.set(g.z + Z_FLYING); // travel above everything that is lying still
+    z.set(g.z + (low.current ? 0 : Z_FLYING)); // travel above everything that is lying still (unless it is slipping in under)
     if (veiled) o.set(ALOFT);
     // Somebody else's card crossing the table is not in the pointer's way either (styles.css `.card[data-passing]`).
     if (passing) el.current?.setAttribute('data-passing', '');
@@ -343,7 +347,41 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [peek, setPeek] = useState<number | null>(null);
   const peekWait = useRef<{ i: number; t: number } | null>(null);
   useEffect(() => () => void (peekWait.current && clearTimeout(peekWait.current.t)), []);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek), [W, H, game, you, stage, peek]);
+  const packet = room.settings.stockDeal !== 'drag';
+  // A group that has just been completed is drawn held over the stock for a beat before it turns over onto the waste
+  // (one, two, three... and over). Worked out while rendering, from one game state to the next, so the cards never
+  // start for the waste first.
+  const turning = useRef<{ game: typeof game | null; holds: Map<number, { n: number; waste: number; until: number }> }>({ game: null, holds: new Map() }).current;
+  const [turned, setTurned] = useState(0);
+  const groupHeld = useMemo(() => {
+    const was = turning.game;
+    const now = performance.now();
+    if (was !== game) {
+      turning.game = game;
+      for (const p of game.players) {
+        const q = was?.players.find((o) => o.seat === p.seat);
+        const grown = q ? p.waste.length - q.waste.length : 0;
+        // Cards came off the stock and none is left face-down: the group is whole.
+        if (packet && stage === 'live' && !calm() && q && grown > 0 && p.dealt === 0 && q.stock.length - p.stock.length === grown) {
+          turning.holds.set(p.seat, { n: q.dealt + grown, waste: p.waste.length, until: now + STOCK_TURN_MS });
+        } else if (turning.holds.get(p.seat)?.waste !== p.waste.length || p.dealt > 0) turning.holds.delete(p.seat);
+      }
+    }
+    const out = new Map<number, number>();
+    for (const [seat, h] of turning.holds) {
+      if (h.until > now) out.set(seat, h.n);
+      else turning.holds.delete(seat);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, packet, stage, turned, turning]);
+  useEffect(() => {
+    if (!groupHeld.size) return;
+    const until = Math.max(...[...turning.holds.values()].map((h) => h.until));
+    const t = setTimeout(() => setTurned((n) => n + 1), Math.max(0, until - performance.now()) + 1);
+    return () => clearTimeout(t);
+  }, [groupHeld, turning]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld), [W, H, game, you, stage, peek, packet, groupHeld]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
   const drag = useRef<Drag | null>(null);
@@ -892,7 +930,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               {p?.bot && <em className="bot">bot</em>}
               {p?.connected === false ? <em className="flag">away</em> : st?.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
-            {[o.nertz, ...o.workAt, o.stock, o.waste].map((r, i) => (
+            {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
             ))}
             {!dealing && (
@@ -910,7 +948,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           {me.work.map((w, i) => (
             <div key={i} className="slot" style={box({ ...w, y: me.nertz.y })} />
           ))}
-          <div className={`slot stock${mine.stock.length === 0 && mine.waste.length > 0 ? ' turn' : ''}`} data-stock="" style={box(me.stock)}>
+          <div className={`slot stock${mine.stock.length === 0 && mine.waste.length > 0 ? ' turn' : ''}`} data-stock="" style={box(me.stockPad)}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 12a7 7 0 0 1 12-5l2-2v6h-6l2.3-2.3A4.6 4.6 0 0 0 7.4 12ZM19 12a7 7 0 0 1-12 5l-2 2v-6h6l-2.3 2.3A4.6 4.6 0 0 0 16.6 12Z" />
             </svg>
@@ -987,6 +1025,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             up={c.up && !replaying}
             mini={c.s * CARD_W < MINI_BELOW}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
+            low={!!c.low}
             cls={cardClass(c)}
             reg={reg}
             deal={deck.get(c.card.id)}

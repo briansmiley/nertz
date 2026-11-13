@@ -41,6 +41,8 @@ export interface Placed {
   at: number;
   /** Tilt in degrees: a pile in the middle is never quite square. */
   rot: number;
+  /** Moves without rising above the cards lying still: it slips in under what is over it. */
+  low?: boolean;
 }
 
 /** A centre pile's place on this screen: where its card lies, and its tilt in degrees. */
@@ -91,6 +93,8 @@ export interface Seat {
   /** Drop area of each work pile: its whole column. Neighbours never touch. */
   workHit: Rect[];
   stock: CardRect;
+  /** Where the stock's bottom card lies (the stack stands a little below the row, its top level with it when full): the outline under it. */
+  stockPad: CardRect;
   waste: CardRect;
   /** Bounding box of the whole hand. */
   box: Rect;
@@ -182,6 +186,14 @@ const STOCK_PER_EDGE = 3;
 /** A stock this many edges high (or higher: the deck being dealt) has its top card level with the other piles. */
 const STOCK_FULL_EDGES = 10;
 const WASTE_SHOWN = 4;
+/** Where a group is held while it is counted off the stock, in card widths / heights from the stock's place. */
+const HELD = { x: 0.12, y: 0.16 };
+/** The held group is a nearly square stack: each card a touch off the one under it (card widths, card heights, degrees). */
+const HELD_OFF = [
+  { x: 0, y: 0, rot: -2.5 },
+  { x: 0.045, y: -0.03, rot: 1.5 },
+  { x: 0.02, y: -0.065, rot: -0.5 },
+] as const;
 /** A face-down card in a work pile shows this much of the strip a face-up card shows. */
 const DOWN_STEP = 0.45;
 
@@ -202,6 +214,10 @@ interface HandSpec {
   flip?: boolean;
   /** A work pile being looked at (hovered, or tapped on a touch screen): fanned out in full, rising as far as it needs to over the felt. */
   peek?: number | null;
+  /** A group dealt off the stock is counted off into a held fan, card by card, and turned over onto the waste (the table deals by click, not by carrying each card). */
+  packet?: boolean;
+  /** A group just completed, this many cards, still drawn held for a beat before it turns over (see STOCK_TURN_MS). */
+  hold?: number;
 }
 
 /**
@@ -271,16 +287,30 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const stockX = workX + 4 * h.w + 3 * h.gap + h.wide;
   // Every third card shows an edge, and so does the top one. A card's height in the stack depends only on how many
   // cards lie under it, so taking cards off the top never moves the ones that stay: the stack just gets lower.
+  //
+  // A group being dealt (the server takes its cards one at a time) is counted off the stock into the hand, as with
+  // real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just above the
+  // stock, not quite square, so three separate cards are seen to be pulled. The complete group is held there a beat
+  // longer (`hold`, kept by Table.tsx), then lands on the waste, every card turning over as it goes, the last on top.
+  const lifted = h.packet ? Math.min(p.waste.length, Math.max(p.dealt, h.hold ?? 0)) : 0;
   const top = p.stock.length - 1;
+  const stockLow = STOCK_FULL_EDGES * lean * 2; // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
     if (j % STOCK_PER_EDGE === 0 || j === top) put(c, stockX, h.y + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock');
   });
 
   const wasteX = stockX + h.w + h.gap;
+  const n = p.waste.length - lifted;
+  // In the order dealt, each UNDER the one before, as cards counted off into a hand are: the first stays on top, and
+  // turning the stack over is what leaves the last one showing. (`low`: it comes up beneath the ones already held.)
+  p.waste.slice(n).forEach((c, k) => {
+    const o = HELD_OFF[k % HELD_OFF.length]!;
+    put(c, stockX + h.w * (HELD.x + o.x), h.y - ch * (HELD.y - o.y), Math.max(20 + p.stock.length, 34) + (lifted - 1 - k), 'stock', true); // above the stock and the waste
+    Object.assign(out.at(-1)!, { rot: (h.flip ? -1 : 1) * o.rot, low: true });
+  });
   // The waste is one squared-up pile: only its top card shows, face-down while a group is being dealt onto it.
   // (The few cards under the top are drawn too, exactly beneath it, so there is something there when the top leaves.)
-  const n = p.waste.length;
-  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, h.y, 30 + (i - (n - WASTE_SHOWN)), 'waste', i >= n - p.dealt); // half-dealt: face-down even when the client knows it (a turned-over waste, predicted)
+  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, h.y, 30 + (i - (n - WASTE_SHOWN)), 'waste', i >= n - (lifted ? 0 : p.dealt)); // half-dealt: face-down even when the client knows it (a turned-over waste, predicted)
 
   return {
     seat: p.seat,
@@ -290,6 +320,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     workAt,
     workHit,
     stock: rect(stockX, h.y),
+    stockPad: rect(stockX, h.y + stockLow),
     waste: rect(wasteX, h.y),
     box: { x: h.x, y: h.y, w: span, h: ch + h.workRoom },
     flip: !!h.flip,
@@ -318,7 +349,7 @@ function turnHand(seat: Seat, cards: Placed[], turn: 90 | -90, ox: number, oy: n
   for (const c of cards) {
     const w = c.s * CARD_W;
     const r = card({ x: c.x, y: c.y, w, h: w * RATIO });
-    [c.x, c.y, c.rot] = [r.x, r.y, turn];
+    [c.x, c.y, c.rot] = [r.x, r.y, c.rot + turn];
   }
   return {
     ...seat,
@@ -327,6 +358,7 @@ function turnHand(seat: Seat, cards: Placed[], turn: 90 | -90, ox: number, oy: n
     workAt: seat.workAt.map(card),
     workHit: seat.workHit.map(area),
     stock: card(seat.stock),
+    stockPad: card(seat.stockPad),
     waste: card(seat.waste),
     box: { x: ox, y: oy, w: deep, h: span },
     turn,
@@ -372,7 +404,7 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null): Layout {
+export function computeLayout(W: number, H: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, packet = true, held?: ReadonlyMap<number, number>): Layout {
   const cards: Placed[] = [];
   const n = game.players.length;
   const mine = game.players.find((p) => p.seat === you);
@@ -437,6 +469,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
       mine: false,
       // Across the table a hand is seen from the other side: its owner's left is your right.
       flip: where === 'top',
+      packet,
+      hold: held?.get(p.seat),
     };
     if (where === 'side') {
       // A neighbour sits beside the felt, their hand turned to face it: level with its middle if they are straight to
@@ -505,6 +539,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
           z: 3000,
           mine: true,
           peek,
+          packet,
+          hold: held?.get(you),
         },
         cards,
       )

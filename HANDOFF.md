@@ -39,6 +39,15 @@ turnarounds over long verification loops for small visual changes.
 - `npx tsx scripts/sizes.ts` prints card sizes per window and player count. The long random-play tests time out on the
   1-vCPU droplet: run `npx vitest run --testTimeout=180000` there.
 
+## Done on 13 Nov 2026 (NOT deployed)
+
+- Dealing off the stock: cards are counted off one at a time, 170 ms apart (`STOCK_CARD_MS`), each slipping in under
+  a nearly square face-down stack held over the stock; the whole group is held a 160 ms beat (`STOCK_TURN_MS`, drawn
+  by the client only: the server has already turned it up), then turns over onto the waste. Half a second in all.
+- The stock's flick is much quieter, thinned and eased in (`stockCard` in `client/sound.ts`).
+- The dotted outline under the stock sits under its bottom card (`stockPad`), so it does not show as the stack thins.
+- The Start button's small print is just "Space".
+
 ## To do, in the owner's priority order
 
 1. ~~**Centre cards are too small.**~~ Done in `def509f` (not yet seen in a browser): caps raised, felt 2.2:1 from four

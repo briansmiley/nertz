@@ -63,7 +63,7 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
       mine ? (
         <button type="button" className="kickoff" onClick={() => go()}>
           Start
-          <small>3, 2, 1, Nertz! · Space</small>
+          <small>Space</small>
         </button>
       ) : (
         <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>

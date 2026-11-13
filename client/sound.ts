@@ -105,8 +105,12 @@ function admit(o: Shot): number {
 type Stop = () => void;
 const NOTHING: Stop = () => {};
 
-/** Plays a recording. `rate` is playback speed (pitch); `dull` low-passes it. Returns a way to cut it short. */
-function hit(name: string, o: Shot & { rate?: number; dull?: number } = {}): Stop {
+/**
+ * Plays a recording. `rate` is playback speed (pitch); `dull` low-passes it; `thin` high-passes it (the body of the
+ * knock goes, the papery edge stays); `attack` is the fade-in in seconds (longer: no click at the front). Returns a
+ * way to cut it short.
+ */
+function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: number; attack?: number } = {}): Stop {
   const s = samples.get(name);
   const g = admit(o);
   if (!s || !g || !ctx || !master) return NOTHING;
@@ -118,8 +122,9 @@ function hit(name: string, o: Shot & { rate?: number; dull?: number } = {}): Sto
   src.playbackRate.value = rate;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
-  env.gain.linearRampToValueAtTime(g, t + 0.003);
-  env.gain.setValueAtTime(g, t + Math.max(0.004, length - 0.015));
+  const attack = Math.min(o.attack ?? 0.003, length / 2);
+  env.gain.linearRampToValueAtTime(g, t + attack);
+  env.gain.setValueAtTime(g, t + Math.max(attack + 0.001, length - 0.015));
   env.gain.linearRampToValueAtTime(0, t + length);
   let last: AudioNode = src;
   if (o.dull) {
@@ -127,6 +132,12 @@ function hit(name: string, o: Shot & { rate?: number; dull?: number } = {}): Sto
     filter.type = 'lowpass';
     filter.frequency.value = o.dull;
     last = src.connect(filter);
+  }
+  if (o.thin) {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = o.thin;
+    last = last.connect(filter);
   }
   last.connect(env).connect(master);
   voices++;
@@ -209,9 +220,9 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
-/** One card off the stock onto the waste: one soft flick. */
+/** One card counted off the stock: a faint papery whisper, thinned and eased in so there is no knock in it. */
 export function stockCard(who: Who = 'me'): void {
-  hit(pick(FLICKS), { gain: rand(0.24, 0.3), rate: rand(0.95, 1.1), who });
+  hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, who });
 }
 
 export function recycle(who: Who = 'me'): void {

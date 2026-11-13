@@ -24,7 +24,7 @@ const CENTRE_FOCUS = 1.25;
  * rest follow this many ms apart, like a quick hand tapping the stock. A bot's level only sets how long it takes to
  * decide on an action (a move, or starting a group).
  */
-export const DEAL_STEP_MS = 250;
+export const DEAL_STEP_MS = 170;
 
 /** What a bot carries from one look to the next. */
 export interface BotMemory {
