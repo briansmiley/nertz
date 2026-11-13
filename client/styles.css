@@ -144,11 +144,6 @@ button {
   filter: brightness(0.62) saturate(0.6);
 }
 
-/* A finished pile put aside in the tray: still there, out of the game. */
-.card.shelved {
-  opacity: calc(0.7 * var(--o, 1));
-}
-
 /* A card outside the table (home page, lobby swatches). */
 .mini {
   position: relative;

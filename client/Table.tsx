@@ -899,7 +899,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const cardClass = (c: Placed): string => {
     let cls = dealing && calm() ? 'card dealt' : 'card';
-    if (c.pile === 'tray' && stage !== 'out') cls += ' shelved';
     if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
     if (aloft.has(c.card.id)) cls += ' aloft';
     if (c.mine && !frozen && !must.blocked) {

@@ -417,7 +417,7 @@ describe('table layout', () => {
     }
   });
 
-  it('cascades tray piles so that every King shows, and brings them out for the end of the round', () => {
+  it('cascades tray piles so that a strip of each shows, face-down, and brings them out for the end of the round', () => {
     const game = played(deal(seats(4), rng(11)));
     const live = computeLayout(1280, 800, game, 0);
     const kings = live.cards.filter((c) => c.pile === 'tray' && 'rank' in c.card && c.card.rank === 13).sort((a, b) => a.at - b.at);
@@ -430,7 +430,12 @@ describe('table layout', () => {
 
     const flip = computeLayout(1280, 800, game, 0, 'flip');
     expect(flip.cards.filter((c) => c.pile === 'slot').every((c) => !c.up)).toBe(true);
-    expect(flip.cards.filter((c) => c.pile === 'tray').every((c) => c.up)).toBe(true);
+    // A finished pile lies face-down in the tray from the moment it is put aside.
+    expect([...live.cards, ...flip.cards].filter((c) => c.pile === 'tray').every((c) => !c.up)).toBe(true);
+    // The centre piles are spread out first (on the finale's canvas); the tray's piles are still in the tray.
+    const spread = computeLayout(1280, 800, game, 0, 'spread');
+    expect(spread.cards.some((c) => c.pile === 'slot')).toBe(false);
+    expect(spread.cards.filter((c) => c.pile === 'tray').every((c) => inside(spread.tray, c.x + 1, c.y + 1))).toBe(true);
     const out = computeLayout(1280, 800, game, 0, 'out');
     expect(out.cards.filter((c) => c.pile === 'tray').every((c) => !c.up && !inside(out.tray, c.x + 1, c.y + 1))).toBe(true);
     // From the wash on, the middle's cards are the canvas's business.

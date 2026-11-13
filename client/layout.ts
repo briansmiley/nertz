@@ -522,7 +522,7 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
     return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: at.r };
   });
 
-  // The tray lies beside your hand, off the right edge: piles cascade down it, each showing its King's rank and suit
+  // The tray lies beside your hand, off the right edge: piles cascade down it, face-down, a strip of each showing
   // while there is room for that. (A window too narrow for it: the tray gives way, not your hand.)
   // Its piles are drawn a little larger than in the middle when the middle's cards are small: they lie next to your own.
   const tw = Math.max(fw, ow * 0.6);
@@ -588,13 +588,14 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   if (stage !== 'wash' && stage !== 'sheet') {
     game.tray.forEach((pile, k) => {
       const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * tw, y: tray.y + pad + k * trayStep, w: tw, h: th };
+      // A finished pile is turned face-down as it is put aside: it is out of the game, and solid like any other card.
       // Every card of a finished pile is drawn (squared up in the tray), so that when the pile comes out on the table
       // at the end of the round it is a stack you can see the size of: each card a little off the last.
       const r = stage === 'out' ? out[k]! : home;
       pile.forEach((card, j) => {
         const o = stage === 'out' ? trayStack(k, j, r.w) : { x: 0, y: 0, rot: 0 };
         // (Out on the table they lie on the spread cards, which are on the finale's canvas: above it.)
-        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: (stage === 'out' ? 20100 : 5200) + k * 20 + j, up: stage !== 'out', pile: 'tray', mine: false, at: k, rot: o.rot });
+        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: (stage === 'out' ? 20100 : 5200) + k * 20 + j, up: false, pile: 'tray', mine: false, at: k, rot: o.rot });
       });
     });
   }
