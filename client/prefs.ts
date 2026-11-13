@@ -2,9 +2,9 @@
 // browser, not to the table, and are remembered in localStorage when there is
 // one (without it they last as long as the page).
 import { useSyncExternalStore } from 'react';
-import { isDeck, type Deck } from '../shared/protocol';
+import { isBack, isDeck, type Back, type Deck } from '../shared/protocol';
 
-export { DECKS, type Deck } from '../shared/protocol';
+export { CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 
 export interface Prefs {
   muted: boolean;
@@ -16,10 +16,12 @@ export interface Prefs {
   calm: boolean | null;
   /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so. */
   deck: Deck;
+  /** The backs of your cards, likewise. */
+  back: Back;
 }
 
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern' };
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain' };
 const KEY = 'nertz.prefs';
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
@@ -33,6 +35,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     others: unit(v.others, DEFAULT_PREFS.others),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
+    back: isBack(v.back) ? v.back : DEFAULT_PREFS.back,
   };
 }
 

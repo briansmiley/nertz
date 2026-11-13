@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
+import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -38,6 +38,7 @@ interface Player {
   left: boolean;
   /** The card faces this player chose; everyone sees their cards drawn so. */
   deck?: Deck;
+  back?: Back;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
   /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
@@ -167,8 +168,9 @@ export class Room {
       case 'pause':
         return this.pause(player, msg.on);
       case 'deck':
-        if (player.deck === msg.deck) return;
+        if (player.deck === msg.deck && player.back === (msg.back ?? player.back)) return;
         player.deck = msg.deck;
+        player.back = msg.back ?? player.back;
         return this.changed();
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
@@ -587,6 +589,7 @@ export class Room {
         ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,
         bot: p.bot?.level,
         deck: p.deck,
+        back: p.back,
       })),
       settings: this.settings,
       game,

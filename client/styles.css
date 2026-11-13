@@ -101,6 +101,16 @@ button {
     0 1.5px 2.5px rgba(0, 0, 0, 0.32);
 }
 
+/* The ornate back: one picture of the pattern, white on nothing, laid over the player's colour. Its own frame is the card's edge. */
+.back.ornate {
+  border: 0;
+  background-image: url('/cards/backs/ornate.png');
+  background-size: 100% 100%;
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 1.5px 2.5px rgba(0, 0, 0, 0.32);
+}
+
 /* A card on the table: drawn at 90x126 and moved/scaled by transforms only. */
 .card {
   position: absolute;

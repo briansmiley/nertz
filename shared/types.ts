@@ -187,6 +187,8 @@ export interface PlayerView {
   bot?: BotLevel;
   /** The card faces this player chose (shared/protocol.ts `DECKS`): the cards of their deck are drawn so for everyone. Absent: the plain one. */
   deck?: string;
+  /** The backs of this player's cards (`CARD_BACKS`), for everyone likewise. Absent: the plain one. */
+  back?: string;
 }
 
 /** Everything one client needs to render, personalised for seat `you`. */

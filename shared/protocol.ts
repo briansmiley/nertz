@@ -6,12 +6,17 @@ import type { BotLevel, Intent, PileRef, RoomView } from './types';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, light on dark,
- * one with faces on its suit marks, and two traditional decks of picture files. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
+ * one with faces on its suit marks, and a traditional deck of picture files. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
  * suit must not be one colour in your hand and another in your neighbour's.)
  */
-export const DECKS = { modern: 'Nertz', big: 'Big print', night: 'Night', cute: 'Cute', classic: 'Classic', poker: 'Poker' } as const;
+export const DECKS = { modern: 'Nertz', big: 'Big print', night: 'Night', cute: 'Cute', classic: 'Classic' } as const;
 export type Deck = keyof typeof DECKS;
 export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object.hasOwn(DECKS, v);
+
+/** The backs there are to choose from: the plain cross-hatch, and an ornate pattern (one picture, printed in each player's colour). */
+export const CARD_BACKS = { plain: 'Plain', ornate: 'Ornate' } as const;
+export type Back = keyof typeof CARD_BACKS;
+export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
 
 export type ClientMsg =
   /** Open a new table; the server picks the code and answers with the first snapshot (`room.code`). */
@@ -28,7 +33,7 @@ export type ClientMsg =
   /** Pause the round for everyone (on), or carry on (off). */
   | { t: 'pause'; on: boolean }
   /** Which card faces I play with: everyone sees the cards of my deck drawn that way. */
-  | { t: 'deck'; deck: Deck }
+  | { t: 'deck'; deck: Deck; back?: Back }
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
@@ -219,7 +224,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':
-      return isDeck(v.deck) ? { t: 'deck', deck: v.deck } : null;
+      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}) } : null;
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;

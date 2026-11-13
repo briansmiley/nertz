@@ -106,6 +106,8 @@ interface CardProps {
   mini: boolean;
   /** The faces of the deck this card came from: its owner's choice. */
   deck: string | undefined;
+  /** And its backs. */
+  back: string | undefined;
   slow: boolean;
   /** Travels at its own level, not above everything: a card coming up under the ones already held. */
   low: boolean;
@@ -217,7 +219,7 @@ const CardView = memo(function CardView(p: CardProps) {
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} /> : null}</div>
-        <div className="back" style={{ '--back': backColour(p.owner) } as CSSProperties} />
+        <div className={`back${p.back && p.back !== 'plain' ? ` ${p.back}` : ''}`} style={{ '--back': backColour(p.owner) } as CSSProperties} />
       </motion.div>
     </motion.div>
   );
@@ -1071,6 +1073,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             up={c.up && !replaying}
             mini={c.s * CARD_W < MINI_BELOW}
             deck={c.card.owner === you ? prefs.deck : info(c.card.owner)?.deck}
+            back={c.card.owner === you ? prefs.back : info(c.card.owner)?.back}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
             cls={cardClass(c)}

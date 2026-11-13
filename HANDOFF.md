@@ -56,8 +56,9 @@ turnarounds over long verification loops for small visual changes.
 ## Decks, lobby, bots and Aces (13 Nov 2026, local only: NOT pushed or deployed)
 
 - Decks (`DECKS` in `shared/protocol.ts`, drawn in `client/cards/Face.tsx`): Nertz, Big print,
-  Night and Cute (all drawn in code), Classic and Poker (picture files in `public/cards/<deck>`, public domain, see
-  `client/cards/CREDITS.md`; Poker is about 8 MB). Every deck keeps red and black: no four-colour decks. Each has its own
+  Night and Cute (all drawn in code), and Classic (picture files in `public/cards/classic`, public domain, see
+  `client/cards/CREDITS.md`). Card backs can be chosen too (`CARD_BACKS`: plain, or the ornate picture printed in the
+  player's colour, whose source and licence are NOT yet known: clear it before deploying). Every deck keeps red and black: no four-colour decks. Each has its own
   large-print rendition for small cards. A player's choice (your settings, "Card faces") is told to the table
   (`{ t: 'deck' }`, `PlayerView.deck`) and their cards are drawn with it for everyone. Bots have the plain deck.
   `/?decks` shows every deck, full faces and small cards (`client/Gallery.tsx`); linked from your settings.

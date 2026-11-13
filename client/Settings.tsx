@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
 import { pause, send, setTableSettings } from './net';
-import { calm, DECKS, setPrefs, usePrefs, type Deck } from './prefs';
+import { calm, CARD_BACKS, DECKS, setPrefs, usePrefs, type Back, type Deck } from './prefs';
 
 /** Is this key press going into a text field (a name, a table code)? */
 const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElement ? !['range', 'checkbox'].includes(el.type) : el instanceof HTMLTextAreaElement);
@@ -307,6 +307,13 @@ export function Corner({ room }: { room?: RoomView | null }) {
               {Object.entries(DECKS).map(([k, label]) => (
                 <option key={k} value={k}>
                   {label}
+                </option>
+              ))}
+            </select>
+            <select value={prefs.back} onChange={(e) => setPrefs({ back: e.target.value as Back })} aria-label="Card backs">
+              {Object.entries(CARD_BACKS).map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label} backs
                 </option>
               ))}
             </select>

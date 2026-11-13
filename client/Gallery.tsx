@@ -1,8 +1,9 @@
 // Every deck there is to choose (shared/protocol.ts `DECKS`), laid out to look at: each card's full face, and the
 // large-print rendition that small cards (other players' piles) are drawn with. Opened at /?decks.
-import { DECKS, type Deck } from '../shared/protocol';
+import { CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
+import type { CSSProperties } from 'react';
 import type { Suit } from '../shared/types';
-import { Face } from './cards/Face';
+import { BACKS, Face } from './cards/Face';
 import { setPrefs, usePrefs } from './prefs';
 
 const SUITS: Suit[] = ['S', 'H', 'C', 'D'];
@@ -30,6 +31,28 @@ export function Gallery() {
         </a>
         Decks
       </h1>
+      {(Object.keys(CARD_BACKS) as Back[]).map((back) => (
+        <section key={back}>
+          <h2>
+            {CARD_BACKS[back]} backs{' '}
+            <button type="button" disabled={prefs.back === back} onClick={() => setPrefs({ back })}>
+              {prefs.back === back ? 'Your backs' : 'Use these backs'}
+            </button>
+          </h2>
+          <div className="row">
+            {BACKS.map((colour) => (
+              <span key={colour} className="mini">
+                <span className={`back${back === 'plain' ? '' : ` ${back}`}`} style={{ '--back': colour } as CSSProperties} />
+              </span>
+            ))}
+            {BACKS.map((colour) => (
+              <span key={colour} className="mini small">
+                <span className={`back${back === 'plain' ? '' : ` ${back}`}`} style={{ '--back': colour } as CSSProperties} />
+              </span>
+            ))}
+          </div>
+        </section>
+      ))}
       {(Object.keys(DECKS) as Deck[]).map((deck) => (
         <section key={deck}>
           <h2>

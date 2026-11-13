@@ -130,7 +130,7 @@ function Court({ suit, rank, colour, tint }: { suit: Suit; rank: number; colour:
 // - night: the same drawing, light on a dark card.
 // - cute: one big suit mark with a face on it (the court cards' wear their headgear), in pink and plum, rounded letters.
 // Sets of picture files (public/cards/<deck>, one a card, named rank then suit; see CREDITS.md):
-// - classic, poker. Their large-print rendition is a white card drawn with the Classic deck's own index
+// - classic. Its large-print rendition is a white card drawn with the Classic deck's own index
 //   figures and suit marks (classicGlyphs.ts).
 
 interface Theme {
@@ -150,7 +150,7 @@ const THEMES: Record<string, Theme> = {
   night: { paper: '#1b2132', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
   cute: { paper: '#fff5f9', red: '#ff5a8c', black: '#4b4573', font: CUTE_FONT, cute: true },
 };
-const FILES = new Set(['classic', 'poker']);
+const FILES = new Set(['classic']);
 
 const CODE = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
 const picture = (deck: string, suit: Suit, rank: number): string => `/cards/${deck}/${CODE[rank]}${suit}.svg`;

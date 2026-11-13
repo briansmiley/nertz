@@ -124,8 +124,8 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 // A change of deck in the settings is passed on to the table.
 let toldDeck: string | null = null;
 watchPrefs(() => {
-  const { deck } = getPrefs();
-  if (deck !== toldDeck && post({ t: 'deck', deck })) toldDeck = deck;
+  const { deck, back } = getPrefs();
+  if (`${deck} ${back}` !== toldDeck && post({ t: 'deck', deck, back })) toldDeck = `${deck} ${back}`;
 });
 
 /** Sends one message if the socket is open. Game intents go through `send` instead. */
@@ -153,8 +153,8 @@ function connect(): void {
   ws.onopen = () => {
     if (socket === ws && session) {
       post(hello(session.room, session.name, token()));
-      post({ t: 'deck', deck: getPrefs().deck }); // my cards' faces, for everyone at the table
-      toldDeck = getPrefs().deck;
+      post({ t: 'deck', deck: getPrefs().deck, back: getPrefs().back }); // my cards' faces and backs, for everyone at the table
+      toldDeck = `${getPrefs().deck} ${getPrefs().back}`;
     }
   };
   ws.onmessage = (e) => {

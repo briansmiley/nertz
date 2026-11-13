@@ -13,9 +13,8 @@ https://www.me.uk/cards/makeadeck.cgi and released under the CC0 Public Domain l
 19th-century Goodall & Son designs. The files are changed here in one way: the corner index figure is drawn heavier
 and a quarter larger (and the small suit mark under it moved down to make room), so it reads on a small card.
 
-The "Poker" deck (`public/cards/poker/`) is Byron Knoll's Vector Playing Cards, released into the public domain, taken
-from https://github.com/notpeter/Vector-Playing-Cards (public domain / WTFPL). Unchanged; its court cards are large
-files (the deck is about 8 MB in all).
+The "Ornate" card back (`public/cards/backs/ornate.png`) is made from a picture the owner found; WHERE IT IS FROM AND
+ITS LICENCE ARE NOT YET KNOWN, so it must be cleared (or replaced) before it is deployed.
 
 The "Night" and "Cute" decks are drawn in `Face.tsx` like the first, and are original to this project.
 
