@@ -15,7 +15,7 @@ import type { GameState, Intent, PileRef } from './types';
 export const OPP = { gap: 0.14, wide: 0.42 } as const;
 
 /** How long a bot's card is in the air, ms: a move along its own row, and one out to the middle. */
-export const FLIGHT_MS = { row: 300, centre: 440 } as const;
+export const FLIGHT_MS = { row: 300, centre: 650 } as const;
 /** How often the made-up reports go out (a dragging window reports at DRAG_HZ, 18 a second). */
 export const FLIGHT_STEP_MS = 55;
 
