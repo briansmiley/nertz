@@ -87,6 +87,9 @@ export class Room {
   private startEndsAt = 0;
   /** Who paused the round in play, if it is paused. */
   private pausedBy: Player | null = null;
+  /** The round's clock: what it had run up before it was last stopped, and since when it is running now (ms epoch; null while it is not). */
+  private played: number | null = null;
+  private playingSince: number | null = null;
   private readonly rng: Rng;
   private readonly schedule: (flush: () => void) => void;
   private readonly flipMs: number;
@@ -218,6 +221,8 @@ export class Room {
     );
     this.phase = 'playing';
     this.pausedBy = null;
+    this.played = 0; // the clock starts on the word NERTZ!
+    this.playingSince = null;
     // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
     this.stopTimers();
     this.dealEndsAt = Date.now() + DEAL_MS;
@@ -249,6 +254,8 @@ export class Room {
     this.startTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = openPlay(this.game);
+    this.played = 0;
+    this.playingSince = Date.now();
     // Play is open: the bots start looking at their cards now, like everyone else.
     for (const p of this.players) if (p.bot && this.game.players.some((g) => g.seat === p.seat)) this.wake(p, freshMemory());
     this.settle();
@@ -324,6 +331,7 @@ export class Room {
     });
     this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}) };
     this.phase = 'results';
+    this.stopClock();
     this.pausedBy = null;
     this.stopBots();
   }
@@ -337,15 +345,23 @@ export class Room {
     if (on) {
       if (this.pausedBy || this.game.stage !== 'play' || this.game.nertzCalledBy !== null || this.game.ended) return;
       this.pausedBy = player;
+      this.stopClock();
       for (const p of this.players) this.letGo(p);
       this.stopBots();
     } else {
       const by = this.pausedBy;
       if (!by || (player !== by && player !== this.dealer && by.conn)) return;
       this.pausedBy = null;
+      this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.game.players.some((g) => g.seat === p.seat)) this.wake(p);
     }
     this.changed();
+  }
+
+  /** The round's clock stops (a pause, or the end of the round), keeping what it has run up. */
+  private stopClock(): void {
+    if (this.playingSince !== null) this.played = (this.played ?? 0) + Date.now() - this.playingSince;
+    this.playingSince = null;
   }
 
   private graceExpired(): void {
@@ -518,6 +534,7 @@ export class Room {
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
       dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
       startMs: this.startTimer ? Math.max(0, this.startEndsAt - Date.now()) : null,
+      clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
       paused: this.pausedBy ? { by: this.pausedBy.seat } : null,
       lastRound: this.lastRound,
     };

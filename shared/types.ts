@@ -219,6 +219,12 @@ export interface RoomView {
    * is `countdown`): play opens, on the word NERTZ!, when it reaches 0. Null otherwise.
    */
   startMs: number | null;
+  /**
+   * The round's clock: how long it had been played when this snapshot was sent (from the word NERTZ!, not counting
+   * time paused), and whether it is running: count on locally while it is. It stops when the round ends, and stays
+   * at what the round took. Null before the first round is under way.
+   */
+  clock: { ms: number; running: boolean } | null;
   /** The round is paused (by this seat): every card is hidden, no move is taken and the bots wait. Null otherwise. */
   paused: { by: number } | null;
   lastRound: RoundResult | null;

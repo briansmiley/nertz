@@ -1435,6 +1435,23 @@ button {
   gap: 8px;
 }
 
+/* The round's clock, just above them. */
+.corner .clock {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 8px);
+  font: 700 22px/1 var(--num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--chalk);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.corner .clock.stopped {
+  opacity: 0.45;
+}
+
 .knob {
   display: inline-flex;
   align-items: center;

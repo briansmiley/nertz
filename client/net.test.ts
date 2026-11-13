@@ -28,7 +28,7 @@ const roomOf = (game: GameState, you: number): RoomView => ({
   graceMs: null,
   dealMs: null,
   startMs: null,
-  paused: null,
+  clock: null, paused: null,
   lastRound: null,
 });
 

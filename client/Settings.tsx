@@ -157,6 +157,25 @@ function EndVote({ room }: { room: RoomView }) {
 }
 
 /** The corner controls. Rendered once, by App, over whatever screen is up. */
+/** The round's clock, m:ss: counted on locally from what the last snapshot said while it runs (not while paused, nor once the round is over). */
+function Clock({ clock }: { clock: NonNullable<RoomView['clock']> }) {
+  const [ms, setMs] = useState(clock.ms);
+  useEffect(() => {
+    setMs(clock.ms);
+    if (!clock.running) return;
+    const since = performance.now(); // `clock.ms` was the time when the snapshot was sent
+    const timer = setInterval(() => setMs(clock.ms + performance.now() - since), 250);
+    return () => clearInterval(timer);
+  }, [clock]);
+  const s = Math.floor(ms / 1000);
+  const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return (
+    <time className={`clock${clock.running ? '' : ' stopped'}`} role="timer" aria-label={`Round time ${text}`} title="This round">
+      {text}
+    </time>
+  );
+}
+
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
   const [open, setOpen] = useState(false);
@@ -189,6 +208,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const sound = prefs.muted ? 'Sound is off' : 'Sound is on';
   return (
     <div className="corner" ref={root}>
+      {room?.clock && room.phase !== 'lobby' && <Clock clock={room.clock} />}
       <button
         type="button"
         className={`knob${prefs.muted ? ' off' : ''}`}

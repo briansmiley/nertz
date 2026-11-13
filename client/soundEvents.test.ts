@@ -46,7 +46,7 @@ const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): Ro
   graceMs: null,
   dealMs: null,
   startMs: null,
-  paused: null,
+  clock: null, paused: null,
   lastRound: null,
   ...extra,
 });
