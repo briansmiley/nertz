@@ -22,8 +22,12 @@ export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'slot' | 'tray';
  * turn over and come out ('out'), then the middle's cards leave this layer
  * altogether and are washed and sorted on a canvas ('wash'), and finally the
  * score sheet lies on top ('sheet').
+ *
+ * In full: the centre piles turn face-down where they lie ('flip'); they are spread out over the felt ('spread': from
+ * here on they are drawn on the finale's canvas); the finished piles come out of the tray onto the spread cards, as
+ * loose, tilted stacks ('out'); those are spread out too and everything is sorted ('wash'); the scores ('sheet').
  */
-export type Stage = 'live' | 'flip' | 'out' | 'wash' | 'sheet';
+export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sheet';
 
 export interface Placed {
   card: AnyCard;
@@ -164,8 +168,18 @@ export function stackOffset(k: number, j: number, w: number, loose = 1): { x: nu
  * (Sloppier than a pile from the tray: cards from every deck went onto it in a hurry, and with each a little further
  * off the last the backs underneath show at its edges, in their owners' colours.)
  */
-const SLOT_LOOSE = 3.6;
+const SLOT_LOOSE = 5;
 export const slotStack = (i: number, j: number, w: number) => stackOffset(100 + i, j, w, SLOT_LOOSE);
+
+/**
+ * A finished pile set down on the table out of the tray: a loose stack, and the whole of it a little askew (each pile
+ * its own way), as a pile put down in passing is.
+ */
+const TRAY_LOOSE = 2.4;
+export function trayStack(k: number, j: number, w: number): { x: number; y: number; rot: number } {
+  const o = stackOffset(k, j, w, TRAY_LOOSE);
+  return { ...o, rot: o.rot + Math.sin(k * 7.13 + 1.7) * 11 };
+}
 
 /** Room the grace countdown is given on the table: its greatest width, its height, and its distance from the right edge. */
 export const COUNTDOWN = { w: 168, h: 44, right: 14 };
@@ -556,7 +570,8 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
   // flies in. When the round ends and the piles turn over, every card is drawn, each a little off the last
   // (`stackOffset`), so each pile is a stack you can see the size of. Once the wash starts they are drawn on the
   // finale's canvas instead.
-  if (stage !== 'wash' && stage !== 'sheet') {
+  // The centre piles are drawn here until they are spread out; the tray's until they are, a step later.
+  if (stage === 'live' || stage === 'flip') {
     game.slots.forEach((pile, i) => {
       const r = slots[i];
       if (!r) return;
@@ -569,14 +584,17 @@ export function computeLayout(W: number, H: number, game: GameState, you: number
         cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5000 + i * 14 + j, up: false, pile: 'slot', mine: false, at: i, rot: r.rot + o.rot });
       });
     });
+  }
+  if (stage !== 'wash' && stage !== 'sheet') {
     game.tray.forEach((pile, k) => {
       const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * tw, y: tray.y + pad + k * trayStep, w: tw, h: th };
       // Every card of a finished pile is drawn (squared up in the tray), so that when the pile comes out on the table
       // at the end of the round it is a stack you can see the size of: each card a little off the last.
       const r = stage === 'out' ? out[k]! : home;
       pile.forEach((card, j) => {
-        const o = stage === 'out' ? stackOffset(k, j, r.w) : { x: 0, y: 0, rot: 0 };
-        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5200 + k * 20 + j, up: stage !== 'out', pile: 'tray', mine: false, at: k, rot: o.rot });
+        const o = stage === 'out' ? trayStack(k, j, r.w) : { x: 0, y: 0, rot: 0 };
+        // (Out on the table they lie on the spread cards, which are on the finale's canvas: above it.)
+        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: (stage === 'out' ? 20100 : 5200) + k * 20 + j, up: stage !== 'out', pile: 'tray', mine: false, at: k, rot: o.rot });
       });
     });
   }

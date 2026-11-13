@@ -9,10 +9,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backColour, CARD_H, CARD_W } from './cards/Face';
-import { seatDir, slotStack, stackOffset, TAG_H, type Layout, type Rect } from './layout';
+import { seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
-export const TIMING = { flip: 800, out: 900, wash: 1500, sortEach: 1500, hold: 6500 };
+export const TIMING = { flip: 1000, spread: 900, out: 1100, wash: 1000, sortEach: 1500, hold: 6500 };
+/**
+ * The finale's own clock starts when the centre piles are spread out ('spread'). With finished piles in the tray,
+ * those come out next and are spread out in their turn, `trayAt` ms in; with none there is only a short beat. Then the
+ * sorting starts, `sortAt` ms in.
+ */
+export const trayAt = TIMING.spread + TIMING.out;
+export const sortAt = (trayPiles: number): number => (trayPiles ? trayAt + TIMING.wash : TIMING.spread + 400);
 /** The piles are gathered one player at a time: this long for `n` players. */
 export const sortMs = (n: number): number => n * TIMING.sortEach;
 const SPREAD_MS = 560; // a card's trip from its pile out into the wash
@@ -94,6 +101,8 @@ interface Mover {
   radius: number;
   spin: number;
   delay: number;
+  /** When it joins the wash, ms on the finale's clock: at once, or for a card of a finished pile once that has come out of the tray (until then it is not drawn here). */
+  from: number;
   /** Destination: which sorted pile, and its place in it. */
   pile: number;
   k: number;
@@ -118,6 +127,8 @@ export interface Plan {
   /** The part of the window the cards can reach; the canvas covers only this. */
   area: Rect;
   movers: Mover[];
+  /** When the sorting starts, ms on the finale's clock. */
+  sortAt: number;
   /** One per player of the round, in the order of `game.players`. */
   piles: SortedPile[];
   /** A card in the wash. */
@@ -239,8 +250,8 @@ export function planFinale(L: Layout, game: GameState): Plan {
       const to = pileOf.get(card.owner);
       if (!at || to === undefined) return [];
       // Every pile starts the wash as the loose stack it was turned over or came out of the tray as (see `stackOffset`).
-      const o = tray < 0 ? slotStack(slot, j, at.w) : stackOffset(tray, j, at.w);
-      return [{ owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, pile: to, k: 0, of: 0, tilt: 0, rot0: ((o.rot + ('rot' in at ? (at as { rot: number }).rot : 0)) * Math.PI) / 180 }];
+      const o = tray < 0 ? slotStack(slot, j, at.w) : trayStack(tray, j, at.w);
+      return [{ owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, from: tray < 0 ? 0 : trayAt, pile: to, k: 0, of: 0, tilt: 0, rot0: ((o.rot + ('rot' in at ? (at as { rot: number }).rot : 0)) * Math.PI) / 180 }];
     }),
   );
   // Draw order is shuffled so the colours mix in the wash; a card's place in its sorted pile follows the draw order.
@@ -258,7 +269,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const span = Math.hypot(w, h) / 2 + 8; // a card turned to any angle, plus its shadow
   const area: Rect = { x: Math.floor(d.cx - d.rx - span), y: Math.floor(d.cy - d.ry - span), w: Math.ceil(2 * (d.rx + span)), h: Math.ceil(2 * (d.ry + span)) };
   // The wash keeps to the felt: an oval well inside its edge, clear of the rounded corners.
-  return { area, movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), core, heap };
+  return { area, sortAt: sortAt(game.tray.length), movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), core, heap };
 }
 
 /** One card back, drawn once per colour and then stamped for every card of that deck. Matches `.back` in styles.css. */
@@ -345,7 +356,8 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   const arriving: Stamp[] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
-    const q = easeInOut(clamp01((t - TIMING.wash - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
+    if (t < mv.from) continue; // still a pile in the tray, or on its way out of it: drawn by the table
+    const q = easeInOut(clamp01((t - plan.sortAt - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
@@ -354,7 +366,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
       continue;
     }
     // In the wash: out from its pile to a spot on the felt, which then turns (the inside faster) and breathes.
-    const spread = easeOut(clamp01((t - mv.delay * 280) / SPREAD_MS));
+    const spread = easeOut(clamp01((t - mv.from - mv.delay * 280) / SPREAD_MS));
     const a = mv.angle;
     const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
@@ -418,7 +430,7 @@ export function Finale({ L, game, scores, name, instant }: Props) {
     };
     setup(full);
     began.current ||= performance.now();
-    const end = TIMING.wash + sortMs(n);
+    const end = plan.sortAt + sortMs(n);
     let raf = 0;
     let shown = '';
     let last = 0;
@@ -436,7 +448,7 @@ export function Finale({ L, game, scores, name, instant }: Props) {
         shown = counts.join();
         setLanded(counts);
       }
-      setDone(t >= end ? n : t < TIMING.wash ? -1 : Math.floor((t - TIMING.wash) / TIMING.sortEach));
+      setDone(t >= end ? n : t < plan.sortAt ? -1 : Math.floor((t - plan.sortAt) / TIMING.sortEach));
       if (t >= end) return;
       raf = requestAnimationFrame(frame);
     };

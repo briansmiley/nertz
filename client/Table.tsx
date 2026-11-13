@@ -17,7 +17,7 @@ import { DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/pr
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
-import { Finale, sortMs, TIMING } from './Finale';
+import { Finale, sortAt, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
@@ -238,9 +238,10 @@ function useStage(results: boolean, trayPiles: number, players: number): [Stage,
     setStage('flip');
     let at = 0;
     const steps: [Stage, number][] = [
-      ['out', TIMING.flip],
+      ['spread', TIMING.flip],
+      ['out', TIMING.spread],
       ['wash', trayPiles ? TIMING.out : 0],
-      ['sheet', TIMING.wash + sortMs(players) + TIMING.hold],
+      ['sheet', sortAt(trayPiles) - TIMING.spread - (trayPiles ? TIMING.out : 0) + sortMs(players) + TIMING.hold],
     ];
     timers.current = steps.map(([next, ms]) => setTimeout(() => setStage(next), (at += ms)));
     return stop;
@@ -359,7 +360,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [ending]);
   const stageWas = useRef(stage);
   useEffect(() => {
-    stageSound(stageWas.current, stage); // the riffle of the wash, the flourish of the score sheet
+    stageSound(stageWas.current, stage, sortAt(game.tray.length)); // the riffle of the wash, the flourish of the score sheet
     stageWas.current = stage;
   }, [stage]);
   /** Your work pile that is being looked at (fanned out in full): the mouse rested on it, or it was tapped. */
@@ -757,7 +758,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [game, L]);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (stage === 'flip' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
+    if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
     if (frozen || drag.current || e.button !== 0) return;
     const el = (e.target as Element).closest('[data-id],[data-stock]');
     if (!el) return;
@@ -914,7 +915,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const oh = me ? me.nertz.h : 0;
   const waiting = game.slots.some((_, i) => toClear(i));
   const callerBox = called ? (game.nertzCalledBy === you ? me?.box : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.box) : undefined;
-  const finale = stage === 'wash' || stage === 'sheet';
+  const finale = stage === 'spread' || stage === 'out' || stage === 'wash' || stage === 'sheet';
   /** An Ace is in hand on a table without marked places. */
   const placing = held?.k === 'card' && held.ace;
 

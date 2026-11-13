@@ -19,7 +19,7 @@ const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '
 const MAX_VOICES = 18;
 /** Other players' cards at "100%" are still well under your own. */
 const OTHERS = 0.7;
-const { wash: WASH_MS, sortEach: SORT_MS } = TIMING; // flicks while the first couple of piles are gathered
+const { sortEach: SORT_MS } = TIMING; // flicks while the first couple of piles are gathered
 
 interface Sample {
   buffer: AudioBuffer;
@@ -298,12 +298,12 @@ function hush(): void {
 }
 
 /** The wash: a riffle while the cards swirl, then quick flicks as they sort into their piles. */
-export function wash(): void {
+export function wash(sortIn = 2000): void {
   hush();
   finale.push(hit('shuffle', { gain: 0.5 }));
   const flicks = 16;
   for (let i = 0; i < flicks; i++) {
-    finale.push(hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay: (WASH_MS + (i / flicks) * SORT_MS * 2) / 1000 + rand(0, 0.03) }));
+    finale.push(hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay: (sortIn + (i / flicks) * SORT_MS * 2) / 1000 + rand(0, 0.03) }));
   }
 }
 
@@ -315,9 +315,9 @@ export function flourish(): void {
 }
 
 /** The end-of-round sequence moved on (Table.tsx calls this as its stage changes). */
-export function stage(from: Stage, to: Stage): void {
+export function stage(from: Stage, to: Stage, sortIn = 2000): void {
   if (from === to) return;
-  if (to === 'wash') wash();
+  if (to === 'spread') wash(sortIn);
   else if (to === 'sheet') flourish();
   else if (to === 'live') hush();
 }
