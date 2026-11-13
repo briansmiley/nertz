@@ -50,22 +50,28 @@ function hilbert(small: boolean): string {
   return frame(`<path d="${pts(line)}"/>`, small ? 2.5 : 1.2, small);
 }
 
-/** A Greek key: square spirals off a base line, row upon row, every other row turned round. */
+/**
+ * A Greek key: bands of meander, each one unbroken line. In every turn of it the line winds into the middle of a
+ * square, doubles back there, and winds out again between its own coils, to run on along the foot of the band into
+ * the next turn. Every other band runs the other way.
+ */
 function key(small: boolean): string {
-  const cols = small ? 3 : 5;
-  const rows = small ? 4 : 8;
-  const u = F.w / cols / 4; // a tile is 4 x 4 of these, and F.h / rows high
-  const v = F.h / rows / 4;
+  const across = small ? 1 : 2; // turns of the key in a band
+  const bands = small ? 2 : 4;
+  // One turn is 16 across and 10 high, in steps of the gap between one line and the next.
+  const TURN: [number, number][] = [[0, 10], [0, 0], [12, 0], [12, 8], [4, 8], [4, 4], [8, 4], [8, 6], [10, 6], [10, 2], [2, 2], [2, 10], [16, 10]];
+  const u = F.w / (across * 16 + 0.6);
+  const pitch = F.h / bands;
   let d = '';
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const flip = r % 2 === 1;
-      const at = (i: number, j: number): [number, number] => [F.x + (flip ? cols - c - i / 4 : c + i / 4) * 4 * u, F.y + (r + j / 4) * 4 * v];
-      // Up from the base line, over, down, back, up, over: a spiral that stops at its middle; then on along the base.
-      d += pts([at(0, 3.5), at(0, 0.5), at(3, 0.5), at(3, 2.5), at(1, 2.5), at(1, 1.5), at(2, 1.5)]) + pts([at(0, 3.5), at(4, 3.5)]);
-    }
+  for (let b = 0; b < bands; b++) {
+    const top = F.y + b * pitch + (pitch - 10 * u) / 2;
+    const line: [number, number][] = [];
+    for (let k = 0; k < across; k++) for (const [x, y] of k ? TURN.slice(1) : TURN) line.push([k * 16 + x, y]);
+    // (It ends by turning up into the band's last upright, as if into another turn.)
+    line.push([across * 16, 0]);
+    d += pts(line.map(([x, y]) => [b % 2 ? W / 2 + (across * 8 - x) * u : W / 2 + (x - across * 8) * u, top + y * u] as const));
   }
-  return frame(`<path d="${d}"/>`, small ? 3 : 1.7, small);
+  return frame(`<path d="${d}" stroke-linecap="square" stroke-linejoin="miter"/>`, small ? 2.6 : 1.4, small);
 }
 
 /** Braids: columns of two strands twisted round each other, each passing under the other in turn. */
@@ -348,8 +354,9 @@ function mondrian(small: boolean): string {
   const roll = dice(small ? 3 : 14);
   const leaves: [number, number, number, number][] = [];
   const cut = (x: number, y: number, w: number, h: number, depth: number): void => {
-    const least = small ? 22 : 13;
-    if (depth === 0 || (w < least * 2 && h < least * 2) || (depth < 3 && roll() < 0.18)) {
+    const least = small ? 15 : 13;
+    // (The first cuts are always made: no block is as much as half the card.)
+    if (depth === 0 || (w < least * 2 && h < least * 2) || (depth < (small ? 2 : 3) && roll() < 0.18)) {
       leaves.push([x, y, w, h]);
       return;
     }
@@ -363,14 +370,14 @@ function mondrian(small: boolean): string {
       cut(x, y + h * at, w, h * (1 - at), depth - 1);
     }
   };
-  cut(F.x, F.y, F.w, F.h, small ? 3 : 5);
+  cut(F.x, F.y, F.w, F.h, small ? 4 : 5);
   let body = '';
   for (const [x, y, w, h] of leaves) {
     const r = roll();
     const fill = r < 0.2 ? '#fff' : r < 0.36 ? 'rgba(255,255,255,0.45)' : 'none';
     body += `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" fill="${fill}"/>`;
   }
-  return frame(body, small ? 3.4 : 2.1, small);
+  return frame(body, small ? 3 : 2.1, small);
 }
 
 /** Diamond tiles: in every square a diamond of the card's colour, the four corners round it white with their tips cut off, so a small diamond stands where four tiles meet; thin lines of colour between the tiles. */
@@ -444,28 +451,44 @@ function starCross(small: boolean): string {
 
 /**
  * Houndstooth, as it is woven: threads four of one colour and four of the other, both ways, in a twill where each
- * thread goes over two and under two, stepping one along each row. What shows at a crossing is whichever thread is on
- * top there; the broken checks with their teeth come of that. One repeat is eight threads by eight.
+ * thread goes over two and under two, stepping one along each row. Where both threads are white there is a white
+ * square, and where both are coloured a bare one; where one is white and the other not, the twill shows as slanting
+ * stripes two threads wide, and those are the teeth. Drawn as it is printed, with the stripes' edges straight (thread
+ * by thread they are little stairs).
  */
 function houndstooth(small: boolean): string {
-  const white = (i: number, j: number): boolean => {
-    const over = (((i - j) % 4) + 4) % 4 < 2; // the upright thread is on top here
-    return (over ? i : j) % 8 < 4;
-  };
-  const across = small ? 3 : 5; // repeats across the card
-  const cell = F.w / (across * 8);
-  let d = '';
-  const down = Math.ceil(F.h / cell);
-  for (let j = 0; j < down; j++) {
-    for (let i = 0; i < across * 8; i++) {
-      if (!white(i, j)) continue;
-      let end = i;
-      while (end + 1 < across * 8 && white(end + 1, j)) end++;
-      d += `M${n(F.x + i * cell)} ${n(F.y + j * cell)}h${n((end - i + 1) * cell)}v${n(cell + 0.1)}h${n(-(end - i + 1) * cell)}z`;
-      i = end;
+  const across = small ? 3 : 5; // repeats (eight threads) across the card
+  const t = F.w / (across * 8); // one thread
+  const down = Math.ceil(F.h / (4 * t));
+  let squares = '';
+  const mixed = ['', '']; // the blocks where the upright threads are white, and where the level ones are
+  for (let bj = 0; bj < down; bj++) {
+    for (let bi = 0; bi < across * 2; bi++) {
+      const e = 0.07; // (a hair over its edges, so that no seam shows between a square and its teeth)
+      const block = `M${n(F.x + bi * 4 * t - e)} ${n(F.y + bj * 4 * t - e)}h${n(4 * t + 2 * e)}v${n(4 * t + 2 * e)}h${n(-4 * t - 2 * e)}z`;
+      if (bi % 2 === 0 && bj % 2 === 0) squares += block;
+      else if (bi % 2 !== bj % 2) mixed[bi % 2 === 0 ? 0 : 1] += block;
     }
   }
-  return frame(clipped(`<path d="${d}" fill="#fff" stroke="none"/>`), 1, small);
+  // Slanting stripes two threads wide, four apart, over the whole field: one set where the upright thread is on top, the other between them.
+  const stripes = (shift: number): string => {
+    let d = '';
+    const reach = F.w + F.h;
+    for (let k = -Math.ceil(reach / (4 * t)); k * 4 * t < F.w; k++) {
+      const x = F.x + (k * 4 + shift) * t;
+      d += `M${n(x)} ${n(F.y)}h${n(2 * t)}l${n(reach)} ${n(reach)}h${n(-2 * t)}z`;
+    }
+    return d;
+  };
+  return frame(
+    clipped(
+      `<path d="${squares}" fill="#fff" stroke="none"/>` +
+        `<clipPath id="a"><path d="${mixed[0]}"/></clipPath><clipPath id="b"><path d="${mixed[1]}"/></clipPath>` +
+        `<path d="${stripes(0)}" clip-path="url(#a)" fill="#fff" stroke="none"/><path d="${stripes(2)}" clip-path="url(#b)" fill="#fff" stroke="none"/>`,
+    ),
+    1,
+    small,
+  );
 }
 
 const HALF = 'rgba(255,255,255,0.45)';
