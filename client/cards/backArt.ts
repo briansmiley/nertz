@@ -305,7 +305,41 @@ function mandelbrot(small: boolean): string {
   return frame(`<path d="${d}" fill="#fff" stroke="none"/><path d="${pts([at(-2, 0), at(-1.4, 0)])}" stroke-width="${small ? 1.2 : 0.6}"/>`, 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot };
+/**
+ * A random walk: from a dot at the bottom, a line that wanders one square at a time (up more often than not, left or
+ * right, now and then back down, by a fixed roll of the dice), doubling back over itself, until it reaches a cross
+ * at the top.
+ */
+function walk(small: boolean): string {
+  const step = small ? 5 : 2;
+  const cols = Math.floor(F.w / step);
+  const rows = Math.floor((F.h - (small ? 16 : 12)) / step);
+  const half = Math.floor(cols / 2) - 1;
+  const roll = dice(small ? 5 : 31);
+  let [x, y] = [0, 0];
+  const line: [number, number][] = [[x, y]];
+  // It keeps going one way for a few squares at a time: that is what gives the walk its long straights and tight knots.
+  while (y < rows && line.length < 4000) {
+    const r = roll();
+    // (Sideways it leans back towards the middle of the card, the further out it is: it wanders, but does not hug an edge.)
+    const lean = (x / half) * 0.12;
+    const [dx, dy] = r < 0.32 ? [0, 1] : r < 0.59 - lean ? [1, 0] : r < 0.86 ? [-1, 0] : [0, -1];
+    const far = 1 + Math.floor(roll() * roll() * 3);
+    for (let i = 0; i < far && y < rows; i++) {
+      if (Math.abs(x + dx) > half || y + dy < 0) break;
+      [x, y] = [x + dx, y + dy];
+      line.push([x, y]);
+    }
+  }
+  const at = ([i, j]: [number, number]): [number, number] => [W / 2 + i * step, F.y + F.h - (small ? 8 : 6) - j * step];
+  const [ex, ey] = at(line.at(-1)!);
+  const [sx, sy] = at(line[0]!);
+  const k = small ? 3 : 1.8;
+  const cross = `M${n(ex - k)} ${n(ey - k)}L${n(ex + k)} ${n(ey + k)}M${n(ex + k)} ${n(ey - k)}L${n(ex - k)} ${n(ey + k)}`;
+  return frame(`<path d="${pts(line.map(at))}${cross}" stroke-linecap="square" stroke-linejoin="miter"/><circle cx="${n(sx)}" cy="${n(sy)}" r="${small ? 3 : 1.8}" fill="#fff" stroke="none"/>`, small ? 1.5 : 0.7, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
