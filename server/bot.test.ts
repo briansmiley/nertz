@@ -541,10 +541,17 @@ describe('Room with bots', () => {
       const bot = () => room.game!.players.find((p) => p.seat === 1)!;
       const gaps = { look: [] as number[], card: [] as number[] };
       let last = Date.now();
-      for (let i = 0; i < 150; i++) {
+      let flights = 0;
+      for (let i = 0; i < 400; i++) {
         const stock = bot().stock.length;
         const midGroup = bot().dealt > 0;
+        const carrying = bot().holding !== null;
         vi.advanceTimersToNextTimer();
+        // A card being carried over (its made-up drag reports, then the drop) is part of the action that picked it up.
+        if (carrying) {
+          if (bot().holding === null) flights++; // landed
+          continue;
+        }
         const gap = Date.now() - last;
         last = Date.now();
         const dealtOne = bot().stock.length === stock - 1;
@@ -558,6 +565,7 @@ describe('Room with bots', () => {
       const mean = (xs: number[]) => xs.reduce((n, x) => n + x, 0) / xs.length;
       expect(gaps.look.length).toBeGreaterThan(8);
       expect(gaps.card.length).toBeGreaterThan(20);
+      expect(flights).toBeGreaterThan(3); // it did carry cards over
       expect(mean(gaps.look)).toBeGreaterThan(delay * 0.7);
       expect(mean(gaps.look)).toBeLessThan(delay * 1.3);
       room.close();

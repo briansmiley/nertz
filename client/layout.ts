@@ -2,6 +2,7 @@
 // visible card sits. Every card is absolutely positioned on one layer and
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
+import { OPP } from '../shared/flight';
 import { DEAL_MS, isHidden } from '../shared/engine';
 import { cardSize, feltHw, pileGap, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
@@ -400,7 +401,6 @@ const PEEK_Z = 4000;
 /** Width of a hand in card widths, for the gaps used below. */
 const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
-const OPP = { gap: 0.14, wide: 0.42 };
 const OPP_UNITS = 7 + 4 * OPP.gap + 2 * OPP.wide;
 /**
  * The tray runs off the right edge of the table beside your hand, half of it

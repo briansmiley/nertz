@@ -12,6 +12,7 @@ import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, 
 import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type ClientMsg, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
+import { FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import { Social } from './chat';
 
@@ -436,7 +437,7 @@ export class Room {
    * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times.
    * In the middle of dealing a group (`dealing`), the next card instead follows at the same quick step for everyone.
    */
-  private wake(player: Player, memory?: BotMemory, dealing = false): void {
+  private wake(player: Player, memory?: BotMemory, dealing = false, spent = 0): void {
     const bot = player.bot!;
     if (memory) {
       bot.memory = memory;
@@ -444,7 +445,7 @@ export class Room {
     }
     if (bot.timer) clearTimeout(bot.timer);
     const think = BOTS[bot.level].delayMs * (0.5 + this.rng());
-    bot.timer = setTimeout(() => this.look(player), dealing ? DEAL_STEP_MS : think);
+    bot.timer = setTimeout(() => this.look(player), dealing ? DEAL_STEP_MS : Math.max(FLIGHT_STEP_MS, think - spent));
     bot.timer.unref?.();
   }
 
@@ -455,12 +456,13 @@ export class Room {
    * then move it. It decides from the view a person in its seat would be sent,
    * and its intent goes through `intent` like anyone's. If the table has moved
    * on meanwhile and the intent is refused (someone got there first), the bot
-   * keeps its old memory and simply looks again.
+   * keeps its old memory and simply looks again. A move is not made on the
+   * spot: the bot picks the card up and carries it over (`fly`) first.
    */
   private look(player: Player): void {
     const bot = player.bot!;
     bot.timer = null;
-    if (this.phase !== 'playing' || !this.game) return;
+    if (this.phase !== 'playing' || !this.game || this.pausedBy) return;
     let midGroup = false;
     if (bot.pending) {
       const before = this.game;
@@ -468,6 +470,7 @@ export class Room {
       // The table moved on while it was making up its mind and the move it meant to make is gone (someone took the
       // pile): it does not go through the motions of a move it can see is lost. It thinks again, briefly.
       if (intent.k === 'move' && !applyIntent(before, player.seat, intent).ok) return this.rethink(player);
+      if (intent.k === 'move' && flightFrames(before, player.seat, intent).length > 0) return this.fly(player);
       bot.pending = null;
       this.intent(player, player.ack + 1, intent);
       if (this.game !== before) {
@@ -476,9 +479,58 @@ export class Room {
         midGroup = intent.k === 'flip' && (this.game.players.find((p) => p.seat === player.seat)?.dealt ?? 0) > 0;
       }
     }
+    this.decide(player, midGroup);
+  }
+
+  /** The bot looks the table over and picks its next action, done after a pause (less `spent`: time already gone on a move). */
+  private decide(player: Player, midGroup = false, spent = 0): void {
+    const bot = player.bot!;
     if (this.phase !== 'playing' || !this.game) return;
     bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, BOTS[bot.level].observance);
-    this.wake(player, undefined, midGroup && bot.pending?.intent.k === 'flip');
+    this.wake(player, undefined, midGroup && bot.pending?.intent.k === 'flip', spent);
+  }
+
+  /**
+   * The bot's pending move, carried out the way a person does it: it picks the card up (so it counts as held, for the
+   * grace window and for anyone watching), its card is shown crossing the table (made-up drag reports, see
+   * shared/flight.ts), and then it is put down. Someone may take the place meanwhile: then the drop is refused and the
+   * card goes home, as anyone's would. A pause, or the end of the round, cuts the flight off; the move stays pending.
+   */
+  private fly(player: Player): void {
+    const bot = player.bot!;
+    const { intent, memory } = bot.pending!;
+    if (intent.k !== 'move') return;
+    const before = this.game!;
+    this.intent(player, player.ack + 1, { k: 'hold', cardId: intent.cardId });
+    if (this.game === before) {
+      bot.pending = null; // it could not pick that card up any more
+      return this.decide(player);
+    }
+    const frames = flightFrames(this.game!, player.seat, intent);
+    let i = 0;
+    const step = () => {
+      bot.timer = null;
+      const game = this.game;
+      if (this.phase !== 'playing' || !game || this.pausedBy) return;
+      if (game.players.find((p) => p.seat === player.seat)?.holding !== intent.cardId) {
+        bot.pending = null; // taken out of its hand (the grace window closed): start afresh
+        return this.decide(player);
+      }
+      const frame = frames[i++];
+      if (frame) {
+        const msg: ServerMsg = { t: 'drag', seat: player.seat, ...frame };
+        for (const p of this.players) p.conn?.send(msg);
+        bot.timer = setTimeout(step, FLIGHT_STEP_MS);
+        bot.timer.unref?.();
+        return;
+      }
+      bot.pending = null;
+      const lands = applyIntent(game, player.seat, intent).ok; // (a refused drop changes the table too: the card goes home)
+      this.intent(player, player.ack + 1, intent);
+      if (lands) bot.memory = memory;
+      this.decide(player, false, frames.length * FLIGHT_STEP_MS);
+    };
+    step();
   }
 
   /** The bot's plan came to nothing before it acted on it: it picks another and acts on that after a short pause, not a whole one. */
