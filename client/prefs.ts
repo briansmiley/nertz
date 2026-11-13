@@ -2,6 +2,9 @@
 // browser, not to the table, and are remembered in localStorage when there is
 // one (without it they last as long as the page).
 import { useSyncExternalStore } from 'react';
+import { isDeck, type Deck } from '../shared/protocol';
+
+export { DECKS, type Deck } from '../shared/protocol';
 
 export interface Prefs {
   muted: boolean;
@@ -11,13 +14,10 @@ export interface Prefs {
   others: number;
   /** Reduced motion: true or false overrides the system setting; null follows it. */
   calm: boolean | null;
-  /** Which card faces are drawn (client/cards/Face.tsx). */
+  /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so. */
   deck: Deck;
 }
 
-/** The card faces there are to choose from: this project's own, and a traditional deck with 19th-century court cards. */
-export const DECKS = { modern: 'Nertz', classic: 'Classic' } as const;
-export type Deck = keyof typeof DECKS;
 
 export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern' };
 const KEY = 'nertz.prefs';
@@ -32,7 +32,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     volume: unit(v.volume, DEFAULT_PREFS.volume),
     others: unit(v.others, DEFAULT_PREFS.others),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
-    deck: typeof v.deck === 'string' && v.deck in DECKS ? (v.deck as Deck) : DEFAULT_PREFS.deck,
+    deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
   };
 }
 

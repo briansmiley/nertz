@@ -47,6 +47,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  *   c. nertz top to a work pile (an empty pile only if it builds down nowhere)
  *   d. nertz top to the middle
  *   e. waste top or a work pile's top to the middle
+ *      (an Ace, in d or e, is always noticed: nobody deals past an Ace)
  *   f. a work pile's whole face-up run onto another pile, if that turns over a face-down card or empties the pile
  *   g. waste top onto a work pile it builds down on
  *   h. deal one card off the stock (always noticed; three looks make a group); after a whole fruitless cycle, say "stuck" instead
@@ -64,6 +65,8 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   if ([nertz, waste, ...me.work.map(top)].some((c) => c && isHidden(c))) return null;
 
   const noticed = (focus = 1): boolean => rng() < observance ** focus;
+  /** Nobody overlooks an Ace: it always goes out to the middle. */
+  const ace = (card: AnyCard): boolean => !isHidden(card) && card.rank === 1;
   const acted = (intent: Intent, last: BotMemory['last'] = null) => ({ intent, memory: { flips: 0, last } });
   const move = (card: AnyCard, to: PileRef, count = 1): Intent => ({ k: 'move', cardId: card.id, count, to });
   const drops = (card: AnyCard) => legalDrops(view, seat, card.id);
@@ -104,11 +107,11 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   if (home && noticed(NERTZ_FOCUS)) return acted(move(nertz, home));
   // d
   const out = slotFor(nertz);
-  if (out && noticed(NERTZ_FOCUS)) return acted(move(nertz, out));
+  if (out && (ace(nertz) || noticed(NERTZ_FOCUS))) return acted(move(nertz, out));
   // e
   for (const card of [waste, ...me.work.map(top)]) {
     const to = card && slotFor(card);
-    if (to && noticed(CENTRE_FOCUS)) return acted(move(card, to));
+    if (to && (ace(card) || noticed(CENTRE_FOCUS))) return acted(move(card, to));
   }
   // f: only a whole face-up run can uncover or empty anything. Uncovering first.
   const runs = me.work.map((pile, i) => ({ i, down: me.down[i]!, cards: pile.slice(me.down[i]!) })).filter((r) => r.cards.length > 0);

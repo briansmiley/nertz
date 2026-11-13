@@ -5,6 +5,7 @@
 import { memo, type ReactElement } from 'react';
 import type { Suit } from '../../shared/types';
 import { getPrefs, usePrefs, watchPrefs } from '../prefs';
+import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
 
 /** Cards are drawn at this size (CSS px) and scaled by the table. */
 export const CARD_W = 90;
@@ -119,36 +120,70 @@ function Court({ suit, rank, colour }: { suit: Suit; rank: number; colour: strin
   );
 }
 
-// The classic deck is a set of picture files (public/cards/classic, see CREDITS.md), one a card, named rank then suit.
+// ---------------------------------------------------------------- the decks (shared/protocol.ts `DECKS`)
+//
+// Every deck has two renditions of a card: the full face, and a large-print one for cards drawn too small for a face
+// to be read (`mini`: other players' piles), which goes with it in colour and lettering.
+// - modern: this file's own drawing.
+// - four: the same, a colour to each suit (clubs green, diamonds blue).
+// - big: the large-print rendition at every size.
+// - classic: a set of picture files (public/cards/classic, see CREDITS.md), one a card, named rank then suit; its
+//   large-print rendition is drawn with the deck's own index figures and suit marks (classicGlyphs.ts).
+
+const TWO: Record<Suit, string> = { H: RED, D: RED, S: BLACK, C: BLACK };
+const FOUR: Record<Suit, string> = { H: RED, D: '#1d5fd3', S: BLACK, C: '#14874c' };
+
 const CODE = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
 const classic = (suit: Suit, rank: number): string => `/cards/classic/${CODE[rank]}${suit}.svg`;
 
-// The whole deck is fetched as soon as it is chosen, so that no card is blank the first time it is turned up.
+// The whole deck is fetched as soon as it is chosen (by you, or by anyone at your table), so that no card is blank the
+// first time it is turned up.
 let warmed = false;
-function warm(): void {
-  if (warmed || getPrefs().deck !== 'classic' || typeof Image === 'undefined') return;
+export function warm(deck: string = getPrefs().deck): void {
+  if (warmed || deck !== 'classic' || typeof Image === 'undefined') return;
   warmed = true;
   for (const suit of ['C', 'D', 'H', 'S'] as const) for (let rank = 1; rank <= 13; rank++) new Image().src = classic(suit, rank);
 }
 warm();
-watchPrefs(warm);
+watchPrefs(() => warm());
 
-/** The face of one card. `mini` picks the large-print rendition (the same in every deck: it is for cards too small for artwork). */
-export const Face = memo(function Face({ suit, rank, mini }: { suit: Suit; rank: number; mini: boolean }) {
-  const { deck } = usePrefs();
-  const colour = suit === 'H' || suit === 'D' ? RED : BLACK;
-  if (deck === 'classic' && !mini) return <img className="art" src={classic(suit, rank)} alt="" draggable={false} />;
-  if (mini) {
-    return (
-      <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
-        <text x="25" y="45" textAnchor="middle" fontSize="50" fontWeight="700" fontFamily={INDEX_FONT} letterSpacing={rank === 10 ? -5 : 0}>
-          {LABEL[rank]}
-        </text>
-        <Pip suit={suit} x={67} y={27} size={36} />
-        <Pip suit={suit} x={45} y={89} size={54} />
-      </svg>
-    );
-  }
+/** Large print: a big rank, the suit beside it and again below. */
+function Large({ suit, rank, colour }: { suit: Suit; rank: number; colour: string }) {
+  return (
+    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
+      <text x="25" y="45" textAnchor="middle" fontSize="50" fontWeight="700" fontFamily={INDEX_FONT} letterSpacing={rank === 10 ? -5 : 0}>
+        {LABEL[rank]}
+      </text>
+      <Pip suit={suit} x={67} y={27} size={36} />
+      <Pip suit={suit} x={45} y={89} size={54} />
+    </svg>
+  );
+}
+
+/** The Classic deck in large print: its own white card, index figure and suit marks. */
+function ClassicLarge({ suit, rank }: { suit: Suit; rank: number }) {
+  const colour = suit === 'H' || suit === 'D' ? 'red' : 'black';
+  const mark = (x: number, y: number, size: number) => <path d={CLASSIC_SUIT[suit]} fill={colour} transform={`translate(${x} ${y}) scale(${size / 1000})`} />;
+  return (
+    <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`}>
+      <rect x="0.5" y="0.5" width={CARD_W - 1} height={CARD_H - 1} rx="6" fill="white" stroke="black" strokeWidth="0.6" />
+      <path d={CLASSIC_FIGURE[rank]} fill="none" stroke={colour} strokeWidth="95" strokeLinecap="square" strokeMiterlimit="1.5" transform="translate(24 29) scale(0.04)" />
+      {mark(67, 27, 36)}
+      {mark(45, 89, 56)}
+    </svg>
+  );
+}
+
+/**
+ * The face of one card. `mini` picks the large-print rendition. A card belongs to its owner's deck, and is drawn as
+ * they chose for everyone (`deck`); without one, as you chose yourself.
+ */
+export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: Suit; rank: number; mini: boolean; deck?: string }) {
+  const own = usePrefs().deck;
+  const deck = of ?? own;
+  if (deck === 'classic') return mini ? <ClassicLarge suit={suit} rank={rank} /> : <img className="art" src={classic(suit, rank)} alt="" draggable={false} />;
+  const colour = (deck === 'four' ? FOUR : TWO)[suit];
+  if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} />;
   return (
     <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
       <Index suit={suit} rank={rank} />

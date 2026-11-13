@@ -226,11 +226,13 @@ describe('chooseIntent', () => {
     expect(look(nertz, { flips: 7, last: null })).toEqual({ intent: move('S5', work(0)), memory: freshMemory() });
   });
 
-  it('observance 0 only ever flips (and says stuck); observance 1 always takes the best move', () => {
+  it('observance 0 only ever flips (and says stuck), but for an Ace; observance 1 always takes the best move', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const state = toPlay(deal([0, 1], seeded(seed)));
       const rng = seeded(seed + 100);
-      expect(look(state, freshMemory(), 0, rng)?.intent).toEqual({ k: 'flip' });
+      // (The one thing it cannot miss is an Ace showing: that goes out to the middle.)
+      const blind = look(state, freshMemory(), 0, rng)!.intent;
+      expect(blind.k === 'flip' || (blind.k === 'move' && blind.to.k !== 'work')).toBe(true);
       // With observance 1 the choice does not depend on the dice (short of which empty slot an Ace takes).
       const a = look(state, freshMemory(), 1, seeded(1))!.intent;
       const b = look(state, freshMemory(), 1, seeded(2))!.intent;

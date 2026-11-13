@@ -17,14 +17,14 @@ import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shar
 import { DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
-import { backColour, CARD_H, CARD_W, Face } from './cards/Face';
+import { backColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, pause, post } from './net';
 import { canResume } from './Settings';
-import { calm } from './prefs';
+import { calm, usePrefs } from './prefs';
 import { beaten, stage as stageSound } from './sound';
 import { beatenTo } from './soundEvents';
 
@@ -104,6 +104,8 @@ interface CardProps {
   mine: boolean;
   up: boolean;
   mini: boolean;
+  /** The faces of the deck this card came from: its owner's choice. */
+  deck: string | undefined;
   slow: boolean;
   /** Travels at its own level, not above everything: a card coming up under the ones already held. */
   low: boolean;
@@ -214,7 +216,7 @@ const CardView = memo(function CardView(p: CardProps) {
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
-        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} /> : null}</div>
+        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} /> : null}</div>
         <div className="back" style={{ '--back': backColour(p.owner) } as CSSProperties} />
       </motion.div>
     </motion.div>
@@ -344,6 +346,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const you = room.you;
   const results = room.phase === 'results';
   const [W, H] = useViewport();
+  const prefs = usePrefs();
+  // Whatever decks are at the table are fetched before their cards are turned up.
+  const decks = room.players.map((p) => p.deck ?? '').join();
+  useEffect(() => room.players.forEach((p) => p.deck && warm(p.deck)), [decks]);
   const [stage, skip] = useStage(results, game.tray.length, game.players.length);
   // A click meant for a card must not throw the end of the round away: only Escape skips it, and only on your own screen.
   const ending = results && stage !== 'sheet';
@@ -1064,6 +1070,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             mine={c.mine}
             up={c.up && !replaying}
             mini={c.s * CARD_W < MINI_BELOW}
+            deck={c.card.owner === you ? prefs.deck : info(c.card.owner)?.deck}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
             cls={cardClass(c)}

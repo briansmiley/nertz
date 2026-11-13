@@ -1,4 +1,5 @@
 // Screens around the table: home, lobby, round results.
+import { Gallery } from './Gallery';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, RoomView } from '../shared/types';
@@ -64,6 +65,7 @@ export function App() {
     if (code) history.replaceState(null, '', `/?room=${code}`);
   }, [code]);
   useSounds(room, net.status === 'online');
+  if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   if (!room) {
     return (
       <>
@@ -252,6 +254,10 @@ function Lobby({ room }: { room: RoomView }) {
   return (
     <main className="solo">
       <Pad>
+        <div className="tools top">
+          {me?.isHost && <AddBot room={room} />}
+          <Leave />
+        </div>
         <h2>
           Table <span className="code">{room.code}</span>
         </h2>
@@ -267,7 +273,7 @@ function Lobby({ room }: { room: RoomView }) {
             <li key={p.seat} className={p.connected ? '' : 'away'}>
               <Mini seat={p.seat} />
               <span className="name">{p.name}</span>
-              <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `bot, ${p.bot}`].filter(Boolean).join(', ')}</span>
+              <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `${p.bot} bot`].filter(Boolean).join(', ')}</span>
               {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
             </li>
           ))}
@@ -280,10 +286,6 @@ function Lobby({ room }: { room: RoomView }) {
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
         )}
-        <div className="tools">
-          {me?.isHost && <AddBot room={room} />}
-          <Leave />
-        </div>
       </Pad>
     </main>
   );

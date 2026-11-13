@@ -7,6 +7,7 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
+import { getPrefs, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
@@ -120,6 +121,13 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
   return () => void dragListeners.delete(fn);
 }
 
+// A change of deck in the settings is passed on to the table.
+let toldDeck: string | null = null;
+watchPrefs(() => {
+  const { deck } = getPrefs();
+  if (deck !== toldDeck && post({ t: 'deck', deck })) toldDeck = deck;
+});
+
 /** Sends one message if the socket is open. Game intents go through `send` instead. */
 export function post(msg: ClientMsg): boolean {
   if (socket?.readyState !== WebSocket.OPEN) return false;
@@ -143,7 +151,11 @@ function connect(): void {
   socket = ws;
   sync = freshSync; // seq, pending and rev all belong to the connection
   ws.onopen = () => {
-    if (socket === ws && session) post(hello(session.room, session.name, token()));
+    if (socket === ws && session) {
+      post(hello(session.room, session.name, token()));
+      post({ t: 'deck', deck: getPrefs().deck }); // my cards' faces, for everyone at the table
+      toldDeck = getPrefs().deck;
+    }
   };
   ws.onmessage = (e) => {
     if (socket !== ws) return;

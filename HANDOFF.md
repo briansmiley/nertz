@@ -53,6 +53,17 @@ turnarounds over long verification loops for small visual changes.
 - The dotted outline under the stock sits under its bottom card (`stockPad`), so it does not show as the stack thins.
 - The Start button's small print is just "Space".
 
+## Decks, lobby, bots and Aces (13 Nov 2026, local only: NOT pushed or deployed)
+
+- Decks (`DECKS` in `shared/protocol.ts`, drawn in `client/cards/Face.tsx`): Nertz, Nertz in four colours, Big print,
+  and Classic (picture files in `public/cards/classic`, CC0, see `client/cards/CREDITS.md`). Each has its own
+  large-print rendition for small cards. A player's choice (your settings, "Card faces") is told to the table
+  (`{ t: 'deck' }`, `PlayerView.deck`) and their cards are drawn with it for everyone. Bots have the plain deck.
+  `/?decks` shows every deck, full faces and small cards (`client/Gallery.tsx`); linked from your settings.
+- Lobby: add-a-bot and leave are in the sheet's top corner; from 640 px wide the players are in two columns.
+- A bot never overlooks an Ace it could play to the middle (`ace` in `server/bot.ts`); other moves are still missed
+  by chance, by level.
+
 ## Bots carry their cards (merged to main 13 Nov 2026, NOT deployed)
 
 A bot's move used to be applied in one step when its think timer fired, so nobody could beat it to a pile. Now it

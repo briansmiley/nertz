@@ -476,7 +476,7 @@ describe('the store over a (fake) socket', () => {
     net.join('ABCD', 'Ada');
     const first = FakeSocket.all[0]!;
     first.open();
-    expect(first.sent).toMatchObject([{ t: 'join', room: 'ABCD', name: 'Ada' }]);
+    expect(first.sent).toMatchObject([{ t: 'join', room: 'ABCD', name: 'Ada' }, { t: 'deck' }]);
     expect(net.send({ k: 'flip' })).toBe(false); // nothing to play on yet
     first.deliver({ t: 'state', ...s.snapshot() });
     expect(net.current()).toMatchObject({ status: 'online', room: { phase: 'playing' } });
@@ -488,12 +488,12 @@ describe('the store over a (fake) socket', () => {
     vi.advanceTimersByTime(300);
     const second = FakeSocket.all[1]!;
     second.open();
-    expect(second.sent).toHaveLength(1); // the join
+    expect(second.sent).toHaveLength(2); // the join, and which deck
     const shown = net.current().room;
     expect(shown?.game).toBeTruthy();
 
     expect(net.send({ k: 'flip' })).toBe(false);
-    expect(second.sent).toHaveLength(1); // nothing went out
+    expect(second.sent).toHaveLength(2); // nothing went out
     expect(net.current().room).toBe(shown); // and the table is still what is rendered
 
     second.deliver({ t: 'state', ...s.snapshot() });

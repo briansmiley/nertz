@@ -2366,3 +2366,99 @@ label.check {
 .table.short .mine .who {
   margin-top: 0;
 }
+
+/* ------------------------------------------------------------ the lobby's top corner, two columns of players */
+
+/* Add a bot and leave, in the top corner of the sheet: they stay put as the list of players grows. */
+.tools.top {
+  position: absolute;
+  top: 1.6rem;
+  right: 1.2rem;
+}
+
+.pad:has(> .tools.top) {
+  position: relative;
+}
+
+.tools.top .pop {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+@media (min-width: 640px) {
+  .seats {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 1.4rem;
+  }
+}
+
+/* ------------------------------------------------------------ the decks, to look at (/?decks) */
+
+.gallery {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+}
+
+.gallery h1,
+.gallery h2,
+.gallery h3 {
+  margin: 1.2rem 0 0.5rem;
+}
+
+.gallery a {
+  color: inherit;
+}
+
+.gallery h2 button {
+  margin-left: 0.6rem;
+  padding: 4px 10px;
+  border: 1.5px solid rgba(241, 234, 216, 0.5);
+  border-radius: 99px;
+  font: 600 13px/1.2 var(--ui);
+  color: var(--chalk);
+  background: none;
+  vertical-align: middle;
+}
+
+.gallery h2 button:disabled {
+  color: var(--ink);
+  background: var(--marigold);
+  border-color: var(--marigold);
+}
+
+.gallery .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.gallery .mini {
+  zoom: 0.8;
+}
+
+.gallery .mini.small {
+  zoom: 0.3;
+}
+
+.slip a.decks {
+  font-size: 12.5px;
+  color: inherit;
+  opacity: 0.8;
+}
+
+@media (min-width: 640px) {
+  /* (The lobby's sheet is wider for the two columns.) */
+  .pad:has(> .seats) {
+    width: min(100%, 35rem);
+  }
+}
+
+/* (The gallery is longer than the window: the cloth goes all the way down.) */
+html:has(.gallery),
+body:has(.gallery),
+#root:has(.gallery) {
+  height: auto;
+  min-height: 100%;
+}

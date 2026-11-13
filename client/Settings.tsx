@@ -310,6 +310,9 @@ export function Corner({ room }: { room?: RoomView | null }) {
                 </option>
               ))}
             </select>
+            <a className="decks" href="/?decks" target="_blank" rel="noreferrer">
+              See all the decks
+            </a>
           </label>
           <WholeScreen />
           {room && <EndVote room={room} />}
