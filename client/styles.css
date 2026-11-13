@@ -71,10 +71,19 @@ button {
   background: var(--card);
 }
 
-.front svg {
+.front svg,
+.front img.art {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* A deck of picture files: the picture is the whole card, and takes no pointer (the card under it is what is dragged). */
+.front img.art {
+  border-radius: inherit;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .back {

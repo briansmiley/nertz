@@ -4,6 +4,7 @@
 // which is just a big rank and suit.
 import { memo, type ReactElement } from 'react';
 import type { Suit } from '../../shared/types';
+import { getPrefs, usePrefs, watchPrefs } from '../prefs';
 
 /** Cards are drawn at this size (CSS px) and scaled by the table. */
 export const CARD_W = 90;
@@ -118,9 +119,25 @@ function Court({ suit, rank, colour }: { suit: Suit; rank: number; colour: strin
   );
 }
 
-/** The face of one card. `mini` picks the large-print rendition. */
+// The classic deck is a set of picture files (public/cards/classic, see CREDITS.md), one a card, named rank then suit.
+const CODE = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
+const classic = (suit: Suit, rank: number): string => `/cards/classic/${CODE[rank]}${suit}.svg`;
+
+// The whole deck is fetched as soon as it is chosen, so that no card is blank the first time it is turned up.
+let warmed = false;
+function warm(): void {
+  if (warmed || getPrefs().deck !== 'classic' || typeof Image === 'undefined') return;
+  warmed = true;
+  for (const suit of ['C', 'D', 'H', 'S'] as const) for (let rank = 1; rank <= 13; rank++) new Image().src = classic(suit, rank);
+}
+warm();
+watchPrefs(warm);
+
+/** The face of one card. `mini` picks the large-print rendition (the same in every deck: it is for cards too small for artwork). */
 export const Face = memo(function Face({ suit, rank, mini }: { suit: Suit; rank: number; mini: boolean }) {
+  const { deck } = usePrefs();
   const colour = suit === 'H' || suit === 'D' ? RED : BLACK;
+  if (deck === 'classic' && !mini) return <img className="art" src={classic(suit, rank)} alt="" draggable={false} />;
   if (mini) {
     return (
       <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>

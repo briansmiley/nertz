@@ -11,9 +11,15 @@ export interface Prefs {
   others: number;
   /** Reduced motion: true or false overrides the system setting; null follows it. */
   calm: boolean | null;
+  /** Which card faces are drawn (client/cards/Face.tsx). */
+  deck: Deck;
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null };
+/** The card faces there are to choose from: this project's own, and a traditional deck with 19th-century court cards. */
+export const DECKS = { modern: 'Nertz', classic: 'Classic' } as const;
+export type Deck = keyof typeof DECKS;
+
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern' };
 const KEY = 'nertz.prefs';
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
@@ -26,6 +32,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     volume: unit(v.volume, DEFAULT_PREFS.volume),
     others: unit(v.others, DEFAULT_PREFS.others),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
+    deck: typeof v.deck === 'string' && v.deck in DECKS ? (v.deck as Deck) : DEFAULT_PREFS.deck,
   };
 }
 
