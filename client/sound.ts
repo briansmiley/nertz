@@ -257,6 +257,16 @@ export function lost(): void {
   tone(392, { gain: 0.07, dur: 0.38, delay: 0.16, partials: BELL });
 }
 
+/**
+ * Table.tsx says so when a card is let go over a pile in the middle that someone else got to first: the card's way
+ * home, which follows at once, then sounds as a lost race and not as a plain tap.
+ */
+const BEATEN_MS = 500;
+let beatenAt = -Infinity;
+export function beaten(): void {
+  beatenAt = performance.now();
+}
+
 /** Nertz is called: the one loud sound, the same for everyone, landing with the stamp. */
 export function nertz(): void {
   const at = 0.11; // the stamp takes about this long to come down
@@ -333,6 +343,8 @@ function play(cue: Cue): void {
     case 'clear':
       return clearPile(cue.who);
     case 'home':
+      // Our card going back because it was let go over a pile someone else had just taken: the disappointed sound.
+      if (cue.who === 'me' && performance.now() - beatenAt < BEATEN_MS) return void ((beatenAt = -Infinity), lost());
       return home(cue.who);
     case 'lost':
       return lost();

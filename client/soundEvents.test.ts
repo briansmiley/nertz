@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS } from '../shared/settings';
 const deal: typeof dealRound = (...a) => openPlay(startCountdown(finishDeal(dealRound(...a))));
 import type { Card, GameState, Intent, PileRef, RoomView, Suit } from '../shared/types';
 import { freshSync, onSend, onSnapshot, predict, type Sync } from './net';
-import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
+import { beatenTo, graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
 function rng(seed: number) {
   return () => {
@@ -151,15 +151,17 @@ describe('sound cues from rendered state', () => {
     expect(mine).toBe(top(s.game, 0, 0));
   });
 
-  it('holding a card, however long, when someone else takes the pile it could have gone on: the disappointed sound', () => {
+  it('holding a card when someone else takes the pile it could have gone on makes no sound of its own; letting it go there is being beaten to it', () => {
     const s = session(rigged());
     s.them(move(top(s.game, 1, 0), slot(3))); // their ace in the middle
     const two = top(s.game, 0, 1);
     s.me({ k: 'hold', cardId: two });
     s.confirm();
+    expect(beatenTo(s.frame.room!.game!, 0, two, 3)).toBe(false); // the pile would still take it
     const sniped = s.them(move(top(s.game, 1, 1), slot(3)));
-    expect(sniped).toContainEqual({ k: 'lost' });
-    expect(sniped).toContainEqual({ k: 'centre', who: 'other', rank: 2 });
+    expect(sniped).toEqual([{ k: 'centre', who: 'other', rank: 2 }]); // it may have somewhere else to go
+    expect(beatenTo(s.frame.room!.game!, 0, two, 3)).toBe(true); // their two lies where ours was going
+    expect(beatenTo(s.frame.room!.game!, 0, two, 0)).toBe(false); // not over any other place
   });
 
   it('a card picked up and put down nowhere gets the same quiet tap', () => {

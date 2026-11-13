@@ -24,7 +24,8 @@ import { Opening } from './Opening';
 import { onDrag, pause, post } from './net';
 import { canResume } from './Settings';
 import { calm } from './prefs';
-import { stage as stageSound } from './sound';
+import { beaten, stage as stageSound } from './sound';
+import { beatenTo } from './soundEvents';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
 const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
@@ -858,6 +859,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     } else if (d.held.k === 'stock') {
       if (t) send({ k: 'flip' });
     } else if (!t || t.to === 'tray' || t.to === 'waste' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
+      // Let go over a pile in the middle that will not take it because someone else's same card is already there: beaten to it.
+      const id = d.held.id;
+      const c = centreOf(d);
+      const over = d.ids.length === 1 && !t ? L.slotHit.findIndex((r) => r && (inside(r, d.px, d.py) || (c && inside(r, c.x, c.y)))) : -1;
+      if (over >= 0 && beatenTo(game, you, id, over)) beaten();
       send({ k: 'release' });
     }
     letGo(d);
