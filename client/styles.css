@@ -101,14 +101,20 @@ button {
     0 1.5px 2.5px rgba(0, 0, 0, 0.32);
 }
 
-/* The ornate back: one picture of the pattern, white on nothing, laid over the player's colour. Its own frame is the card's edge. */
-.back.ornate {
+/* A back that is a one-colour pattern: one picture of it, white on nothing, laid over the player's colour. Its own frame is the card's edge. */
+.back.tint,
+.back.pic {
   border: 0;
-  background-image: url('/cards/backs/ornate.png');
   background-size: 100% 100%;
   box-shadow:
     0 0 0 0.6px rgba(20, 30, 40, 0.5),
     0 1.5px 2.5px rgba(0, 0, 0, 0.32);
+}
+
+/* A back that is a picture with colours of its own: framed in the player's colour, so whose card it is still shows. */
+.back.pic {
+  border: 5px solid var(--back);
+  background-color: var(--card);
 }
 
 /* A card on the table: drawn at 90x126 and moved/scaled by transforms only. */
@@ -2503,4 +2509,48 @@ body:has(.gallery),
   stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* The gallery's backs: each a button showing it in the six colours (three large, three small). */
+.gallery .hint {
+  margin: 0 0 0.8rem;
+  opacity: 0.75;
+  font-size: 14px;
+}
+
+.gallery .backs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.gallery .backs button {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 10px;
+  border: 1.5px solid rgba(241, 234, 216, 0.25);
+  border-radius: 10px;
+  font: 600 14px/1.2 var(--ui);
+  color: var(--chalk);
+  background: rgba(8, 28, 33, 0.35);
+  text-align: left;
+}
+
+.gallery .backs button.on {
+  border-color: var(--marigold);
+  background: rgba(240, 180, 40, 0.14);
+}
+
+.gallery .backs .row {
+  margin: 0;
+  align-items: flex-end;
+}
+
+.gallery .backs .mini {
+  zoom: 0.7;
+}
+
+.gallery .backs .mini.small {
+  zoom: 0.28;
 }

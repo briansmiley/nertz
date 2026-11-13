@@ -17,7 +17,7 @@ import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shar
 import { DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
-import { backColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
+import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
@@ -219,7 +219,7 @@ const CardView = memo(function CardView(p: CardProps) {
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} /> : null}</div>
-        <div className={`back${p.back && p.back !== 'plain' ? ` ${p.back}` : ''}`} style={{ '--back': backColour(p.owner) } as CSSProperties} />
+        <div {...backOf(backColour(p.owner), p.back)} />
       </motion.div>
     </motion.div>
   );

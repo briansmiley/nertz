@@ -13,8 +13,29 @@ export const DECKS = { modern: 'Nertz', big: 'Big print', night: 'Night', cute: 
 export type Deck = keyof typeof DECKS;
 export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object.hasOwn(DECKS, v);
 
-/** The backs there are to choose from: the plain cross-hatch, and an ornate pattern (one picture, printed in each player's colour). */
-export const CARD_BACKS = { plain: 'Plain', ornate: 'Ornate' } as const;
+/**
+ * The backs there are to choose from (drawn by `backOf` in client/cards/Face.tsx; where each is from: CREDITS.md). The
+ * plain cross-hatch; patterns of one colour, each a single picture printed in the player's own colour; and pictures
+ * with colours of their own, framed in the player's colour.
+ */
+export const CARD_BACKS = {
+  plain: 'Plain',
+  bicycle: 'Rider',
+  ornate: 'Ornate',
+  rosette: 'Rosette',
+  cobble: 'Cobble',
+  stars: 'Stars',
+  lion: 'Lion',
+  chain: 'Chain',
+  check: 'Check',
+  suits: 'Suits',
+  carpet: 'Carpet',
+  'plaid-blue': 'Plaid, blue',
+  'plaid-green': 'Plaid, green',
+  votes: 'Votes for Women',
+  gem: 'Gem',
+  aces: 'Aces',
+} as const;
 export type Back = keyof typeof CARD_BACKS;
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
 

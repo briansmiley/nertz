@@ -1,9 +1,8 @@
 // Every deck there is to choose (shared/protocol.ts `DECKS`), laid out to look at: each card's full face, and the
 // large-print rendition that small cards (other players' piles) are drawn with. Opened at /?decks.
 import { CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
-import type { CSSProperties } from 'react';
 import type { Suit } from '../shared/types';
-import { BACKS, Face } from './cards/Face';
+import { BACKS, backOf, Face } from './cards/Face';
 import { setPrefs, usePrefs } from './prefs';
 
 const SUITS: Suit[] = ['S', 'H', 'C', 'D'];
@@ -31,28 +30,29 @@ export function Gallery() {
         </a>
         Decks
       </h1>
-      {(Object.keys(CARD_BACKS) as Back[]).map((back) => (
-        <section key={back}>
-          <h2>
-            {CARD_BACKS[back]} backs{' '}
-            <button type="button" disabled={prefs.back === back} onClick={() => setPrefs({ back })}>
-              {prefs.back === back ? 'Your backs' : 'Use these backs'}
+      <section>
+        <h2>Backs</h2>
+        <p className="hint">Click one to use it. The one-colour patterns are printed in each player's own colour; the pictures get a frame of it.</p>
+        <div className="backs">
+          {(Object.keys(CARD_BACKS) as Back[]).map((back) => (
+            <button key={back} type="button" className={prefs.back === back ? 'on' : ''} onClick={() => setPrefs({ back })}>
+              <span className="row">
+                {BACKS.slice(0, 3).map((colour) => (
+                  <span key={colour} className="mini">
+                    <span {...backOf(colour, back)} />
+                  </span>
+                ))}
+                {BACKS.slice(3).map((colour) => (
+                  <span key={colour} className="mini small">
+                    <span {...backOf(colour, back)} />
+                  </span>
+                ))}
+              </span>
+              <b>{CARD_BACKS[back]}</b>
             </button>
-          </h2>
-          <div className="row">
-            {BACKS.map((colour) => (
-              <span key={colour} className="mini">
-                <span className={`back${back === 'plain' ? '' : ` ${back}`}`} style={{ '--back': colour } as CSSProperties} />
-              </span>
-            ))}
-            {BACKS.map((colour) => (
-              <span key={colour} className="mini small">
-                <span className={`back${back === 'plain' ? '' : ` ${back}`}`} style={{ '--back': colour } as CSSProperties} />
-              </span>
-            ))}
-          </div>
-        </section>
-      ))}
+          ))}
+        </div>
+      </section>
       {(Object.keys(DECKS) as Deck[]).map((deck) => (
         <section key={deck}>
           <h2>

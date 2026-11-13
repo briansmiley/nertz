@@ -2,7 +2,7 @@
 // card: the full face with corner indices and proper pip layouts, and a
 // "mini" face for cards shown too small for pips to read (opponents' piles),
 // which is just a big rank and suit.
-import { memo, type ReactElement } from 'react';
+import { memo, type CSSProperties, type ReactElement } from 'react';
 import type { Suit } from '../../shared/types';
 import { getPrefs, usePrefs, watchPrefs } from '../prefs';
 import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
@@ -14,6 +14,17 @@ export const CARD_H = 126;
 /** Back colour per seat. */
 export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#272b35'] as const;
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
+
+/** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */
+const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green', 'votes', 'gem', 'aces']);
+
+/** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
+export function backOf(colour: string, back: string | undefined): { className: string; style: CSSProperties } {
+  const vars = { '--back': colour } as CSSProperties;
+  if (!back || back === 'plain') return { className: 'back', style: vars };
+  const picture = PICTURES.has(back);
+  return { className: `back ${picture ? 'pic' : 'tint'}`, style: { ...vars, backgroundImage: `url('/cards/backs/${back}.${picture ? 'jpg' : 'png'}')` } };
+}
 
 const RED = '#cf2233';
 const BLACK = '#1a1c23';
