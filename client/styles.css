@@ -2590,51 +2590,60 @@ body:has(.showroom),
   background: var(--marigold);
 }
 
-/* A deck of faces: a hand fanned out on the cloth, its name and small cards beside it. */
+/* The decks of faces, two or three across: each a hand fanned out on the cloth, its name and small cards under it. */
+.showroom .decks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  grid-auto-flow: dense; /* a deck's 52 cards take a row of their own, and the decks after it close up over them */
+  gap: 46px 24px;
+}
+
 .showroom article {
   display: grid;
-  grid-template-columns: minmax(280px, 400px) 1fr;
-  gap: 10px 36px;
-  align-items: center;
-  margin-bottom: 44px;
+  justify-items: center;
+  gap: 14px;
+  min-width: 0;
 }
 
 .showroom .fan {
   position: relative;
-  height: 190px;
+  width: 330px;
+  max-width: 100%;
+  height: 152px;
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
 }
 
+/* Each card is a little further along, a little more turned and a little lower than the middle one: the last lies on top, all of it showing. */
 .showroom .fan .leaf {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  top: 6px;
   margin-left: -45px;
-  transform-origin: 50% 190%;
-  transform: rotate(calc(var(--i) * 9deg));
+  transform: translate(calc(var(--i) * 38px), calc(var(--i) * var(--i) * 1.6px)) rotate(calc(var(--i) * 3.5deg));
   transition: transform 0.18s ease-out;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
 }
 
 .showroom .fan:hover .leaf,
 .showroom article.on .fan .leaf {
-  transform: rotate(calc(var(--i) * 11deg)) translateY(-6px);
+  transform: translate(calc(var(--i) * 40px), calc(var(--i) * var(--i) * 1.6px - 6px)) rotate(calc(var(--i) * 3.5deg));
 }
 
 .showroom .about {
   display: grid;
-  gap: 12px;
-  justify-items: start;
+  gap: 10px;
+  justify-items: center;
   min-width: 0;
 }
 
 .showroom h3 {
   margin: 0;
-  font: 400 1.9rem/1 var(--display);
+  font: 400 1.7rem/1.1 var(--display);
   color: var(--chalk);
+  text-align: center;
 }
 
 .showroom article.on h3::after {
@@ -2657,42 +2666,39 @@ body:has(.showroom),
   zoom: 0.36;
 }
 
-.showroom details {
-  width: 100%;
+.showroom .more {
+  padding: 4px 12px;
+  border: 1.5px solid rgba(241, 234, 216, 0.3);
+  border-radius: 99px;
   font: 600 13px/1.2 var(--ui);
   color: var(--chalk-dim);
-}
-
-.showroom summary {
+  background: none;
   cursor: pointer;
-  width: max-content;
 }
 
-.showroom details .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
+.showroom .more:hover,
+.showroom .more[aria-expanded='true'] {
+  color: var(--chalk);
+  border-color: var(--chalk);
 }
 
-.showroom details .mini {
-  zoom: 0.5;
+/* All 52: four rows of thirteen, a suit to a row, as wide as the page and no wider than the cards are in play. */
+.showroom .all {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 74px));
+  justify-content: center;
+  gap: 6px;
+  margin-top: -18px;
+}
+
+.showroom .all .mini {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 90 / 126;
 }
 
 @media (max-width: 720px) {
-  .showroom article {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .showroom .fan {
-    width: 100%;
-  }
-
-  .showroom .about {
-    justify-items: center;
-  }
-
   .showroom .dealt {
     justify-content: center;
     gap: 26px 18px;
@@ -2700,6 +2706,20 @@ body:has(.showroom),
 
   .showroom .lay > .mini:first-child {
     zoom: 0.85;
+  }
+
+  .showroom .fan {
+    zoom: 0.9;
+  }
+
+  /* Thirteen across is too small to read on a phone: seven and six, each suit starting a row of its own. */
+  .showroom .all {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .showroom .all .mini:nth-child(13n + 1) {
+    grid-column-start: 1;
   }
 }
 
