@@ -2462,3 +2462,35 @@ body:has(.gallery),
   height: auto;
   min-height: 100%;
 }
+
+/* The gallery's way back: a round arrow button before its heading. */
+.gallery h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gallery .back-to {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  border-radius: 99px;
+  background: rgba(8, 28, 33, 0.6);
+}
+
+.gallery .back-to:hover {
+  border-color: var(--chalk);
+}
+
+.gallery .back-to svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--chalk);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

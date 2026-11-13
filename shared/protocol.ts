@@ -4,8 +4,12 @@ import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, RoomView } from './types';
 
-/** The card faces there are to choose from (client/cards/Face.tsx): this project's own, the same with a colour to each suit, large print, and a traditional deck with 19th-century court cards. */
-export const DECKS = { modern: 'Nertz', four: 'Nertz, four colours', big: 'Big print', classic: 'Classic' } as const;
+/**
+ * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, and a traditional
+ * deck with 19th-century court cards. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
+ * suit must not be one colour in your hand and another in your neighbour's.)
+ */
+export const DECKS = { modern: 'Nertz', big: 'Big print', classic: 'Classic' } as const;
 export type Deck = keyof typeof DECKS;
 export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object.hasOwn(DECKS, v);
 

@@ -22,10 +22,14 @@ export function Gallery() {
   const prefs = usePrefs();
   return (
     <main className="gallery">
-      <h1>Decks</h1>
-      <p>
-        Your cards are drawn with the deck you choose, for everyone at the table. <a href="/">Back to the game</a>
-      </p>
+      <h1>
+        <a className="back-to" href="/" aria-label="Back to the game" title="Back to the game">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14.5 5.5L8 12l6.5 6.5" />
+          </svg>
+        </a>
+        Decks
+      </h1>
       {(Object.keys(DECKS) as Deck[]).map((deck) => (
         <section key={deck}>
           <h2>

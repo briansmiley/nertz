@@ -55,7 +55,7 @@ turnarounds over long verification loops for small visual changes.
 
 ## Decks, lobby, bots and Aces (13 Nov 2026, local only: NOT pushed or deployed)
 
-- Decks (`DECKS` in `shared/protocol.ts`, drawn in `client/cards/Face.tsx`): Nertz, Nertz in four colours, Big print,
+- Decks (`DECKS` in `shared/protocol.ts`, drawn in `client/cards/Face.tsx`): Nertz, Big print,
   and Classic (picture files in `public/cards/classic`, CC0, see `client/cards/CREDITS.md`). Each has its own
   large-print rendition for small cards. A player's choice (your settings, "Card faces") is told to the table
   (`{ t: 'deck' }`, `PlayerView.deck`) and their cards are drawn with it for everyone. Bots have the plain deck.

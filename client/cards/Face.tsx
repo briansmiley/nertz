@@ -125,13 +125,10 @@ function Court({ suit, rank, colour }: { suit: Suit; rank: number; colour: strin
 // Every deck has two renditions of a card: the full face, and a large-print one for cards drawn too small for a face
 // to be read (`mini`: other players' piles), which goes with it in colour and lettering.
 // - modern: this file's own drawing.
-// - four: the same, a colour to each suit (clubs green, diamonds blue).
 // - big: the large-print rendition at every size.
 // - classic: a set of picture files (public/cards/classic, see CREDITS.md), one a card, named rank then suit; its
 //   large-print rendition is drawn with the deck's own index figures and suit marks (classicGlyphs.ts).
 
-const TWO: Record<Suit, string> = { H: RED, D: RED, S: BLACK, C: BLACK };
-const FOUR: Record<Suit, string> = { H: RED, D: '#1d5fd3', S: BLACK, C: '#14874c' };
 
 const CODE = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
 const classic = (suit: Suit, rank: number): string => `/cards/classic/${CODE[rank]}${suit}.svg`;
@@ -182,7 +179,7 @@ export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: S
   const own = usePrefs().deck;
   const deck = of ?? own;
   if (deck === 'classic') return mini ? <ClassicLarge suit={suit} rank={rank} /> : <img className="art" src={classic(suit, rank)} alt="" draggable={false} />;
-  const colour = (deck === 'four' ? FOUR : TWO)[suit];
+  const colour = suit === 'H' || suit === 'D' ? RED : BLACK;
   if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} />;
   return (
     <svg viewBox={`0 0 ${CARD_W} ${CARD_H}`} fill={colour}>
