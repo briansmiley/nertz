@@ -1,8 +1,8 @@
 // Chat and voice, in the top-left corner of every screen of a table. Nothing here is a panel over the table: what is
 // said is written on the cloth under the buttons, and "Chat" only adds a line to type in above it. The headset joins
 // voice, and once in it opens a small slip (who is there, mute yourself, leave).
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { hotkeyName, hotkeyPressed, usePrefs } from './prefs';
@@ -16,17 +16,46 @@ const SHOWN = 8;
 /** The colour a name is written in: that of the seat its player has now. Someone watching (or gone) has no seat and no colour: the colour of the words. */
 type Colour = (who: number) => string | undefined;
 
-/** One line: a name in its colour and what was said; or the table's notice that someone beat someone to a pile. */
+/** Points as the score sheet writes them: with their sign, and a true minus. */
+export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+
+/** One line: a name in its colour and what was said; or a notice from the table (a snipe, a round dealt or over, the table started over). */
 function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
-  return line.sniped ? (
-    <em className="notice">
-      <b style={{ color: colour(line.who) }}>{line.name}</b> sniped <b style={{ color: colour(line.sniped.who) }}>{line.sniped.name}</b>
-    </em>
-  ) : (
-    <>
-      <b style={{ color: colour(line.who) }}>{line.name}</b> {line.text}
-    </>
-  );
+  const named = (n: Named) => <b style={{ color: colour(n.who) }}>{n.name}</b>;
+  /** "A", "A and B", "A, B and C". */
+  const all = (them: readonly Named[]) =>
+    them.map((n, i) => (
+      <Fragment key={n.who}>
+        {i === 0 ? '' : i === them.length - 1 ? ' and ' : ', '}
+        {named(n)}
+      </Fragment>
+    ));
+  if (line.k === 'said') {
+    return (
+      <>
+        {named(line.by)} {line.text}
+      </>
+    );
+  }
+  let notice: ReactNode;
+  if (line.k === 'sniped') notice = <>{named(line.by)} sniped {named(line.of)}</>;
+  else if (line.k === 'dealt') notice = <>Round {line.round} dealt</>;
+  else if (line.k === 'reset') notice = <>{named(line.by)} started the table over</>;
+  else {
+    const { end, best } = line;
+    const caller = typeof end === 'string' ? null : end;
+    notice = (
+      <>
+        Round {line.round} over: {caller ? <>{named(caller)} called Nertz ({signed(caller.points)})</> : end === 'jam' ? 'the table jammed' : 'ended by agreement'}
+        {best.some((b) => b.who !== caller?.who) && (
+          <>
+            , {all(best)} scored most ({signed(best[0]!.points)})
+          </>
+        )}
+      </>
+    );
+  }
+  return <em className="notice">{notice}</em>;
 }
 
 /** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while, and never in the way of the pointer. */

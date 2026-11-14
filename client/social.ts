@@ -31,7 +31,7 @@ function set(next: Partial<SocialState>): void {
 
 onSocial((msg) => {
   if (msg.t === 'chat') {
-    const news = msg.history ? 0 : msg.lines.filter((l) => l.who !== current().room?.me && !l.sniped).length;
+    const news = msg.history ? 0 : msg.lines.filter((l) => l.k === 'said' && l.by.who !== current().room?.me).length;
     const now = Date.now();
     // (With text chat switched off the table still sends its notices, for the sound and the flash: they pass, and are not kept to read.)
     const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...msg.lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);

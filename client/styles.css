@@ -4397,7 +4397,7 @@ button.code.copy small {
   color: var(--ink-soft);
 }
 
-/* A notice from the table among the chat's lines (who sniped whom): slanted and a little fainter than what is said. */
+/* A notice from the table among the chat's lines (who sniped whom, a round dealt or over): slanted and a little fainter than what is said. */
 .passing .notice {
   font-style: italic;
   opacity: 0.85;

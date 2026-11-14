@@ -452,11 +452,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     for (const { line } of passing) {
       if (line.id <= seenLine.current) continue;
       seenLine.current = line.id;
-      const { sniped } = line;
-      if (!sniped || line.who === room.me || sniped.who === room.me) continue;
+      if (line.k !== 'sniped' || line.by.who === room.me || line.of.who === room.me) continue;
+      const { by, of } = line;
       snipeSound('other');
       const seatOf = (id: number) => room.players.find((p) => p.id === id)?.seat ?? -1;
-      setAside((a) => ({ by: seatOf(line.who), byName: line.name, of: seatOf(sniped.who), ofName: sniped.name, n: (a?.n ?? 0) + 1 }));
+      setAside((a) => ({ by: seatOf(by.who), byName: by.name, of: seatOf(of.who), ofName: of.name, n: (a?.n ?? 0) + 1 }));
     }
   }, [newest?.id]);
   useEffect(() => setAside(null), [room.round]);
