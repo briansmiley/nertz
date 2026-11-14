@@ -377,7 +377,8 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 - The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
   tones are synthesised. Sources and licence: [`client/sounds/CREDITS.md`](client/sounds/CREDITS.md).
 - `client/sound.ts` has one function per cue (Web Audio: each sound a one-shot with its own short envelope, into a gain for
-  its channel, yours or other players' cards, and from both into one limiter, at most 18 at once). The audio context is made on the first click or key press, as browsers require.
+  its channel, yours or other players' cards, and from both into one limiter, at most 18 at once). The audio context is
+  made on the first click or key press, as browsers require.
 - Which cue fires is decided by `client/soundEvents.ts`, a pure function that compares two successive *rendered* states by
   card id. So a move sounds once, when it is predicted, and not again when the server confirms it; a predicted move that is
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
