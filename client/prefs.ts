@@ -81,9 +81,9 @@ function apply(): void {
 
 export const getPrefs = (): Prefs => prefs;
 
-// A choice of backs made at a table (from the card beside your name in its lobby) is for that table only: it stands
-// in place of your own choice while you are there, and is forgotten at the next. (Kept over a reload of the page,
-// where the browser allows.) Changing your own choice, in your settings or on the page of cards, takes its place.
+// (A choice of backs made at a table, from the card beside your name in its lobby, was once for that table only. It
+// is now your own choice like any other, kept for every table; what follows only honours one that an open window
+// still remembers from before.)
 export interface Choice {
   back: Back;
   random: string | null;
@@ -107,14 +107,6 @@ function keep(): void {
 
 /** The backs you have at the table `room`: the choice made there if there is one, else your own. */
 export const choiceAt = (room: string | null | undefined, p: Pick<Prefs, 'back' | 'random'> = prefs): Choice => (here && here.room === room ? { back: here.back, random: here.random } : { back: p.back, random: p.random });
-
-/** Chooses backs for the table `room` only, and tells whoever is listening. */
-export function chooseAt(room: string, choice: Choice): void {
-  here = { room, ...choice };
-  keep();
-  prefs = { ...prefs }; // what `choiceAt` answers has changed: whoever reads the prefs through `usePrefs` is drawn again
-  for (const l of listeners) l();
-}
 
 export function setPrefs(patch: Partial<Prefs>): void {
   prefs = cleanPrefs({ ...prefs, ...patch });

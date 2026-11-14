@@ -129,6 +129,12 @@ export class Room {
   join(conn: Conn, name: string, token: string): string | null {
     if (this.conns.has(conn)) this.drop(conn, false);
     let player = this.players.find((p) => p.token === token);
+    // Someone whose window is gone (a tab closed, a phone that threw the page away) comes back as a stranger with the
+    // name they had: they are given the seat that name left empty, with its score and its cards, not a second one.
+    if (!player) {
+      player = this.players.find((p) => !p.conn && !p.bot && p.name === name);
+      if (player) player.token = token;
+    }
     if (!player) {
       const seat = this.freeSeat();
       if (seat === null) return 'That room is full.';
@@ -147,6 +153,8 @@ export class Room {
     this.conns.set(conn, player);
     this.host ??= player;
     this.social.joined(player, this.players);
+    // Before the dealer has said Start nothing has been played: whoever arrives then is dealt in.
+    if (this.phase === 'playing' && this.game && (this.game.stage === 'dealing' || this.game.stage === 'ready') && !this.game.players.some((g) => g.seat === player.seat)) this.dealOut();
     this.settle();
     this.changed();
     return null;
@@ -175,6 +183,12 @@ export class Room {
         return this.removeBot(player, msg.seat);
       case 'reset':
         return this.reset(player);
+      case 'redeal':
+        // Whoever deals may deal the round over, at any point of it: nothing of it is scored, and everyone who is here now is in it.
+        if (player !== this.dealer || this.phase !== 'playing' || !this.game || this.players.filter((p) => p.conn).length < MIN_PLAYERS) return;
+        this.stopBots();
+        for (const p of this.players) if (p.bot) p.bot.pending = null; // what a bot was about to do was about cards that are gone
+        return this.dealOut();
       case 'debugBotOut':
         return this.debugBotOut(player);
       case 'botName': {
@@ -267,6 +281,16 @@ export class Room {
     this.players = this.players.filter((p) => !p.left);
     if (!this.host || !this.players.includes(this.host)) this.host = player;
     this.round++;
+    this.dealOut();
+  }
+
+  /**
+   * The cards of the round are dealt to everyone who is here. Also a second time, if someone sits down (or comes
+   * back) after the deal but before the dealer has said Start: nothing has been played, so the round is simply
+   * dealt again with them in it.
+   */
+  private dealOut(): void {
+    const dealt = this.players.filter((p) => p.conn);
     for (const p of dealt) if (p.lot && !p.drew) this.drawBack(p); // a back by lot is drawn now: once, and kept for every round at this table
     this.game = deal(
       dealt.map((p) => p.seat),

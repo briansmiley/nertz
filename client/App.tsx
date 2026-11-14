@@ -5,7 +5,7 @@ import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PL
 import type { BotLevel, RoomView } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBacks } from './BackPicker';
-import { choiceAt, chooseAt, deckOf, setPrefs, usePrefs } from './prefs';
+import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
 import { addBot, botBack, create, join, leave, nameBot, removeBot, resetTable, sit, start, useNet } from './net';
@@ -332,8 +332,8 @@ function Lobby({ room }: { room: RoomView }) {
               bare={prefs.bare}
               back={chosen.back}
               random={chosen.random}
-              onPick={(back) => (chooseAt(room.code, { back, random: null }), setPicking(null))}
-              onRandom={(random) => chooseAt(room.code, { back: chosen.back, random })}
+              onPick={(back) => (setPrefs({ back, random: null }), setPicking(null))}
+              onRandom={(random) => setPrefs({ random })}
               onBare={(bare) => setPrefs({ bare })}
               onClose={() => setPicking(null)}
             />

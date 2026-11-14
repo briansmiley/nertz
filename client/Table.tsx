@@ -1159,9 +1159,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         </>
       )}
 
-      {targets.map((t) => (
-        <div key={t.key} className={`ring${t.key === hot ? ' hot' : ''}`} style={box(t.rect)} />
-      ))}
+      {/* Where a card in hand may go is for the player to see for themselves: no pile is outlined for it, nor when it is
+          over one. (Only the waste, for a card carried off the stock, and the tray, for a finished pile: those say nothing.) */}
+      {held?.k !== 'card' &&
+        targets.map((t) => (
+          <div key={t.key} className={`ring${t.key === hot ? ' hot' : ''}`} style={box(t.rect)} />
+        ))}
       {/* An Ace is in hand that may go anywhere there is room: what is not room. Around every pile, the gap the rules
           keep (shared/table.ts `clash`); the edge of the felt is the other limit, and is drawn up while this lasts. */}
       {placing && L.slots.map((slot, i) => slot && game.slots[i]!.length > 0 && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}
@@ -1202,7 +1205,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
       {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
       {called && stage !== 'sheet' && (
-        <div key={`got${room.round}`} className="got" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
+        <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
           <span>{game.nertzCalledBy === you ? 'You' : name(game.nertzCalledBy!)} got Nertz!</span>
         </div>
       )}

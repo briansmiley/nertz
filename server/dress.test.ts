@@ -107,3 +107,57 @@ describe("a bot's name", () => {
     expect(parseClientMsg({ t: 'botName', seat: 2, name: '  ' })).toBeNull();
   });
 });
+
+describe('sitting down after the deal', () => {
+  it('before the dealer says Start is in time to be dealt in; after it, only to watch', () => {
+    const { room, conns } = roomWith(2);
+    const [a] = conns as [FakeConn, FakeConn];
+    const seats = () => room.game!.players.map((p) => p.seat);
+    send(room, a, { t: 'start' });
+    expect(seats()).toEqual([0, 1]);
+    const dealtTo = room.game;
+    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull();
+    expect(seats()).toEqual([0, 1, 2]); // the round is dealt again, with them in it
+    expect(room.game).not.toBe(dealtTo);
+    expect(room.round).toBe(1); // and is the same round
+    (room as unknown as { dealt(): void }).dealt(); // the cards are down: the table waits for Start
+    expect(room.join(new FakeConn(), 'Later', 'tok-later')).toBeNull();
+    expect(seats()).toEqual([0, 1, 2, 3]);
+    (room as unknown as { dealt(): void }).dealt(); // (dealt over again: down once more)
+    send(room, a, { t: 'go' });
+    expect(room.join(new FakeConn(), 'Latest', 'tok-latest')).toBeNull();
+    expect(seats()).toEqual([0, 1, 2, 3]); // "1, 2, 3" has been said: they watch this one
+  });
+});
+
+describe('coming back', () => {
+  it('as a stranger with the name of someone who is away takes their seat, score and cards, not a second seat', () => {
+    const { room, conns, kept } = roomWith(3);
+    const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
+    send(room, a, { t: 'start' });
+    const hand = room.game!.players[2]!.nertz.map((card) => card.id);
+    room.disconnect(c);
+    expect(room.join(new FakeConn(), 'P2', 'tok-another-window')).toBeNull(); // the old window is gone: a new token
+    expect((room as unknown as { players: unknown[] }).players).toHaveLength(3);
+    expect(kept(2).seat).toBe(2);
+    expect(room.game!.players[2]!.nertz.map((card) => card.id)).toEqual(hand);
+    expect(room.join(new FakeConn(), 'P1', 'tok-namesake')).toBeNull(); // P1 is here: a namesake is someone else
+    expect((room as unknown as { players: unknown[] }).players).toHaveLength(4);
+  });
+
+  it('whoever deals can deal the round over: unscored, the same round, with everyone who is here now', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    send(room, a, { t: 'start' });
+    (room as unknown as { dealt(): void }).dealt();
+    send(room, a, { t: 'go' });
+    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull(); // too late: watching
+    const first = room.game;
+    send(room, b, { t: 'redeal' }); // not theirs to say
+    expect(room.game).toBe(first);
+    send(room, a, { t: 'redeal' });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    expect(room.game!.stage).toBe('dealing');
+    expect([room.round, room.phase, room.lastRound]).toEqual([1, 'playing', null]);
+  });
+});

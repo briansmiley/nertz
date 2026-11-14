@@ -159,6 +159,8 @@ export type ClientMsg =
   | { t: 'reset' }
   /** For trying things out, refused by a server in production: make a bot go out now (its nertz pile is put under its stock, and it calls). */
   | { t: 'debugBotOut' }
+  /** Whoever deals, during a round: deal it over. Nothing of it is scored, and everyone who is at the table now is dealt in. */
+  | { t: 'redeal' }
   /** Pause the round for everyone (on), or carry on (off). */
   | { t: 'pause'; on: boolean }
   /** Which card faces I play with: everyone sees the cards of my deck drawn that way. */
@@ -360,6 +362,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'reset' };
     case 'debugBotOut':
       return { t: 'debugBotOut' };
+    case 'redeal':
+      return { t: 'redeal' };
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':

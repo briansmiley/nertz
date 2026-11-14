@@ -671,15 +671,15 @@ button {
 }
 
 /* "Ann got Nertz!" across the middle of the table, for everyone: large, there for a moment, then gone. */
-.got {
+.gotnertz {
   position: absolute;
-  z-index: 19500;
+  z-index: 40000; /* over every card, also those gathered and washed at the end of the round (under the chat and the score sheet) */
   display: grid;
   place-items: center;
   pointer-events: none;
 }
 
-.got span {
+.gotnertz span {
   max-width: 94%;
   font: 400 1em/1.05 var(--display);
   text-align: center;
@@ -712,7 +712,7 @@ button {
   }
 }
 
-.calm .got span {
+.calm .gotnertz span {
   animation-name: got-calm;
 }
 

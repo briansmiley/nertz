@@ -332,6 +332,8 @@ describe('Room', () => {
     room.disconnect(c);
     room.handle(a, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    (room as unknown as { dealt(): void }).dealt();
+    room.handle(a, { t: 'go' }); // "1, 2, 3": from here on whoever comes is too late for this round
     // Back mid-round: seated, listed, but with no cards, and unable to act or to hold up a stuck vote.
     const c2 = new FakeConn();
     expect(room.join(c2, 'P2', 'tok-0002')).toBeNull();
@@ -590,7 +592,7 @@ describe('Room', () => {
       expect(room.game!.players[0]!.waste).toHaveLength(1);
     });
 
-    it('someone sitting the round out sees the same redacted deal', () => {
+    it('someone who comes back during the deal is dealt in: it starts over, redacted the same', () => {
       vi.useFakeTimers();
       const { room, conns } = roomWith(3);
       const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
@@ -600,10 +602,10 @@ describe('Room', () => {
       const c2 = new FakeConn();
       room.join(c2, 'P2', 'tok-0002');
       room.flush();
-      expect(c2.last.room).toMatchObject({ you: 2, dealMs: DEAL_MS - 600, game: { stage: 'dealing' } });
-      expect(c2.last.room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+      expect(c2.last.room).toMatchObject({ you: 2, dealMs: DEAL_MS, game: { stage: 'dealing' } });
+      expect(c2.last.room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
       expect(faces(c2.last)).toBe(false);
-      sendIntent(room, c2, 0, { k: 'flip' }); // not in the round at all
+      sendIntent(room, c2, 0, { k: 'flip' }); // nothing is taken while the cards are being dealt
       vi.advanceTimersByTime(DEAL_MS);
       room.flush();
       expect(faces(c2.last)).toBe(true);
@@ -818,24 +820,20 @@ describe('Room', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('someone sitting the round out watches the same opening, and may start it if the role falls to them', () => {
+    it('someone sitting the round out watches the same opening', () => {
       vi.useFakeTimers();
       const { room, conns } = roomWith(3);
       const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
       room.disconnect(a); // the host is away at the deal: b deals, a is not in the round
       room.handle(b, { t: 'start' });
       vi.advanceTimersByTime(DEAL_MS);
+      room.handle(b, { t: 'go' }); // (back before this, they would have been dealt in)
       const a2 = new FakeConn();
       room.join(a2, 'P0', 'tok-0000');
       room.flush();
-      expect(a2.last.room).toMatchObject({ you: 0, startMs: null, game: { stage: 'ready' } });
       expect(a2.last.room.game!.players.map((p) => p.seat)).toEqual([1, 2]);
       expect(nertzFaces(a2.last)).toBe(0);
       expect(a2.last.room.players.map((p) => p.isHost)).toEqual([true, false, false]);
-      room.handle(b, { t: 'go' });
-      expect(room.game!.stage).toBe('ready'); // the host is back, watching: Start is theirs
-      room.handle(a2, { t: 'go' });
-      room.flush();
       for (const conn of [a2, b, c]) expect(conn.last.room).toMatchObject({ startMs: START_MS, game: { stage: 'countdown' } });
       sendIntent(room, a2, 0, { k: 'flip' }); // not in the round at all
       vi.advanceTimersByTime(START_MS);

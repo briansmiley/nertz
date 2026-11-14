@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
-import { pause, send, setTableSettings } from './net';
+import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { BACKS } from './cards/Face';
 import { calm, DECKS, setPrefs, usePrefs } from './prefs';
@@ -154,6 +154,30 @@ function EndVote({ room }: { room: RoomView }) {
       <small>
         {voted} of {people.length} voted. When everyone has, it ends where it stands and is scored as usual.
       </small>
+    </div>
+  );
+}
+
+/** For whoever deals, during a round: deal it over (someone was left out, or dropped at the start). Asked twice, since the round in play is thrown away. */
+function DealAgain({ room }: { room: RoomView }) {
+  const [sure, setSure] = useState(false);
+  const mine = room.players.find((p) => p.seat === room.you)?.isHost;
+  useEffect(() => setSure(false), [room.round, room.phase]);
+  if (!mine || room.phase !== 'playing' || !room.game) return null;
+  return (
+    <div className="end-vote">
+      <h3>Deal again</h3>
+      <small>This round is dealt over from the start. Nothing of it is scored, and everyone at the table now is dealt in.</small>
+      <button
+        type="button"
+        className="plain"
+        onClick={() => {
+          if (sure) redeal();
+          setSure(!sure);
+        }}
+      >
+        {sure ? 'Yes, deal this round again' : 'Deal this round again'}
+      </button>
     </div>
   );
 }
@@ -332,6 +356,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
           </label>
           <WholeScreen />
           {room && <EndVote room={room} />}
+          {room && <DealAgain room={room} />}
         </section>
       )}
     </div>
