@@ -79,7 +79,7 @@ export function App() {
   }
   const me = room.players.find((p) => p.seat === room.you);
   const nextRound = 'Spectating - You can join next round';
-  const spectating = me?.standing ? 'You are Spectating' : me?.watching ? (room.players.filter((p) => !p.watching).length >= MAX_PLAYERS ? 'Spectating - the table is full. You get the first seat that frees up' : nextRound) : room.phase === 'playing' && !room.game?.players.some((p) => p.seat === room.you) ? nextRound : null;
+  const spectating = me?.standing ? 'You are Spectating' : me?.watching ? (room.players.filter((p) => !p.watching).length >= MAX_PLAYERS ? (room.players.find((p) => p.watching && !p.standing && p.connected) === me ? 'Spectating - the table is full. You get the first seat that frees up' : 'Spectating - the table is full. You are in the queue for a seat') : nextRound) : room.phase === 'playing' && !room.game?.players.some((p) => p.seat === room.you) ? nextRound : null;
   return (
     <>
       <Corner room={room} />
@@ -544,7 +544,12 @@ function Results({ room }: { room: RoomView }) {
   const caller = rows.find((s) => s.seat === round?.calledBy);
   const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
-  const who = (seat: number) => (seat === room.you ? 'You' : (round?.scores.find((s) => s.seat === seat)?.name ?? room.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat + 1}`));
+  /** Is this line of the round the line of whoever has its seat now? (Not once they stood up, left or were sent away: the seat may be someone else's.) */
+  const theirs = (s: { gone?: boolean; vacant?: boolean }) => !s.gone && !s.vacant;
+  const who = (seat: number) => {
+    const line = round?.scores.find((s) => s.seat === seat);
+    return seat === room.you && (!line || theirs(line)) ? 'You' : (line?.name ?? room.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat + 1}`);
+  };
   const tally = new Map<number, number>();
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
   const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
@@ -574,18 +579,18 @@ function Results({ room }: { room: RoomView }) {
           </thead>
           <tbody>
             {rows.map((s) => (
-              <tr key={s.seat} className={s.seat === room.you ? 'you' : ''}>
+              <tr key={s.seat} className={s.seat === room.you && theirs(s) ? 'you' : ''}>
                 <th scope="row">
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
-                  <span className="nm">{me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) ? <BotName name={room.players.find((p) => p.seat === s.seat)!.name} seat={s.seat} /> : s.name}</span>
+                  <span className="nm">{me?.isHost && theirs(s) && room.players.some((p) => p.seat === s.seat && p.bot) ? <BotName name={room.players.find((p) => p.seat === s.seat)!.name} seat={s.seat} /> : s.name}</span>
                   {s.seat === round?.calledBy && (
-                    <span className="called" title={`${s.seat === room.you ? 'You' : s.name} called Nertz`}>
+                    <span className="called" title={`${s.seat === room.you && theirs(s) ? 'You' : s.name} called Nertz`}>
                       Nertz!
                     </span>
                   )}
-                  {room.players.some((p) => p.seat === s.seat && !p.bot) && (s.seat === room.you || me?.isHost) && <StandUp name={s.name} seat={s.seat} mine={s.seat === room.you} />}
-                  {me?.isHost && s.seat !== room.you && room.players.some((p) => p.seat === s.seat) && <Unseat name={s.name} seat={s.seat} person={!room.players.some((p) => p.seat === s.seat && p.bot)} />}
+                  {theirs(s) && room.players.some((p) => p.seat === s.seat && !p.bot) && (s.seat === room.you || me?.isHost) && <StandUp name={s.name} seat={s.seat} mine={s.seat === room.you} />}
+                  {theirs(s) && me?.isHost && s.seat !== room.you && room.players.some((p) => p.seat === s.seat) && <Unseat name={s.name} seat={s.seat} person={!room.players.some((p) => p.seat === s.seat && p.bot)} />}
                   </span>
                 </th>
                 <td>{signed(s.played)}</td>
@@ -605,12 +610,13 @@ function Results({ room }: { room: RoomView }) {
             ))}
             {/* Whoever sat down since the round (a bot just added, someone who has just joined) has no line of it: they are shown under it, as coming in at the next deal. */}
             {room.players
-              .filter((p) => !p.watching && !rows.some((s) => s.seat === p.seat))
+              .filter((p) => !p.watching && !rows.some((s) => s.seat === p.seat && theirs(s)))
               .map((p) => (
                 <tr key={`new${p.seat}`} className={`joining${p.seat === room.you ? ' you' : ''}`}>
                   <th scope="row">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
                     {p.name}
+                    {!p.bot && (p.seat === room.you || me?.isHost) && <StandUp name={p.name} seat={p.seat} mine={p.seat === room.you} />}
                     {me?.isHost && p.seat !== room.you && <Unseat name={p.name} seat={p.seat} person={!p.bot} />}
                   </th>
                   <td colSpan={3} className="note">

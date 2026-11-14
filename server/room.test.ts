@@ -321,7 +321,7 @@ describe('Room', () => {
     expect(room.game).toBe(before);
   });
 
-  it('takes the line of someone who stands up off the score sheet, so that whoever has the seat next is not shown as them', () => {
+  it('marks the line of someone who stands up as no longer the seat\'s, so that whoever has the seat next is not shown as them', () => {
     const { room, conns } = roomWith(MAX_PLAYERS);
     const all = Array.from({ length: MAX_PLAYERS }, (_, i) => i);
     const w = new FakeConn();
@@ -332,13 +332,71 @@ describe('Room', () => {
     room.handle(conns[3]!, { t: 'stand', on: true });
     room.flush();
     expect(w.last.room.you).toBe(3);
-    expect(w.last.room.lastRound!.scores.find((s) => s.seat === 3)).toMatchObject({ name: 'P3', gone: true });
+    expect(w.last.room.lastRound!.scores.find((s) => s.seat === 3)).toMatchObject({ name: 'P3', vacant: true }); // still on the sheet, as P3's
+    expect(w.last.room.lastRound!.scores.find((s) => s.seat === 3)).not.toHaveProperty('gone');
+    // (Up and straight down again, into the same seat: the line is the seat's as before.)
+    room.handle(conns[5]!, { t: 'stand', on: true });
+    room.handle(conns[5]!, { t: 'stand', on: false });
+    room.flush();
+    expect(w.last.room.players.find((p) => p.name === 'P5')).toMatchObject({ seat: 5 });
+    expect(w.last.room.lastRound!.scores.find((s) => s.seat === 5)).not.toHaveProperty('vacant');
     // And a seat in the lobby is not to be had by asking for a colour: only by the queue, or by sitting down again.
     room.handle(conns[0]!, { t: 'reset' });
     room.handle(conns[4]!, { t: 'stand', on: true });
     room.handle(conns[4]!, { t: 'seat', seat: 4 });
     room.flush();
     expect(w.last.room.players.find((p) => p.name === 'P4')).toMatchObject({ watching: true, standing: true });
+  });
+
+  it('someone sent away while their cards are in a round is gone when it ends: off the sheet, not back by their token, the table handed on', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    startRound(room, a);
+    room.disconnect(a); // the host is away: B deals, and sends the host away
+    room.handle(b, { t: 'kick', seat: 0 });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]); // the cards stay for the round
+    const back = new FakeConn();
+    room.join(back, 'P0', 'tok-0000'); // not back into them: a stranger, watching
+    room.flush();
+    expect(back.last.room.you).toBeGreaterThanOrEqual(MAX_PLAYERS);
+    room.handle(back, { t: 'leave' });
+    room.game = rigged([0, 1, 2], [1]);
+    sendIntent(room, b, 0, { k: 'nertz' });
+    room.flush();
+    expect(room.phase).toBe('results');
+    expect(c.last.room.players.map((p) => p.name)).toEqual(['P1', 'P2']);
+    expect(c.last.room.lastRound!.scores.find((s) => s.seat === 0)).toMatchObject({ gone: true });
+    expect(c.last.room.players.find((p) => p.isHost)).toMatchObject({ name: 'P1' });
+    room.disconnect(b); // and the table is P1's for good: C deals only while they are away
+    room.flush();
+    expect(c.last.room.players.find((p) => p.isHost)).toMatchObject({ name: 'P2' });
+    room.join(b, 'P1', 'tok-0001');
+    room.flush();
+    expect(c.last.room.players.find((p) => p.isHost)).toMatchObject({ name: 'P1' });
+  });
+
+  it('lists those watching in the order they will be seated, and moves nobody when a deal over is refused', () => {
+    const { room, conns } = roomWith(MAX_PLAYERS);
+    const [a, b] = [new FakeConn(), new FakeConn()];
+    const watchers = () => (room.flush(), conns[1]!.last.room.players.filter((p) => p.watching).map((p) => p.name));
+    room.handle(conns[9]!, { t: 'stand', on: true });
+    room.join(a, 'A', 'tok-aaaa'); // (takes P9's seat)
+    room.join(b, 'B', 'tok-bbbb');
+    expect(watchers()).toEqual(['B', 'P9']); // P9 has the lower number, but is not waiting
+    room.handle(conns[9]!, { t: 'stand', on: false });
+    expect(watchers()).toEqual(['B', 'P9']); // and now waits behind B
+    // A round with only two of them here; one goes; the dealer's deal over is refused, and B stays where they are.
+    for (const c of conns.slice(2, 9)) room.disconnect(c);
+    room.disconnect(a);
+    startRound(room, conns[0]!);
+    room.disconnect(conns[1]!);
+    room.disconnect(b);
+    const before = room.game;
+    room.handle(conns[0]!, { t: 'redeal' });
+    expect(room.game).toBe(before);
+    room.join(b, 'B', 'tok-bbbb');
+    room.flush();
+    expect(b.last.room.you).toBeGreaterThanOrEqual(MAX_PLAYERS);
   });
 
   // Regression: someone who pressed Leave on the score sheet still counted towards the six seats until the next deal.

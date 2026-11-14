@@ -163,6 +163,8 @@ export interface RoundLine extends RoundScore {
   rounds: number;
   /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
+  /** They have the seat no longer (stood up, or left, and it may be someone else's now): the line stays on the sheet as theirs, and is not taken for the line of whoever sits there. */
+  vacant?: boolean;
   /** Their faces and backs when the round ended, named as in `PlayerView`. */
   deck?: string;
   back?: string;
