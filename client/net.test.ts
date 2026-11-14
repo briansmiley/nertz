@@ -88,7 +88,7 @@ describe('prediction', () => {
       const me = sync.server!.game!.players[0]!;
       expect(me.nertz.every(isHidden)).toBe(true);
       expect(me.work.map((pile) => isHidden(pile.at(-1)!))).toEqual([false, false, false, false]);
-      const tries: Intent[] = [...intents, { k: 'hold', cardId: me.work[0]!.at(-1)!.id }, { k: 'move', cardId: me.work[0]!.at(-1)!.id, count: 1, to: { k: 'slot', i: 0 } }];
+      const tries: Intent[] = [...intents, { k: 'hold', cardId: me.work[0]!.at(-1)!.id }, { k: 'move', cardId: me.work[0]!.at(-1)!.id, count: 1, to: { k: 'felt', x: 0, y: 0 } }];
       for (const intent of tries) {
         expect(applyIntent(sync.server!.game!, 0, intent).ok).toBe(false);
         sync = send(sync, intent);
@@ -116,6 +116,7 @@ describe('prediction', () => {
     const rigged: GameState = {
       ...g,
       slots: g.slots.map((_, i) => (i === 0 ? spades.slice(0, 12) : [])),
+      places: g.places.map((at, i) => (i === 0 ? { x: 0, y: 0, r: 0 } : at)),
       players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest.slice(0, 3), work: [[king], [], [], []], down: [0, 0, 0, 0], stock: rest.slice(3), waste: [] } : p)),
     };
     expect(checkInvariants(rigged)).toBeNull();
@@ -195,7 +196,7 @@ describe('prediction', () => {
     const s = server(dealWithAces(), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     const ace = s.game.players[0]!.work[0]![0]!;
-    sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'slot', i: 3 } });
+    sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     sync = send(sync, { k: 'flip' });
     expect(sync.pending.map((p) => p.seq)).toEqual([1, 2]);
 
@@ -204,7 +205,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(2);
     let game = predict(sync)!.game!;
-    expect(game.slots[3]!.map((c) => c.id)).toEqual([ace.id]);
+    expect(game.slots[0]!.map((c) => c.id)).toEqual([ace.id]);
     expect(game.players[0]!.waste).toHaveLength(1);
     expect(game.players[1]!.waste).toHaveLength(1);
 
@@ -236,7 +237,7 @@ describe('prediction', () => {
     expect(checkInvariants(s.game)).toBeNull();
     const [mine, theirs] = s.game.players.map((p) => p.work[1]![0]!) as [Card, Card];
     const myAce = s.game.players[0]!.work[0]![0]!;
-    s.apply(0, { k: 'move', cardId: myAce.id, count: 1, to: { k: 'slot', i: 0 } });
+    s.apply(0, { k: 'move', cardId: myAce.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
 
     let sync = onSnapshot(freshSync, s.snapshot());
     const to = { k: 'slot', i: 0 } as const;
@@ -283,11 +284,11 @@ describe('prediction', () => {
     expect(sync.pending).toHaveLength(0);
     expect(me().holding).toBeNull();
 
-    // Picked up again and dropped on a slot: the move itself clears the hold, no release is sent.
+    // Picked up again and put down in the middle: the move itself clears the hold, no release is sent.
     sync = send(sync, { k: 'hold', cardId: ace.id });
-    sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'slot', i: 2 } });
+    sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     expect(me().holding).toBeNull();
-    expect(predict(sync)!.game!.slots[2]!.map((c) => c.id)).toEqual([ace.id]);
+    expect(predict(sync)!.game!.slots[0]!.map((c) => c.id)).toEqual([ace.id]);
     for (const p of sync.pending) expect(s.apply(0, p.intent, p.seq)).toBe(true);
     sync = onSnapshot(sync, s.snapshot());
     expect(s.game.players[0]!.holding).toBeNull();
@@ -325,7 +326,7 @@ describe('prediction', () => {
     // A flip is refused locally-replayed too; the held card's move is predicted and empties grace.
     sync = send(sync, { k: 'flip' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0);
-    sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'slot', i: 0 } });
+    sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     const game = predict(sync)!.game!;
     expect(game.slots[0]!.map((c) => c.id)).toEqual([ace.id]);
     expect(game.grace).toEqual([]);
@@ -342,6 +343,7 @@ describe('prediction', () => {
     const rigged: GameState = {
       ...base,
       slots: base.slots.map((x, i) => (i === 3 ? pile : x)),
+      places: base.places.map((at, i) => (i === 3 ? { x: 0, y: 0, r: 0 } : at)),
       players: base.players.map((p) => {
         if (p.seat !== 0) return p;
         const rest = strip([...p.nertz, ...p.work.flat(), ...p.stock]);
@@ -405,7 +407,7 @@ describe('a refused drop in the replay', () => {
   it('ends the hold, as it will on the server: the predicted hand is empty once the race is known to be lost', () => {
     const s = server(dealWithAces(), 0);
     const [mine, theirs] = s.game.players.map((p) => p.work[0]![0]!) as [Card, Card];
-    const to = { k: 'slot', i: 0 } as const;
+    const to = { k: 'felt', x: 0, y: 0 } as const;
     let sync = onSnapshot(freshSync, s.snapshot());
     sync = send(sync, { k: 'hold', cardId: mine.id });
     sync = send(sync, { k: 'move', cardId: mine.id, count: 1, to });

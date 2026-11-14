@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SLOTS_PER_PLAYER } from './protocol';
-import { cardSize, CARD_RATIO, clash, feltHw, offFelt, onTable, openPlace, pileGap, roomAt, spots, TABLE, tiltAt, type Pt } from './table';
+import { cardSize, CARD_RATIO, clash, feltHw, offFelt, onTable, openPlace, pileGap, roomAt, TABLE, tiltAt, type Pt } from './table';
 
 const COUNTS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
 function rng(seed: number) {
@@ -182,7 +182,7 @@ describe('where piles may go', () => {
     }
   });
 
-  it('there is room on a free table for every pile the round can have, even put down carelessly', () => {
+  it('there is room on the table for every pile the round can have, even put down carelessly', () => {
     for (const n of COUNTS) {
       const all = SLOTS_PER_PLAYER * n;
       // Tidy: always the nearest clear place to the middle. Room for a third as many again.
@@ -241,45 +241,7 @@ describe('where piles may go', () => {
     const tilts = [0.1, 0.2, 0.3, 0.4, 0.5].map((x) => tiltAt({ x, y: 0.1 }));
     expect(new Set(tilts).size).toBeGreaterThan(2);
     for (const t of tilts) expect(Math.abs(t)).toBeLessThanOrEqual(2.5);
-  });
-});
-
-describe('the marked places', () => {
-  it('are four per player, on the table, no two clashing, the same every time', () => {
-    for (const n of COUNTS) {
-      const s = spots(n);
-      expect(s).toHaveLength(SLOTS_PER_PLAYER * n);
-      expect(spots(n)).toEqual(s); // deterministic
-      for (const [i, a] of s.entries()) {
-        expect(onTable(a, n), `${n} players, spot ${i}`).toBe(true);
-        expect(Math.abs(a.r)).toBeLessThanOrEqual(2.5);
-        for (const [j, b] of s.entries()) if (j > i) expect(clash(a, b, n), `${n} players, spots ${i} and ${j}`).toBe(false);
-        // Tilted as far as it is, a card still keeps clear of its neighbours and on the felt.
-        const lean = Math.sin((2.5 * Math.PI) / 180) * (cardSize(n).h / 2);
-        expect(lean).toBeLessThan(pileGap(n) / 2);
-      }
-    }
-  });
-
-  it('are a loose cluster about the middle: rows, but not a single row, not a ruled grid, and not the whole felt', () => {
-    for (const n of COUNTS) {
-      const s = spots(n);
-      const { w, h } = cardSize(n);
-      // About the middle.
-      const mid = { x: s.reduce((a, p) => a + p.x, 0) / s.length, y: s.reduce((a, p) => a + p.y, 0) / s.length };
-      expect(Math.abs(mid.x)).toBeLessThan(w * 0.5);
-      expect(Math.abs(mid.y)).toBeLessThan(h * 0.2);
-      // More than one row (places a card apart in height), and no row or column ruled straight.
-      const rows = new Set(s.map((p) => Math.round(p.y / h)));
-      expect(rows.size).toBeGreaterThan(1);
-      expect(new Set(s.map((p) => p.y)).size).toBeGreaterThan(s.length * (n > 6 ? 0.6 : 0.7));
-      expect(new Set(s.map((p) => p.x)).size).toBeGreaterThan(s.length * 0.7);
-      // Neighbouring rows are staggered: no place sits squarely above another.
-      for (const a of s) for (const b of s) if (a !== b && Math.abs(a.y - b.y) > h * 0.5 && Math.abs(a.y - b.y) < h * 1.5) expect(Math.abs(a.x - b.x)).toBeGreaterThan(w * 0.2);
-      // Compact: everyone can reach it, and there is felt left round it.
-      expect(Math.max(...s.map((p) => Math.abs(p.x))) + w / 2).toBeLessThan(feltHw(n) * 0.85);
-      // Every place has a neighbour close by.
-      for (const a of s) expect(Math.min(...s.filter((b) => b !== a).map((b) => Math.hypot(a.x - b.x, a.y - b.y)))).toBeLessThan(h * 1.5);
-    }
+    // Tilted as far as it ever is, a card still keeps clear of its neighbours and on the felt.
+    for (const n of COUNTS) expect(Math.sin((2.5 * Math.PI) / 180) * (cardSize(n).h / 2)).toBeLessThan(pileGap(n) / 2);
   });
 });

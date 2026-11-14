@@ -1,10 +1,10 @@
-// The table through the room: the host's choice of how the middle works, a
-// race for the same patch of felt, the relay of card positions while a card is
-// being dragged, and bots playing whole rounds on both kinds of table.
+// The table through the room: the bare middle it is dealt with, a race for the
+// same patch of felt, the relay of card positions while a card is being
+// dragged, and bots playing whole rounds.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, feltFree, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, START_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, type DragAt, type ServerMsg } from '../shared/protocol';
-import { cardSize, openPlace, spots, TABLE, type Spot, type TableMode } from '../shared/table';
+import { cardSize, openPlace, TABLE, type Spot } from '../shared/table';
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
 import { Room, type Conn } from './room';
@@ -73,39 +73,20 @@ const at = (id: string, w = 0.5): { t: 'drag' } & DragAt => ({ t: 'drag', id, w,
 
 afterEach(() => void vi.useRealTimers());
 
-describe('the host chooses how the middle works', () => {
-  it('free placement by default; the grid of marked places applies from the next deal, and a round keeps the table it was dealt', () => {
+describe('the middle', () => {
+  it('is dealt bare: no slot has a place until an Ace starts its pile there', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
-    const host = conns[0]!;
-    start(room, host);
-    expect(room.game!.table).toBe('free');
+    start(room, conns[0]!);
     expect(room.game!.places).toEqual(Array.from({ length: 8 }, () => null));
-    // Mid-round the setting stands still, like every table rule.
-    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
-    expect(room.settings.centre).toBe('free');
-
-    const next = roomWith(3);
     room.close();
-    const [h2, g2] = next.conns as [FakeConn, FakeConn, FakeConn];
-    next.room.handle(g2, { t: 'settings', patch: { centre: 'spots' } }); // not the host: ignored
-    expect(next.room.settings.centre).toBe('free');
-    next.room.handle(h2, { t: 'settings', patch: { centre: 'spots' } });
-    next.room.flush();
-    expect(g2.room.settings).toEqual({ stockDeal: 'click', centre: 'spots' });
-    start(next.room, h2);
-    next.room.flush();
-    expect(next.room.game!.table).toBe('spots');
-    expect(g2.room.game!.table).toBe('spots');
-    expect(g2.room.game!.places).toEqual(spots(3));
-    next.room.close();
   });
 
-  it('on a free table two Aces for the same patch of felt are two messages: the first lands, the second goes home', () => {
+  it('two Aces for the same patch of felt are two messages: the first lands, the second goes home', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    start(room, a); // (free placement is the table's default)
+    start(room, a);
     const [aceA, aceB, aceC] = acesUp(room) as [string, string, string];
     room.handle(a, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceA } });
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceB } });
@@ -274,13 +255,12 @@ describe('card positions while dragging', () => {
   });
 });
 
-describe('bots on a table without marked places', () => {
-  /** A free table of `n` where seat `seat` has an Ace on its waste. */
+describe('bots starting piles', () => {
+  /** A table of `n` where seat `seat` has an Ace on its waste. */
   function withAce(n: number, seat: number, seed = 3): { view: GameState; ace: string } {
     vi.useFakeTimers();
     const { room, conns } = roomWith(n, seed);
     start(room, conns[0]!);
-    expect(room.game!.table).toBe('free');
     const ace = acesUp(room)[seat]!;
     const view = viewFor(room.game!, seat);
     room.close();
@@ -345,43 +325,39 @@ describe('bots on a table without marked places', () => {
     expect(chooseIntent(full, 0, freshMemory(), seeded(1))!.intent).toEqual({ k: 'flip' });
   });
 
-  for (const centre of ['spots', 'free'] as TableMode[]) {
-    it(`tables of 2 to 6 bots play rounds out on a table with ${centre === 'free' ? 'no marked places' : 'the grid of marked places'}, every pile in a legal place throughout`, () => {
-      vi.useFakeTimers();
-      let finished = 0;
-      let dealt = 0;
-      let aces = 0;
-      for (const bots of [2, 3, 4, 5, 6]) {
-        for (const seed of [21, 22, 23]) {
-          const room = new Room('TEST', { rng: seeded(seed * 10 + bots), schedule: () => {} });
-          const host = new FakeConn();
-          room.join(host, 'Ann', 'tok-host', true);
-          room.handle(host, { t: 'settings', patch: { centre } });
-          for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
-          const players = Math.min(6, bots + 1);
-          start(room, host);
-          room.disconnect(host); // the person is away: the bots' stuck votes are the only ones
-          dealt++;
-          const t0 = Date.now();
-          let most = 0;
-          while (room.phase === 'playing' && Date.now() - t0 < 20 * 60_000) {
-            vi.advanceTimersToNextTimer();
-            const game = room.game!;
-            const problem = checkInvariants(game);
-            if (problem) throw new Error(`${players} players, seed ${seed}: ${problem}`);
-            expect(game.table).toBe(centre);
-            most = Math.max(most, game.slots.filter((s) => s.length > 0).length);
-          }
-          aces += most;
-          expect(most).toBeGreaterThan(players); // piles were started, on either kind of table
-          expect(most).toBeLessThanOrEqual(4 * players);
-          if (room.phase === 'results') finished++;
-          room.close();
+  it('tables of 2 to 6 bots play rounds out, every pile in a legal place throughout', () => {
+    vi.useFakeTimers();
+    let finished = 0;
+    let dealt = 0;
+    let aces = 0;
+    for (const bots of [2, 3, 4, 5, 6]) {
+      for (const seed of [21, 22, 23]) {
+        const room = new Room('TEST', { rng: seeded(seed * 10 + bots), schedule: () => {} });
+        const host = new FakeConn();
+        room.join(host, 'Ann', 'tok-host', true);
+        for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
+        const players = Math.min(6, bots + 1);
+        start(room, host);
+        room.disconnect(host); // the person is away: the bots' stuck votes are the only ones
+        dealt++;
+        const t0 = Date.now();
+        let most = 0;
+        while (room.phase === 'playing' && Date.now() - t0 < 20 * 60_000) {
+          vi.advanceTimersToNextTimer();
+          const game = room.game!;
+          const problem = checkInvariants(game);
+          if (problem) throw new Error(`${players} players, seed ${seed}: ${problem}`);
+          most = Math.max(most, game.slots.filter((s) => s.length > 0).length);
         }
+        aces += most;
+        expect(most).toBeGreaterThan(players); // piles were started
+        expect(most).toBeLessThanOrEqual(4 * players);
+        if (room.phase === 'results') finished++;
+        room.close();
       }
-      // Not every deal is played out: small tables of this simple bot jam (see the README). Most are, on either table.
-      expect(finished).toBeGreaterThanOrEqual(Math.ceil(dealt * 0.5));
-      expect(aces).toBeGreaterThan(dealt * 6);
-    }, 60_000);
-  }
+    }
+    // Not every deal is played out: small tables of this simple bot jam (see the README). Most are.
+    expect(finished).toBeGreaterThanOrEqual(Math.ceil(dealt * 0.5));
+    expect(aces).toBeGreaterThan(dealt * 6);
+  }, 60_000);
 });

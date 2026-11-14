@@ -38,7 +38,6 @@ Controls:
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
 | Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there |
-| ...or, at a table with "Crystallized Nertz", drag an Ace onto an empty marked place | start a centre pile on that place |
 | Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
@@ -139,19 +138,15 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
 - **The middle** holds up to 4 piles per player in the round, shared by everyone. Every card but an Ace goes on the
-  specific pile it extends, up by suit to the King, one card at a time. Where an Ace goes is the host's choice (a table
-  rule, see [The table](#the-table)):
-  - **Anywhere** (the default): an Ace starts a pile at the very point of the felt where it is let go. The whole card
-    must lie on the felt, and clear of every other pile by a small gap (0.14 of a card's width): exactly what you
-    see, and the same on everyone's screen. While you carry the Ace over the felt it is the size of a pile in the
-    middle, with an outline on it that says whether there is room (a gold ring and a tick) or not (a broken red ring,
-    struck through, and a cross), and every pile shows the room it keeps round itself. Let go where there is no room
-    and the Ace goes back. Two Aces for the same patch of felt: the first lands, the second goes back. The table
-    still holds at most 4 piles per player.
-  - **Crystallized Nertz**: the middle has a marked place for every pile, laid out as a loose cluster. An Ace starts
-    a pile on the specific empty place it is dropped on.
+  specific pile it extends, up by suit to the King, one card at a time. An Ace starts a pile at the very point of the
+  felt where it is let go (see [The table](#the-table)). The whole card must lie on the felt, and clear of every other
+  pile by a small gap (0.14 of a card's width): exactly what you see, and the same on everyone's screen. While you
+  carry the Ace over the felt it is the size of a pile in the middle, with an outline on it that says whether there is
+  room (a gold ring and a tick) or not (a broken red ring, struck through, and a cross), and every pile shows the room
+  it keeps round itself. Let go where there is no room and the Ace goes back. Two Aces for the same patch of felt: the
+  first lands, the second goes back. The table still holds at most 4 piles per player.
 - **Precise placement.** A card lands only when released on the one pile where it legally fits. If someone got there first
-  (the pile moved on, or the empty place was taken), the card returns to where it came from. Nothing is ever rerouted.
+  (the pile moved on, or the felt was taken), the card returns to where it came from. Nothing is ever rerouted.
 - **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King
   drags it to the **tray** at the side. Its place is then free for a new Ace. Tray piles still count for scoring.
 - **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in
@@ -172,7 +167,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
   one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
   gains nothing. (The old "drag each card" rule still exists as the table setting `stockDeal: 'drag'`, but is no longer
-  offered in the table rules.)
+  offered in the lobby.)
 - **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, the server (which knows every
   card) checks whether anybody can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
   waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
@@ -236,17 +231,13 @@ the felt, and never more than 0.4 units wide however few the players, so that a 
 middle still leaves room for a pile above and below every one of them. Put down anywhere at random that happens to
 be free, all four piles per player fit at least 99 times in 100 (`shared/table.test.ts`).
 
-**Crystallized Nertz.** Four marked places per player, the same for everyone: two rows for up to three players, three
-for more, each row set half a place to one side of the next like bricks, each place nudged a little off its mark and
-given up to two and a half degrees of tilt, always the same way. Same card size as without.
-
 **Hands.** Your own hand is laid out as it always was. Everyone else's is a compact row where they sit as you see
 it, in seat order clockwise from your left: along the top edge for seats across from you, at the left or right edge (turned to face the felt)
 for your neighbours (turned a quarter turn to face the felt, running down the edge), lower down the nearer they sit to you. A hand across the table is drawn the other way round
 (its owner's left is your right, as at a real table), a neighbour's the same way round as yours. The top corners are
 kept free for the chat button and the grace countdown, the bottom corners for the settings and the tray.
 
-**Card sizes** (width in pixels of a centre card, and of an opponent's card; the same with and without the grid):
+**Card sizes** (width in pixels of a centre card, and of an opponent's card):
 
 | Window | 2 players | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- |
@@ -259,8 +250,7 @@ Your own cards are 0.108 of the window's height wide (with room for 0.85 of a ca
 than about eight cards squeezes its older cards to slivers), up to 150 px; an opponent's up to 96 px; a centre card up to 1.2
 times your own. `npx tsx scripts/sizes.ts` prints this table.
 
-(While the felt was a round table turned to each chair these were, at 1280 x 720, 65/52/45/29/38 with marked places
-and 49/37/36/25/28 without. Two players with the grid is the one case that got smaller.)
+(While the felt was a round table turned to each chair these were, at 1280 x 720, 49/37/36/25/28.)
 
 ### Seeing cards move
 
@@ -325,7 +315,7 @@ the first of these that applies:
 2. Its nertz pile is empty: call Nertz.
 3. Nertz top to the middle (anything but an Ace to the exact pile). An Ace starts its pile anywhere there is room: of
    a handful of places it glances at all over the felt, the clear one nearest the middle, and if none of them is
-   clear, wherever the engine says there is room. (At a table with the grid: any empty marked place.)
+   clear, wherever the engine says there is room.
 4. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
 5. Waste top, or the top of a work pile, to the middle.
 6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
@@ -388,13 +378,12 @@ else's much quieter (a quarter, until you move the slider).
 Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
 storage they last until the page closes.
 
-**Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in every
-snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from whoever may
-deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Two options today, listed
-together under "Table rules": "Crystallized Nertz" (`centre`: unticked is
-`'free'`, the default, an Ace starts its pile wherever it is put down; ticked is `'spots'`, the marked places); and how
-cards are dealt off the stock (`stockDeal`: `'drag'`, the default, or `'click'`; see the rules). The last is only a choice of gesture for the client. The next deal reads them,
-and a round keeps what it was dealt under, because settings cannot change during a round.
+**Table rules**: set by the host, stored in the room and sent in every snapshot (`RoomView.settings`). They change with
+`{ t: 'settings', patch }`, which the server takes only from whoever may deal and only between rounds, so a round keeps
+the rules it was dealt under. An option the server does not know is dropped (an older client asking for one changes
+nothing). `shared/settings.ts` holds the one object and its validation. One option today, not offered in the lobby: how
+cards are dealt off the stock (`stockDeal`: `'click'`, the default, or `'drag'`; see the rules), only a choice of
+gesture for the client.
 
 ## How concurrency works
 
@@ -429,9 +418,9 @@ that no longer apply. So your card moves the instant you let go, and if you lost
 supports your move: the card animates back. There is no rollback code. (`client/net.ts`: `onSnapshot`, `onSend`, `predict`.)
 
 **No fallback.** A move names its destination exactly: `{ k: 'work', i }` (one of your own piles), `{ k: 'slot', i }` (one
-pile or marked place of the middle) or, for an Ace at a table without the grid, `{ k: 'felt', x, y }` (a point of the
-table, to a thousandth of a unit). The engine judges that pile, or that point, and nothing else. Two players dropping on
-the same pile, two Aces on the same empty place, or two Aces on overlapping patches of felt are simply two messages: the
+pile of the middle) or, for an Ace, `{ k: 'felt', x, y }` (a point of the table, to a thousandth of a unit). The engine
+judges that pile, or that point, and nothing else. Two players dropping on the same pile, or two Aces on overlapping
+patches of felt, are simply two messages: the
 first to arrive lands, the second is rejected and its sender's next snapshot no longer supports the predicted move, so
 the card animates home. A pile started on the felt takes the first slot nobody is using; if another Ace got in first
 the server may file it under a different slot than the client predicted, at the same place, which nobody can see.
@@ -545,7 +534,7 @@ by ear), and not in Safari or Firefox or across real networks.
 ```
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
-  table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, the marked places
+  table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
   engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, legalDrops, feltFree, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
@@ -563,7 +552,7 @@ client/   Vite + React
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
-  Settings.tsx  the mute button and gear (your settings), and the table rules on the lobby and score sheets
+  Settings.tsx  the mute button and gear (your settings), and the small icon buttons the sheets share
   prefs.ts      your settings: sound levels, reduced motion; localStorage
   sound.ts      Web Audio: one function per cue, and the hook that plays them
   soundEvents.ts  pure: which cues a change of the rendered table calls for
@@ -674,8 +663,6 @@ would still need one of the options above, and serving both from one origin is s
 - **The felt has one shape per table size** (2.8 times as wide as high up to three players, 2.2 times from four
   on), the same for every window: a window much taller or wider than 16:9 leaves some of its room unused, and a
   window narrower than 1280 px leaves the felt little between the side hands.
-- **Two players with the grid have smaller cards than on the old round table** (57 px at 1280 x 720, from 65): both kinds of table
-  now share one card size, chosen so that eight piles put down anywhere still fit.
 - **A table can fill up before every Ace is out** if piles are put down wastefully enough: at random they all fit
   at least 99 times in 100, but it is not impossible to shut the last Ace out. It then waits until a pile is
   finished and cleared.
@@ -690,7 +677,7 @@ would still need one of the options above, and serving both from one origin is s
   NERTZ! stamp across your own hand is large and stays up through the sequence.
 - **Face-down cards of a half-dealt group** at the call stay face-down on the waste through the end of the round.
 - **In drag mode nothing on the table says the stock must be dragged**: a click on a stock that still has cards does
-  nothing. The rule is in the table rules and in this file.
+  nothing. The rule is only in this file.
 - **The wash is a canvas.** At the end of a round up to ~300 card backs move at once, so they are drawn on one canvas
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late

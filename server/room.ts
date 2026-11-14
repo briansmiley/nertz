@@ -110,7 +110,7 @@ export class Room {
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. */
   game: GameState | null = null;
   lastRound: RoundResult | null = null;
-  /** House rules, read when a round is dealt. */
+  /** House rules: they change only between rounds. */
   settings: TableSettings = { ...DEFAULT_SETTINGS };
   /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
   readonly social = new Social();
@@ -390,11 +390,7 @@ export class Room {
     this.snipes = [];
     for (const p of this.players) delete p.ready;
     for (const p of dealt) if (p.lot && !p.drew) this.drawBack(p); // a back by lot is drawn now: once, and kept for every round at this table
-    this.game = deal(
-      dealt.map((p) => p.seat),
-      this.rng,
-      this.settings,
-    );
+    this.game = deal(dealt.map((p) => p.seat), this.rng);
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!

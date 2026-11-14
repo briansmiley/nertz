@@ -15,8 +15,7 @@
 // and the rules for putting one down are simply what everyone sees:
 //  - two piles CLASH if their cards, with a small gap between, would overlap;
 //  - a pile is ON THE TABLE if its whole card lies on the felt.
-// The fixed places ('spots') are laid out to those rules, and so is every Ace
-// put down on a table where piles go wherever they are started ('free').
+// A pile lies wherever its Ace was put down, as long as it keeps to those rules.
 
 export interface Pt {
   x: number;
@@ -28,10 +27,6 @@ export interface Spot extends Pt {
   /** Degrees. */
   r: number;
 }
-
-/** 'free': a pile lies wherever its Ace was put down. 'spots': centre piles go on marked places. */
-export type TableMode = 'spots' | 'free';
-export const TABLE_MODES: readonly TableMode[] = ['spots', 'free'];
 
 /**
  * The felt: half its width at its widest (half its height is always 1) and the radius of its corners. How wide it is
@@ -109,46 +104,8 @@ function noise(i: number, salt: number): number {
 }
 const round3 = (v: number): number => Math.round(v * 1000) / 1000 || 0;
 
-/** The tilt of a pile started at `p` on a free table: a degree or two, the same for everyone. */
+/** The tilt of a pile started at `p`: a degree or two, the same for everyone. */
 export const tiltAt = (p: Pt): number => round3(noise(Math.round(p.x * 1000), Math.round(p.y * 1000)) * 2.5);
-
-/**
- * The marked places of a table for `n` players: four per player, the same for
- * everyone. A loose cluster about the middle of the felt: two or three rows,
- * each set half a place to one side of the next like bricks, and every place
- * a little off its mark and a little askew. Always the same for the same `n`. No two clash and all lie on
- * the table (shared/table.test.ts).
- */
-export function spots(n: number): Spot[] {
-  const { w, h } = cardSize(n);
-  const total = 4 * seatsOf(n);
-  // A place may stray up to `sx` sideways and `sy` up or down from its mark and still keep the gap to its neighbours.
-  const sx = 0.11 * w;
-  const sy = 0.05 * w;
-  const dx = w + GAP * w + 2 * sx + 0.01;
-  const dy = h + GAP * w + 2 * sy + 0.01;
-  // Two rows for up to three players, three for more (the felt is wide: long rows suit it), if its height takes them.
-  // (And four for more than six: their cards are small enough, and three rows of them would be longer than the felt.)
-  const rows = Math.max(1, Math.min(total > 24 ? 4 : total > 12 ? 3 : 2, Math.floor((2 - h - 2 * sy) / dy) + 1));
-  // As even as they come: an odd one out goes to the middle row, two to the rows above and below it.
-  const base = Math.floor(total / rows);
-  const extra = total - base * rows;
-  const counts = Array.from({ length: rows }, (_, r) => base + (extra === 1 ? +(r === 1) : extra === 2 ? +(r !== 1) : 0));
-  const out: Spot[] = [];
-  counts.forEach((count, r) => {
-    // Like bricks: a row as long as the one next to it (or longer by two) is set half a place to one side of it.
-    const shift = rows !== 3 ? ((r % 2) - 0.5) * 0.5 : r !== 1 && (count - counts[1]!) % 2 === 0 ? (1 - r) * 0.5 : 0;
-    for (let k = 0; k < count; k++) {
-      const i = out.length;
-      out.push({
-        x: round3((k - (count - 1) / 2 + shift) * dx + noise(i, 11 + n) * sx),
-        y: round3((r - (rows - 1) / 2) * dy + noise(i, 12 + n) * sy),
-        r: round3(noise(i, 13 + n) * 2.5),
-      });
-    }
-  });
-  return out;
-}
 
 /** Candidate places for a new pile, the middle of the table first. */
 const scanOf = (n: number): readonly Pt[] => {
