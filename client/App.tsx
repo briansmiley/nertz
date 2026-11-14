@@ -540,8 +540,8 @@ function Lobby({ room }: { room: RoomView }) {
         {/* Your backs at this table: the card, and a button to change it. */}
         {me && hasSeat(me) && (
           <div className="yourback">
-            {/* One button: the card in a yellow frame, deeper at the bottom, where it says what pressing it does. */}
-            <button type="button" className="frame" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
+            {/* One button: the card, and tucked under its bottom edge a small yellow tag saying what pressing it does. */}
+            <button type="button" className="change" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
               <Mini seat={me.seat} back={chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)} />
               <span>Change</span>
             </button>

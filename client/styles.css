@@ -3727,36 +3727,41 @@ body:has(main.showroom) {
   gap: 1rem;
 }
 
-.yourback .frame {
+.yourback .change {
   display: grid;
   justify-items: center;
-  gap: 2px;
-  padding: 4px 4px 3px;
-  border: 1.5px solid var(--ink);
-  border-radius: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
   color: var(--ink);
-  background: var(--marigold);
-  box-shadow: 0 2px 0 var(--ink);
+  background: none;
   cursor: pointer;
   transition: transform 0.12s ease-out;
 }
 
-.yourback .frame:hover {
-  transform: translateY(-1px) rotate(-1.5deg);
+.yourback .change:hover,
+.yourback .change:focus-visible {
+  transform: translateY(-2px) rotate(-4deg);
 }
 
-.yourback .frame:active {
-  transform: translateY(2px);
-  box-shadow: none;
+.yourback .change:active {
+  transform: translateY(1px);
 }
 
-.yourback .frame .mini {
+.yourback .change .mini {
   zoom: 0.58;
 }
 
-.yourback .frame span {
-  font: 700 0.85rem/1.2 var(--ui);
+/* The tag overlaps the card's bottom edge, so it reads as stuck on the card rather than as a line of its own. */
+.yourback .change > span:not(.mini) {
+  position: relative;
+  margin-top: -7px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--marigold);
+  font: 700 0.7rem/1.35 var(--ui);
   letter-spacing: 0.02em;
+  transform: rotate(-5deg);
 }
 
 /* The rules, for whoever does not deal: there to read, greyed, and a word on hover as to why. */
