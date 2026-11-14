@@ -35,6 +35,8 @@ const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
 const Z_FLYING = 10000;
+/** Someone else's card in the air: over every card of the layout, lying still or flying (in play none lies higher than 7500), and under the one in your own hand. */
+const Z_ALOFT = Z_FLYING + 7500;
 const Z_HELD = 30000;
 const DRAG_SLOP = 6; // px of travel before a press becomes a drag
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
@@ -545,7 +547,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         h.x.set(f.x + ((c.x - home.x) * f.s) / home.s);
         h.y.set(f.y + ((c.y - home.y) * f.s) / home.s);
         h.s.set(f.s);
-        h.z.set(Z_FLYING + 5000 + i);
+        h.z.set(Z_ALOFT + i);
         h.o.set(ALOFT);
         // Upright for whoever is watching once it is out of the hand (a neighbour's hand is turned to face the felt).
         h.r.set(c.rot * (1 - clamp(Math.max(at.h[1] / 0.6, at.w * 4, linger), 0, 1)));

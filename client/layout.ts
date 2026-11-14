@@ -426,8 +426,13 @@ const OWN_MAX = 150;
 const OPP_MAX = 96;
 /** The widest a card in the middle is drawn, in widths of your own. */
 const CENTRE_MAX = 1.2;
-/** A work pile being looked at is drawn above the middle's cards (z 5000 and up) and below anything flying or held. */
-const PEEK_Z = 4000;
+/**
+ * Your own hand lies over the middle's cards (z 5000 and up, the tray's among them): what of it reaches onto the felt
+ * (the group held over the stock, above all) covers a pile lying at your edge of it.
+ */
+const OWN_Z = 6000;
+/** A work pile being looked at is drawn above the rest of your hand and below anything flying or held. */
+const PEEK_Z = 1000;
 /** Width of a hand in card widths, for the gaps used below. */
 const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
@@ -688,7 +693,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
           // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
           workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
           minStrip: oh * 0.21,
-          z: 3000,
+          z: OWN_Z,
           mine: true,
           peek,
           packet,
