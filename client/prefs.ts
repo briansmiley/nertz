@@ -2,7 +2,7 @@
 // browser, not to the table, and are remembered in localStorage when there is
 // one (without it they last as long as the page).
 import { useSyncExternalStore } from 'react';
-import { backNamed, isBack, isDeck, isLot, type Back, type Deck } from '../shared/protocol';
+import { deckNamed, isBack, isDeck, isLot, type Back, type Deck } from '../shared/protocol';
 
 export { backGroups, CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 
@@ -32,10 +32,7 @@ export interface Prefs {
 }
 
 /** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
-/** Your back as it is named for drawing: its name, with `:bare` after it for the one without an edge. */
-export const backOfPrefs = (p: Pick<Prefs, 'back' | 'bare'>): string => backNamed(p.back, p.bare)!;
-export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => `${p.deck}${p.night ? ':night' : ''}`;
-
+export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => deckNamed(p.deck, p.night);
 
 export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true };
 const KEY = 'nertz.prefs';
@@ -112,6 +109,7 @@ export const choiceAt = (room: string | null | undefined, p: Pick<Prefs, 'back' 
 export function chooseAt(room: string, choice: Choice): void {
   here = { room, ...choice };
   keep();
+  prefs = { ...prefs }; // what `choiceAt` answers has changed: whoever reads the prefs through `usePrefs` is drawn again
   for (const l of listeners) l();
 }
 
@@ -139,6 +137,20 @@ export const watchPrefs = (l: () => void): (() => void) => {
 export const usePrefs = (): Prefs => useSyncExternalStore(watchPrefs, getPrefs);
 
 apply();
+// Another window of this browser changed them (the page of cards, opened from the settings in a round): this one takes
+// them over, so that it shows them, tells its table, and does not write its old ones back over them.
+if (typeof window !== 'undefined')
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY) return;
+    const was = prefs;
+    prefs = load();
+    if (prefs.back !== was.back || prefs.random !== was.random) {
+      here = null; // as in `setPrefs`: your own choice, made anew, stands also at the table you are at
+      keep();
+    }
+    apply();
+    for (const l of listeners) l();
+  });
 system?.addEventListener?.('change', () => {
   prefs = { ...prefs }; // what `calm()` answers may have changed
   apply();

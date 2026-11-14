@@ -123,7 +123,7 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 
 // A change of deck in the settings is passed on to the table.
 let toldDeck: string | null = null;
-/** Tells the table my cards' faces and backs (the backs chosen for this table, if any were: `choiceAt`), if it has not been told just that already. A back by lot is drawn by the table, at every deal. */
+/** Tells the table my cards' faces and backs (the backs chosen for this table, if any were: `choiceAt`), if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
 function tell(): void {
   const { deck, night, bare } = getPrefs();
   const { back, random } = choiceAt(state.room?.code ?? session?.room);

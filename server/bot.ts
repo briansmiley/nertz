@@ -44,10 +44,10 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  *
  *   a. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
  *   b. nertz pile empty: call Nertz (always noticed)
- *   c. nertz top to a work pile (an empty pile only if it builds down nowhere)
- *   d. nertz top to the middle
+ *   c. nertz top to the middle (it scores there, and is off the nertz pile all the same)
+ *   d. nertz top to a work pile (an empty pile only if it builds down nowhere)
  *   e. waste top or a work pile's top to the middle
- *      (an Ace, in d or e, is always noticed: nobody deals past an Ace)
+ *      (an Ace, in c or e, is always noticed: nobody deals past an Ace)
  *   f. a work pile's whole face-up run onto another pile, if that turns over a face-down card or empties the pile
  *   g. waste top onto a work pile it builds down on
  *   h. deal one card off the stock (always noticed; three looks make a group); after a whole fruitless cycle, say "stuck" instead
@@ -103,11 +103,11 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   // b
   if (!nertz) return acted({ k: 'nertz' });
   // c
-  const home = workFor(nertz);
-  if (home && noticed(NERTZ_FOCUS)) return acted(move(nertz, home));
-  // d
   const out = slotFor(nertz);
   if (out && (ace(nertz) || noticed(NERTZ_FOCUS))) return acted(move(nertz, out));
+  // d
+  const home = workFor(nertz);
+  if (home && noticed(NERTZ_FOCUS)) return acted(move(nertz, home));
   // e
   for (const card of [waste, ...me.work.map(top)]) {
     const to = card && slotFor(card);

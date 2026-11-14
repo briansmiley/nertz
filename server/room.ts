@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { ANY_BACK, backNamed, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
+import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -174,7 +174,7 @@ export class Room {
       case 'reset':
         return this.reset(player);
       case 'debugBotOut':
-        return this.debugBotOut();
+        return this.debugBotOut(player);
       case 'botBack': {
         // Whoever deals dresses the bots: any time, since it changes nothing but how their cards look.
         const bot = this.players.find((p) => p.seat === msg.seat);
@@ -188,17 +188,25 @@ export class Room {
       case 'seat':
         // A seat is a colour, and a place round the table. Only before the first deal (scores and the last round go by seat), and only an empty one.
         if (this.phase !== 'lobby' || this.players.some((p) => p.seat === msg.seat)) return;
-        player.seat = msg.seat;
-        this.players.sort((a, b) => a.seat - b.seat);
-        return this.changed();
-      case 'deck':
-        if (player.deck === msg.deck && player.back === (msg.back ?? player.back) && !!player.night === (msg.night ?? !!player.night) && !!player.bare === (msg.bare ?? !!player.bare) && (msg.lot === undefined || (player.lot ?? null) === msg.lot)) return;
+        {
+          const from = player.seat;
+          player.seat = msg.seat;
+          this.players.sort((a, b) => a.seat - b.seat);
+          this.social.moved(player, from, this.players); // chat and voice go by seat
+          return this.changed();
+        }
+      case 'deck': {
+        // A back drawn by lot is the table's to keep: the back sent along (their own choice, for when there is no lot) is not taken in its place.
+        const lot = msg.lot === undefined ? (player.lot ?? null) : msg.lot;
+        const back = lot !== null && lot === player.lot && player.drew ? player.back : (msg.back ?? player.back);
+        if (player.deck === msg.deck && player.back === back && !!player.night === (msg.night ?? !!player.night) && !!player.bare === (msg.bare ?? !!player.bare) && (player.lot ?? null) === lot) return;
         player.deck = msg.deck;
-        player.back = msg.back ?? player.back;
+        player.back = back;
         player.night = msg.night ?? player.night;
         player.bare = msg.bare ?? player.bare;
-        if (msg.lot !== undefined) this.setLot(player, msg.lot);
+        this.setLot(player, lot);
         return this.changed();
+      }
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
     }
@@ -364,7 +372,9 @@ export class Room {
     const scores = scoreRound(this.game).map((s) => {
       const p = this.players.find((p) => p.seat === s.seat);
       if (p) p.score += s.delta;
-      return { ...s, name: p?.name ?? '', total: p?.score ?? s.delta };
+      const deck = p?.deck && deckNamed(p.deck, p.night);
+      const back = p && backNamed(p.back, p.bare);
+      return { ...s, name: p?.name ?? '', total: p?.score ?? s.delta, ...(deck ? { deck } : {}), ...(back ? { back } : {}) };
     });
     this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}) };
     this.phase = 'results';
@@ -455,8 +465,8 @@ export class Room {
     const seat = this.freeSeat();
     if (seat === null) return;
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
-    // The token contains a character no client token may: nobody can join into a bot's seat.
-    this.players.push({ token: `bot:${seat}`, name, seat, score: 0, conn: BOT_CONN, ack: -1, dirty: false, left: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
+    // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
+    this.players.push({ token: `bot:${seat}`, name, seat, deck: 'modern', score: 0, conn: BOT_CONN, ack: -1, dirty: false, left: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
     this.players.sort((a, b) => a.seat - b.seat);
     this.changed();
   }
@@ -610,11 +620,11 @@ export class Room {
   }
 
   /**
-   * For trying things out (seeing and hearing a bot go out without playing a round through): never in production.
+   * For trying things out (seeing and hearing a bot go out without playing a round through): never in production, and only for whoever deals.
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
-  private debugBotOut(): void {
-    if (process.env.NODE_ENV === 'production' || this.phase !== 'playing' || !this.game || this.game.stage !== 'play' || this.game.nertzCalledBy !== null) return;
+  private debugBotOut(by: Player): void {
+    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || this.phase !== 'playing' || !this.game || this.game.stage !== 'play' || this.game.nertzCalledBy !== null) return;
     const bot = this.players.find((p) => p.bot && this.game!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -671,7 +681,7 @@ export class Room {
         stuck: stuck(p.seat),
         ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,
         bot: p.bot?.level,
-        deck: p.deck && `${p.deck}${p.night ? ':night' : ''}`,
+        deck: p.deck && deckNamed(p.deck, p.night),
         // (A back by lot is not known until a round is dealt: before the first, a card with a question mark.)
         back: p.lot && this.phase === 'lobby' ? ANY_BACK : backNamed(p.back, p.bare),
         ...(p.lot ? { lot: p.lot } : {}),

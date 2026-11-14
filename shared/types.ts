@@ -154,11 +154,14 @@ export interface RoundScore {
   delta: number;
 }
 
-/** One line of the score sheet. Carries the name and total so the sheet stays right if that player leaves the table. */
+/** One line of the score sheet. Carries the name and total so the sheet stays right if that player leaves the table: and their cards' faces and backs, so the cards they left on it stay as they were. */
 export interface RoundLine extends RoundScore {
   name: string;
   /** Running total including this round. */
   total: number;
+  /** Their faces and backs when the round ended, named as in `PlayerView`. */
+  deck?: string;
+  back?: string;
 }
 
 export interface RoundResult {
@@ -185,11 +188,11 @@ export interface PlayerView {
   ending: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
-  /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. Absent: the plain one. */
+  /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */
   deck?: string;
   /** The backs of this player's cards (`CARD_BACKS`, with `:bare` after it for one without its white edge), for everyone likewise. Absent: the plain one. */
   back?: string;
-  /** Set if their back is drawn by lot at every deal: the lot ('all', or a kind of back). `back` is then 'any' until a round is on. */
+  /** Set if their back is drawn by lot (once for the table, at its first deal after the lot was chosen): the lot ('all', or a kind of back). `back` is then 'any' until a round is on. */
   lot?: string;
 }
 

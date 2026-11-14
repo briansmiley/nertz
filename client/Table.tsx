@@ -105,7 +105,7 @@ interface CardProps {
   up: boolean;
   mini: boolean;
   /** The faces of the deck this card came from: its owner's choice. */
-  deck: string | undefined;
+  deck: string;
   /** And its backs. */
   back: string | undefined;
   slow: boolean;
@@ -588,9 +588,21 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
   /** My own backs, as they are named for drawing: my choice at this table, shown at once; or, if they are by lot, the one the table drew for me (it comes with the deal). */
   const chosen = choiceAt(room.code, prefs);
+  /** My own faces. */
+  const own = deckOf(prefs);
   const myBack = chosen.random ? info(you)?.back : backNamed(chosen.back, prefs.bare);
   /** This seat's line of the round just scored. The finished table goes by it: whoever played the round may have left since. */
   const line = (seat: number) => (results ? room.lastRound?.scores.find((s) => s.seat === seat) : undefined);
+  /**
+   * Whose faces and backs the cards from `seat` have: the player's who sits there, as they have them now; but on the
+   * finished table, if whoever played the round has left (the seat is empty, or someone else's by now), as they were
+   * when the round ended.
+   */
+  const dress = (seat: number): { deck?: string; back?: string } | undefined => {
+    const l = line(seat);
+    const p = info(seat);
+    return p && (!l || p.name === l.name) ? p : l;
+  };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
   const total = (seat: number) => {
@@ -1093,8 +1105,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             up={c.up && !replaying}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
-            deck={c.card.owner === you ? deckOf(prefs) : info(c.card.owner)?.deck}
-            back={c.card.owner === you ? myBack : info(c.card.owner)?.back}
+            deck={c.card.owner === you ? own : (dress(c.card.owner)?.deck ?? 'modern')}
+            back={c.card.owner === you ? myBack : dress(c.card.owner)?.back}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
             cls={cardClass(c)}
@@ -1123,7 +1135,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} backs={(seat) => (seat === you ? myBack : info(seat)?.back)} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {results && stage !== 'sheet' && (
         <button type="button" className="skip" onClick={skip}>

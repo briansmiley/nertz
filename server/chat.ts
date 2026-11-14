@@ -36,6 +36,19 @@ export class Social {
     if (this.inVoice.delete(member)) this.announce(members);
   }
 
+  /**
+   * `member` took another seat (it was `from`). What they said goes with them, so that it is not shown in the colour
+   * of whoever sits there next; and if they were in voice they are put out of it, since every connection there is
+   * known by its seat: their window sees that it is no longer in, and joins again from the new one.
+   */
+  moved(member: Member, from: number, members: readonly Member[]): void {
+    if (this.lines.some((l) => l.seat === from && l.name === member.name)) {
+      this.lines = this.lines.map((l) => (l.seat === from && l.name === member.name ? { ...l, seat: member.seat } : l));
+      for (const m of members) m.conn?.send({ t: 'chat', lines: this.lines, history: true });
+    }
+    if (this.inVoice.delete(member)) this.announce(members);
+  }
+
   handle(member: Member, members: readonly Member[], isHost: boolean, msg: SocialClientMsg): void {
     switch (msg.t) {
       case 'chat':

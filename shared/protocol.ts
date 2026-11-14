@@ -111,6 +111,8 @@ export type Back = keyof typeof CARD_BACKS;
  * A back can be had without its white edge (`bare`): what is inside the edge is drawn larger, out to the edge of the
  * card. Where a back is named for drawing, such a one is its name with `:bare` after it (as a dark deck has `:night`).
  */
+/** A deck as it is named for drawing: its name, with `:night` after it for the dark one. */
+export const deckNamed = (deck: Deck, night: boolean | undefined): string => `${deck}${night ? ':night' : ''}`;
 export const backNamed = (back: Back | undefined, bare: boolean | undefined): string | undefined => (bare ? `${back ?? 'plain'}:bare` : back);
 /** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
 export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
@@ -125,11 +127,11 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
 /**
  * A lot: backs to draw one from by chance, in place of a back of one's own choosing: once for a table, when its first
  * round is dealt (or the first after the lot was chosen), and kept there for every round after. 'all' is every back;
- * otherwise the name of a kind (a group above). Until it is drawn, such a player's back is shown as `ANY_BACK`: a
+ * otherwise the name of a kind (a group above, or "Other" if there are backs in none: `backGroups`). Until it is drawn, such a player's back is shown as `ANY_BACK`: a
  * card with a question mark.
  */
-export const isLot = (v: unknown): v is string => typeof v === 'string' && (v === 'all' || BACK_GROUPS.some((g) => g.name === v));
-export const backPool = (lot: string): readonly Back[] => BACK_GROUPS.find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
+export const isLot = (v: unknown): v is string => typeof v === 'string' && (v === 'all' || backGroups().some((g) => g.name === v));
+export const backPool = (lot: string): readonly Back[] => backGroups().find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
 /** What a back not yet drawn is called where backs are named for drawing. */
 export const ANY_BACK = 'any';
 
@@ -164,7 +166,7 @@ export type ClientMsg =
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
-  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from at every deal (`lot`; null: no lot, the back it has). */
+  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table (`lot`; null: no lot, the back it has). */
   | { t: 'botBack'; seat: number; back?: Back; lot?: string | null }
   /** In the lobby: move to another seat nobody has, which is to take its colour. */
   | { t: 'seat'; seat: number }
@@ -359,7 +361,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':
-      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}), ...(typeof v.bare === 'boolean' ? { bare: v.bare } : {}), lot: isLot(v.lot) ? v.lot : null } : null;
+      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}), ...(typeof v.bare === 'boolean' ? { bare: v.bare } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;

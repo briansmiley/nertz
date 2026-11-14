@@ -3,7 +3,7 @@
 // dark, with the whole deck behind "See all 52". Each is shown with its small rendition too: what other players'
 // piles are drawn with. What is picked here is your own: everyone at your table sees your cards so.
 import { Fragment, useState, type CSSProperties } from 'react';
-import { DECKS, type Deck } from '../shared/protocol';
+import { deckNamed, DECKS, type Deck } from '../shared/protocol';
 import { BackShelf } from './BackShelf';
 import type { Suit } from '../shared/types';
 import { BACKS, Face } from './cards/Face';
@@ -32,7 +32,7 @@ export function Gallery() {
   const [all, setAll] = useState<Deck | null>(null);
   const colour = BACKS[ink]!;
   /** A deck as it is shown here: light or dark, as you have yours. */
-  const faces = (deck: Deck): string => `${deck}${prefs.night ? ':night' : ''}`;
+  const faces = (deck: Deck): string => deckNamed(deck, prefs.night);
   return (
     <main className="showroom">
       <header>

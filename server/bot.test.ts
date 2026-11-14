@@ -103,21 +103,22 @@ describe('chooseIntent', () => {
     expect(look(state, freshMemory(), 0)?.intent).toEqual({ k: 'nertz' }); // always noticed
   });
 
-  it('c. plays the nertz top to a work pile: a build-down target before an empty pile, an empty pile if there is no target', () => {
+  it('d. plays the nertz top to a work pile: a build-down target before an empty pile, an empty pile if there is no target', () => {
     const target = table({ nertz: ['S5'], work: [[], ['H6'], ['C9'], ['D2']] });
     expect(look(target)?.intent).toEqual(move('S5', work(1)));
     const empty = table({ nertz: ['S5'], work: [['H9'], ['C9'], [], ['D2']] });
     expect(look(empty)?.intent).toEqual(move('S5', work(2)));
   });
 
-  it('c beats d: the nertz card goes to a work pile even when the middle would take it', () => {
+  it('c beats d: the nertz card goes to the middle when it fits there, though a work pile would take it too', () => {
     const state = table({ nertz: ['S2'], work: [['H3'], ['C9'], ['D9'], ['H9']] }, [{ owner: 1, suit: 'S', upTo: 1 }]);
-    expect(look(state)?.intent).toEqual(move('S2', work(0)));
-    const ace = table({ nertz: ['S1'], work: [['H9'], ['C9'], [], ['D9']] });
-    expect(look(ace)?.intent).toEqual(move('S1', work(2))); // even an Ace, onto an empty pile
+    expect(look(state)?.intent).toEqual(move('S2', slot(0)));
+    const ace = table({ nertz: ['S1'], work: [['H2'], ['C9'], [], ['D9']] });
+    expect(look(ace)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'slot' } }); // an Ace above all: not onto the red 2, nor the empty pile
+    expect(look(ace, freshMemory(), 0)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'slot' } }); // and never overlooked
   });
 
-  it('d. plays the nertz top to the middle: an Ace to an empty slot, anything else to the exact pile', () => {
+  it('c. plays the nertz top to the middle: an Ace to an empty slot, anything else to the exact pile', () => {
     const ace = table({ nertz: ['S1'], work: DEAD }, [{ owner: 1, suit: 'H', upTo: 3 }]);
     expect(look(ace)?.intent).toEqual(move('S1', slot(1)));
     expect(look(ace, freshMemory(), 1, () => 0.999)?.intent).toEqual(move('S1', slot(7))); // any empty slot
@@ -343,8 +344,8 @@ describe('Room with bots', () => {
     expect(host.last.room.players).toEqual([
       { seat: 0, name: 'Ann', connected: true, score: 0, isHost: true, stuck: false, ending: false },
       { seat: 1, name: 'Bea', connected: true, score: 0, isHost: false, stuck: false, ending: false },
-      { seat: 2, name: 'Bot Ada', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'fast' },
-      { seat: 3, name: 'Bot Bix', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'slow' },
+      { seat: 2, name: 'Bot Ada', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
+      { seat: 3, name: 'Bot Bix', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot

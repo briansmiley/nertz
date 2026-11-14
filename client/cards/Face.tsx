@@ -4,7 +4,7 @@
 // which is just a big rank and suit.
 import { memo, type CSSProperties, type ReactElement } from 'react';
 import type { Suit } from '../../shared/types';
-import { deckOf, getPrefs, usePrefs, watchPrefs } from '../prefs';
+import { getPrefs, watchPrefs } from '../prefs';
 import { drawnBack, isDrawn } from './backArt';
 import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
 import { Pixel, PIXEL, PIXEL_NIGHT } from './pixel';
@@ -297,12 +297,12 @@ function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour:
 
 /**
  * The face of one card. `mini` picks the large-print rendition. A card belongs to its owner's deck, and is drawn as
- * they chose for everyone (`deck`); without one, as you chose yourself.
+ * they chose for everyone (`deck`: whoever draws the card says which, so that a change to your other settings does
+ * not draw every card on the table again).
  */
-export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: Suit; rank: number; mini: boolean; deck?: string }) {
-  const own = deckOf(usePrefs());
+export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: Suit; rank: number; mini: boolean; deck: string }) {
   // (A dark deck is named with `:night` after it.)
-  const [deck = 'modern', mode] = (of ?? own).split(':');
+  const [deck = 'modern', mode] = of.split(':');
   const night = mode === 'night';
   // (A deck of pictures has no dark pictures: the light ones are turned inside out, and their colours turned back.)
   if (FILES.has(deck)) return mini ? <ClassicLarge suit={suit} rank={rank} night={night} /> : <img className={`art${night ? ' night' : ''}`} src={picture(deck, suit, rank)} alt="" draggable={false} />;

@@ -1,13 +1,11 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
-import { GalleryLegacy } from './GalleryLegacy';
-import { GalleryFlat } from './GalleryFlat';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, RoomView } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBacks } from './BackPicker';
-import { choiceAt, chooseAt, setPrefs, usePrefs } from './prefs';
+import { choiceAt, chooseAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
 import { addBot, botBack, create, join, leave, removeBot, resetTable, sit, start, useNet } from './net';
@@ -70,8 +68,6 @@ export function App() {
     if (code) history.replaceState(null, '', `/?room=${code}`);
   }, [code]);
   useSounds(room, net.status === 'online');
-  if (!room && new URLSearchParams(location.search).has('decks-legacy')) return <GalleryLegacy />; // TEMPORARY
-  if (!room && new URLSearchParams(location.search).has('decks-flat')) return <GalleryFlat />; // TEMPORARY
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   if (!room) {
     return (
@@ -106,11 +102,12 @@ function Pad({ children, wide }: { children: ReactNode; wide?: boolean }) {
 
 /** A small card, used as decoration and as each player's colour swatch. */
 function Mini({ seat, suit, rank, style, back }: { seat?: number; suit?: 'S' | 'H' | 'D' | 'C'; rank?: number; style?: CSSProperties; back?: string }) {
+  const deck = deckOf(usePrefs()); // a card shown for its own sake is one of yours
   return (
     <span className="mini" style={style}>
       {suit && rank ? (
         <span className="front">
-          <Face suit={suit} rank={rank} mini={false} />
+          <Face suit={suit} rank={rank} mini={false} deck={deck} />
         </span>
       ) : (
         <span {...backOf(backColour(seat ?? 0), back, true)} />

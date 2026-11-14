@@ -311,10 +311,10 @@ the first of these that applies:
 
 1. Carry a centre pile it finished (it placed the King) to the tray: before everything, as the rules demand.
 2. Its nertz pile is empty: call Nertz.
-3. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
-4. Nertz top to the middle (anything but an Ace to the exact pile). An Ace starts its pile anywhere there is room: of
+3. Nertz top to the middle (anything but an Ace to the exact pile). An Ace starts its pile anywhere there is room: of
    a handful of places it glances at all over the felt, the clear one nearest the middle, and if none of them is
    clear, wherever the engine says there is room. (At a table with the grid: any empty marked place.)
+4. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
 5. Waste top, or the top of a work pile, to the middle.
 6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
    It never moves a run that gains nothing, and never undoes its own last run move.
