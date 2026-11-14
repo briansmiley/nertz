@@ -1,6 +1,7 @@
 // Settings. Two kinds, kept apart:
 // - `Corner`: your own (sound, motion), on every screen, bottom left: a
-//   one-click mute button (also the M key) and a gear that opens a small slip.
+//   one-click mute button (also a key of your choosing, M at first) and a gear
+//   that opens a small slip.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
@@ -11,11 +12,14 @@ import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { Feedback } from './Feedback';
 import { BACKS } from './cards/Face';
-import { calm, keyName, setPrefs, TAKEN_KEYS, touchOnly, usePrefs } from './prefs';
+import { calm, getPrefs, HOTKEYS, hotkeyName, keyFree, keyName, setPrefs, touchOnly, usePrefs, type Hotkey } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
 const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElement ? !['range', 'checkbox'].includes(el.type) : el instanceof HTMLTextAreaElement);
+
+/** Each hotkey as the settings list it. */
+const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic' };
 
 function Speaker({ off }: { off: boolean }) {
   return (
@@ -268,23 +272,23 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  /** Choosing the key that mutes your microphone: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
-  const [keying, setKeying] = useState(false);
+  /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
+  const [keying, setKeying] = useState<Hotkey | null>(null);
   useEffect(() => {
     if (!keying) return;
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
-      e.stopImmediatePropagation(); // (not a game key, nor the mute key itself, while one is being chosen)
-      if (e.code === 'Backspace' || e.code === 'Delete') setPrefs({ voiceKey: null });
-      else if (e.code !== 'Escape' && !TAKEN_KEYS.includes(e.code) && /^[A-Za-z0-9]+$/.test(e.code) && !/^(Shift|Control|Alt|Meta)/.test(e.code)) setPrefs({ voiceKey: e.code });
-      else if (e.code !== 'Escape') return; // a key the game has: wait for another
-      setKeying(false);
+      e.stopImmediatePropagation(); // (not a game key, nor a hotkey itself, while one is being chosen)
+      if (e.code === 'Backspace' || e.code === 'Delete') setPrefs({ [keying]: null });
+      else if (keyFree(getPrefs(), keying, e.code)) setPrefs({ [keying]: e.code });
+      else if (e.code !== 'Escape') return; // a key the game or another hotkey has: wait for another
+      setKeying(null);
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [keying]);
   useEffect(() => {
-    if (!open) setKeying(false);
+    if (!open) setKeying(null);
   }, [open]);
 
   /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
@@ -293,17 +297,17 @@ export function Corner({ room }: { room?: RoomView | null }) {
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
-  // M mutes from anywhere (except while typing a name), P pauses or carries on; Escape puts the slip away.
+  // The sound key mutes from anywhere (except while typing a name), P pauses or carries on; Escape puts the slip away.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.code === 'KeyM' && !typing(e.target)) setPrefs({ muted: !prefs.muted });
+      if (e.code === prefs.soundKey && !typing(e.target)) setPrefs({ muted: !prefs.muted });
       else if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
       else if (e.code === 'Escape') setOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [prefs.muted, pausable, resumable]);
+  }, [prefs.muted, prefs.soundKey, pausable, resumable]);
 
   // A press anywhere else closes the slip (and still does whatever it was meant to do).
   useEffect(() => {
@@ -317,6 +321,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
   }, [open]);
 
   const sound = prefs.muted ? 'Sound is off' : 'Sound is on';
+  const soundKey = hotkeyName(prefs.soundKey);
   return (
     <div className="corner" ref={root}>
       {room?.clock && room.phase !== 'lobby' && <Clock clock={room.clock} />}
@@ -325,7 +330,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         className={`knob${prefs.muted ? ' off' : ''}`}
         aria-pressed={prefs.muted}
         aria-label={`${sound}. ${prefs.muted ? 'Unmute' : 'Mute'}`}
-        title={touchOnly() ? sound : `${sound} (M)`}
+        title={soundKey ? `${sound} (${soundKey})` : sound}
         onClick={(e) => {
           setPrefs({ muted: !prefs.muted });
           e.currentTarget.blur(); // keep Space for flipping
@@ -388,15 +393,17 @@ export function Corner({ room }: { room?: RoomView | null }) {
           {!touchOnly() && (
             <div className="hotkeys">
               <h3>Hotkeys</h3>
-              <p>
-                Mute sound <kbd>M</kbd>
-              </p>
-              <p>
-                Mute mic
-                <button type="button" className={keying ? 'on' : ''} title="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(!keying), e.currentTarget.blur())}>
-                  {keying ? 'Press a key…' : prefs.voiceKey ? keyName(prefs.voiceKey) : 'none'}
-                </button>
-              </p>
+              {HOTKEYS.map((k) => {
+                const code = prefs[k];
+                return (
+                  <p key={k}>
+                    {HOTKEY_LABELS[k]}
+                    <button type="button" className={keying === k ? 'on' : ''} title="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(keying === k ? null : k), e.currentTarget.blur())}>
+                      {keying === k ? 'Press a key…' : code ? keyName(code) : 'none'}
+                    </button>
+                  </p>
+                );
+              })}
             </div>
           )}
           {/* Whoever hosts: whether this table has text chat and voice at all. */}

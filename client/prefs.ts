@@ -31,21 +31,35 @@ export interface Prefs {
    * or from one kind (the name of a group in `BACK_GROUPS`). Null: always `back`.
    */
   random: string | null;
-  /** The key that mutes and unmutes your microphone while you are in voice (a KeyboardEvent `code`); null: none. */
+  /** The key that mutes and unmutes the sound (a KeyboardEvent `code`); null: none. */
+  soundKey: string | null;
+  /** The key that mutes and unmutes your microphone while you are in voice, likewise. */
   voiceKey: string | null;
 }
 
 /** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
 export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => deckNamed(p.deck, p.night);
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, voiceKey: 'KeyV' };
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, soundKey: 'KeyM', voiceKey: 'KeyV' };
 const KEY = 'nertz.prefs';
-/** Keys the game already uses: not to be had for the microphone. */
-export const TAKEN_KEYS = ['KeyM', 'KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
+
+/** The keys you choose for yourself, in the order they are listed. */
+export const HOTKEYS = ['soundKey', 'voiceKey'] as const;
+export type Hotkey = (typeof HOTKEYS)[number];
+/** Keys the game already uses: not to be had for a hotkey. */
+export const TAKEN_KEYS = ['KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
+/**
+ * May `code` be the key for `which`? A plain key (no modifier, nor Backspace or Delete, which choose none) that the
+ * game does not use and that is not already another of your hotkeys.
+ */
+export const keyFree = (p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): boolean =>
+  /^[A-Za-z0-9]{1,20}$/.test(code) && !/^(Shift|Control|Alt|Meta|OS)|^(Backspace|Delete)$/.test(code) && !TAKEN_KEYS.includes(code) && HOTKEYS.every((k) => k === which || p[k] !== code);
 /** A phone or tablet: no keyboard to speak of, so no key is offered or named. */
 export const touchOnly = (): boolean => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
 /** A key as it is shown: "V" for KeyV, "7" for Digit7, otherwise its own name. */
 export const keyName = (code: string): string => code.replace(/^(Key|Digit)/, '');
+/** A hotkey as a button's tooltip names it: not on a phone, nor when there is none. */
+export const hotkeyName = (code: string | null): string | null => (code && !touchOnly() ? keyName(code) : null);
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
 
@@ -64,8 +78,23 @@ export function cleanPrefs(raw: unknown): Prefs {
     botVoice: v.botVoice !== false,
     chatOver: v.chatOver !== false,
     random: isLot(v.random) ? v.random : null,
-    voiceKey: v.voiceKey === null ? null : typeof v.voiceKey === 'string' && /^[A-Za-z0-9]{1,20}$/.test(v.voiceKey) && !TAKEN_KEYS.includes(v.voiceKey) ? v.voiceKey : DEFAULT_PREFS.voiceKey,
+    ...cleanKeys(v),
   };
+}
+
+/** Each hotkey as stored, if it may be that key (null stays none); otherwise its default, or none if another has that. */
+function cleanKeys(v: Record<string, unknown>): Pick<Prefs, Hotkey> {
+  const keys: Pick<Prefs, Hotkey> = { soundKey: null, voiceKey: null };
+  for (const k of HOTKEYS) {
+    const code = v[k];
+    if (code === null) continue;
+    if (typeof code === 'string' && keyFree(keys, k, code)) keys[k] = code;
+    else {
+      const d = DEFAULT_PREFS[k];
+      if (d && keyFree(keys, k, d)) keys[k] = d;
+    }
+  }
+  return keys;
 }
 
 function load(): Prefs {

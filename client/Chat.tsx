@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
-import { keyName, touchOnly, usePrefs } from './prefs';
+import { hotkeyName, usePrefs } from './prefs';
 import { kick, takeSeat } from './net';
 import { PASSING_MS, say, setOpen, useSocial, type SocialState } from './social';
 import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
@@ -122,7 +122,7 @@ export function Chat({ room }: { room: RoomView }) {
     </svg>
   );
   /** The key that mutes you, to name on the button: none on a phone. */
-  const key = prefs.voiceKey && !touchOnly() ? keyName(prefs.voiceKey) : null;
+  const key = hotkeyName(prefs.voiceKey);
 
   // The key that mutes your microphone, from anywhere but a text field, while you are in voice.
   useEffect(() => {
