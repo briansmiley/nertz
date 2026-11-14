@@ -1528,6 +1528,7 @@ button {
 }
 
 .icon svg {
+  pointer-events: none; /* the button alone answers the pointer: one cursor across the whole circle */
   width: 1.3rem;
   height: 1.3rem;
   fill: none;
@@ -1951,6 +1952,7 @@ button {
 }
 
 .knob svg {
+  pointer-events: none;
   width: 20px;
   height: 20px;
   fill: none;
