@@ -257,6 +257,9 @@ export const go = (): void => void post({ t: 'go' });
 /** Once the cards are dealt: say you are ready for Start (or not after all). */
 export const ready = (on: boolean): void => void post({ t: 'ready', on });
 
+/** Stand up from the table to watch (on), or ask for a seat again: yourself, or as whoever deals the person in `seat`. */
+export const stand = (on: boolean, seat?: number): void => void post({ t: 'stand', on, ...(seat === undefined ? {} : { seat }) });
+
 export const pause = (on: boolean): void => void post({ t: 'pause', on });
 
 /** In the lobby: take another colour (a seat nobody has). */

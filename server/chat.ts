@@ -31,6 +31,11 @@ export class Social {
   /** The host's switches. To merge into a generic table-settings object, keep these two booleans there instead. */
   text = true;
   voice = true;
+  /** And whether those watching a full table (a seat number past the table's: `isWatching`) may take part in each. */
+  watchText = true;
+  watchVoice = true;
+  /** Is this member only watching? Told by the room, which knows what a seat number means. */
+  isWatching: (m: Member) => boolean = () => false;
 
   private lines: ChatLine[] = [];
   private nextId = 1;
@@ -73,11 +78,14 @@ export class Social {
         if (!isHost) return;
         this.text = msg.text ?? this.text;
         this.voice = msg.voice ?? this.voice;
+        this.watchText = msg.watchText ?? this.watchText;
+        this.watchVoice = msg.watchVoice ?? this.watchVoice;
         if (!this.voice) this.inVoice.clear(); // everyone is out at once; nobody is put back in when it returns
+        else if (!this.watchVoice) for (const m of [...this.inVoice.keys()]) if (this.isWatching(m)) this.inVoice.delete(m); // those watching are put out
         return this.announce(members);
       }
       case 'voice': {
-        if (!this.voice) return;
+        if (!this.voice || (msg.on && !this.watchVoice && this.isWatching(member))) return;
         if (msg.on) this.inVoice.set(member, msg.muted);
         else if (!this.inVoice.delete(member)) return;
         return this.announce(members);
@@ -92,7 +100,7 @@ export class Social {
   }
 
   private say(member: Member, members: readonly Member[], text: string): void {
-    if (!this.text) return; // switched off: refused, and the history stays as it is
+    if (!this.text || (!this.watchText && this.isWatching(member))) return; // switched off (or off for those watching): refused, and the history stays as it is
     const now = Date.now();
     const recent = (this.recent.get(member) ?? []).filter((at) => now - at < CHAT_RATE_MS);
     this.recent.set(member, recent);
@@ -104,8 +112,17 @@ export class Social {
     for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
   }
 
+  /** The table's own notice, for everyone to read where the chat is: `by` beat `of` to a pile. (Not while text chat is switched off: there is nowhere to read it.) */
+  sniped(members: readonly Member[], by: Member, of: Member): void {
+    if (!this.text) return;
+    const line: ChatLine = { id: this.nextId++, seat: by.seat, name: by.name, text: '', at: Date.now(), sniped: { seat: of.seat, name: of.name } };
+    this.lines.push(line);
+    if (this.lines.length > CHAT_HISTORY) this.lines.shift();
+    for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
+  }
+
   private state(): SocialServerMsg {
-    return { t: 'social', text: this.text, voice: this.voice, inVoice: [...this.inVoice].map(([m, muted]) => ({ seat: m.seat, muted })), ...(ICE ? { ice: ICE } : {}) };
+    return { t: 'social', text: this.text, voice: this.voice, ...(this.watchText ? {} : { watchText: false }), ...(this.watchVoice ? {} : { watchVoice: false }), inVoice: [...this.inVoice].map(([m, muted]) => ({ seat: m.seat, muted })), ...(ICE ? { ice: ICE } : {}) };
   }
 
   private announce(members: readonly Member[]): void {

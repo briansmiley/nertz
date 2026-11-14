@@ -9,6 +9,8 @@ const W = 90;
 const H = 126;
 /** One square of the grid. */
 const PX = 2;
+/** How large a court card's framed picture is drawn, of the room it was drawn for. */
+const COURT = 0.88;
 
 /** The figures, 7 squares by 10 (the ten is 8 across), drawn two squares thick. */
 const FIGURE: Record<number, string[]> = {
@@ -216,11 +218,14 @@ export function Pixel({ suit, rank, mini, ink }: { suit: Suit; rank: number; min
   if (rank > 10) {
     return svg(
       <>
-        {/* A frame round the two busts, and a line where they meet. */}
-        <path d="M16 6h58v114h-58zM17 7v112h56v-112z" fillRule="evenodd" />
-        <Bust suit={suit} rank={rank} ink={ink} />
-        <g transform={`rotate(180 ${W / 2} ${H / 2})`}>
+        {/* A frame round the two busts, and a line where they meet: the whole picture drawn a little smaller about the
+            middle of the card, so that it stands clear of the card's edge and of the figures in the corners. */}
+        <g transform={`translate(${W / 2} ${H / 2}) scale(${COURT}) translate(${-W / 2} ${-H / 2})`}>
+          <path d="M16 6h58v114h-58zM17 7v112h56v-112z" fillRule="evenodd" />
           <Bust suit={suit} rank={rank} ink={ink} />
+          <g transform={`rotate(180 ${W / 2} ${H / 2})`}>
+            <Bust suit={suit} rank={rank} ink={ink} />
+          </g>
         </g>
         {corners}
       </>,

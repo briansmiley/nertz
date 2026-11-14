@@ -13,7 +13,7 @@ import { MINI_BELOW } from './layout';
 import { seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
-export const TIMING = { flip: 1000, spread: 900, out: 1100, wash: 1000, sortEach: 1500, hold: 6500 };
+export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 6500 };
 /**
  * The finale's own clock starts when the centre piles are spread out ('spread'). With finished piles in the tray,
  * those come out next and are spread out in their turn, `trayAt` ms in; with none there is only a short beat. Then the
@@ -23,8 +23,10 @@ export const trayAt = TIMING.spread + TIMING.out;
 export const sortAt = (trayPiles: number): number => (trayPiles ? trayAt + TIMING.wash : TIMING.spread + 400);
 /** The piles are gathered one player at a time: this long for `n` players. */
 export const sortMs = (n: number): number => n * TIMING.sortEach;
-const SPREAD_MS = 560; // a card's trip from its pile out into the wash
-const LAND_MS = 420; // a card's trip from the wash onto its owner's pile
+const SPREAD_MS = 950; // a card's trip from its pile out into the wash: unhurried, so the mess is made, not thrown
+const LAND_MS = 620; // a card's trip from the wash onto its owner's pile
+/** The cards of a pile do not all leave at once: the last sets out this long after the first. */
+const SPREAD_STAGGER_MS = 480;
 /** How much of the table's width and height the mixed-up wash spreads over. */
 const WASH_SPREAD = { x: 0.62, y: 0.6 };
 /** The label beside a sorted pile (name, played, penalty, net score): it is laid out in a box of exactly this size. */
@@ -84,8 +86,8 @@ export function pileReach(pile: Rect): Rect {
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const easeOut = (t: number) => 1 - (1 - t) ** 3;
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2);
+/** A gentle start and a gentle stop, and never fast in between (a sine's half turn): a card slid by a hand, not flung. */
+const glideEase = (t: number) => (1 - Math.cos(Math.PI * t)) / 2;
 /** Repeatable noise in [0, 1): the same card gets the same path on every frame and after a resize. */
 function noise(i: number, salt: number): number {
   let t = (Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(salt + 1, 0x85ebca6b)) >>> 0;
@@ -179,71 +181,110 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const onFelt = (cx: number, cy: number): boolean => offFelt({ x: (Math.abs(cx - d.cx) + pw / 2) / L.felt.u, y: (Math.abs(cy - d.cy) + ph / 2) / L.felt.u }, n) <= -RIM / L.felt.u;
   // Someone who is not in the round watches from the first player's chair.
   const view = Math.max(0, game.players.findIndex((p) => p.seat === L.me?.seat));
-  const spots = game.players.map((p, i) => {
-    const v = seatDir((i - view + n) % n, n);
+  const spotAt = (seat: number, v: { x: number; y: number }) => {
     let k = 1.5;
     while (k > 0.3 && !onFelt(d.cx + v.x * d.rx * k, d.cy + v.y * d.ry * k)) k -= 0.005;
-    return { seat: p.seat, v, x: d.cx + v.x * d.rx * k - pw / 2, y: d.cy + v.y * d.ry * k - ph / 2, w: pw, h: ph };
-  });
+    return { seat, v, x: d.cx + v.x * d.rx * k - pw / 2, y: d.cy + v.y * d.ry * k - ph / 2, w: pw, h: ph };
+  };
+  const round = game.players.map((p, i) => spotAt(p.seat, seatDir((i - view + n) % n, n)));
+  // Where the others sit in a column at each side (a full table, or a phone on its side), the chairs are not round
+  // the felt, and a pile sent "towards its chair" by the seat's place in the ring lands in front of someone else. There
+  // each pile goes to the edge of the felt nearest its player's hand instead: towards where the hand really is.
+  // (Kept only if no two piles then touch; else the ring, which never does.)
+  /** The piles with each sent `w` of the way from its place in the ring towards its player's hand (0: the ring). */
+  const towardsHands = (w: number) =>
+    game.players.map((p, i) => {
+      const box = L.opponents.find((o) => o.seat === p.seat)?.box;
+      if (!box || w === 0) return round[i]!; // you (or a hand with no place): as before
+      const vx = (box.x + box.w / 2 - d.cx) / d.rx;
+      const vy = (box.y + box.h / 2 - d.cy) / d.ry;
+      const len = Math.hypot(vx, vy) || 1;
+      const ring = round[i]!.v;
+      const mx = ring.x * (1 - w) + (vx / len) * w;
+      const my = ring.y * (1 - w) + (vy / len) * w;
+      const m = Math.hypot(mx, my) || 1;
+      return spotAt(p.seat, { x: mx / m, y: my / m });
+    });
+  const apart = (a: Rect, b: Rect): boolean => a.x + a.w + GAP <= b.x || b.x + b.w + GAP <= a.x || a.y + a.h + GAP <= b.y || b.y + b.h + GAP <= a.y;
+  const clear = (set: typeof round): boolean => set.every((a, i) => set.every((b, j) => j <= i || apart(pileReach(a), pileReach(b))));
 
-  // Labels. What a label must keep off: every hand with its name, your own hand down to the bottom edge, the tray,
-  // the drawn-in wash, every pile, the labels placed before it, and the edges of the window.
-  const hands: Rect[] = L.opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H }));
-  if (L.me) hands.push({ ...L.me.box, h: L.window.h - L.me.box.y });
-  const reach = spots.map(pileReach);
-  const fixed: Rect[] = [...hands, L.tray, heap, ...reach];
-  const frame: Rect = { x: 4, y: 4, w: L.window.w - 8, h: L.window.h - 8 };
-  const choices = spots.map((pile, i) => {
-    const mid = { x: pile.x + pw / 2, y: pile.y + ph / 2 };
-    // Beside the pile as it is drawn (it leans up and to the left), not beside its bare rectangle.
-    const drawn = reach[i]!;
-    const across = { right: drawn.x + drawn.w + GAP, left: drawn.x - GAP - LABEL.w };
-    const along = { below: drawn.y + drawn.h + GAP, above: drawn.y - GAP - LABEL.h };
-    // In order of preference: the side away from the middle of the table (the right, for a seat straight above or
-    // below), the side towards it, then beyond the pile and before it. Level with the pile, or flush with an edge.
-    const outer: LabelSide = pile.v.x < -0.2 ? 'left' : 'right';
-    const inner: LabelSide = outer === 'left' ? 'right' : 'left';
-    const far: LabelSide = pile.v.y > 0 ? 'below' : 'above';
-    const near: LabelSide = far === 'below' ? 'above' : 'below';
-    const flushFar = far === 'below' ? pile.y + ph - LABEL.h : pile.y;
-    const flushNear = far === 'below' ? pile.y : pile.y + ph - LABEL.h;
-    // (...or, where neighbours' labels are in the way of all that, half a label up or down: still right beside the pile.)
-    const ys = [mid.y - LABEL.h / 2, flushFar, flushNear, mid.y - LABEL.h, mid.y];
-    const xs = [mid.x - LABEL.w / 2, outer === 'right' ? pile.x : pile.x + pw - LABEL.w, outer === 'right' ? pile.x + pw - LABEL.w : pile.x];
-    const options: { side: LabelSide; box: Rect; cost: number }[] = [];
-    for (const side of [outer, inner, far, near]) {
-      for (const at of side === 'left' || side === 'right' ? ys : xs) {
-        const box: Rect = side === 'left' || side === 'right' ? { x: across[side], y: at, ...LABEL } : { x: at, y: along[side], ...LABEL };
-        // What it would lie over of the things that do not move, and how much of it would be off the window.
-        const cost = Math.round(OFF_WINDOW * (LABEL.w * LABEL.h - overlap(box, frame)) + fixed.reduce((sum, r) => sum + (r === drawn ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
-        options.push({ side, box, cost });
+  /** The labels for the piles at `spots`, and how badly they sit (0: nothing overlaps and every label is where it likes). */
+  const label = (spots: typeof round) => {
+    // Labels. What a label must keep off: every hand with its name, your own hand down to the bottom edge, the tray,
+    // the drawn-in wash, every pile, the labels placed before it, and the edges of the window.
+    const hands: Rect[] = L.opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H }));
+    if (L.me) hands.push({ ...L.me.box, h: L.window.h - L.me.box.y });
+    const reach = spots.map(pileReach);
+    const fixed: Rect[] = [...hands, L.tray, heap, ...reach];
+    const frame: Rect = { x: 4, y: 4, w: L.window.w - 8, h: L.window.h - 8 };
+    const choices = spots.map((pile, i) => {
+      const mid = { x: pile.x + pw / 2, y: pile.y + ph / 2 };
+      // Beside the pile as it is drawn (it leans up and to the left), not beside its bare rectangle.
+      const drawn = reach[i]!;
+      const across = { right: drawn.x + drawn.w + GAP, left: drawn.x - GAP - LABEL.w };
+      const along = { below: drawn.y + drawn.h + GAP, above: drawn.y - GAP - LABEL.h };
+      // In order of preference: the side away from the middle of the table (the right, for a seat straight above or
+      // below), the side towards it, then beyond the pile and before it. Level with the pile, or flush with an edge.
+      const outer: LabelSide = pile.v.x < -0.2 ? 'left' : 'right';
+      const inner: LabelSide = outer === 'left' ? 'right' : 'left';
+      const far: LabelSide = pile.v.y > 0 ? 'below' : 'above';
+      const near: LabelSide = far === 'below' ? 'above' : 'below';
+      const flushFar = far === 'below' ? pile.y + ph - LABEL.h : pile.y;
+      const flushNear = far === 'below' ? pile.y : pile.y + ph - LABEL.h;
+      // (...or, where neighbours' labels are in the way of all that, half a label up or down: still right beside the pile.)
+      const ys = [mid.y - LABEL.h / 2, flushFar, flushNear, mid.y - LABEL.h, mid.y];
+      const xs = [mid.x - LABEL.w / 2, outer === 'right' ? pile.x : pile.x + pw - LABEL.w, outer === 'right' ? pile.x + pw - LABEL.w : pile.x];
+      const options: { side: LabelSide; box: Rect; cost: number }[] = [];
+      for (const side of [outer, inner, far, near]) {
+        for (const at of side === 'left' || side === 'right' ? ys : xs) {
+          const box: Rect = side === 'left' || side === 'right' ? { x: across[side], y: at, ...LABEL } : { x: at, y: along[side], ...LABEL };
+          // What it would lie over of the things that do not move, and how much of it would be off the window.
+          const cost = Math.round(OFF_WINDOW * (LABEL.w * LABEL.h - overlap(box, frame)) + fixed.reduce((sum, r) => sum + (r === drawn ? 0 : overlap(box, r)), 0)); // (whole px²: no rounding dust)
+          options.push({ side, box, cost });
+        }
+      }
+      // Places that lie over nothing are all that is tried, while there are any.
+      const clear = options.filter((o) => o.cost === 0);
+      return clear.length > 0 ? clear : options;
+    });
+    // One label per pile with nothing overlapping, each on the best side that allows it: a search, since the first
+    // pile's favourite place may be the only one left for another's (there are at most six piles and twelve places
+    // each). If the window is too small for that, the arrangement that overlaps least.
+    let labels = choices.map((options) => options[0]!);
+    let least = Infinity;
+    const pick: (typeof labels)[number][] = [];
+    let tries = 0;
+    const search = (i: number, cost: number): void => {
+      if (cost >= least || ++tries > 200000) return;
+      if (i === choices.length) {
+        least = cost;
+        labels = [...pick];
+        return;
+      }
+      for (const option of choices[i]!) {
+        pick[i] = option;
+        search(i + 1, cost + option.cost + Math.round(pick.slice(0, i).reduce((sum, other) => sum + overlap(option.box, other.box), 0)));
+        if (least === 0) return;
+      }
+    };
+    search(0, 0);
+    return { spots, labels, least };
+  };
+  // The ring first: it never fails. Then, in columns, as far towards the hands as leaves the piles apart and the
+  // labels no worse off than the ring has them (in a small window the labels of five piles down one side collide).
+  let best = label(round);
+  if (L.low) {
+    for (const w of [1, 0.75, 0.5, 0.25]) {
+      const set = towardsHands(w);
+      if (!clear(set)) continue;
+      const tried = label(set);
+      if (tried.least <= best.least) {
+        best = tried;
+        break;
       }
     }
-    // Places that lie over nothing are all that is tried, while there are any.
-    const clear = options.filter((o) => o.cost === 0);
-    return clear.length > 0 ? clear : options;
-  });
-  // One label per pile with nothing overlapping, each on the best side that allows it: a search, since the first
-  // pile's favourite place may be the only one left for another's (there are at most six piles and twelve places
-  // each). If the window is too small for that, the arrangement that overlaps least.
-  let labels = choices.map((options) => options[0]!);
-  let least = Infinity;
-  const pick: (typeof labels)[number][] = [];
-  let tries = 0;
-  const search = (i: number, cost: number): void => {
-    if (cost >= least || ++tries > 200000) return;
-    if (i === choices.length) {
-      least = cost;
-      labels = [...pick];
-      return;
-    }
-    for (const option of choices[i]!) {
-      pick[i] = option;
-      search(i + 1, cost + option.cost + Math.round(pick.slice(0, i).reduce((sum, other) => sum + overlap(option.box, other.box), 0)));
-      if (least === 0) return;
-    }
-  };
-  search(0, 0);
+  }
+  const { spots, labels } = best;
   const piles: SortedPile[] = spots.map((s, i) => ({ seat: s.seat, x: s.x, y: s.y, w: pw, h: ph, total: 0, label: labels[i]!.box, side: labels[i]!.side }));
   const pileOf = new Map(piles.map((p, i) => [p.seat, i]));
 
@@ -401,7 +442,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
     if (t < mv.from) continue; // still a pile in the tray, or on its way out of it: drawn by the table
-    const q = easeInOut(clamp01((t - plan.sortAt - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
+    const q = glideEase(clamp01((t - plan.sortAt - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
@@ -410,7 +451,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
       continue;
     }
     // In the wash: out from its pile to a spot on the felt, which then turns (the inside faster) and breathes.
-    const spread = easeOut(clamp01((t - mv.from - mv.delay * 280) / SPREAD_MS));
+    const spread = glideEase(clamp01((t - mv.from - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
     const a = mv.angle;
     const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);

@@ -25,7 +25,8 @@ import { Opening } from './Opening';
 import { onDrag, onSniper, pause, post } from './net';
 import { canResume } from './Settings';
 import { calm, choiceAt, deckOf, usePrefs } from './prefs';
-import { beaten, stage as stageSound } from './sound';
+import { useSocial } from './social';
+import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
 import { beatenTo } from './soundEvents';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -413,7 +414,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // (The screen's own edges are read again whenever the window changes: turning a phone moves its notch.)
   const pad = useMemo(() => insets(), [W, H]);
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
-  const seated = room.players.map((p) => p.seat).join();
+  const seated = room.players.filter((p) => !p.watching).map((p) => p.seat).join(); // (those watching a full table have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
   const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld, pad, sitting), [W, H, game, you, stage, peek, packet, groupHeld, pad, sitting]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
@@ -438,8 +439,23 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** Who last beat you to a pile (and a count, so that the same name flashes again). */
   const [sniper, setSniper] = useState<{ by: number; n: number; of?: number } | null>(null);
   useEffect(() => setSniper(null), [room.round]);
+  // Someone else's snipe (neither of the two is you): the table's notice of it, which also stands among the chat's
+  // lines, flashes small under the felt. (Only one that comes while you watch: not what was said before.)
+  const [aside, setAside] = useState<{ by: number; byName: string; of: number; ofName: string; n: number } | null>(null);
+  const passing = useSocial().passing;
+  const newest = passing.at(-1)?.line;
+  const seenLine = useRef(newest?.id ?? 0);
+  useEffect(() => {
+    for (const { line } of passing) {
+      if (line.id <= seenLine.current) continue;
+      seenLine.current = line.id;
+      if (line.sniped && line.seat !== you && line.sniped.seat !== you) snipeSound('other');
+      if (line.sniped && line.seat !== you && line.sniped.seat !== you) setAside((a) => ({ by: line.seat, byName: line.name, of: line.sniped!.seat, ofName: line.sniped!.name, n: (a?.n ?? 0) + 1 }));
+    }
+  }, [newest?.id]);
+  useEffect(() => setAside(null), [room.round]);
   // And the other way round: the table says so when it was you who beat someone.
-  useEffect(() => onSniper((of) => setSniper((s) => ({ by: you, of, n: (s?.n ?? 0) + 1 }))), [you]);
+  useEffect(() => onSniper((of) => (snipeSound('me'), setSniper((s) => ({ by: you, of, n: (s?.n ?? 0) + 1 })))), [you]);
   /** On a table without marked places: the outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
@@ -1231,6 +1247,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {sniper && !called && (
         <div key={`sniped${sniper.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
           <span style={{ color: backColour(sniper.of ?? sniper.by) }}>{sniper.of === undefined ? `Sniped by ${name(sniper.by)}!` : `You sniped ${name(sniper.of)}!`}</span>
+        </div>
+      )}
+      {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies. */}
+      {aside && !called && (
+        <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
+          <span>
+            <b style={{ color: backColour(aside.by) }}>{aside.byName}</b> sniped <b style={{ color: backColour(aside.of) }}>{aside.ofName}</b>
+          </span>
         </div>
       )}
       {callerBox && (

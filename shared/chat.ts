@@ -25,12 +25,17 @@ export interface ChatLine {
   text: string;
   /** Server clock, ms since the epoch. */
   at: number;
+  /** Not something said, but a notice from the table: `seat`/`name` beat this player to a pile in the middle (`text` is then empty). */
+  sniped?: { seat: number; name: string };
 }
 
 /** The host's two switches. Both default to on. */
 export interface SocialSettings {
   text: boolean;
   voice: boolean;
+  /** May those watching a full table (no seat) take part in the text chat, and in voice? Left out: they may. */
+  watchText?: boolean;
+  watchVoice?: boolean;
 }
 
 export interface VoiceMember {
@@ -48,7 +53,7 @@ export interface IceServer {
 export type SocialClientMsg =
   | { t: 'chat'; text: string }
   /** Host only: flip one or both switches. */
-  | { t: 'social'; text?: boolean; voice?: boolean }
+  | { t: 'social'; text?: boolean; voice?: boolean; watchText?: boolean; watchVoice?: boolean }
   /** Join or leave the table's voice chat, and say whether the microphone is muted. */
   | { t: 'voice'; on: boolean; muted: boolean }
   /** WebRTC signalling for the player in seat `to`; the server forwards it as it is. */
@@ -81,8 +86,8 @@ export function parseSocialMsg(v: Record<string, unknown>): SocialClientMsg | nu
     }
     case 'social': {
       const ok = (x: unknown) => x === undefined || typeof x === 'boolean';
-      if (!ok(v.text) || !ok(v.voice) || (v.text === undefined && v.voice === undefined)) return null;
-      return { t: 'social', ...(typeof v.text === 'boolean' && { text: v.text }), ...(typeof v.voice === 'boolean' && { voice: v.voice }) };
+      if (!ok(v.text) || !ok(v.voice) || !ok(v.watchText) || !ok(v.watchVoice) || (v.text === undefined && v.voice === undefined && v.watchText === undefined && v.watchVoice === undefined)) return null;
+      return { t: 'social', ...(typeof v.text === 'boolean' && { text: v.text }), ...(typeof v.voice === 'boolean' && { voice: v.voice }), ...(typeof v.watchText === 'boolean' && { watchText: v.watchText }), ...(typeof v.watchVoice === 'boolean' && { watchVoice: v.watchVoice }) };
     }
     case 'voice':
       return typeof v.on === 'boolean' && typeof v.muted === 'boolean' ? { t: 'voice', on: v.on, muted: v.muted } : null;

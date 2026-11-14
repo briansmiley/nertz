@@ -373,10 +373,9 @@ describe('Room with bots', () => {
     const { room, host } = hosted();
     for (let i = 0; i < 11; i++) room.handle(host, { t: 'addBot', level: 'medium' });
     expect(names(room, host)).toEqual(['Ann', 'Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy']);
-    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toMatch(/full/);
+    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull(); // full: they come in to watch, and wait for a seat
     expect(parseClientMsg({ t: 'join', room: 'TEST', name: 'Sly', token: 'bot:1-padding' })).toBeNull(); // a bot's token is not a token
-    room.handle(host, { t: 'removeBot', seat: 1 });
-    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull();
+    room.handle(host, { t: 'removeBot', seat: 1 }); // a seat comes free: whoever was watching has it
     expect(names(room, host)).toEqual(['Ann', 'Late', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy']);
   });
 
@@ -640,3 +639,22 @@ describe('bots on the real server', () => {
     expect(JSON.stringify(room.game)).toBe(frozen);
   });
 });
+
+describe('a bot at a crowded table', () => {
+  it('is exactly its level at two players, and slower and less observant for every player more: a careful bot loses less', async () => {
+    const { botAt, BOTS } = await import('./bot');
+    for (const level of ['slow', 'medium', 'fast'] as const) {
+      expect(botAt(level, 2)).toEqual(BOTS[level]);
+      expect(botAt(level, 1)).toEqual(BOTS[level]);
+      for (let n = 3; n <= 10; n++) {
+        expect(botAt(level, n).delayMs).toBeGreaterThan(botAt(level, n - 1).delayMs);
+        expect(botAt(level, n).observance).toBeLessThan(botAt(level, n - 1).observance);
+      }
+    }
+    // At a full table: about two fifths slower; what the fast bot keeps of its observance is more than what the slow one keeps.
+    expect(botAt('fast', 10).delayMs / BOTS.fast.delayMs).toBeCloseTo(1.4);
+    expect(botAt('fast', 10).observance / BOTS.fast.observance).toBeGreaterThan(botAt('slow', 10).observance / BOTS.slow.observance);
+    expect(botAt('slow', 10).observance).toBeGreaterThan(0.4);
+  });
+});
+

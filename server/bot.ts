@@ -14,6 +14,21 @@ export const BOTS: Record<BotLevel, { delayMs: number; observance: number }> = {
   fast: { delayMs: 1400, observance: 0.9 },
 };
 
+/**
+ * A bigger table is harder to keep an eye on, for a bot as for a person: there are more piles in the middle to watch
+ * and more hands moving. For every player beyond two, a bot's pause between looks is this much longer (`delay`, as a
+ * share of its level's), and its miss rate grows (`miss`: added to an exponent on the observance, so a careful bot
+ * loses less than a careless one). At two players a bot is exactly its level.
+ */
+export const CROWD = { delay: 0.05, miss: 0.07 } as const;
+
+/** A bot of `level` at a table where `players` were dealt in: its mean pause and its chance of noticing a move. */
+export function botAt(level: BotLevel, players: number): { delayMs: number; observance: number } {
+  const extra = Math.max(0, players - 2);
+  const base = BOTS[level];
+  return { delayMs: base.delayMs * (1 + CROWD.delay * extra), observance: base.observance ** (1 + CROWD.miss * extra) };
+}
+
 /** Moves with its own nertz card are noticed more reliably (at these levels the miss chance is about halved)... */
 const NERTZ_FOCUS = 0.5;
 /** ...and plays to the middle from the waste or a work pile a bit less. Both are exponents on the observance. */

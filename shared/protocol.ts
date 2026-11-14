@@ -10,7 +10,7 @@ import type { BotLevel, Intent, PileRef, RoomView } from './types';
  * dark card. Where a deck is named for drawing, a dark one is its name with `:night` after it. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
  * suit must not be one colour in your hand and another in your neighbour's.)
  */
-export const DECKS = { modern: 'Nertz', big: 'Big print', cute: 'Cute', pixel: 'Pixel', classic: 'Classic' } as const;
+export const DECKS = { modern: 'Nertz', big: 'Big print', classic: 'Classic', pixel: 'Pixel', cute: 'Cute' } as const;
 export type Deck = keyof typeof DECKS;
 export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object.hasOwn(DECKS, v);
 
@@ -172,6 +172,8 @@ export type ClientMsg =
   | { t: 'removeBot'; seat: number }
   /** I let a card go over the pile at `slot` and it was too late: someone else's very same card had just been put there. (Counted, if the table agrees.) */
   | { t: 'sniped'; slot: number }
+  /** Stand up from the table to watch (on), or ask for a seat again (off): yourself, or as whoever deals the person in `seat`. Not from a round you are being dealt cards in. */
+  | { t: 'stand'; on: boolean; seat?: number }
   /** Whoever deals: send the person in `seat` away from the table. */
   | { t: 'kick'; seat: number }
   /** Whoever deals: what the bot in `seat` is called. */
@@ -230,6 +232,8 @@ export const DRAG_BURST = 12;
 export const MAX_MESSAGE_BYTES = 2048;
 export const MAX_NAME_LENGTH = 20;
 export const MIN_PLAYERS = 2;
+/** Beyond the seats, this many more may come in and watch (and wait for a seat). Their place in the queue is a seat number from MAX_PLAYERS up. */
+export const MAX_WATCHERS = 20;
 export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
@@ -376,6 +380,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'redeal' };
     case 'ready':
       return typeof v.on === 'boolean' ? { t: 'ready', on: v.on } : null;
+    case 'stand':
+      return typeof v.on === 'boolean' && (v.seat === undefined || isIndex(v.seat, MAX_PLAYERS + MAX_WATCHERS)) ? { t: 'stand', on: v.on, ...(v.seat === undefined ? {} : { seat: v.seat as number }) } : null;
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':
@@ -389,7 +395,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'sniped':
       return isIndex(v.slot, MAX_SLOTS) ? { t: 'sniped', slot: v.slot } : null;
     case 'kick':
-      return isIndex(v.seat, MAX_PLAYERS) ? { t: 'kick', seat: v.seat } : null;
+      return isIndex(v.seat, MAX_PLAYERS + MAX_WATCHERS) ? { t: 'kick', seat: v.seat } : null; // (someone watching can be sent away too)
     case 'botName': {
       const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
       return isIndex(v.seat, MAX_PLAYERS) && name ? { t: 'botName', seat: v.seat, name } : null;

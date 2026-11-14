@@ -59,16 +59,17 @@ function Info({ children }: { children: ReactNode }) {
   );
 }
 
-export function Robot() {
+/** A robot's head; with a plus beside it (to add one) unless `plain`. */
+export function Robot({ plain }: { plain?: boolean } = {}) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg viewBox={plain ? '0 2 15.5 17.5' : '0 0 24 24'} aria-hidden="true">
       <rect x="2" y="8" width="11.5" height="10" rx="2.5" />
       <path d="M7.75 8V5" />
       <circle cx="7.75" cy="4.2" r="1.1" fill="currentColor" stroke="none" />
       <circle cx="5.7" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
       <circle cx="9.8" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
       {/* the plus, clear of the head */}
-      <path d="M19.8 10v5M17.3 12.5h5" />
+      {!plain && <path d="M19.8 10v5M17.3 12.5h5" />}
     </svg>
   );
 }
@@ -115,6 +116,27 @@ export function Pop({ icon, label, children }: { icon: ReactNode; label: string;
   );
 }
 
+/** A pair of glasses: those who are only watching. */
+function Glasses() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="6.5" cy="13.5" r="3.6" />
+      <circle cx="17.5" cy="13.5" r="3.6" />
+      <path d="M10.1 13a2 2 0 0 1 3.8 0M2.9 13 4.6 7.2M21.1 13l-1.7-5.8" />
+    </svg>
+  );
+}
+
+/** The switch for those only watching: a pair of glasses, lit (yellow) while they are let in, faint while not. */
+function Specs({ on, disabled, what, onChange }: { on: boolean; disabled: boolean; what: string; onChange: (on: boolean) => void }) {
+  const says = on ? `Spectators can ${what} too. Press to keep them out` : `Spectators cannot ${what}. Press to let them`;
+  return (
+    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={says} title={says} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
+      <Glasses />
+    </button>
+  );
+}
+
 function PauseIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -147,7 +169,7 @@ function EndVote({ room }: { room: RoomView }) {
   const game = room.game;
   const me = game?.players.find((p) => p.seat === room.you);
   if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
-  const people = room.players.filter((p) => p.connected && !p.bot);
+  const people = room.players.filter((p) => p.connected && !p.bot && !p.watching);
   const voted = people.filter((p) => p.ending || (p.seat === room.you && me.ending)).length;
   return (
     <div className="end-vote">
@@ -265,6 +287,10 @@ export function Corner({ room }: { room?: RoomView | null }) {
     if (!open) setKeying(false);
   }, [open]);
 
+  /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
+  const stage = room?.phase === 'playing' ? room.game?.stage : undefined;
+  const styling = stage !== 'countdown' && stage !== 'play';
+
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
   // M mutes from anywhere (except while typing a name), P pauses or carries on; Escape puts the slip away.
@@ -283,7 +309,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
+      // (The sheet of cards opened from here is put straight into the page, outside this corner: a press in it is not a press elsewhere. Closing the slip would take the sheet with it.)
+      if (!root.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.picker')) setOpen(false);
     };
     window.addEventListener('pointerdown', onDown, true);
     return () => window.removeEventListener('pointerdown', onDown, true);
@@ -351,9 +378,11 @@ export function Corner({ room }: { room?: RoomView | null }) {
             <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
             <span>Reduce motion</span>
           </label>
-          <div className="level">
+          {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
+          <div className={`level${styling ? '' : ' locked'}`}>
             <span>Card back</span>
-            <YourBacks colour={BACKS[0]} />
+            <YourBacks colour={BACKS[0]} locked={!styling} />
+            {!styling && <small className="why">You can change card styles between rounds.</small>}
           </div>
           {/* Keys: only where there is a keyboard. */}
           {!touchOnly() && (
@@ -374,14 +403,21 @@ export function Corner({ room }: { room?: RoomView | null }) {
           {hosting && (
             <div className="end-vote">
               <h3>Host</h3>
-              <label className="check">
-                <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
-                <span>Allow text chat</span>
-              </label>
-              <label className="check">
-                <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
-                <span>Allow voice chat</span>
-              </label>
+              {/* Each row: the switch for the table, and at its end the same for those only watching (the glasses). */}
+              <div className="allow">
+                <label className="check">
+                  <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
+                  <span>Allow text chat</span>
+                </label>
+                <Specs on={social.text && social.watchText !== false} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+              </div>
+              <div className="allow">
+                <label className="check">
+                  <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
+                  <span>Allow voice chat</span>
+                </label>
+                <Specs on={social.voice && social.watchVoice !== false} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+              </div>
             </div>
           )}
           <WholeScreen />

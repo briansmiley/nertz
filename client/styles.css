@@ -713,7 +713,7 @@ button {
 }
 
 .gotnertz.sniped span {
-  animation: sniped 0.9s ease-out both;
+  animation: sniped 1.125s ease-out both; /* (a quarter longer than it was) */
   /* A white edge and a dark one round that: read over a card of any colour, face or back. */
   -webkit-text-stroke: 0.09em #fff;
   filter: drop-shadow(0 0 0.03em var(--ink)) drop-shadow(0 0.05em 0.02em var(--ink)) drop-shadow(0 0.1em 0.2em rgba(0, 0, 0, 0.6));
@@ -1235,7 +1235,7 @@ button {
   border-radius: 8px;
   font-weight: 600;
   color: var(--ink);
-  background: transparent;
+  background: #fffdf6; /* filled: the paper's ruled lines do not run through a button that has a border */
 }
 
 .plain:disabled {
@@ -1496,7 +1496,7 @@ button {
   border: 1.5px solid var(--ink-soft);
   border-radius: 50%;
   color: var(--ink-soft);
-  background: none;
+  background: #fffdf6;
   cursor: pointer;
 }
 
@@ -1507,7 +1507,7 @@ button {
 }
 
 .icon.on {
-  background: rgba(242, 179, 32, 0.3);
+  background: #fbe6ae; /* (the marigold tint, opaque) */
 }
 
 .icon svg {
@@ -1558,8 +1558,8 @@ button {
   border-radius: 4px;
   background: none;
   color: var(--ink-soft);
-  font: 400 1.1rem/1 var(--ui);
-  opacity: 0.55;
+  font: 500 1.6rem/1 var(--ui);
+  opacity: 0.65;
   cursor: pointer;
 }
 
@@ -3623,7 +3623,7 @@ body:has(main.showroom) {
   border-radius: 8px;
   font: 600 0.85rem/1.2 var(--ui);
   color: var(--ink);
-  background: transparent;
+  background: #fffdf6;
   cursor: pointer;
 }
 
@@ -3691,33 +3691,36 @@ body:has(main.showroom) {
   gap: 1rem;
 }
 
-.yourback .backcard {
-  display: inline-flex;
-  padding: 0;
-  border: 0;
-  background: none;
-  rotate: -4deg;
-  cursor: pointer;
-  transition: transform 0.12s ease-out;
-}
-
-.yourback .backcard:hover {
-  transform: translateY(-2px) rotate(-3deg);
-}
-
-.yourback .mini {
-  zoom: 0.55;
-}
-
-.yourback .change {
-  padding: 0.5rem 1.1rem;
+.yourback .frame {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 4px 4px 3px;
   border: 1.5px solid var(--ink);
-  border-radius: 99px;
-  font: 700 0.95rem/1.2 var(--ui);
+  border-radius: 10px;
   color: var(--ink);
   background: var(--marigold);
   box-shadow: 0 2px 0 var(--ink);
   cursor: pointer;
+  transition: transform 0.12s ease-out;
+}
+
+.yourback .frame:hover {
+  transform: translateY(-1px) rotate(-1.5deg);
+}
+
+.yourback .frame:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.yourback .frame .mini {
+  zoom: 0.58;
+}
+
+.yourback .frame span {
+  font: 700 0.85rem/1.2 var(--ui);
+  letter-spacing: 0.02em;
 }
 
 /* The rules, for whoever does not deal: there to read, greyed, and a word on hover as to why. */
@@ -4243,4 +4246,279 @@ button.code.copy small {
 
 .picker .sheet section > .heading {
   margin-top: 0.4rem;
+}
+
+/* The sheet of cards, tidied: room above its heading; the two switches are a lever and a word, no pill round them;
+   the × has no ring; the Backs/Faces switch is nearly square. */
+.picker .sheet.showroom {
+  padding-top: 30px;
+}
+
+.showroom .edge,
+.showroom .edge.on {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.picker .shut {
+  border: 0;
+  font-size: 24px;
+}
+
+.picker .panels {
+  border-radius: 4px;
+}
+
+.picker .sheet.showroom > .heading {
+  margin-top: 0;
+}
+
+/* One size whichever panel is up (backs or faces): the sheet does not jump when the other is chosen; a longer panel scrolls inside it. */
+.picker .sheet.showroom {
+  height: min(86vh, 760px);
+}
+
+/* The bot's speed: the browser's own arrow sits against the edge, so the field draws its own, with room round it. */
+.bots select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.55rem 2.1rem 0.55rem 0.75rem;
+  background: #fffdf6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231c2433' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0.65rem center / 0.95rem;
+}
+
+/* In the lobby, beside a bot's name: a robot's head and its speed. */
+.botnote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.botnote svg {
+  width: 1.05em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Settings: the card back while a round is on. Greyed, not to be pressed, and a word as to when. */
+.level.locked .mybacks {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.level.locked .mybacks .mini {
+  transform: rotate(-4deg);
+}
+
+.level.locked .why {
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+/* A notice from the table among the chat's lines (who sniped whom): slanted and a little fainter than what is said. */
+.passing .notice {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+/* Those watching a full table, under the names (and under the scores): a quiet line. */
+.watching {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.8rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.watching small {
+  font: 600 0.72rem/1.2 var(--ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.watching .you {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.watching .unseat {
+  margin-left: 0.1rem;
+  font-size: 1.2rem;
+}
+
+/* The lobby: a dot of your colour beside the card back; behind it, the colours still free. */
+.colour {
+  position: relative;
+  display: inline-flex;
+}
+
+.colour .dot,
+.colour .free button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid #fffdf6;
+  border-radius: 99px;
+  box-shadow: 0 0 0 1.5px var(--ink);
+  cursor: pointer;
+}
+
+.colour .dot:disabled {
+  cursor: default;
+}
+
+.colour .free {
+  position: absolute;
+  z-index: 30;
+  left: -8px;
+  top: calc(100% + 8px);
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 99px;
+  background: var(--paper);
+  box-shadow:
+    0 0 0 1.5px var(--ink),
+    0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* In the chat's bar: an eye and how many are watching. */
+.chat-bar .mic.eye {
+  cursor: pointer;
+}
+
+/* (Up to nine of them: five to a row.) */
+.colour .free {
+  flex-wrap: wrap;
+  width: 196px;
+  border-radius: 20px;
+}
+
+/* The host's chat switches: each with, at its end, the same for spectators (glasses and a box). */
+.allow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.allow .specs {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: 1.5px solid transparent;
+  border-radius: 99px;
+  color: var(--ink);
+  background: none;
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.allow .specs.on {
+  border-color: var(--ink);
+  background: var(--marigold);
+  opacity: 1;
+}
+
+.allow .specs:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
+.allow .specs svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.allow .specs svg,
+.allow .specs.on svg {
+  stroke: var(--ink);
+}
+
+/* Someone else's snipe, small, on the lower rim of the felt: chalk words with the two names in their colours. */
+.gotnertz.sniped.aside span {
+  color: var(--chalk);
+  -webkit-text-stroke: 0;
+  filter: drop-shadow(0 0.06em 0.05em rgba(4, 18, 22, 0.95));
+  animation-duration: 2.4s; /* (half as long again: it is smaller, and off to one side) */
+}
+
+.gotnertz.sniped.aside b {
+  font-weight: inherit;
+  filter: brightness(1.45) saturate(0.9);
+}
+
+/* Beside a name: stand up to watch (an eye). Among those watching: sit down again. */
+.standup {
+  display: inline-grid;
+  place-items: center;
+  margin-left: 0.4rem;
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.standup:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.standup svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.seats .note + .standup {
+  margin-left: 0.6rem;
+}
+
+.watching .sit,
+.voice-slip li > button:not(.mic-at) {
+  margin-left: 0.3rem;
+  padding: 1px 9px 2px;
+  border: 1.5px solid var(--ink);
+  border-radius: 99px;
+  font: 600 0.8rem/1.3 var(--ui);
+  color: var(--ink);
+  background: var(--marigold);
+  cursor: pointer;
+}
+
+/* Your own colour among the free ones: ticked. */
+.colour .free button {
+  flex: none;
+  position: relative;
+}
+
+.colour .free button.mine::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 800 15px/1 var(--ui);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
 }

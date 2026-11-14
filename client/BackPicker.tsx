@@ -59,23 +59,27 @@ export function BackPicker({ title, colour, bare, back, random, onPick, onRandom
 }
 
 /** Your usual backs, as a card to press: a picture of what you have (a question mark, for a back by lot) and, unless only the card is wanted (`compact`), its name; pressed, the sheet of backs to choose another. */
-export function YourBacks({ colour, compact }: { colour: string; compact?: boolean }) {
+/** `locked`: not to be changed just now (a round is being played): the card is greyed and cannot be pressed, and a sheet that was open is put away. */
+export function YourBacks({ colour, compact, locked }: { colour: string; compact?: boolean; locked?: boolean }) {
   const prefs = usePrefs();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (locked) setOpen(false);
+  }, [locked]);
   return (
     <>
-      <button type="button" className={`mybacks${compact ? ' compact' : ''}`} aria-label="Choose your card backs" title="Your card backs: change them" onClick={() => setOpen(true)}>
+      <button type="button" className={`mybacks${compact ? ' compact' : ''}`} disabled={locked} aria-label="Choose your card backs" title={locked ? 'You can change card styles between rounds' : 'Your card backs: change them'} onClick={() => setOpen(true)}>
         <span className="mini">
           <span {...backOf(colour, prefs.random ? 'any' : backNamed(prefs.back, prefs.bare), true)} />
         </span>
         {!compact && (
           <span className="what">
             <b>{prefs.random ? (prefs.random === 'all' ? 'Random back' : `Random: ${prefs.random}`) : CARD_BACKS[prefs.back]}</b>
-            <small>Change</small>
+            <small>{locked ? 'Between rounds' : 'Change'}</small>
           </span>
         )}
       </button>
-      {open && <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), setOpen(false))} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={() => setOpen(false)} />}
+      {open && !locked && <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), setOpen(false))} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={() => setOpen(false)} />}
     </>
   );
 }

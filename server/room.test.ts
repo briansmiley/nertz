@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import WebSocket from 'ws';
 import { checkInvariants, deal as dealRound, finishDeal, grab, isComplete, isHidden, legalDrops, openPlay, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { STOCK_CARD_MS } from '../shared/protocol';
-import { DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, type ServerMsg } from '../shared/protocol';
+import { DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import type { Card, GameState, Intent, PileRef, Suit } from '../shared/types';
 import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
@@ -164,9 +164,120 @@ describe('Room', () => {
     expect(room.lastRound!.snipes).toEqual([{ by: 0, of: 1, n: 1 }]);
   });
 
-  it('refuses an eleventh player', () => {
-    const { room } = roomWith(MAX_PLAYERS);
-    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toMatch(/full/);
+  it('tells the table of a snipe: the sniper alone that it was theirs, and everyone a line where the chat is, once', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    // A third, who only watches what is sent: every message, not only snapshots.
+    const got: ServerMsg[] = [];
+    room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc');
+    room.handle(a, { t: 'start' });
+    room.game = rigged([0, 1], [0]);
+    const [aceA, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
+    sendIntent(room, a, 0, move(aceA, slot(3)));
+    sendIntent(room, a, 1, move(twoA, slot(3)));
+    sendIntent(room, b, 0, move(twoB, slot(3))); // too late
+    room.handle(b, { t: 'sniped', slot: 3 }); // said again by their window: still one line
+    const lines = got.flatMap((m) => (m.t === 'chat' && !m.history ? m.lines : []));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ seat: 0, name: 'P0', text: '', sniped: { seat: 1, name: 'P1' } });
+    expect(got.some((m) => m.t === 'sniper')).toBe(false); // (that one is for the sniper only)
+  });
+
+  it('lets an eleventh in to watch: no cards, no deal of their own, in a queue for a seat; the queue has an end too', () => {
+    const { room, conns } = roomWith(MAX_PLAYERS);
+    const late = new FakeConn();
+    expect(room.join(late, 'Late', 'tok-late')).toBeNull();
+    room.flush();
+    expect(late.last.room.you).toBe(MAX_PLAYERS);
+    expect(late.last.room.players.at(-1)).toMatchObject({ name: 'Late', watching: true, isHost: false });
+    expect(late.last.room.players.filter((p) => p.watching)).toHaveLength(1);
+    room.handle(late, { t: 'start' }); // not theirs to deal
+    expect(room.phase).toBe('lobby');
+    room.handle(conns[0]!, { t: 'start' });
+    expect(room.game!.players.map((p) => p.seat)).toEqual(Array.from({ length: MAX_PLAYERS }, (_, i) => i)); // the ten, not the eleventh
+    room.flush();
+    expect(late.last.room.game).not.toBeNull(); // but they see the round
+    for (let i = 1; i < MAX_WATCHERS; i++) expect(room.join(new FakeConn(), `W${i}`, `tok-w${String(i).padStart(3, '0')}`)).toBeNull();
+    expect(room.join(new FakeConn(), 'Too many', 'tok-many')).toMatch(/full/);
+  });
+
+  it('lets those watching into the chat and into voice, unless whoever hosts says not', () => {
+    const { room, conns } = roomWith(MAX_PLAYERS);
+    const got: ServerMsg[] = [];
+    const w: Conn = { send: (m) => void got.push(wire(m)), close: () => {} };
+    room.join(w, 'Watcher', 'tok-watch');
+    const said = () => got.flatMap((m) => (m.t === 'chat' && !m.history ? m.lines.map((l) => l.text) : []));
+    const inVoice = () => (got.filter((m) => m.t === 'social').at(-1) as Extract<ServerMsg, { t: 'social' }>).inVoice.map((v) => v.seat);
+    room.handle(w, { t: 'chat', text: 'hello' });
+    room.handle(w, { t: 'voice', on: true, muted: false });
+    expect(said()).toEqual(['hello']);
+    expect(inVoice()).toEqual([MAX_PLAYERS]);
+    room.handle(w, { t: 'social', watchText: false }); // not theirs to switch
+    room.handle(w, { t: 'chat', text: 'still here' });
+    expect(said()).toEqual(['hello', 'still here']);
+    room.handle(conns[0]!, { t: 'social', watchText: false, watchVoice: false });
+    expect(inVoice()).toEqual([]); // put out of voice at once
+    room.handle(w, { t: 'chat', text: 'anyone?' });
+    room.handle(w, { t: 'voice', on: true, muted: false });
+    room.handle(conns[1]!, { t: 'chat', text: 'seated people still can' });
+    expect(said()).toEqual(['hello', 'still here', 'seated people still can']);
+    expect(inVoice()).toEqual([]);
+  });
+
+  it('whoever arrives while a round is played watches it, and sits down when it is over: dealt in at the next', () => {
+    const { room, conns } = roomWith(2);
+    const [a] = conns as [FakeConn, FakeConn];
+    startRound(room, a);
+    const late = new FakeConn();
+    room.join(late, 'Late', 'tok-late');
+    room.flush();
+    expect(late.last.room.players.find((p) => p.name === 'Late')).toMatchObject({ watching: true }); // seats are free, but the round is on
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    room.game = rigged([0, 1], [0]);
+    sendIntent(room, a, 0, { k: 'nertz' });
+    room.flush();
+    expect(room.phase).toBe('results');
+    expect(late.last.room.you).toBe(2); // the round is over: a seat, and its colour
+    expect(late.last.room.players.find((p) => p.name === 'Late')).not.toHaveProperty('watching');
+    room.handle(a, { t: 'start' });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+  });
+
+  it('someone sent away is gone at once, also from the score sheet; someone who stands up watches until they sit down again', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    const list = () => (room.flush(), a.last.room.players.map((p) => `${p.name}@${p.seat}${p.watching ? 'w' : ''}${p.standing ? 's' : ''}`));
+    room.handle(c, { t: 'stand', on: true });
+    expect(list()).toEqual(['P0@0', 'P1@1', `P2@${MAX_PLAYERS}ws`]);
+    room.handle(a, { t: 'start' });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]); // not dealt in, though seats are free
+    room.game = rigged([0, 1], [0]);
+    sendIntent(room, a, 0, { k: 'nertz' });
+    expect(list()).toEqual(['P0@0', 'P1@1', `P2@${MAX_PLAYERS}ws`]); // nor seated when the round ends: they chose to watch
+    room.handle(b, { t: 'stand', on: false, seat: MAX_PLAYERS }); // not theirs to seat
+    expect(list()).toEqual(['P0@0', 'P1@1', `P2@${MAX_PLAYERS}ws`]);
+    room.handle(c, { t: 'stand', on: false });
+    expect(list()).toEqual(['P0@0', 'P1@1', 'P2@2']);
+    room.handle(a, { t: 'stand', on: true, seat: 1 }); // whoever deals stands someone up
+    expect(list()).toEqual(['P0@0', 'P2@2', `P1@${MAX_PLAYERS}ws`]);
+    room.handle(a, { t: 'kick', seat: 2 }); // on the score sheet: gone, not "away, in next round"
+    expect(list()).toEqual(['P0@0', `P1@${MAX_PLAYERS}ws`]);
+    expect(c.closed).toBe(true);
+  });
+
+  it('gives a seat that comes free to the first of those watching: in the lobby at once, and they are dealt in', () => {
+    const { room, conns } = roomWith(MAX_PLAYERS);
+    const [first, second] = [new FakeConn(), new FakeConn()];
+    room.join(first, 'First', 'tok-first');
+    room.join(second, 'Second', 'tok-second');
+    room.handle(conns[3]!, { t: 'leave' });
+    room.flush();
+    expect(first.last.room.you).toBe(3); // the seat that came free, and its colour
+    expect(first.last.room.players.find((p) => p.name === 'First')).not.toHaveProperty('watching');
+    expect(second.last.room.players.find((p) => p.name === 'Second')).toMatchObject({ watching: true });
+    room.handle(conns[0]!, { t: 'start' });
+    expect(room.game!.players.some((p) => p.seat === 3)).toBe(true);
+    expect(room.game!.players).toHaveLength(MAX_PLAYERS);
   });
 
   // Regression: someone who pressed Leave on the score sheet still counted towards the six seats until the next deal.
@@ -178,7 +289,6 @@ describe('Room', () => {
     room.game = rigged(all, [0]);
     sendIntent(room, conns[0]!, 0, { k: 'nertz' });
     expect(room.phase).toBe('results');
-    expect(room.join(new FakeConn(), 'Early', 'tok-early')).toMatch(/full/); // everyone is still here
 
     room.handle(conns[last]!, { t: 'leave' });
     room.flush();
@@ -191,7 +301,10 @@ describe('Room', () => {
     // The round that was played is still P5's: name and total travel with the score line.
     expect(late.last.room.lastRound!.scores[last]).toMatchObject({ seat: last, name: `P${last}`, delta: -26, total: -26 });
     expect(late.last.room.players[last]!.score).toBe(0);
-    expect(room.join(new FakeConn(), 'Later', 'tok-later')).toMatch(/full/);
+    const later = new FakeConn();
+    expect(room.join(later, 'Later', 'tok-later')).toBeNull(); // the table is full again: this one watches
+    room.flush();
+    expect(later.last.room.players.at(-1)).toMatchObject({ name: 'Later', watching: true });
 
     room.handle(conns[0]!, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual(all);
@@ -276,13 +389,13 @@ describe('Room', () => {
     room.disconnect(b);
     room.flush();
     expect(a.last.room.players[1]).toMatchObject({ seat: 1, connected: false });
-    // A stranger may sit down in the middle of the round, but only to watch it: a seat of their own, and no cards.
+    // A stranger who arrives in the middle of the round watches it: no seat yet (a place in the queue), and no cards.
     const stranger = new FakeConn();
     expect(room.join(stranger, 'Stranger', 'tok-zzzz')).toBeNull();
     room.flush();
-    expect(stranger.last.room).toMatchObject({ you: 2, phase: 'playing' });
+    expect(stranger.last.room).toMatchObject({ you: MAX_PLAYERS, phase: 'playing' });
     expect(stranger.last.room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
-    expect(stranger.last.room.players[2]).toMatchObject({ name: 'Stranger', score: 0, rounds: 0 });
+    expect(stranger.last.room.players[2]).toMatchObject({ name: 'Stranger', score: 0, rounds: 0, watching: true });
     room.handle(stranger, { t: 'intent', seq: 0, intent: { k: 'flip' } });
     room.flush();
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);

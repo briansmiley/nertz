@@ -2,15 +2,29 @@
 // said is written on the cloth under the buttons, and "Chat" only adds a line to type in above it. The headset joins
 // voice, and once in it opens a small slip (who is there, mute yourself, leave).
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { CHAT_MAX_LENGTH } from '../shared/chat';
+import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { keyName, touchOnly, usePrefs } from './prefs';
+import { kick, stand } from './net';
 import { PASSING_MS, say, setOpen, useSocial, type SocialState } from './social';
 import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
 
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
+
+/** One line: a name in its colour and what was said; or the table's notice that someone beat someone to a pile. */
+function Line({ line }: { line: ChatLine }) {
+  return line.sniped ? (
+    <em className="notice">
+      <b style={{ color: backColour(line.seat) }}>{line.name}</b> sniped <b style={{ color: backColour(line.sniped.seat) }}>{line.sniped.name}</b>
+    </em>
+  ) : (
+    <>
+      <b style={{ color: backColour(line.seat) }}>{line.name}</b> {line.text}
+    </>
+  );
+}
 
 /** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while, and never in the way of the pointer. */
 function Passing({ lines }: { lines: SocialState['passing'] }) {
@@ -28,7 +42,7 @@ function Passing({ lines }: { lines: SocialState['passing'] }) {
     <ol className="passing" aria-live="polite">
       {shown.map(({ line }) => (
         <li key={line.id}>
-          <b style={{ color: backColour(line.seat) }}>{line.name}</b> {line.text}
+          <Line line={line} />
         </li>
       ))}
     </ol>
@@ -42,24 +56,32 @@ export function Chat({ room }: { room: RoomView }) {
   const [draft, setDraft] = useState('');
   /** The voice slip, open or not. (It and the line to type in are never open together.) */
   const [voiceOpen, setVoiceOpen] = useState(false);
+  /** The slip that says who is watching. */
+  const [eyeOpen, setEyeOpen] = useState(false);
+  const hosting = !!room.players.find((p) => p.seat === room.you)?.isHost;
   const root = useRef<HTMLElement>(null);
   const name = (seat: number) => room.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat + 1}`;
   // With a card in hand everything here lets the pointer through, so it can never take a drop or a click meant for the table.
   const holding = room.phase === 'playing' && !!room.game?.players.find((p) => p.seat === room.you)?.holding;
   const inVoice = voice.status === 'on';
-  const typing = social.open && social.text;
+  /** Those watching a full table, and whether you are one: the host may keep them out of the chat, or of voice. */
+  const watchers = room.players.filter((p) => p.watching);
+  const watching = watchers.some((p) => p.seat === room.you);
+  const mayText = social.text && (!watching || social.watchText !== false);
+  const mayVoice = social.voice && (!watching || social.watchVoice !== false);
+  const typing = social.open && mayText;
   useEffect(() => {
     if (!inVoice) setVoiceOpen(false);
   }, [inVoice]);
   // A press anywhere else puts the voice slip away.
   useEffect(() => {
-    if (!voiceOpen) return;
+    if (!voiceOpen && !eyeOpen) return;
     const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setVoiceOpen(false);
+      if (!root.current?.contains(e.target as Node)) (setVoiceOpen(false), setEyeOpen(false));
     };
     window.addEventListener('pointerdown', onDown, true);
     return () => window.removeEventListener('pointerdown', onDown, true);
-  }, [voiceOpen]);
+  }, [voiceOpen, eyeOpen]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -113,19 +135,19 @@ export function Chat({ room }: { room: RoomView }) {
       // Keys typed here are not game hotkeys (Space flips the stock), and a button pressed here must not keep the focus for the same reason.
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === 'Escape') (setOpen(false), setVoiceOpen(false));
+        if (e.key === 'Escape') (setOpen(false), setVoiceOpen(false), setEyeOpen(false));
       }}
       onClick={(e) => (e.target as HTMLElement).closest<HTMLElement>('button')?.blur()}
     >
       <div className="chat-bar">
-        {social.text && (
-          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} aria-expanded={typing} onClick={() => (setOpen(!social.open), setVoiceOpen(false))}>
+        {mayText && (
+          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} aria-expanded={typing} onClick={() => (setOpen(!social.open), setVoiceOpen(false), setEyeOpen(false))}>
             Chat
             {!typing && social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
           </button>
         )}
         {/* Voice is one press away, and says so: yellow, with how many are in it, while anyone is. */}
-        {social.voice && !inVoice && (
+        {mayVoice && !inVoice && (
           <button
             type="button"
             className={`mic join${social.inVoice.length ? ' calling' : ''}`}
@@ -146,14 +168,51 @@ export function Chat({ room }: { room: RoomView }) {
             aria-expanded={voiceOpen}
             aria-label={`In voice: ${social.inVoice.length}. Who is there, mute yourself, leave`}
             title={`In voice: ${social.inVoice.map((m) => name(m.seat)).join(', ')}`}
-            onClick={() => (setVoiceOpen(!voiceOpen), setOpen(false))}
+            onClick={() => (setVoiceOpen(!voiceOpen), setOpen(false), setEyeOpen(false))}
           >
             {headset}
             {social.inVoice.length}
           </button>
         )}
         {mute}
+        {/* Who is watching (no seat: the table is full): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
+        {watchers.length > 0 && (
+          <button type="button" className={`mic eye${eyeOpen ? ' open' : ''}`} aria-expanded={eyeOpen} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => (setEyeOpen(!eyeOpen), setVoiceOpen(false), setOpen(false))}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
+              <circle cx="12" cy="12" r="2.8" />
+            </svg>
+            {watchers.length}
+          </button>
+        )}
       </div>
+
+      {/* Who is watching: a slip like the voice one. Whoever hosts can send one of them away. */}
+      {eyeOpen && watchers.length > 0 && (
+        <section className="voice-slip" aria-label="Watching">
+          <header>
+            <h3>Watching</h3>
+          </header>
+          <ul>
+            {watchers.map((p) => (
+              <li key={p.seat} className={p.seat === room.you ? 'you' : ''}>
+                {p.name}
+                {!p.connected && <small>away</small>}
+                {p.standing && (p.seat === room.you || hosting) && (
+                  <button type="button" onClick={() => stand(false, p.seat === room.you ? undefined : p.seat)}>
+                    {p.seat === room.you ? 'Sit down' : 'Seat'}
+                  </button>
+                )}
+                {hosting && p.seat !== room.you && (
+                  <button type="button" className="mic-at" aria-label={`Remove ${p.name}`} title={`Remove ${p.name} from the table`} onClick={() => kick(p.seat)}>
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {voiceOpen && inVoice && (
         <section className="voice-slip" aria-label="Voice">
@@ -193,7 +252,7 @@ export function Chat({ room }: { room: RoomView }) {
       )}
 
       {/* Under the buttons, on the cloth: the line to type in (once Chat is pressed), and what is being said. */}
-      {social.text && !voiceOpen && (
+      {social.text && !voiceOpen && !eyeOpen && (
         <div className="chat-under">
           {typing && (
             <form onSubmit={submit}>
@@ -205,7 +264,7 @@ export function Chat({ room }: { room: RoomView }) {
               <ol className="passing still" aria-live="polite">
                 {social.lines.slice(-SHOWN).map((l) => (
                   <li key={l.id}>
-                    <b style={{ color: backColour(l.seat) }}>{l.name}</b> {l.text}
+                    <Line line={l} />
                   </li>
                 ))}
               </ol>

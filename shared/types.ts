@@ -196,6 +196,10 @@ export interface PlayerView {
   ending: boolean;
   /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */
   ready?: boolean;
+  /** No seat at the table (it is full): watching, and waiting for one. `seat` is then their place in the queue, from MAX_PLAYERS up; they are dealt no cards and have no colour of their own. */
+  watching?: boolean;
+  /** Watching by choice: they stood up (or were stood up by whoever deals), and are given no seat until they ask for one again. */
+  standing?: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
   /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */

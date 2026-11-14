@@ -185,9 +185,42 @@ function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (reado
   });
 }
 
+/** A note that slides from `from` to `to` (Hz) as it sounds, fading out as it goes. */
+function glide(from: number, to: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
+  const g = admit(o);
+  if (!g || !ctx || !master) return;
+  const t = ctx.currentTime + (o.delay ?? 0);
+  const dur = o.dur ?? 0.2;
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0, t);
+  env.gain.linearRampToValueAtTime(g, t + 0.004);
+  env.gain.linearRampToValueAtTime(g * 0.5, t + dur * 0.6);
+  env.gain.linearRampToValueAtTime(0, t + dur);
+  env.connect(master);
+  voices++;
+  (o.partials ?? ([[1, 1], [2, 0.2]] as const)).forEach(([ratio, amp], i) => {
+    const osc = ctx!.createOscillator();
+    osc.frequency.setValueAtTime(from * ratio, t);
+    osc.frequency.exponentialRampToValueAtTime(to * ratio, t + dur);
+    const part = ctx!.createGain();
+    part.gain.value = amp;
+    osc.connect(part).connect(env);
+    osc.start(t);
+    osc.stop(t + dur + 0.03);
+    if (i === 0) {
+      osc.onended = () => {
+        voices--;
+        env.disconnect();
+      };
+    }
+  });
+}
+
 const BELL = [[1, 1], [2, 0.3], [3, 0.1], [4.2, 0.04]] as const;
 const CHIME = [[1, 1], [2, 0.45], [3, 0.22], [4, 0.1], [5.4, 0.05]] as const;
 const TICK = [[1, 1], [2.4, 0.35]] as const;
+/** A dull, low voice: little but the note itself. */
+const DULL = [[1, 1], [2, 0.12]] as const;
 
 /**
  * One note per rank, Ace low to King high: a major pentatonic scale over two
@@ -265,10 +298,21 @@ export function home(who: Who = 'me'): void {
 
 /** Somebody got there first: the card's tap, then a little "wah-wah-wahh", three falling semitones, the last held. */
 export function lost(): void {
+  // A womp: two low, dull notes, each sagging as it sounds, the second lower and longer.
   home('me');
-  tone(311.13, { gain: 0.1, dur: 0.2, delay: 0.05, partials: BELL });
-  tone(293.66, { gain: 0.1, dur: 0.2, delay: 0.21, partials: BELL });
-  tone(277.18, { gain: 0.11, dur: 0.65, delay: 0.37, partials: BELL });
+  glide(196, 150, { gain: 0.26, dur: 0.16, delay: 0.03, partials: DULL });
+  glide(156, 110, { gain: 0.28, dur: 0.42, delay: 0.2, partials: DULL });
+}
+
+/**
+ * A snipe: somebody put the very card down that somebody else was about to. A dart and where it lands: a quick zip
+ * downwards into a low thud. Your own (`me`: you were the one who did it) is at full strength; one between two
+ * others is as loud as other players' cards are.
+ */
+export function sniped(who: Who = 'me'): void {
+  glide(1500, 300, { gain: 0.16, dur: 0.11, who });
+  tone(98, { gain: 0.4, dur: 0.28, delay: 0.1, partials: DULL, who });
+  tone(2400, { gain: 0.05, dur: 0.04, delay: 0.1, partials: TICK, who });
 }
 
 /**

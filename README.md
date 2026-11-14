@@ -18,7 +18,7 @@ npm run dev
 
 Then open **http://localhost:5173** in two browser windows (two tabs of the same browser are fine):
 
-1. Window 1: type a name, press **Start a new table**. The server picks the table code; you land in the lobby with an
+1. Window 1: type a name, press **New Table**. The server picks the table code; you land in the lobby with an
    invite link like `http://localhost:5173/?room=ABCD`.
 2. Window 2: paste the invite link (or open the home page and type the code), type a different name, press **Join table**.
    A code that no table has is refused with a message; it never opens a new table.
