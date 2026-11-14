@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
-import { hotkeyName, usePrefs } from './prefs';
+import { hotkeyName, hotkeyPressed, usePrefs } from './prefs';
 import { kick, takeSeat } from './net';
 import { PASSING_MS, say, setOpen, useSocial, type SocialState } from './social';
 import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
@@ -128,7 +128,7 @@ export function Chat({ room }: { room: RoomView }) {
   useEffect(() => {
     if (!inVoice || !prefs.voiceKey) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== prefs.voiceKey || e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || (e.target as Element).closest?.('input,textarea,[data-keying]')) return;
+      if (!hotkeyPressed(e, prefs.voiceKey)) return;
       setMuted(!voice.muted);
     };
     window.addEventListener('keydown', onKey);

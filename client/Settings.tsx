@@ -12,7 +12,7 @@ import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { Feedback } from './Feedback';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyFree, keyName, setLevel, setPrefs, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -333,9 +333,10 @@ export function Corner({ room }: { room?: RoomView | null }) {
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopImmediatePropagation(); // (not a game key, nor a hotkey itself, while one is being chosen)
+      const taken = takeKey(getPrefs(), keying, e.code);
       if (e.code === 'Backspace' || e.code === 'Delete') setPrefs({ [keying]: null });
-      else if (keyFree(getPrefs(), keying, e.code)) setPrefs({ [keying]: e.code });
-      else if (e.code !== 'Escape') return; // a key the game or another hotkey has: wait for another
+      else if (taken) setPrefs(taken); // (a hotkey of yours that had this key is left with none)
+      else if (e.code !== 'Escape') return; // a key the game uses: wait for another
       setKeying(null);
     };
     window.addEventListener('keydown', onKey, true);
@@ -355,7 +356,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.code === prefs.soundKey && !typing(e.target)) setPrefs({ muted: !prefs.muted });
+      if (hotkeyPressed(e, prefs.soundKey)) setPrefs({ muted: !prefs.muted });
       else if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
       else if (e.code === 'Escape') setOpen(false);
     };

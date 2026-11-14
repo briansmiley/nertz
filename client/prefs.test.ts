@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPrefs, DEFAULT_PREFS, keyFree, loudness, type Levels, type Prefs } from './prefs';
+import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, takeKey, type Levels, type Prefs } from './prefs';
 
 describe('cleanPrefs: hotkeys', () => {
   it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
@@ -86,5 +86,32 @@ describe('keyFree', () => {
   });
   it('refuses the keys the game uses', () => {
     for (const code of ['KeyP', 'Space', 'Enter', 'Escape', 'Tab']) expect(keyFree({ soundKey: null, voiceKey: null }, 'soundKey', code)).toBe(false);
+  });
+});
+
+describe('takeKey', () => {
+  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV' };
+  it('takes a key the other hotkey has, and leaves that one with none', () => {
+    expect(takeKey(keys, 'soundKey', 'KeyV')).toEqual({ soundKey: 'KeyV', voiceKey: null });
+    expect(takeKey(keys, 'voiceKey', 'KeyM')).toEqual({ voiceKey: 'KeyM', soundKey: null });
+  });
+  it('takes a key nobody has, and touches nothing else', () => {
+    expect(takeKey(keys, 'soundKey', 'KeyB')).toEqual({ soundKey: 'KeyB' });
+    expect(takeKey(keys, 'soundKey', 'KeyM')).toEqual({ soundKey: 'KeyM' });
+  });
+  it('refuses a key the game uses, and a modifier', () => {
+    for (const code of ['KeyP', 'Space', 'Escape', 'ShiftLeft', 'Backspace']) expect(takeKey(keys, 'soundKey', code)).toBeNull();
+  });
+});
+
+describe('hotkeyPressed', () => {
+  const press = (over: Partial<KeyboardEvent> = {}) => ({ code: 'KeyM', repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, target: null, ...over }) as KeyboardEvent;
+  it('is the key pressed bare', () => {
+    expect(hotkeyPressed(press(), 'KeyM')).toBe(true);
+    expect(hotkeyPressed(press(), 'KeyV')).toBe(false);
+    expect(hotkeyPressed(press(), null)).toBe(false);
+  });
+  it('is not the key with a modifier, or held down', () => {
+    for (const over of [{ shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { repeat: true }]) expect(hotkeyPressed(press(over), 'KeyM')).toBe(false);
   });
 });
