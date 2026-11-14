@@ -4283,7 +4283,6 @@ button.code.copy small {
   font-size: 0.95rem;
 }
 
-.hotkeys kbd,
 .hotkeys button {
   min-width: 2.2em;
   padding: 1px 8px 2px;
@@ -4293,9 +4292,6 @@ button.code.copy small {
   text-align: center;
   color: var(--ink);
   background: #fffdf6;
-}
-
-.hotkeys button {
   cursor: pointer;
 }
 

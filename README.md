@@ -45,7 +45,7 @@ Controls:
 | Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
-| Press M, or the speaker button bottom left | mute or unmute |
+| Press M (or the key you set under Hotkeys in the settings), or the speaker button bottom left | mute or unmute |
 | The gear beside it | your own settings: volume, other players' volume, reduce motion |
 | The bug beside that | report a bug or ask for a feature: a few words and, if you like, a screenshot |
 
