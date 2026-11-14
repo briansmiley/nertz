@@ -37,6 +37,7 @@ Controls:
 | Do this | To |
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
+| ...or tap or click it, then the pile (if the table moves without dragging) | the same, without carrying it |
 | Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there |
 | Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
@@ -48,12 +49,18 @@ Controls:
 | The gear beside it | your own settings: volume, other players' volume, reduce motion |
 | The bug beside that | report a bug or ask for a feature: a few words and, if you like, a screenshot |
 
-There is no click-to-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
-Nothing shows where a card in hand may go: no pile is outlined for it. (On a touch screen a tap takes a card up and the
-next tap puts it down, and a finger that lets go a little off a pile still lands on it.) What counts is
+There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
+Nothing shows where a card in hand may go: no pile is outlined for it. (A finger that lets go a little off a pile still
+lands on it.) What counts is
 where the pointer is when you let go; only if the pointer is over no pile at all does the centre of the card you grabbed
 decide. Each pile's drop area is the pile plus a small margin (a whole column, for a work pile), neighbouring areas never
 touch, and a card let go between two piles goes back where it came from.
+
+At a table that moves without dragging (the table rule "Move without dragging", on by default) a tap or a click also
+takes a card up without carrying it: it stands lifted where it was, and the next tap or click puts it down, on the pile
+it points at (or, for an Ace, that spot of the felt). Anywhere else, or Escape, puts it back. A mouse does exactly what a
+finger does. A card moved so is never seen crossing the table. With the rule off, every card is dragged, on a touch
+screen too.
 
 What you see around a round:
 
@@ -378,12 +385,15 @@ else's much quieter (a quarter, until you move the slider).
 Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
 storage they last until the page closes.
 
-**Table rules**: set by the host, stored in the room and sent in every snapshot (`RoomView.settings`). They change with
-`{ t: 'settings', patch }`, which the server takes only from whoever may deal and only between rounds, so a round keeps
-the rules it was dealt under. An option the server does not know is dropped (an older client asking for one changes
-nothing). `shared/settings.ts` holds the one object and its validation. One option today, not offered in the lobby: how
-cards are dealt off the stock (`stockDeal`: `'click'`, the default, or `'drag'`; see the rules), only a choice of
-gesture for the client.
+**Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in
+every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
+whoever may deal and only between rounds, so a round keeps the rules it was dealt under. An option the server does not
+know is dropped (an older client asking for one changes nothing). `shared/settings.ts` holds the one object and its
+validation. Two options today, both only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
+default: a tap or a click takes a card up and the next puts it down, on every screen alike; off, every card is
+dragged), the one listed under "Table rules"; and, not offered in the lobby, how cards are dealt off the stock
+(`stockDeal`: `'click'`, the default, or `'drag'`; see the rules). The server cannot hold anyone to `tapToMove`: a card
+taken up by a tap and one picked up to be dragged are the same `hold` and `move`.
 
 ## How concurrency works
 
@@ -552,7 +562,7 @@ client/   Vite + React
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
-  Settings.tsx  the mute button and gear (your settings), and the small icon buttons the sheets share
+  Settings.tsx  the mute button and gear (your settings), the table rules on the lobby and score sheets, and the small icon buttons the sheets share
   prefs.ts      your settings: sound levels, reduced motion; localStorage
   sound.ts      Web Audio: one function per cue, and the hook that plays them
   soundEvents.ts  pure: which cues a change of the rendered table calls for

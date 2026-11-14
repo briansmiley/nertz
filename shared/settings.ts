@@ -1,7 +1,7 @@
 // Table settings: house rules the host chooses between rounds. One flat object
 // of independent options, stored in the room and sent in every RoomView. To add
-// an option: a field here, its default, a line in `parseSettings`, and a control
-// for the host in the lobby.
+// an option: a field here, its default, a line in `parseSettings`, and a row in
+// client/Settings.tsx (`TableRules`) if the host is to be offered it.
 
 export interface TableSettings {
   /**
@@ -11,11 +11,19 @@ export interface TableSettings {
    * stock (or press Space) once per card.
    */
   stockDeal: StockDeal;
+  /**
+   * Whether a card can be moved without dragging it: a tap or a click takes it
+   * up, and the next one says where it goes. The same on every screen; off, a
+   * card has to be dragged by mouse and finger alike. Dragging always works. A
+   * card moved so is never seen travelling, but the server cannot tell it from
+   * a drag (the same `hold` and `move`), so this only chooses gestures.
+   */
+  tapToMove: boolean;
 }
 
 export type StockDeal = 'drag' | 'click';
 
-export const DEFAULT_SETTINGS: TableSettings = { stockDeal: 'click' };
+export const DEFAULT_SETTINGS: TableSettings = { stockDeal: 'click', tapToMove: true };
 
 /**
  * How many face-down cards lie under the face-up one in each of the four work piles, by how many are dealt into the
@@ -36,6 +44,10 @@ export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if ('stockDeal' in v) {
     if (v.stockDeal !== 'drag' && v.stockDeal !== 'click') return null;
     patch.stockDeal = v.stockDeal;
+  }
+  if ('tapToMove' in v) {
+    if (typeof v.tapToMove !== 'boolean') return null;
+    patch.tapToMove = v.tapToMove;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 }

@@ -1537,7 +1537,7 @@ button {
   font-size: 1rem;
 }
 
-/* Under a sheet's main button: small round icon buttons (add a bot, start over, leave). */
+/* Under a sheet's main button: small round icon buttons (table rules, add a bot, start over, leave). */
 .tools {
   display: flex;
   justify-content: flex-end;
@@ -2126,6 +2126,76 @@ label.check {
 
 .end-vote small {
   font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* The (i) beside a setting: its explanation drops down under the whole row on hover, focus or tap. */
+.info {
+  display: inline-grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: 0.3rem;
+  vertical-align: 0.05rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-soft);
+  color: var(--ink-soft);
+  font: italic 700 0.72rem/1 Georgia, serif;
+  cursor: help;
+  outline: none;
+}
+
+.info:hover,
+.info:focus-visible,
+.info:focus {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.info .tip {
+  display: none;
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: var(--ink);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  color: var(--paper);
+  font: 400 0.85rem/1.35 var(--ui);
+  font-style: normal;
+  white-space: normal;
+  text-align: left;
+  cursor: default;
+}
+
+.info:hover .tip,
+.info:focus .tip {
+  display: block;
+}
+
+.rules .check {
+  position: relative;
+}
+
+/* The table's house rules, on the lobby and score sheets. */
+.rules {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.rules legend {
+  padding: 0;
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+  font-size: 0.85rem;
   color: var(--ink-soft);
 }
 
@@ -3690,7 +3760,7 @@ body:has(main.showroom) {
   margin: 0;
 }
 
-/* The lobby: your backs at this table, under the names. The card and a button: no box. */
+/* The lobby: your backs at this table, between the names and the rules. The card and a button: no box. */
 .yourback {
   display: flex;
   align-items: center;
@@ -3732,6 +3802,16 @@ body:has(main.showroom) {
   font: 700 0.7rem/1.35 var(--ui);
   letter-spacing: 0.02em;
   transform: rotate(-5deg);
+}
+
+/* The rules, for whoever does not deal: there to read, greyed, and a word on hover as to why. */
+.rules.locked {
+  opacity: 0.55;
+  cursor: help;
+}
+
+.rules.locked .check {
+  cursor: help;
 }
 
 /* Who is ready: colour and name, no box; dots that come and go until the tick. */

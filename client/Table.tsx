@@ -332,7 +332,7 @@ interface Drag {
   /** A finger, not a mouse: the card is carried above it, where it can be seen, and is aimed by its own middle. */
   touch: boolean;
   active: boolean;
-  /** Not carried but tapped (a finger): it stands lifted where it was, in your hand all the same, until the next tap says where it goes. */
+  /** Not carried but tapped (or clicked): it stands lifted where it was, in your hand all the same, until the next tap says where it goes. */
   tapped?: boolean;
   /** The last report of where it is, when one was last sent, and the timer for one that is waiting its turn. */
   report: ({ t: 'drag' } & DragAt) | null;
@@ -435,7 +435,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, []);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
   const drag = useRef<Drag | null>(null);
-  /** Set by a tap that put a tapped card down (or back): the card it was, so that the same tap does not take it up again or fan a pile out. */
+  /** Set by a tap (or click) that put a tapped card down (or back): the card it was, so that the same tap does not take it up again or fan a pile out. */
   const untap = useRef<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [hot, setHot] = useState<string | null>(null);
@@ -660,6 +660,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   /** The table rule for dealing off the stock: drag each card to the waste, or click the stock once per card. */
   const dragDeal = room.settings.stockDeal === 'drag';
+  /** The table rule for moving a card without dragging it: tap (or click) it, then where it goes. */
+  const tapToMove = room.settings.tapToMove;
 
   // Dealing off the stock takes time. One click (or Space) starts a group of three; the cards then come off one at a
   // time, STOCK_CARD_MS apart, and the next group cannot start sooner than that after the last card. The server
@@ -826,6 +828,18 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : d.held.k === 'pile' ? !toClear(d.held.slot) : frozen || mine?.stock.at(-1)?.id !== d.lead;
     if (gone) letGo(d);
   });
+  // Escape puts a card that was tapped (or clicked) back, as a tap anywhere else would.
+  useEffect(() => {
+    if (held?.k !== 'card') return;
+    const onKey = (e: KeyboardEvent) => {
+      const d = drag.current;
+      if (e.code !== 'Escape' || !d?.tapped) return;
+      send({ k: 'release' });
+      letGo(d);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [held]);
   // The table can change under a hand that is holding still: someone starts a pile right where your Ace was about
   // to go. What the outline says is worked out again there and then, not only when the hand next moves.
   useEffect(() => {
@@ -844,11 +858,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
     const el = (e.target as Element).closest('[data-id],[data-stock]');
-    // A card that was tapped is in your hand, and this tap says where it goes: a pile that takes it (the nearest, if
-    // the finger is a little off), or for an Ace that very spot of the felt. A tap anywhere else puts it back; on
-    // another card of yours, that one is taken up in its place.
+    // A card that was tapped (or clicked) is in your hand, and this tap says where it goes: a pile that takes it (the
+    // nearest, if the finger is a little off), or for an Ace that very spot of the felt. A tap anywhere else puts it
+    // back; on another card of yours, that one is taken up in its place.
     const sel = drag.current?.tapped ? drag.current : null;
-    if (sel && sel.held.k === 'card') {
+    if (sel && sel.held.k === 'card' && e.button === 0) {
       const at = { x: e.clientX, y: e.clientY };
       const felt = feltUnder(sel, at);
       const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
@@ -975,15 +989,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     // On a touch screen a tap on one of your work piles fans it out in full, and another tap (anywhere) closes it.
     const again = untap.current;
     untap.current = null;
-    // A finger that taps a card of yours (or a run of them) takes it up without carrying it: it stands lifted where it
-    // was, the piles that would take it are outlined, and the next tap puts it down (see `onPointerDown`). The server
-    // is told as for any card in hand. A finished pile of yours goes to the tray at a tap: there is nowhere else for it.
-    if (d && !d.active && d.touch && e.pointerId === d.pointer && stage === 'live') {
-      if (d.held.k === 'pile') {
+    // Where the table allows it, a tap or a click on a card of yours (or a run of them) takes it up without carrying
+    // it: it stands lifted where it was, and the next tap or click puts it down (see `onPointerDown`). The server is
+    // told as for any card in hand. On a touch screen a finished pile of yours goes to the tray at a tap: there is
+    // nowhere else for it.
+    if (d && !d.active && e.pointerId === d.pointer && stage === 'live') {
+      if (d.touch && d.held.k === 'pile') {
         send({ k: 'clear', slot: d.held.slot });
         return void (drag.current = null);
       }
-      if (d.held.k === 'card' && again === null && send({ k: 'hold', cardId: d.held.id })) {
+      if (tapToMove && d.held.k === 'card' && again === null && send({ k: 'hold', cardId: d.held.id })) {
         d.active = true;
         d.tapped = true;
         d.pointer = -1;

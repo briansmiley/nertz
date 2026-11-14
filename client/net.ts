@@ -12,6 +12,7 @@ import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
 import type { Back, ClientMsg, ServerMsg } from '../shared/protocol';
+import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
 // ---------------------------------------------------------------- pure reconciliation
@@ -274,6 +275,11 @@ export const redeal = (): void => void post({ t: 'redeal' });
 export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
 export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });
+
+/** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
+export function setTableSettings(patch: Partial<TableSettings>): void {
+  post({ t: 'settings', patch });
+}
 
 /**
  * Plays an intent: applied locally at once, sent to the server, reconciled
