@@ -1659,9 +1659,9 @@ function shortDeal(seats: readonly number[], rng: Rng, n = 2): GameState {
 }
 
 describe('random play keeps every invariant', () => {
-  // (Seeds are picked so that the short deals meet a grace window in 4000 intents under all three sets of rules. With
+  // (Seeds are picked so that the short deals meet a grace window in 4000 intents. With
   // one card per flip and clear-first together a grace window comes up about once in five rounds: four seats on seed 3
-  // and six on seed 4 no longer met one; of the seeds tried, 1 of 5 at four seats and 3 of 4 at six do everywhere.
+  // and six on seed 4 no longer met one; of the seeds tried, 1 of 5 at four seats and 3 of 4 at six do.
   // Re-picked at four seats when the felt stopped being turned for each seat: 41, 42, 47 and 49 do, 43 no longer.)
   for (const [seed, seatCount, short] of [[1, 2, false], [2, 3, false], [41, 4, true], [14, 6, true], [5, 2, true]] as const) {
     it(`seed ${seed}, ${seatCount} seats, 4000 intents${short ? ', short nertz piles' : ''}`, () => {
@@ -1867,8 +1867,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
   it('single intents, grace included: same verdict, same visible result, at most the newly revealed cards unknown', () => {
     let graceIntents = 0;
     // (Seeds re-picked when stock dealing went to one card per intent: a grace window is rarer per 3000 intents now,
-    // about one seed in five meets one. These four meet at least one under each of the three sets of rules; seed 50
-    // does under every one of them.)
+    // about one seed in five meets one. These four meet at least one.)
     for (const seed of [26, 41, 50, 51]) {
       const rng = mulberry32(seed);
       const seats = [0, 1, 2];
