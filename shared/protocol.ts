@@ -166,6 +166,8 @@ export type ClientMsg =
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
+  /** Whoever deals: what the bot in `seat` is called. */
+  | { t: 'botName'; seat: number; name: string }
   /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table (`lot`; null: no lot, the back it has). */
   | { t: 'botBack'; seat: number; back?: Back; lot?: string | null }
   /** In the lobby: move to another seat nobody has, which is to take its colour. */
@@ -368,6 +370,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
+    case 'botName': {
+      const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
+      return isIndex(v.seat, MAX_PLAYERS) && name ? { t: 'botName', seat: v.seat, name } : null;
+    }
     case 'botBack':
       return isIndex(v.seat, MAX_PLAYERS) && (isBack(v.back) || v.lot === null || isLot(v.lot)) ? { t: 'botBack', seat: v.seat, ...(isBack(v.back) ? { back: v.back } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
     case 'seat':

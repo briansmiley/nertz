@@ -140,6 +140,8 @@ export interface Layout {
   bar: number;
   /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
   low: boolean;
+  /** The seats of those who sit at the table but are not in the round: their hands (yours, or among `opponents`) are places with no cards. */
+  empty: number[];
 }
 
 const RATIO = CARD_H / CARD_W;
@@ -473,15 +475,21 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, packet = true, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, packet = true, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = []): Layout {
   const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
-  const n = game.players.length;
-  const mine = game.players.find((p) => p.seat === you);
-  // Someone who is not in the round watches from the first player's chair.
-  const view = Math.max(0, game.players.indexOf(mine!));
+  const n = game.players.length; // (the felt and its cards are sized for those in the round)
+  // Whoever sits at the table without being in the round (`sitting`: they came in the middle of it, or were away at
+  // the deal) has a place round it all the same, in seat order with the rest: a hand with no cards in it.
+  const empty = sitting.filter((seat) => !game.players.some((p) => p.seat === seat));
+  const ring: PlayerState[] = empty.length
+    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: [[], [], [], []], down: [0, 0, 0, 0], stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
+    : game.players;
+  const mine = ring.find((p) => p.seat === you);
+  // Someone who has no seat at the table at all watches from the first player's chair.
+  const view = Math.max(0, ring.indexOf(mine!));
   // Opponents in seat order starting after you: clockwise round the table, from your left.
-  const others = mine ? [...game.players.slice(view + 1), ...game.players.slice(0, view)] : game.players;
+  const others = mine ? [...ring.slice(view + 1), ...ring.slice(0, view)] : ring;
   const tall = isTall(W, H);
   const low = isLow(W, H);
   const edge = tall ? TALL.edge : 16;
@@ -501,7 +509,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
 
   // Everyone else, by the direction their seat lies in as seen from yours: (0, 1) is straight down, towards you.
   const seats = others.map((p) => {
-    const dir = seatDir((game.players.indexOf(p) - view + n) % n, n);
+    const dir = seatDir((ring.indexOf(p) - view + ring.length) % ring.length, ring.length);
     return { p, dir, where: tall ? ('top' as const) : low ? ('col' as const) : dir.y > 0.9 ? ('bottom' as const) : dir.y < -0.4 ? ('top' as const) : ('side' as const) };
   });
   const size = cardSize(n);
@@ -711,7 +719,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low };
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, empty };
 }
 
 // ---------------------------------------------------------------- an Ace in hand on a table without marked places

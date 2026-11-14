@@ -304,6 +304,12 @@ export function Corner({ room }: { room?: RoomView | null }) {
             </span>
           </label>
           <label className="check">
+            <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
+            <span>
+              Show chat over the table <small>what is said appears at the top left for a moment</small>
+            </span>
+          </label>
+          <label className="check">
             <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
             <span>
               Reduce motion <small>{prefs.calm === null ? 'following your system setting' : 'cards jump instead of gliding'}</small>

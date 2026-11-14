@@ -12,9 +12,15 @@ export interface SocialState extends SocialSettings {
   /** Lines from other people that arrived while the panel was closed. */
   unread: number;
   open: boolean;
+  /** The lines just said (not the history a newcomer is sent), each with when it came by this window's clock: shown over the table for a while. */
+  passing: readonly { line: ChatLine; at: number }[];
 }
 
-const fresh: SocialState = { lines: [], text: true, voice: true, inVoice: [], unread: 0, open: false };
+/** How long a line just said stays over the table, and how many of them at most. */
+export const PASSING_MS = 9000;
+const PASSING_MOST = 5;
+
+const fresh: SocialState = { lines: [], text: true, voice: true, inVoice: [], unread: 0, open: false, passing: [] };
 let state = fresh;
 const listeners = new Set<() => void>();
 
@@ -26,7 +32,9 @@ function set(next: Partial<SocialState>): void {
 onSocial((msg) => {
   if (msg.t === 'chat') {
     const news = msg.history ? 0 : msg.lines.filter((l) => l.seat !== current().room?.you).length;
-    set({ lines: msg.history ? msg.lines : [...state.lines, ...msg.lines], unread: state.open ? 0 : state.unread + news });
+    const now = Date.now();
+    const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...msg.lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);
+    set({ lines: msg.history ? msg.lines : [...state.lines, ...msg.lines], unread: state.open ? 0 : state.unread + news, passing });
   } else if (msg.t === 'social') {
     set({ text: msg.text, voice: msg.voice, inVoice: msg.inVoice });
     if (msg.voice) sync(msg.inVoice);

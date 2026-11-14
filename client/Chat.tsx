@@ -8,7 +8,8 @@ import { CHAT_MAX_LENGTH } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { computeLayout, isTall } from './layout';
-import { say, setOpen, setSocial, useSocial } from './social';
+import { usePrefs } from './prefs';
+import { PASSING_MS, say, setOpen, setSocial, useSocial, type SocialState } from './social';
 import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
 
 const WIDEST = 290;
@@ -28,14 +29,38 @@ function useWidth(room: RoomView, open: boolean): number {
   return useMemo(() => {
     if (isTall(W, H)) return Math.min(WIDEST, W - 2 * EDGE); // upright there is no room beside the table: the panel lies over it
     if (!game) return WIDEST;
-    const L = computeLayout(W, H, game, room.you);
+    const L = computeLayout(W, H, game, room.you, undefined, undefined, undefined, undefined, undefined, room.players.map((p) => p.seat));
     const left = Math.min(L.middle.x, ...(L.me ? [L.me.box.x] : []));
     return Math.max(NARROWEST, Math.min(WIDEST, left - 2 * EDGE));
-  }, [W, H, game, room.you]);
+  }, [W, H, game, room.you, room.players.map((p) => p.seat).join()]);
+}
+
+/** What has just been said, under the chat button while the chat is closed: plain words over the table, gone again after a while, and never in the way of the pointer. */
+function Passing({ lines }: { lines: SocialState['passing'] }) {
+  const [, tick] = useState(0);
+  const now = Date.now();
+  const shown = lines.filter((p) => now - p.at < PASSING_MS);
+  const next = shown[0] ? shown[0].at + PASSING_MS - now : null;
+  useEffect(() => {
+    if (next === null) return;
+    const t = setTimeout(() => tick((n) => n + 1), next + 20);
+    return () => clearTimeout(t);
+  }, [next, lines]);
+  if (!shown.length) return null;
+  return (
+    <ol className="passing" aria-live="polite">
+      {shown.map(({ line }) => (
+        <li key={line.id}>
+          <b style={{ color: backColour(line.seat) }}>{line.name}</b> {line.text}
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 export function Chat({ room }: { room: RoomView }) {
   const social = useSocial();
+  const prefs = usePrefs();
   const width = useWidth(room, social.open);
   const voice = useVoice();
   const [draft, setDraft] = useState('');
@@ -79,8 +104,18 @@ export function Chat({ room }: { room: RoomView }) {
             Chat
             {social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
           </button>
-          {inVoice && <span className={`mic${voice.speaking.includes(room.you) ? ' speaking' : ''}`}>In voice ({social.inVoice.length})</span>}
+          {inVoice && (
+            <span className={`mic${voice.speaking.includes(room.you) ? ' speaking' : ''}`} role="img" aria-label={`In voice: ${social.inVoice.length}`} title={`In voice: ${social.inVoice.length}`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" />
+                <rect x="3" y="13" width="4.2" height="6.5" rx="1.6" />
+                <rect x="16.8" y="13" width="4.2" height="6.5" rx="1.6" />
+              </svg>
+              {social.inVoice.length}
+            </span>
+          )}
           {mute}
+          {prefs.chatOver && social.text && <Passing lines={social.passing} />}
         </div>
       ) : (
         <>

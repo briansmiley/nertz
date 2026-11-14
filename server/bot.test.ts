@@ -342,10 +342,10 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'addBot', level: 'slow' });
     room.flush();
     expect(host.last.room.players).toEqual([
-      { seat: 0, name: 'Ann', connected: true, score: 0, isHost: true, stuck: false, ending: false },
-      { seat: 1, name: 'Bea', connected: true, score: 0, isHost: false, stuck: false, ending: false },
-      { seat: 2, name: 'Bot Ada', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
-      { seat: 3, name: 'Bot Bix', connected: true, score: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
+      { seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, stuck: false, ending: false },
+      { seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false },
+      { seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
+      { seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot
@@ -469,6 +469,11 @@ describe('Room with bots', () => {
       expect(round.scores.every((s) => s.played > 0)).toBe(true); // everybody, bots included, got cards into the middle
       room.flush();
       expect(host.last.room).toMatchObject({ phase: 'results', players: [{ score: round.scores[0]!.total }, { bot: 'fast', score: round.scores[1]!.total }, { bot: 'slow', score: round.scores[2]!.total }] });
+      // A bot sent away between rounds is off the score sheet too: its line is kept only for the cards it left on the table.
+      room.handle(host, { t: 'removeBot', seat: 2 });
+      room.flush();
+      expect(host.last.room.players.map((p) => p.seat)).toEqual([0, 1]);
+      expect(host.last.room.lastRound!.scores.map((l) => [l.seat, !!l.gone])).toEqual([[0, false], [1, false], [2, true]]); // prettier-ignore
     }
   });
 

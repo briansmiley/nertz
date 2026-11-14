@@ -159,6 +159,10 @@ export interface RoundLine extends RoundScore {
   name: string;
   /** Running total including this round. */
   total: number;
+  /** How many rounds that is the total of, this one included. */
+  rounds: number;
+  /** A bot that has been sent away since: its line is no longer shown on the score sheet. */
+  gone?: boolean;
   /** Their faces and backs when the round ended, named as in `PlayerView`. */
   deck?: string;
   back?: string;
@@ -182,6 +186,8 @@ export interface PlayerView {
   connected: boolean;
   /** Total across finished rounds. */
   score: number;
+  /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */
+  rounds: number;
   isHost: boolean;
   stuck: boolean;
   /** Has voted to end the round where it stands. */

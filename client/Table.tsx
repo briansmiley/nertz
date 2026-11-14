@@ -410,8 +410,23 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [groupHeld, turning]);
   // (The screen's own edges are read again whenever the window changes: turning a phone moves its notch.)
   const pad = useMemo(() => insets(), [W, H]);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld, pad), [W, H, game, you, stage, peek, packet, groupHeld, pad]);
+  // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
+  const seated = room.players.map((p) => p.seat).join();
+  const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld, pad, sitting), [W, H, game, you, stage, peek, packet, groupHeld, pad, sitting]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
+  // Upright, "I'm stuck" stands in the bar at the top, right after the chat's button: after all of it, which is wider
+  // when you are in voice (the microphone and its mute button stand there too), so that it is never under them.
+  const [besideChat, setBesideChat] = useState(74);
+  useEffect(() => {
+    const chat = document.querySelector('.chat');
+    if (!chat || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setBesideChat(chat.classList.contains('open') ? 74 : Math.max(74, Math.round(chat.getBoundingClientRect().right) + 8));
+    const seen = new ResizeObserver(measure);
+    seen.observe(chat);
+    measure();
+    return () => seen.disconnect();
+  }, []);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
   const drag = useRef<Drag | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
@@ -993,7 +1008,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         const p = info(o.seat);
         const st = game.players.find((g) => g.seat === o.seat);
         return (
-          <div key={o.seat}>
+          <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
               className={`tag${p?.connected === false ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
@@ -1002,12 +1017,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               <span className="name">{name(o.seat)}</span>
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
-              {p?.connected === false ? <em className="flag">away</em> : st?.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
+              {p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
             ))}
-            {!dealing && (
+            {!dealing && st && (
               <b className="count" style={{ left: Math.min(o.nertz.x + o.nertz.w - 9, W - 24), top: o.nertz.y + o.nertz.h - 6 }}>
                 {o.nertzCount}
               </b>
@@ -1015,6 +1030,24 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           </div>
         );
       })}
+
+      {/* Sitting this round out (you came in the middle of it, or were away at the deal): your own place, with nothing in it yet. */}
+      {me && !mine && (
+        <div className="vacant">
+          {[me.nertz, ...me.workAt, me.stockPad, me.waste].map((r, i) => (
+            <div key={i} className="slot" style={box(r)} />
+          ))}
+          <div className="mine" style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + 2 } : { right: W - (me.nertz.x + me.nertz.w), top: me.nertz.y + oh + 14 }}>
+            <span className="who">
+              <i className="chip" style={{ background: backColour(you) }} />
+              {name(you)} <b>{points(total(you))}</b>
+            </span>
+            <span className="where">
+              Round {room.round} at table {room.code}
+            </span>
+          </div>
+        </div>
+      )}
 
       {me && mine && (
         <>
@@ -1052,7 +1085,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             <button
               type="button"
               className={`stuck${mine.stuck ? ' on' : ''}`}
-              style={L.tall ? { left: 74, top: 9, height: 32 } : L.low ? { left: me.box.x + me.box.w + 10, top: me.stock.y + oh - 32, height: 32 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
+              style={L.tall ? { left: besideChat, top: 9, height: 32 } : L.low ? { left: me.box.x + me.box.w + 10, top: me.stock.y + oh - 32, height: 32 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
               onClick={(e) => {
                 send({ k: 'stuck', on: !mine.stuck });
                 e.currentTarget.blur(); // keep Space for dealing
@@ -1120,6 +1153,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       <ClearNotice must={must} rect={held?.k === 'pile' ? undefined : (L.slots[must.slot] ?? undefined)} />
       <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} />
 
+      {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
+      {called && stage !== 'sheet' && (
+        <div key={`got${room.round}`} className="got" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
+          <span>{game.nertzCalledBy === you ? 'You' : name(game.nertzCalledBy!)} got Nertz!</span>
+        </div>
+      )}
       {callerBox && (
         <div className="shout" style={{ left: callerBox.x, top: callerBox.y, width: callerBox.w, height: callerBox.h, fontSize: stampSize }}>
           <span>Nertz!</span>

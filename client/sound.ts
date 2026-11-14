@@ -245,11 +245,13 @@ export function centre(_rank: number, who: Who = 'me'): void {
   hit('place-2', { gain: 0.58, rate: rand(0.97, 1.03), who });
 }
 
-/** The King: a fuller thunk and two notes, a fourth apart. */
+/**
+ * The King: a fuller thunk and one short, soft note under it. A mark that a pile is done, no more: nothing that
+ * rises or rings on, which would be taken for someone going out (`nertz` is the bright chord, and the only one).
+ */
 export function king(who: Who = 'me'): void {
   hit('place-2', { gain: 0.62, rate: 0.9, who });
-  tone(783.99, { gain: 0.17, dur: 0.8, delay: 0.015, partials: CHIME, who });
-  tone(1046.5, { gain: 0.17, dur: 1.0, delay: 0.135, partials: CHIME, who });
+  tone(392, { gain: 0.07, dur: 0.28, delay: 0.015, partials: BELL, who });
 }
 
 export function clearPile(who: Who = 'me'): void {

@@ -8,7 +8,7 @@ import { BackPicker, YourBacks } from './BackPicker';
 import { choiceAt, chooseAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
-import { addBot, botBack, create, join, leave, removeBot, resetTable, sit, start, useNet } from './net';
+import { addBot, botBack, create, join, leave, nameBot, removeBot, resetTable, sit, start, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
@@ -87,7 +87,7 @@ export function App() {
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (
         room.phase === 'playing' &&
-        !room.game?.players.some((p) => p.seat === room.you) && <p className="banner low">You were away when this round was dealt. You are in for the next one.</p>
+        !room.game?.players.some((p) => p.seat === room.you) && <p className="banner low">Spectating - You can join next round</p>
       )}
     </>
   );
@@ -149,6 +149,31 @@ function Unseat({ name, seat }: { name: string; seat: number }) {
     <button type="button" className="unseat" aria-label={`Remove ${name}`} title={`Remove ${name}`} onClick={() => removeBot(seat)}>
       ×
     </button>
+  );
+}
+
+/** A bot's name, for whoever deals: written over where it stands, and taken when the field is left or Enter is pressed. */
+function BotName({ name, seat }: { name: string; seat: number }) {
+  return (
+    <input
+      key={name}
+      className="botname"
+      aria-label={`Rename ${name}`}
+      title="Rename this bot"
+      defaultValue={name}
+      maxLength={MAX_NAME_LENGTH}
+      size={Math.max(4, name.length)}
+      spellCheck={false}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') (e.currentTarget.value = name), e.currentTarget.blur();
+      }}
+      onBlur={(e) => {
+        const next = cleanName(e.currentTarget.value);
+        if (next && next !== name) nameBot(seat, next);
+        else e.currentTarget.value = name;
+      }}
+    />
   );
 }
 
@@ -293,7 +318,7 @@ function Lobby({ room }: { room: RoomView }) {
               ) : (
                 <Mini seat={p.seat} back={p.back} />
               )}
-              <span className="name">{p.name}</span>
+              <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
               <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `${p.bot} bot`].filter(Boolean).join(', ')}</span>
               {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
             </li>
@@ -377,9 +402,16 @@ function Results({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.seat === room.you);
   const host = room.players.find((p) => p.isHost);
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
-  const rows = [...(round?.scores ?? [])].sort((a, b) => b.total - a.total || b.delta - a.delta);
+  const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
   const caller = rows.find((s) => s.seat === round?.calledBy);
   const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
+  const total = (score: number, rounds: number) => (
+    <td className="total">
+      {score < 0 ? `−${-score}` : score}
+      {rounds > 0 && rounds < room.round && <small title={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
+    </td>
+  );
 
   return (
     <main className="solo over">
@@ -401,7 +433,7 @@ function Results({ room }: { room: RoomView }) {
               <tr key={s.seat} className={s.seat === room.you ? 'you' : ''}>
                 <th scope="row">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
-                  {s.name}
+                  {me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) ? <BotName name={room.players.find((p) => p.seat === s.seat)!.name} seat={s.seat} /> : s.name}
                   {me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) && <Unseat name={s.name} seat={s.seat} />}
                 </th>
                 <td>{signed(s.played)}</td>
@@ -416,7 +448,7 @@ function Results({ room }: { room: RoomView }) {
                   )}
                 </td>
                 <td>{signed(s.delta)}</td>
-                <td className="total">{s.total < 0 ? `−${-s.total}` : s.total}</td>
+                {total(s.total, s.rounds)}
               </tr>
             ))}
             {/* Whoever sat down since the round (a bot just added, someone who has just joined) has no line of it: they are shown under it, as coming in at the next deal. */}
@@ -430,9 +462,9 @@ function Results({ room }: { room: RoomView }) {
                     {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
                   </th>
                   <td colSpan={3} className="note">
-                    in from the next round
+                    In next round
                   </td>
-                  <td className="total">{p.score < 0 ? `−${-p.score}` : p.score}</td>
+                  {total(p.score, p.rounds)}
                 </tr>
               ))}
           </tbody>

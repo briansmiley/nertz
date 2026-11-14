@@ -228,6 +228,7 @@ export const pause = (on: boolean): void => void post({ t: 'pause', on });
 /** In the lobby: take another colour (a seat nobody has). */
 export const sit = (seat: number): void => void post({ t: 'seat', seat });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
+export const nameBot = (seat: number, name: string): void => void post({ t: 'botName', seat, name });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
 /** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const resetTable = (): void => void post({ t: 'reset' });

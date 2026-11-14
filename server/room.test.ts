@@ -246,7 +246,7 @@ describe('Room', () => {
     expect(checkInvariants(room.game)).toBeNull();
   });
 
-  it('resumes the same seat and hand on reconnect, refuses strangers mid-round, and lets the newest socket win', () => {
+  it('resumes the same seat and hand on reconnect, seats a stranger mid-round only to watch, and lets the newest socket win', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     startRound(room, a);
@@ -257,7 +257,16 @@ describe('Room', () => {
     room.disconnect(b);
     room.flush();
     expect(a.last.room.players[1]).toMatchObject({ seat: 1, connected: false });
-    expect(room.join(new FakeConn(), 'Stranger', 'tok-zzzz')).toMatch(/in progress/);
+    // A stranger may sit down in the middle of the round, but only to watch it: a seat of their own, and no cards.
+    const stranger = new FakeConn();
+    expect(room.join(stranger, 'Stranger', 'tok-zzzz')).toBeNull();
+    room.flush();
+    expect(stranger.last.room).toMatchObject({ you: 2, phase: 'playing' });
+    expect(stranger.last.room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    expect(stranger.last.room.players[2]).toMatchObject({ name: 'Stranger', score: 0, rounds: 0 });
+    room.handle(stranger, { t: 'intent', seq: 0, intent: { k: 'flip' } });
+    room.flush();
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
 
     const b2 = new FakeConn();
     expect(room.join(b2, 'P1 again', 'tok-0001')).toBeNull();
@@ -274,7 +283,7 @@ describe('Room', () => {
     sendIntent(room, b2, 0, { k: 'flip' }); // the replaced socket no longer speaks for the seat
     room.disconnect(b2);
     expect(room.rev).toBe(rev);
-    expect(room.connected).toBe(2);
+    expect(room.connected).toBe(3); // a, b and the stranger watching
   });
 
   it('hands the host role on when the host is gone outside a round, and frees a seat on leaving the lobby', () => {
@@ -404,9 +413,9 @@ describe('Room', () => {
     expect(a.last.room.lastRound).toEqual({
       calledBy: 1,
       scores: [
-        { seat: 0, name: 'P0', played: 1, nertzLeft: 13, delta: -25, total: -25 },
-        { seat: 1, name: 'P1', played: 2, nertzLeft: 0, delta: 2, total: 2 }, // no bonus for going out
-        { seat: 2, name: 'P2', played: 0, nertzLeft: 13, delta: -26, total: -26 },
+        { seat: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, delta: -25, total: -25 },
+        { seat: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2 }, // no bonus for going out
+        { seat: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, delta: -26, total: -26 },
       ],
     });
     expect(a.last.room.players.map((p) => p.score)).toEqual([-25, 2, -26]);
@@ -477,8 +486,8 @@ describe('Room', () => {
     sendIntent(room, a, 12, { k: 'nertz' });
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
-      { seat: 0, name: 'P0', played: 2, nertzLeft: 0, delta: 2, total: 2 },
-      { seat: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length },
+      { seat: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2 },
+      { seat: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length },
     ]);
     expect(a.last.room.game!.tray).toHaveLength(1); // still there for the end-of-round sequence
     expect(checkInvariants(room.game)).toBeNull();
@@ -1436,8 +1445,8 @@ describe('server over real sockets', () => {
     await b.close();
     await vi.waitFor(() => expect(a.last.room.players[1]!.connected).toBe(false));
 
-    const stranger = await open(code, 'Stranger', randomUUID(), false);
-    await vi.waitFor(() => expect(stranger.errors).toEqual([expect.stringMatching(/in progress/)]));
+    const stranger = await open(code, 'Stranger', randomUUID()); // sits down to watch: a seat of their own, and no cards
+    expect(stranger.last.room.game!.players.some((p) => p.seat === stranger.last.room.you)).toBe(false);
 
     const b2 = await open(code, 'P1', b.token);
     expect(b2.last.room.you).toBe(before.room.you);
@@ -1448,7 +1457,7 @@ describe('server over real sockets', () => {
     const b3 = await open(code, 'P1', b.token); // e.g. a duplicated tab: the newer socket takes over
     await vi.waitFor(() => expect(b2.closeCode).toBe(CLOSE_REPLACED));
     expect(b3.last.room.you).toBe(before.room.you);
-    expect(room.connected).toBe(2);
+    expect(room.connected).toBe(3); // a, b and the stranger watching
   });
 
   it('(d) malformed and oversized messages neither crash the server nor change any state', async () => {

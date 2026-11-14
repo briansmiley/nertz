@@ -192,8 +192,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   No bonus for going out. Scores add up over rounds.
 - **Table management**: the person who opened the table deals. If they are not connected, the first connected player may deal
   instead; the role returns when they are back. A round is dealt only to players who are connected at that moment. Someone
-  who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. New players cannot
-  join during a round; they can between rounds. Someone who presses Leave on the score sheet stays on that sheet, but no
+  who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. A new player may
+  join at any time: in the middle of a round they sit down and watch it, and are dealt in at the next. The score sheet says of how many rounds a total is the sum, where that is fewer than the table has played. Someone who presses Leave on the score sheet stays on that sheet, but no
   longer counts towards the six seats: a newcomer can take the place.
 
 ## The table

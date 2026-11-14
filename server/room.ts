@@ -36,6 +36,8 @@ interface Player {
   dirty: boolean;
   /** Left on purpose after a round: listed until the next round is dealt, or until a newcomer needs the seat. */
   left: boolean;
+  /** How many rounds their score is the sum of: those they were dealt into. */
+  rounds?: number;
   /** The card faces this player chose; everyone sees their cards drawn so. */
   deck?: Deck;
   back?: Back;
@@ -128,9 +130,9 @@ export class Room {
     if (this.conns.has(conn)) this.drop(conn, false);
     let player = this.players.find((p) => p.token === token);
     if (!player) {
-      if (this.phase === 'playing') return 'A round is in progress. Try again when it ends.';
       const seat = this.freeSeat();
       if (seat === null) return 'That room is full.';
+      // (In the middle of a round too: they sit down and watch it, and are dealt in at the next.)
       player = { token, name, seat, score: 0, conn: null, ack: -1, dirty: false, left: false };
       this.players.push(player);
       this.players.sort((a, b) => a.seat - b.seat);
@@ -175,6 +177,13 @@ export class Room {
         return this.reset(player);
       case 'debugBotOut':
         return this.debugBotOut(player);
+      case 'botName': {
+        // Whoever deals names the bots: any time, like their backs. (Not a name someone at the table has.)
+        const bot = this.players.find((p) => p.seat === msg.seat);
+        if (player !== this.dealer || !bot?.bot || this.players.some((p) => p !== bot && p.name === msg.name)) return;
+        bot.name = msg.name;
+        return this.changed();
+      }
       case 'botBack': {
         // Whoever deals dresses the bots: any time, since it changes nothing but how their cards look.
         const bot = this.players.find((p) => p.seat === msg.seat);
@@ -372,9 +381,10 @@ export class Room {
     const scores = scoreRound(this.game).map((s) => {
       const p = this.players.find((p) => p.seat === s.seat);
       if (p) p.score += s.delta;
+      if (p) p.rounds = (p.rounds ?? 0) + 1;
       const deck = p?.deck && deckNamed(p.deck, p.night);
       const back = p && backNamed(p.back, p.bare);
-      return { ...s, name: p?.name ?? '', total: p?.score ?? s.delta, ...(deck ? { deck } : {}), ...(back ? { back } : {}) };
+      return { ...s, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(deck ? { deck } : {}), ...(back ? { back } : {}) };
     });
     this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}) };
     this.phase = 'results';
@@ -431,7 +441,8 @@ export class Room {
     if (!player) return;
     this.conns.delete(conn);
     player.conn = null;
-    if (leaving && this.phase === 'lobby') {
+    // (Someone only watching the round, having sat down in the middle of it, has no cards on the table to stay for.)
+    if (leaving && (this.phase === 'lobby' || (this.phase === 'playing' && !this.game?.players.some((g) => g.seat === player.seat)))) {
       this.players = this.players.filter((p) => p !== player);
       if (this.host === player) this.host = this.players.find((p) => p.conn && !p.bot) ?? this.players.find((p) => !p.bot) ?? null;
     } else if (leaving) {
@@ -453,6 +464,8 @@ export class Room {
     let seat = 0;
     while (taken(seat, this.players)) seat++;
     if (seat >= MAX_PLAYERS) {
+      // (Not while their cards are in play: whoever sits in a seat plays its cards.)
+      if (this.phase === 'playing') return null;
       seat = 0;
       while (taken(seat, this.players.filter((p) => !p.left))) seat++;
       this.players = this.players.filter((p) => p.seat !== seat); // the leaver's line on the score sheet stays (`lastRound`)
@@ -481,6 +494,7 @@ export class Room {
     this.players = this.players.filter((p) => !p.left);
     for (const p of this.players) {
       p.score = 0;
+      delete p.rounds;
       if (p.lot) p.drew = false; // a table started over draws its lots over
     }
     this.round = 0;
@@ -515,7 +529,9 @@ export class Room {
     const player = this.players.find((p) => p.seat === seat);
     if (by !== this.dealer || this.phase === 'playing' || !player?.bot) return;
     if (player.bot.timer) clearTimeout(player.bot.timer);
-    this.players = this.players.filter((p) => p !== player); // its line on the score sheet stays (`lastRound`)
+    this.players = this.players.filter((p) => p !== player);
+    // Its line of the last round stays for the cards it left on the table, but is taken off the score sheet: a bot sent away is gone.
+    if (this.lastRound) this.lastRound = { ...this.lastRound, scores: this.lastRound.scores.map((s) => (s.seat === seat && !s.gone ? { ...s, gone: true } : s)) };
     this.changed();
   }
 
@@ -677,6 +693,7 @@ export class Room {
         name: p.name,
         connected: p.conn !== null,
         score: p.score,
+        rounds: p.rounds ?? 0,
         isHost: p === dealer,
         stuck: stuck(p.seat),
         ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,

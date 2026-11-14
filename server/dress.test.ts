@@ -90,3 +90,20 @@ describe('a change of seat', () => {
     expect(b.last('signal')).toEqual({ t: 'signal', from: 0, data: '.x' });
   });
 });
+
+describe("a bot's name", () => {
+  it('is whatever whoever deals calls it: not for anyone else to say, and not a name already at the table', () => {
+    const { room, conns, kept } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    send(room, a, { t: 'addBot', level: 'slow' });
+    const bot = () => (room as unknown as { players: { name: string; seat: number }[] }).players.find((p) => p.seat === 2)!;
+    send(room, b, { t: 'botName', seat: 2, name: 'Mine' });
+    expect(bot().name).toBe('Bot Ada');
+    send(room, a, { t: 'botName', seat: 2, name: 'P1' }); // taken
+    send(room, a, { t: 'botName', seat: 1, name: 'Renamed' }); // not a bot
+    expect([bot().name, kept(1).seat]).toEqual(['Bot Ada', 1]);
+    send(room, a, { t: 'botName', seat: 2, name: '  Deep\tBlue ' });
+    expect(bot().name).toBe('Deep Blue');
+    expect(parseClientMsg({ t: 'botName', seat: 2, name: '  ' })).toBeNull();
+  });
+});
