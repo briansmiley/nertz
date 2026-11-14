@@ -3753,7 +3753,7 @@ body:has(main.showroom) {
 }
 
 /* The tag overlaps the card's bottom edge, so it reads as stuck on the card rather than as a line of its own. */
-.yourback .change span {
+.yourback .change > span:not(.mini) {
   position: relative;
   margin-top: -7px;
   padding: 0 5px;
