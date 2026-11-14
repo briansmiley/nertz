@@ -156,8 +156,19 @@ export const inside = (r: Rect, x: number, y: number): boolean => x >= r.x && x 
  * with the pointer trailing off the pile still lands by where it lies. Either
  * way it is one specific pile, and areas never overlap.
  */
-export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: { x: number; y: number }, centre: { x: number; y: number } | null): T | undefined {
-  return targets.find((t) => inside(t.hit, pointer.x, pointer.y)) ?? (centre ? targets.find((t) => inside(t.hit, centre.x, centre.y)) : undefined);
+export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: { x: number; y: number }, centre: { x: number; y: number } | null, reach = 0): T | undefined {
+  const over = targets.find((t) => inside(t.hit, pointer.x, pointer.y)) ?? (centre ? targets.find((t) => inside(t.hit, centre.x, centre.y)) : undefined);
+  if (over || reach <= 0) return over;
+  // Under a finger nothing is aimed to the pixel: a release that is over no area goes to the nearest one within
+  // `reach` of where it points. (Only areas that would take the card are ever asked about, so nothing is misplaced.)
+  const at = centre ?? pointer;
+  let best: T | undefined;
+  let least = reach;
+  for (const t of targets) {
+    const d = Math.hypot(Math.max(t.hit.x - at.x, 0, at.x - t.hit.x - t.hit.w), Math.max(t.hit.y - at.y, 0, at.y - t.hit.y - t.hit.h));
+    if (d <= least) [best, least] = [t, d];
+  }
+  return best;
 }
 
 /**

@@ -329,6 +329,8 @@ interface Drag {
   /** A finger, not a mouse: the card is carried above it, where it can be seen, and is aimed by its own middle. */
   touch: boolean;
   active: boolean;
+  /** Not carried but tapped (a finger): it stands lifted where it was, in your hand all the same, until the next tap says where it goes. */
+  tapped?: boolean;
   /** The last report of where it is, when one was last sent, and the timer for one that is waiting its turn. */
   report: ({ t: 'drag' } & DragAt) | null;
   sent: number;
@@ -429,6 +431,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, []);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
   const drag = useRef<Drag | null>(null);
+  /** Set by a tap that put a tapped card down (or back): the card it was, so that the same tap does not take it up again or fan a pile out. */
+  const untap = useRef<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [hot, setHot] = useState<string | null>(null);
   /** On a table without marked places: the outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
@@ -708,9 +712,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const rect = landingAt(L, centre);
     return { key: 'felt', to, rect, hit: rect, ok: canDrop(game, you, d.held.id, to) };
   };
+  /** How far from a pile a finger may let go and still be taken to mean it: about half a card of the middle, and never less than a fingertip. */
+  const reachOf = (d: Pick<Drag, 'touch' | 'held'>): number => (d.touch && d.held.k === 'card' ? Math.max(26, L.fs * CARD_W * 0.55) : 0);
   const targetUnder = (d: Drag): Target | undefined => {
     const centre = centreOf(d);
-    const pile = dropTarget(targetsFor(d.held), pointOf(d, centre), centre);
+    const pile = dropTarget(targetsFor(d.held), pointOf(d, centre), centre, reachOf(d));
     if (pile) return pile;
     const felt = feltUnder(d, centre);
     return felt?.ok ? felt : undefined;
@@ -761,8 +767,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const targets = targetsFor(d.held);
     // (An empty marked place is not somewhere the card is known to be going: an Ace fits them all.)
     if (centre) report(d, centre, targets.filter((t) => typeof t.to === 'object' && t.to.k === 'slot' && game.slots[t.to.i]!.length > 0));
-    const pile = dropTarget(targets, pointOf(d, centre), centre);
-    const felt = pile ? undefined : feltUnder(d, centre);
+    const pile = d.tapped ? undefined : dropTarget(targets, pointOf(d, centre), centre, reachOf(d));
+    const felt = pile || d.tapped ? undefined : feltUnder(d, centre);
     setHot(pile?.key ?? (felt?.ok ? felt.key : null));
     const el = preview.current;
     if (el) {
@@ -803,8 +809,22 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
-    if (frozen || drag.current || e.button !== 0) return;
     const el = (e.target as Element).closest('[data-id],[data-stock]');
+    // A card that was tapped is in your hand, and this tap says where it goes: a pile that takes it (the nearest, if
+    // the finger is a little off), or for an Ace on a table without marked places that very spot of the felt. A tap
+    // anywhere else puts it back; on another card of yours, that one is taken up in its place.
+    const sel = drag.current?.tapped ? drag.current : null;
+    if (sel && sel.held.k === 'card') {
+      const at = { x: e.clientX, y: e.clientY };
+      const felt = feltUnder(sel, at);
+      const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
+      const moved = !!t && typeof t.to === 'object' && send({ k: 'move', cardId: sel.held.id, count: sel.ids.length, to: t.to });
+      if (!moved) send({ k: 'release' });
+      const same = el?.getAttribute('data-id') === sel.lead;
+      letGo(sel);
+      if (moved || same) return void (untap.current = sel.lead);
+    }
+    if (frozen || drag.current || e.button !== 0) return;
     if (!el) return;
     const id = el.getAttribute('data-id');
     const placed = id ? byId.get(id) : undefined;
@@ -914,7 +934,33 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     // On a touch screen a tap on one of your work piles fans it out in full, and another tap (anywhere) closes it.
-    if (e.pointerType !== 'mouse' && (!d || !d.active) && stage === 'live') {
+    const again = untap.current;
+    untap.current = null;
+    // A finger that taps a card of yours (or a run of them) takes it up without carrying it: it stands lifted where it
+    // was, the piles that would take it are outlined, and the next tap puts it down (see `onPointerDown`). The server
+    // is told as for any card in hand. A finished pile of yours goes to the tray at a tap: there is nowhere else for it.
+    if (d && !d.active && d.touch && e.pointerId === d.pointer && stage === 'live') {
+      if (d.held.k === 'pile') {
+        send({ k: 'clear', slot: d.held.slot });
+        return void (drag.current = null);
+      }
+      if (d.held.k === 'card' && again === null && send({ k: 'hold', cardId: d.held.id })) {
+        d.active = true;
+        d.tapped = true;
+        d.pointer = -1;
+        stopPeek();
+        const up = (byId.get(d.lead)?.s ?? 1) * CARD_H * 0.16;
+        d.ids.forEach((id, i) => {
+          reg.held.add(id);
+          const h = reg.handles.get(id);
+          h?.y.set(d.base[i]!.y - up);
+          h?.z.set(Z_HELD + i);
+        });
+        setHeld(d.held);
+        return;
+      }
+    }
+    if (e.pointerType !== 'mouse' && (!d || !d.active) && stage === 'live' && again === null) {
       const i = columnAt(e.clientX, e.clientY);
       setPeek(i === peek ? null : i);
     }
@@ -945,6 +991,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const onPointerCancel = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointer) return;
+    if (!d.active) return void (drag.current = null);
     if (d.active && d.held.k === 'card') send({ k: 'release' });
     letGo(d);
   };
