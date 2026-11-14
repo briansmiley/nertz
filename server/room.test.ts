@@ -191,6 +191,10 @@ describe('Room', () => {
     room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc'); // only watching
     const told = (msgs: ServerMsg[], history = false) => msgs.flatMap((m) => (m.t === 'chat' && m.history === history ? m.lines.map(({ id: _, at: __, ...l }) => l) : []));
     room.handle(a, { t: 'start' });
+    const first = room.game;
+    room.handle(a, { t: 'redeal' }); // dealt over: the same round, not told again
+    expect(room.game).not.toBe(first);
+    expect(told(got).filter((l) => l.k === 'dealt')).toEqual([{ k: 'dealt', round: 1 }]);
     room.game = rigged([0, 1], [0, 1]);
     sendIntent(room, a, 0, move(workTop(room.game, 0, 0), felt(-0.6, 0)));
     sendIntent(room, a, 1, move(workTop(room.game, 0, 1), slot(0)));
