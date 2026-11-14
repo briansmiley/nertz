@@ -54,6 +54,22 @@ export const TAKEN_KEYS = ['KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
  */
 export const keyFree = (p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): boolean =>
   /^[A-Za-z0-9]{1,20}$/.test(code) && !/^(Shift|Control|Alt|Meta|OS)|^(Backspace|Delete)$/.test(code) && !TAKEN_KEYS.includes(code) && HOTKEYS.every((k) => k === which || p[k] !== code);
+/**
+ * `which` given the key `code`, as a change to your preferences: it takes the key, and a hotkey of yours that had it
+ * is left with none. Null if it is no key for a hotkey at all (a modifier, or one the game uses).
+ */
+export function takeKey(p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): Partial<Pick<Prefs, Hotkey>> | null {
+  if (!keyFree({ soundKey: null, voiceKey: null }, which, code)) return null;
+  const patch: Partial<Pick<Prefs, Hotkey>> = { [which]: code };
+  for (const k of HOTKEYS) if (k !== which && p[k] === code) patch[k] = null;
+  return patch;
+}
+/**
+ * Is this key press the hotkey `code`? Pressed bare (no Shift, Ctrl, Alt or Cmd, not held down), and not while typing
+ * in a text field or choosing a hotkey. (A slider or a checkbox that has the focus does not swallow it.)
+ */
+export const hotkeyPressed = (e: KeyboardEvent, code: string | null): boolean =>
+  !!code && e.code === code && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !(e.target as Element | null)?.closest?.('input:not([type=range]):not([type=checkbox]),textarea,[data-keying]');
 /** A phone or tablet: no keyboard to speak of, so no key is offered or named. */
 export const touchOnly = (): boolean => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
 /** A key as it is shown: "V" for KeyV, "7" for Digit7, otherwise its own name. */
