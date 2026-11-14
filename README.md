@@ -372,12 +372,12 @@ tray, a dull tap when a card goes back (put down nowhere, or beaten to its pile,
 yours is waiting for the tray), a knock for each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud
 hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, and a
 riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
-else's much quieter (a quarter, until you move the slider).
+else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 
 - The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
   tones are synthesised. Sources and licence: [`client/sounds/CREDITS.md`](client/sounds/CREDITS.md).
-- `client/sound.ts` has one function per cue (Web Audio: each sound a one-shot with its own short envelope, into a master
-  gain and a limiter, at most 18 at once). The audio context is made on the first click or key press, as browsers require.
+- `client/sound.ts` has one function per cue (Web Audio: each sound a one-shot with its own short envelope, into a gain for
+  its channel, yours or other players' cards, and from both into one limiter, at most 18 at once). The audio context is made on the first click or key press, as browsers require.
 - Which cue fires is decided by `client/soundEvents.ts`, a pure function that compares two successive *rendered* states by
   card id. So a move sounds once, when it is predicted, and not again when the server confirms it; a predicted move that is
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
