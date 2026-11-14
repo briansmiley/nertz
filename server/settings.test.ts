@@ -59,6 +59,9 @@ describe('the settings message', () => {
     expect(parseClientMsg({ t: 'settings', patch: { stockDeal: 'click' } })).toEqual({ t: 'settings', patch: { stockDeal: 'click' } });
     expect(parseSettings({ stockDeal: 'drag', fewerDown: false, x: 1 })).toEqual({ stockDeal: 'drag' });
     for (const stockDeal of ['DRAG', 'tap', true, 1, null, undefined]) expect(parseSettings({ stockDeal })).toBeNull();
+    expect(parseClientMsg({ t: 'settings', patch: { tapToMove: false } })).toEqual({ t: 'settings', patch: { tapToMove: false } });
+    expect(parseSettings({ tapToMove: true, stockDeal: 'drag' })).toEqual({ tapToMove: true, stockDeal: 'drag' });
+    for (const tapToMove of ['true', 'off', 0, 1, null, undefined]) expect(parseSettings({ tapToMove })).toBeNull();
   });
 
   it('drops options there are no longer, whatever an older client sends', () => {
@@ -81,6 +84,8 @@ describe('the settings message', () => {
       { t: 'settings', patch: { stockDeal: true } },
       { t: 'settings', patch: { stockDeal: null } },
       { t: 'settings', patch: { centre: 'spots', stockDeal: 'CLICK' } },
+      { t: 'settings', patch: { tapToMove: 'no' } },
+      { t: 'settings', patch: { tapToMove: false, stockDeal: 'tap' } },
       { t: 'settings', stockDeal: 'drag' },
     ];
     for (const raw of bad) expect(parseClientMsg(raw), JSON.stringify(raw)).toBeNull();
@@ -88,11 +93,11 @@ describe('the settings message', () => {
 });
 
 describe('table settings in a room', () => {
-  it('start out as the defaults (the stock dealt by clicking) and are in every view', () => {
+  it('start out as the defaults (the stock dealt by clicking, a card moved without dragging) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ stockDeal: 'click' });
-    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click' });
+    expect(DEFAULT_SETTINGS).toEqual({ stockDeal: 'click', tapToMove: true });
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', tapToMove: true });
   });
 
   it('only the host changes them, and everyone is told', () => {
@@ -106,7 +111,30 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { stockDeal: 'drag' } });
     room.flush();
     expect(room.settings.stockDeal).toBe('drag');
-    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'drag' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'drag', tapToMove: true });
+  });
+
+  it('moving without dragging is the host\'s to turn off and on between rounds, and leaves the other options as they are', () => {
+    const { room, conns } = roomWith(2);
+    const [host, guest] = conns as [FakeConn, FakeConn];
+    room.handle(guest, { t: 'settings', patch: { tapToMove: false } });
+    expect(room.settings.tapToMove).toBe(true);
+    room.handle(host, { t: 'settings', patch: { tapToMove: false } });
+    room.flush();
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', tapToMove: false });
+
+    room.handle(host, { t: 'start' });
+    room.handle(host, { t: 'settings', patch: { tapToMove: true } }); // a round is on: not now
+    room.flush();
+    for (const c of conns) expect(c.last!).toMatchObject({ phase: 'playing', settings: { tapToMove: false } });
+
+    const game = room.game!;
+    room.game = openPlay(startCountdown(finishDeal({ ...game, players: game.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) })));
+    room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
+    expect(room.phase).toBe('results');
+    room.handle(host, { t: 'settings', patch: { tapToMove: true } });
+    room.flush();
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', tapToMove: true });
   });
 
   it('how the stock is dealt is for the host to choose, between rounds: the round on the table keeps the way it was dealt under', () => {
