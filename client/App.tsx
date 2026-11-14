@@ -8,7 +8,7 @@ import { BackPicker, YourBacks } from './BackPicker';
 import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
-import { addBot, botBack, create, join, leave, nameBot, removeBot, resetTable, sit, start, useNet } from './net';
+import { addBot, botBack, create, join, kick, leave, nameBot, removeBot, resetTable, sit, start, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
@@ -144,9 +144,10 @@ function AddBot({ room }: { room: RoomView }) {
 }
 
 /** A small × beside a bot's name, for whoever deals. */
-function Unseat({ name, seat }: { name: string; seat: number }) {
+/** For whoever deals: send a bot away, or (`person`) a person: they are put out of the table, as if they had left. */
+function Unseat({ name, seat, person }: { name: string; seat: number; person?: boolean }) {
   return (
-    <button type="button" className="unseat" aria-label={`Remove ${name}`} title={`Remove ${name}`} onClick={() => removeBot(seat)}>
+    <button type="button" className="unseat" aria-label={`Remove ${name}`} title={person ? `Remove ${name} from the table` : `Remove ${name}`} onClick={() => (person ? kick(seat) : removeBot(seat))}>
       ×
     </button>
   );
@@ -320,7 +321,7 @@ function Lobby({ room }: { room: RoomView }) {
               )}
               <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
               <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `${p.bot} bot`].filter(Boolean).join(', ')}</span>
-              {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
+              {me?.isHost && p.seat !== room.you && <Unseat name={p.name} seat={p.seat} person={!p.bot} />}
             </li>
           ))}
         </ul>
@@ -405,6 +406,11 @@ function Results({ room }: { room: RoomView }) {
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
   const caller = rows.find((s) => s.seat === round?.calledBy);
   const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+  // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
+  const who = (seat: number) => (seat === room.you ? 'You' : (round?.scores.find((s) => s.seat === seat)?.name ?? room.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat + 1}`));
+  const tally = new Map<number, number>();
+  for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
+  const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
   /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
   const total = (score: number, rounds: number) => (
     <td className="total">
@@ -434,7 +440,7 @@ function Results({ room }: { room: RoomView }) {
                 <th scope="row">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
                   {me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) ? <BotName name={room.players.find((p) => p.seat === s.seat)!.name} seat={s.seat} /> : s.name}
-                  {me?.isHost && room.players.some((p) => p.seat === s.seat && p.bot) && <Unseat name={s.name} seat={s.seat} />}
+                  {me?.isHost && s.seat !== room.you && room.players.some((p) => p.seat === s.seat) && <Unseat name={s.name} seat={s.seat} person={!room.players.some((p) => p.seat === s.seat && p.bot)} />}
                 </th>
                 <td>{signed(s.played)}</td>
                 <td>
@@ -447,7 +453,7 @@ function Results({ room }: { room: RoomView }) {
                     'out'
                   )}
                 </td>
-                <td>{signed(s.delta)}</td>
+                <td className="round">{signed(s.delta)}</td>
                 {total(s.total, s.rounds)}
               </tr>
             ))}
@@ -459,7 +465,7 @@ function Results({ room }: { room: RoomView }) {
                   <th scope="row">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
                     {p.name}
-                    {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
+                    {me?.isHost && p.seat !== room.you && <Unseat name={p.name} seat={p.seat} person={!p.bot} />}
                   </th>
                   <td colSpan={3} className="note">
                     In next round
@@ -469,6 +475,14 @@ function Results({ room }: { room: RoomView }) {
               ))}
           </tbody>
         </table>
+        {round?.snipes && (
+          <p className="snipes">
+            <b>
+              Top sniper: {who(top!.by)} ({top!.n})
+            </b>{' '}
+            {round.snipes.map((s) => `${who(s.by)} sniped ${who(s.of)}${s.n > 1 ? ` ×${s.n}` : ''}`).join(' · ')}
+          </p>
+        )}
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
             {enoughToDeal(room) ? 'Deal the next round' : 'Waiting for a second player'}

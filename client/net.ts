@@ -147,7 +147,27 @@ function stop(error: string | null): void {
   old?.close();
   sync = freshSync;
   set({ status: 'idle', room: null, error });
+  void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
+
+/**
+ * A window left open over a deploy still runs the page it loaded, against a server that has moved on: it draws and
+ * plays by the old one. Whenever this window is at no table (it has just left one, or come back to the front), it
+ * asks for the page again, and if that names another script than the one running, loads it.
+ */
+async function renew(): Promise<void> {
+  if (typeof document === 'undefined' || state.room || session) return;
+  const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src');
+  if (!mine) return; // not a built page (development)
+  try {
+    const page = await (await fetch('/', { cache: 'no-store' })).text();
+    const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(page)?.[1];
+    if (theirs && theirs !== mine && !state.room && !session) location.reload();
+  } catch {
+    // offline: next time
+  }
+}
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void renew());
 
 function connect(): void {
   if (!session) return;
@@ -179,6 +199,8 @@ function connect(): void {
       // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
       if (sync.server) set({ error: msg.message });
       else stop(msg.message);
+    } else if (msg.t === 'removed') {
+      stop('You were removed from the table by whoever deals.');
     } else if (msg.t === 'drag') {
       for (const fn of dragListeners) fn(msg);
     } else {
@@ -229,6 +251,7 @@ export const pause = (on: boolean): void => void post({ t: 'pause', on });
 export const sit = (seat: number): void => void post({ t: 'seat', seat });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
 export const nameBot = (seat: number, name: string): void => void post({ t: 'botName', seat, name });
+export const kick = (seat: number): void => void post({ t: 'kick', seat });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
 /** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const redeal = (): void => void post({ t: 'redeal' });

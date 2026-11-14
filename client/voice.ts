@@ -17,7 +17,12 @@ import { current, post } from './net';
  * networks, will not hear each other without a relay. A TURN server goes
  * here: { urls: 'turn:host:3478', username, credential }.
  */
-export const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+export const ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+/** And whatever the game's server knows of besides (a TURN relay, if it was given one): it says so with the chat's state. */
+let extraIce: RTCIceServer[] = [];
+export function setIce(servers: readonly RTCIceServer[] | undefined): void {
+  extraIce = servers ? [...servers] : [];
+}
 
 /** One signalling message is sent in pieces this long, so that a frame stays under the server's 2 KB cap even when escaped. */
 const PIECE = 800;
@@ -31,7 +36,10 @@ export interface VoiceState {
   error: string | null;
   /** Seats making sound right now (this one included). */
   speaking: readonly number[];
+  /** How the connection to each other seat in voice stands: being set up, up, or not to be had (no path between the two networks). */
+  links: Readonly<Record<number, Link>>;
 }
+export type Link = 'connecting' | 'on' | 'failed';
 
 interface Peer {
   pc: RTCPeerConnection;
@@ -42,7 +50,11 @@ interface Peer {
 
 type Signal = { sdp: RTCSessionDescriptionInit } | { ice: RTCIceCandidateInit };
 
-let state: VoiceState = { status: 'off', muted: false, error: null, speaking: [] };
+let state: VoiceState = { status: 'off', muted: false, error: null, speaking: [], links: {} };
+const link = (seat: number, to: Link | null): void => {
+  const { [seat]: was, ...rest } = state.links;
+  if (was !== (to ?? undefined)) set({ links: to ? { ...rest, [seat]: to } : rest });
+};
 const listeners = new Set<() => void>();
 let mic: MediaStream | null = null;
 let ctx: AudioContext | null = null;
@@ -145,7 +157,7 @@ export function sync(members: readonly VoiceMember[]): void {
 }
 
 function open(seat: number): Peer {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection({ iceServers: [...ICE_SERVERS, ...extraIce] });
   const audio = new Audio();
   audio.autoplay = true;
   const peer: Peer = { pc, audio, queued: [] };
@@ -162,10 +174,13 @@ function open(seat: number): Peer {
     meter(seat, stream);
   };
   pc.onconnectionstatechange = () => {
+    if (peers.get(seat) !== peer) return;
+    link(seat, pc.connectionState === 'connected' ? 'on' : pc.connectionState === 'failed' ? 'failed' : 'connecting');
     // A path that died (a network change) is tried again by the side that offers.
     const me = mySeat();
-    if (pc.connectionState === 'failed' && peers.get(seat) === peer && me !== undefined && me < seat) void offer(seat, peer, true);
+    if (pc.connectionState === 'failed' && me !== undefined && me < seat) void offer(seat, peer, true);
   };
+  link(seat, 'connecting');
   return peer;
 }
 
@@ -177,6 +192,7 @@ function closePeer(seat: number): void {
   peer.pc.close();
   peer.audio.pause();
   peer.audio.srcObject = null;
+  link(seat, null);
   meters.get(seat)?.source.disconnect();
   meters.delete(seat);
 }

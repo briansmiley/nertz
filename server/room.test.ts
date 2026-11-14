@@ -147,7 +147,24 @@ describe('Room', () => {
     expect(JSON.stringify(b.sent) + JSON.stringify(conns[0]!.sent)).not.toMatch(/tok-/);
   });
 
-  it('refuses a seventh player', () => {
+  it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'start' });
+    room.game = rigged([0, 1], [0]);
+    const [aceA, aceB, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 1, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)]; // spades
+    sendIntent(room, a, 0, move(aceA, slot(3)));
+    sendIntent(room, b, 0, move(aceB, slot(3))); // an Ace beaten to a place is no snipe: it has others
+    sendIntent(room, a, 1, move(twoA, slot(3)));
+    sendIntent(room, b, 1, move(twoB, slot(3))); // too late: a's two is on it
+    room.handle(b, { t: 'sniped', slot: 3 }); // their window says so too: counted once
+    room.handle(a, { t: 'sniped', slot: 3 }); // not theirs to complain of
+    sendIntent(room, a, 2, { k: 'nertz' });
+    expect(room.phase).toBe('results');
+    expect(room.lastRound!.snipes).toEqual([{ by: 0, of: 1, n: 1 }]);
+  });
+
+  it('refuses an eleventh player', () => {
     const { room } = roomWith(MAX_PLAYERS);
     expect(room.join(new FakeConn(), 'Late', 'tok-late')).toMatch(/full/);
   });
@@ -156,26 +173,28 @@ describe('Room', () => {
   it('gives the seat of a player who left after the round to a newcomer, and keeps their line on the score sheet', () => {
     const { room, conns } = roomWith(MAX_PLAYERS);
     room.handle(conns[0]!, { t: 'start' });
-    room.game = rigged([0, 1, 2, 3, 4, 5], [0]);
+    const all = Array.from({ length: MAX_PLAYERS }, (_, i) => i);
+    const last = MAX_PLAYERS - 1;
+    room.game = rigged(all, [0]);
     sendIntent(room, conns[0]!, 0, { k: 'nertz' });
     expect(room.phase).toBe('results');
-    expect(room.join(new FakeConn(), 'Early', 'tok-early')).toMatch(/full/); // six people are still here
+    expect(room.join(new FakeConn(), 'Early', 'tok-early')).toMatch(/full/); // everyone is still here
 
-    room.handle(conns[5]!, { t: 'leave' });
+    room.handle(conns[last]!, { t: 'leave' });
     room.flush();
-    expect(conns[0]!.last.room.players.map((p) => [p.name, p.connected])).toContainEqual(['P5', false]); // still listed
+    expect(conns[0]!.last.room.players.map((p) => [p.name, p.connected])).toContainEqual([`P${last}`, false]); // still listed
     const late = new FakeConn();
     expect(room.join(late, 'Late', 'tok-late')).toBeNull();
     room.flush();
-    expect(late.last.room.players.map((p) => p.name)).toEqual(['P0', 'P1', 'P2', 'P3', 'P4', 'Late']);
-    expect(late.last.room.you).toBe(5); // the only free seat (and back colour) is the leaver's
+    expect(late.last.room.players.map((p) => p.name)).toEqual([...all.slice(0, last).map((i) => `P${i}`), 'Late']);
+    expect(late.last.room.you).toBe(last); // the only free seat (and back colour) is the leaver's
     // The round that was played is still P5's: name and total travel with the score line.
-    expect(late.last.room.lastRound!.scores[5]).toMatchObject({ seat: 5, name: 'P5', delta: -26, total: -26 });
-    expect(late.last.room.players[5]!.score).toBe(0);
+    expect(late.last.room.lastRound!.scores[last]).toMatchObject({ seat: last, name: `P${last}`, delta: -26, total: -26 });
+    expect(late.last.room.players[last]!.score).toBe(0);
     expect(room.join(new FakeConn(), 'Later', 'tok-later')).toMatch(/full/);
 
     room.handle(conns[0]!, { t: 'start' });
-    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(room.game!.players.map((p) => p.seat)).toEqual(all);
     expect(checkInvariants(room.game!)).toBeNull();
   });
 
@@ -1508,7 +1527,7 @@ describe('server over real sockets', () => {
       const flooder = await Client.open(limited.port, null, 'Flo', token);
       const code = flooder.code;
       const closed = new Promise<number>((ok) => flooder.ws.once('close', (code) => ok(code)));
-      for (let i = 0; i < 400; i++) flooder.intent({ k: 'stuck', on: i % 2 === 0 });
+      for (let i = 0; i < 1000; i++) flooder.intent({ k: 'stuck', on: i % 2 === 0 });
       expect(await closed).toBe(CLOSE_FLOOD);
       const back = await Client.open(limited.port, code, 'Flo', token);
       expect(back.seat).toBe(0);

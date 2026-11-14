@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ChatLine, SocialSettings, VoiceMember } from '../shared/chat';
 import { current, onSocial, post, subscribe as onNet } from './net';
-import { hangUp, leaveVoice, onSignal, sync } from './voice';
+import { hangUp, leaveVoice, onSignal, setIce, sync } from './voice';
 
 export interface SocialState extends SocialSettings {
   lines: readonly ChatLine[];
@@ -36,6 +36,7 @@ onSocial((msg) => {
     const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...msg.lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);
     set({ lines: msg.history ? msg.lines : [...state.lines, ...msg.lines], unread: state.open ? 0 : state.unread + news, passing });
   } else if (msg.t === 'social') {
+    setIce(msg.ice);
     set({ text: msg.text, voice: msg.voice, inVoice: msg.inVoice });
     if (msg.voice) sync(msg.inVoice);
     else leaveVoice(false); // the host switched voice off: the microphone is released at once

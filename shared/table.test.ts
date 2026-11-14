@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SLOTS_PER_PLAYER } from './protocol';
 import { cardSize, CARD_RATIO, clash, feltHw, offFelt, onTable, openPlace, pileGap, roomAt, spots, TABLE, tiltAt, type Pt } from './table';
 
-const COUNTS = [2, 3, 4, 5, 6];
+const COUNTS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
 function rng(seed: number) {
   return () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -67,11 +67,11 @@ describe('the felt', () => {
       expect(pileGap(n)).toBeLessThan(w * 0.2); // a small gap
       if (n > 2) expect(w).toBeLessThanOrEqual(cardSize(n - 1).w);
       if (n > 3) expect(w).toBeLessThan(cardSize(n - 1).w);
-      expect(w).toBeGreaterThan(0.25); // more than an eighth of the felt's height
+      expect(w).toBeGreaterThan(n > 6 ? 0.2 : 0.25); // more than an eighth of the felt's height (a tenth, at the crowded tables of more than six)
       expect(1.5 * h + pileGap(n)).toBeLessThanOrEqual(0.9 + 1e-9); // a pile near the middle line leaves room above and below it
     }
     expect(cardSize(1)).toEqual(cardSize(2));
-    expect(cardSize(9)).toEqual(cardSize(6));
+    expect(cardSize(13)).toEqual(cardSize(10));
     expect(cardSize(NaN)).toEqual(cardSize(2));
   });
 });
@@ -272,7 +272,7 @@ describe('the marked places', () => {
       // More than one row (places a card apart in height), and no row or column ruled straight.
       const rows = new Set(s.map((p) => Math.round(p.y / h)));
       expect(rows.size).toBeGreaterThan(1);
-      expect(new Set(s.map((p) => p.y)).size).toBeGreaterThan(s.length * 0.7);
+      expect(new Set(s.map((p) => p.y)).size).toBeGreaterThan(s.length * (n > 6 ? 0.6 : 0.7));
       expect(new Set(s.map((p) => p.x)).size).toBeGreaterThan(s.length * 0.7);
       // Neighbouring rows are staggered: no place sits squarely above another.
       for (const a of s) for (const b of s) if (a !== b && Math.abs(a.y - b.y) > h * 0.5 && Math.abs(a.y - b.y) < h * 1.5) expect(Math.abs(a.x - b.x)).toBeGreaterThan(w * 0.2);

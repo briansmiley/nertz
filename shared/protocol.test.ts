@@ -45,10 +45,10 @@ describe('parseClientMsg', () => {
       { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'work', i: 4 } } },
       // a move must say how many cards were lifted: 1 to 13
       ...[undefined, 0, 14, 1.5, '1'].map((count) => ({ t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count, to: { k: 'work', i: 0 } } })),
-      { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'slot', i: 24 } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'slot' } } },
+      { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'slot', i: 40 } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'slot' } } },
       { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'foundation', id: 'f' } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'newFoundation' } } },
       { t: 'intent', seq: 1, intent: { k: 'hold' } }, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: 'x'.repeat(65) } },
-      { t: 'intent', seq: 1, intent: { k: 'clear' } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: 24 } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: -1 } },
+      { t: 'intent', seq: 1, intent: { k: 'clear' } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: 40 } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: -1 } },
       { t: 'create' }, { t: 'create', name: 'A' }, { t: 'create', name: '  ', token: TOKEN }, { t: 'create', name: 'A', token: 'short' }, { t: 'create', name: 7, token: TOKEN },
       `{"t":"start","pad":"${'x'.repeat(MAX_MESSAGE_BYTES)}"}`,
     ];

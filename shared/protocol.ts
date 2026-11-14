@@ -168,6 +168,10 @@ export type ClientMsg =
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
+  /** I let a card go over the pile at `slot` and it was too late: someone else's very same card had just been put there. (Counted, if the table agrees.) */
+  | { t: 'sniped'; slot: number }
+  /** Whoever deals: send the person in `seat` away from the table. */
+  | { t: 'kick'; seat: number }
   /** Whoever deals: what the bot in `seat` is called. */
   | { t: 'botName'; seat: number; name: string }
   /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table (`lot`; null: no lot, the back it has). */
@@ -183,6 +187,8 @@ export type ServerMsg =
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
   | { t: 'state'; rev: number; ack: number; room: RoomView }
   | { t: 'error'; message: string }
+  /** Whoever deals has sent you away from the table: the connection is closed next, and is not to be made again. */
+  | { t: 'removed' }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
   | SocialServerMsg;
@@ -220,7 +226,7 @@ export const DRAG_BURST = 12;
 export const MAX_MESSAGE_BYTES = 2048;
 export const MAX_NAME_LENGTH = 20;
 export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 6;
+export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
 export const SLOTS_PER_PLAYER = 4;
@@ -374,6 +380,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
+    case 'sniped':
+      return isIndex(v.slot, MAX_SLOTS) ? { t: 'sniped', slot: v.slot } : null;
+    case 'kick':
+      return isIndex(v.seat, MAX_PLAYERS) ? { t: 'kick', seat: v.seat } : null;
     case 'botName': {
       const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
       return isIndex(v.seat, MAX_PLAYERS) && name ? { t: 'botName', seat: v.seat, name } : null;

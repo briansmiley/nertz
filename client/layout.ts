@@ -502,7 +502,9 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // Opponents in seat order starting after you: clockwise round the table, from your left.
   const others = mine ? [...ring.slice(view + 1), ...ring.slice(0, view)] : ring;
   const tall = isTall(W, H);
-  const low = isLow(W, H);
+  // (More than six at the table: the others stand in a column at each side as they do on a phone on its side. Round
+  // the felt there is room for five hands, not for nine.)
+  const low = isLow(W, H) || (!tall && ring.length > 6);
   const edge = tall ? TALL.edge : 16;
 
   // Your hand: bottom, as large as the window allows. (Upright: in two rows, see TALL.)
@@ -544,7 +546,8 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const sideR = Math.max(8, keep.r);
   const col = { u: 0, w: 0, left: Math.ceil(seats.length / 2), topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: (mine ? ownTop : H - 12) - 6 };
   if (low) {
-    const most = W - sideL - sideR - 2 * (LOW.col + CLEAR);
+    // (A phone on its side has little width to give the columns; a wide window with more than six at the table gives each a sixth of it.)
+    const most = W - sideL - sideR - 2 * (Math.max(LOW.col, isLow(W, H) ? 0 : W * 0.17) + CLEAR);
     col.u = Math.max(40, Math.min(most / (2 * hw), ((mine ? ownTop : H - 12) - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const each = (room: number, k: number) => (k ? (room / k - TAG_H - 6) / (RATIO * 1.85) : Infinity);

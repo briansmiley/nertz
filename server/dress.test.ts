@@ -161,3 +161,24 @@ describe('coming back', () => {
     expect([room.round, room.phase, room.lastRound]).toEqual([1, 'playing', null]);
   });
 });
+
+describe('sent away', () => {
+  it('by whoever deals, a person is out of the table as if they had left: told so, and their connection closed', () => {
+    const { room, conns, kept } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    const closed: FakeConn[] = [];
+    for (const conn of conns) conn.close = () => void closed.push(conn);
+    const seats = () => (room as unknown as { players: { seat: number }[] }).players.map((p) => p.seat);
+    send(room, b, { t: 'kick', seat: 2 }); // not theirs to say
+    send(room, a, { t: 'kick', seat: 0 }); // not oneself
+    expect(seats()).toEqual([0, 1, 2]);
+    send(room, a, { t: 'kick', seat: 2 });
+    expect(seats()).toEqual([0, 1]);
+    expect(c.sent.at(-1)).toEqual({ t: 'removed' });
+    expect(closed).toEqual([c]);
+    room.disconnect(b); // someone who is away can be sent away too
+    send(room, a, { t: 'kick', seat: 1 });
+    expect(seats()).toEqual([0]);
+    expect(kept(0).seat).toBe(0);
+  });
+});

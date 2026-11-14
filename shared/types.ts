@@ -161,7 +161,7 @@ export interface RoundLine extends RoundScore {
   total: number;
   /** How many rounds that is the total of, this one included. */
   rounds: number;
-  /** A bot that has been sent away since: its line is no longer shown on the score sheet. */
+  /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
   /** Their faces and backs when the round ended, named as in `PlayerView`. */
   deck?: string;
@@ -173,6 +173,8 @@ export interface RoundResult {
   calledBy: number | null;
   ended?: 'jam' | 'vote';
   scores: RoundLine[];
+  /** Who beat whom to a pile in the middle with the very card the other was about to put there, and how often (`n`): most first. Absent if nobody did. */
+  snipes?: { by: number; of: number; n: number }[];
 }
 
 export type Phase = 'lobby' | 'playing' | 'results';

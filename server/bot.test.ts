@@ -369,15 +369,15 @@ describe('Room with bots', () => {
     expect(room.connected).toBe(0);
   });
 
-  it('fills the table up to six seats and no further, and nobody can join into a bot\'s seat', () => {
+  it('fills the table up to its ten seats and no further, and nobody can join into a bot\'s seat', () => {
     const { room, host } = hosted();
-    for (let i = 0; i < 7; i++) room.handle(host, { t: 'addBot', level: 'medium' });
-    expect(names(room, host)).toEqual(['Ann', 'Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli']);
+    for (let i = 0; i < 11; i++) room.handle(host, { t: 'addBot', level: 'medium' });
+    expect(names(room, host)).toEqual(['Ann', 'Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy']);
     expect(room.join(new FakeConn(), 'Late', 'tok-late')).toMatch(/full/);
     expect(parseClientMsg({ t: 'join', room: 'TEST', name: 'Sly', token: 'bot:1-padding' })).toBeNull(); // a bot's token is not a token
     room.handle(host, { t: 'removeBot', seat: 1 });
     expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull();
-    expect(names(room, host)).toEqual(['Ann', 'Late', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli']);
+    expect(names(room, host)).toEqual(['Ann', 'Late', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy']);
   });
 
   it('one person and one bot make a round; bots cannot be added or removed while it is on', () => {

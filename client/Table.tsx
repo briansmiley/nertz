@@ -435,6 +435,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const untap = useRef<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [hot, setHot] = useState<string | null>(null);
+  /** Who last beat you to a pile (and a count, so that the same name flashes again). */
+  const [sniper, setSniper] = useState<{ by: number; n: number } | null>(null);
+  useEffect(() => setSniper(null), [room.round]);
   /** On a table without marked places: the outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
@@ -807,6 +810,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (d?.active) aim(d);
   }, [game, L]);
 
+  /** Beaten to the pile at `slot`: the sound of it, the name of whoever did it across the middle for a moment, and a word to the table, which keeps count. */
+  const snipedAt = (slot: number) => {
+    const top = game.slots[slot]?.at(-1);
+    beaten();
+    if (!top || top.rank === 1) return; // (an Ace beaten to a place has others to go to: the sound, no more)
+    post({ t: 'sniped', slot });
+    setSniper({ by: top.owner, n: (sniper?.n ?? 0) + 1 });
+  };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
     const el = (e.target as Element).closest('[data-id],[data-stock]');
@@ -819,7 +830,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       const felt = feltUnder(sel, at);
       const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
       const moved = !!t && typeof t.to === 'object' && send({ k: 'move', cardId: sel.held.id, count: sel.ids.length, to: t.to });
-      if (!moved) send({ k: 'release' });
+      if (!moved) {
+        // (Tapped onto a pile that someone else's same card has reached since this one was taken up: beaten to it.)
+        const over = sel.ids.length === 1 ? L.slotHit.findIndex((r) => r && inside(r, at.x, at.y)) : -1;
+        if (over >= 0 && game.slots[over]?.at(-1)?.id !== sel.tops[over] && beatenTo(game, you, sel.held.id, over)) snipedAt(over);
+        send({ k: 'release' });
+      }
       const same = el?.getAttribute('data-id') === sel.lead;
       letGo(sel);
       if (moved || same) return void (untap.current = sel.lead);
@@ -982,7 +998,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       const id = d.held.id;
       const c = centreOf(d);
       const over = d.ids.length === 1 && !t ? L.slotHit.findIndex((r) => r && (inside(r, d.px, d.py) || (c && inside(r, c.x, c.y)))) : -1;
-      if (over >= 0 && game.slots[over]?.at(-1)?.id !== d.tops[over] && beatenTo(game, you, id, over)) beaten();
+      if (over >= 0 && game.slots[over]?.at(-1)?.id !== d.tops[over] && beatenTo(game, you, id, over)) snipedAt(over);
       send({ k: 'release' });
     }
     letGo(d);
@@ -1207,6 +1223,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {called && stage !== 'sheet' && (
         <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
           <span>{game.nertzCalledBy === you ? 'You' : name(game.nertzCalledBy!)} got Nertz!</span>
+        </div>
+      )}
+      {/* Beaten to a pile: who by, across the middle, there and gone in under a second. */}
+      {sniper && !called && (
+        <div key={`sniped${sniper.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
+          <span style={{ color: backColour(sniper.by) }}>Sniped by {name(sniper.by)}!</span>
         </div>
       )}
       {callerBox && (

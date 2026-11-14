@@ -57,7 +57,7 @@ interface Player {
 
 /** What a bot has for a connection: it counts as connected and is told nothing (it looks for itself, on its timer). */
 const BOT_CONN: Conn = { send: () => {}, close: () => {} };
-const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay'];
+const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
 export interface RoomOptions {
   rng?: Rng;
@@ -82,6 +82,8 @@ export class Room {
   settings: TableSettings = { ...DEFAULT_SETTINGS };
   /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
   readonly social = new Social();
+  /** This round's snipes (see `sniped`): who, whom, and with which card. */
+  private snipes: { by: number; of: number; card: string }[] = [];
 
   private players: Player[] = []; // in seat order
   private conns = new Map<Conn, Player>();
@@ -177,6 +179,23 @@ export class Room {
         return this.dragged(player, msg);
       case 'leave':
         return this.drop(conn, true);
+      case 'sniped':
+        return this.sniped(player, msg.slot);
+      case 'kick': {
+        // Whoever deals may send a person away from the table, at any time: as if they had left, whether they are here or away.
+        const out = this.players.find((p) => p.seat === msg.seat);
+        if (player !== this.dealer || !out || out.bot || out === player) return;
+        const theirs = out.conn;
+        if (theirs) {
+          theirs.send({ t: 'removed' }); // (so that their window goes home and does not come straight back)
+          this.conns.delete(theirs);
+          out.conn = null;
+        }
+        if (this.lastRound) this.lastRound = { ...this.lastRound, scores: this.lastRound.scores.map((s) => (s.seat === out.seat && !s.gone ? { ...s, gone: true } : s)) };
+        this.depart(out, true);
+        theirs?.close();
+        return;
+      }
       case 'addBot':
         return this.addBot(player, msg.level);
       case 'removeBot':
@@ -291,6 +310,7 @@ export class Room {
    */
   private dealOut(): void {
     const dealt = this.players.filter((p) => p.conn);
+    this.snipes = [];
     for (const p of dealt) if (p.lot && !p.drew) this.drawBack(p); // a back by lot is drawn now: once, and kept for every round at this table
     this.game = deal(
       dealt.map((p) => p.seat),
@@ -340,6 +360,22 @@ export class Room {
     this.changed();
   }
 
+  /**
+   * `victim` was beaten to the pile at `slot`: its top card is someone else's, and they have the very same card (suit
+   * and rank) showing on one of their own piles, with nowhere to put it now. Counted once for each such card; shown
+   * with the round's scores. (Said by the victim's window, or seen here when their move arrives too late.)
+   */
+  private sniped(victim: Player, slot: number): void {
+    if (this.phase !== 'playing' || !this.game) return;
+    const top = this.game.slots[slot]?.at(-1);
+    const hand = this.game.players.find((g) => g.seat === victim.seat);
+    if (!top || !hand || top.owner === victim.seat || top.rank === 1) return; // (an Ace beaten to a place has others to go to)
+    const showing = [hand.nertz.at(-1), hand.waste.at(-1), ...hand.work.map((pile) => pile.at(-1))];
+    if (!showing.some((c) => c && 'suit' in c && c.suit === top.suit && c.rank === top.rank)) return;
+    if (this.snipes.some((s) => s.of === victim.seat && s.card === top.id)) return;
+    this.snipes.push({ by: top.owner, of: victim.seat, card: top.id });
+  }
+
   private stopTimers(): void {
     for (const timer of [this.dealTimer, this.startTimer, this.graceTimer]) if (timer) clearTimeout(timer);
     this.dealTimer = this.startTimer = this.graceTimer = null;
@@ -355,6 +391,7 @@ export class Room {
       player.flipped = now;
     }
     const result = applyIntent(this.game, player.seat, intent);
+    if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.game, player.seat, intent);
     if (next === this.game) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)
@@ -410,7 +447,14 @@ export class Room {
       const back = p && backNamed(p.back, p.bare);
       return { ...s, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(deck ? { deck } : {}), ...(back ? { back } : {}) };
     });
-    this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}) };
+    const pairs = new Map<string, { by: number; of: number; n: number }>();
+    for (const s of this.snipes) {
+      const pair = pairs.get(`${s.by}>${s.of}`) ?? { by: s.by, of: s.of, n: 0 };
+      pair.n++;
+      pairs.set(`${s.by}>${s.of}`, pair);
+    }
+    const snipes = [...pairs.values()].sort((a, b) => b.n - a.n || a.by - b.by || a.of - b.of);
+    this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}), ...(snipes.length ? { snipes } : {}) };
     this.phase = 'results';
     this.stopClock();
     this.pausedBy = null;
@@ -465,6 +509,11 @@ export class Room {
     if (!player) return;
     this.conns.delete(conn);
     player.conn = null;
+    this.depart(player, leaving);
+  }
+
+  /** A player has no connection any more: gone for now, or (`leaving`) for good. */
+  private depart(player: Player, leaving: boolean): void {
     // (Someone only watching the round, having sat down in the middle of it, has no cards on the table to stay for.)
     if (leaving && (this.phase === 'lobby' || (this.phase === 'playing' && !this.game?.players.some((g) => g.seat === player.seat)))) {
       this.players = this.players.filter((p) => p !== player);

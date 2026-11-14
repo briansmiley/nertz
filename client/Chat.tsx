@@ -148,6 +148,8 @@ export function Chat({ room }: { room: RoomView }) {
                       <i style={{ background: backColour(m.seat) }} />
                       {name(m.seat)}
                       {m.muted && <small>muted</small>}
+                      {inVoice && m.seat !== room.you && voice.links[m.seat] === 'failed' && <small className="bad" title="Your two networks cannot reach each other directly">can't connect</small>}
+                      {inVoice && m.seat !== room.you && voice.links[m.seat] === 'connecting' && <small>connecting…</small>}
                     </li>
                   ))}
                 </ul>

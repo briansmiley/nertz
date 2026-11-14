@@ -14,7 +14,7 @@ export const CARD_W = 90;
 export const CARD_H = 126;
 
 /** Back colour per seat. */
-export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#272b35'] as const;
+export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#272b35', '#d4428e', '#0f8a9c', '#d2601a', '#7a5c40'] as const;
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
 
 /** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */

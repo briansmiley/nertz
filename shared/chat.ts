@@ -38,6 +38,13 @@ export interface VoiceMember {
   muted: boolean;
 }
 
+/** A server that helps two players' voice connections find each other (STUN), or carries the sound between them when they cannot reach each other directly (TURN: with a name and a password). */
+export interface IceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
 export type SocialClientMsg =
   | { t: 'chat'; text: string }
   /** Host only: flip one or both switches. */
@@ -51,7 +58,7 @@ export type SocialServerMsg =
   /** New lines, or with `history` everything the room remembers (sent once to a connection when it sits down). */
   | { t: 'chat'; lines: ChatLine[]; history: boolean }
   /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
-  | ({ t: 'social'; inVoice: VoiceMember[] } & SocialSettings)
+  | ({ t: 'social'; inVoice: VoiceMember[]; ice?: IceServer[] } & SocialSettings)
   /** `from` is stamped by the server. */
   | { t: 'signal'; from: number; data: string };
 

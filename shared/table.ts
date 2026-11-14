@@ -44,7 +44,7 @@ export const CARD_RATIO = 1.4;
 const GAP = 0.14;
 /** The share of the felt that the cards of a full table (four piles per player) cover. */
 const COVER = 0.3;
-const seatsOf = (n: number): number => Math.max(2, Math.min(6, Math.round(n) || 2));
+const seatsOf = (n: number): number => Math.max(2, Math.min(10, Math.round(n) || 2));
 
 /**
  * Half the width of the felt of a table for `n` players. Up to three, nobody sits at the sides and the felt is wide.
@@ -128,7 +128,8 @@ export function spots(n: number): Spot[] {
   const dx = w + GAP * w + 2 * sx + 0.01;
   const dy = h + GAP * w + 2 * sy + 0.01;
   // Two rows for up to three players, three for more (the felt is wide: long rows suit it), if its height takes them.
-  const rows = Math.max(1, Math.min(total > 12 ? 3 : 2, Math.floor((2 - h - 2 * sy) / dy) + 1));
+  // (And four for more than six: their cards are small enough, and three rows of them would be longer than the felt.)
+  const rows = Math.max(1, Math.min(total > 24 ? 4 : total > 12 ? 3 : 2, Math.floor((2 - h - 2 * sy) / dy) + 1));
   // As even as they come: an odd one out goes to the middle row, two to the rows above and below it.
   const base = Math.floor(total / rows);
   const extra = total - base * rows;
@@ -136,7 +137,7 @@ export function spots(n: number): Spot[] {
   const out: Spot[] = [];
   counts.forEach((count, r) => {
     // Like bricks: a row as long as the one next to it (or longer by two) is set half a place to one side of it.
-    const shift = rows === 2 ? (r - 0.5) * 0.5 : r !== 1 && (count - counts[1]!) % 2 === 0 ? (1 - r) * 0.5 : 0;
+    const shift = rows !== 3 ? ((r % 2) - 0.5) * 0.5 : r !== 1 && (count - counts[1]!) % 2 === 0 ? (1 - r) * 0.5 : 0;
     for (let k = 0; k < count; k++) {
       const i = out.length;
       out.push({
@@ -158,7 +159,7 @@ const scanOf = (n: number): readonly Pt[] => {
   const from = (p: Pt) => Math.hypot(p.x / hw, p.y);
   return pts.filter((p) => offFelt(p, n) < 0).sort((a, b) => from(a) - from(b));
 };
-const SCANS = [2, 3, 4, 5, 6].map(scanOf);
+const SCANS = [2, 3, 4, 5, 6, 7, 8, 9, 10].map(scanOf);
 const scan = (n: number): readonly Pt[] => SCANS[seatsOf(n) - 2]!;
 
 /** May a new pile go at `p`, given the piles already `placed`? On the table, and clear of every one of them. */
