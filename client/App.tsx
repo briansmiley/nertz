@@ -9,7 +9,7 @@ import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, sit, start, takeSeat, useNet } from './net';
-import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
+import { Corner, Door, Pop, Robot } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
 
@@ -618,7 +618,6 @@ function Lobby({ room }: { room: RoomView }) {
             {room.round === 0 && <Colour room={room} seat={me.seat} />}
           </div>
         )}
-        <TableRules room={room} />
         {/* Whoever has just come in is watching: a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
           <button className="go" onClick={() => takeSeat(true)}>
@@ -801,9 +800,6 @@ function Results({ room }: { room: RoomView }) {
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
         )}
         <div className="tools">
-          <Pop icon={<Gear />} label="Table rules">
-            <TableRules room={room} />
-          </Pop>
           {me?.isHost && <AddBot room={room} />}
           {me?.isHost && <StartOver />}
           <Leave />

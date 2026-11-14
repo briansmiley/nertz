@@ -3,7 +3,7 @@
 // Pile convention, everywhere: the TOP of a pile is the LAST array element.
 
 import type { TableSettings } from './settings';
-import type { Spot, TableMode } from './table';
+import type { Spot } from './table';
 
 export type Suit ='S' | 'H' | 'D' | 'C';
 
@@ -72,12 +72,6 @@ export interface GameState {
    */
   stage: RoundStage;
   /**
-   * How the middle of this round's table works (see shared/table.ts): on a
-   * 'free' table a pile lies wherever its Ace was put down, 'spots' has a
-   * marked place for every pile.
-   */
-  table: TableMode;
-  /**
    * The shared middle: 4 x players slots. Each entry is one centre pile, Ace
    * up to King in one suit; an empty array is an empty slot. A pile of 13 is
    * complete: it takes nothing more and stays in its slot until the player
@@ -86,10 +80,9 @@ export interface GameState {
   slots: Card[][];
   /**
    * Where each slot's pile lies on the table, in table space (the same for
-   * every player, and drawn at the same place of the felt on every screen). On a 'spots' table
-   * every slot has its place for the whole round. On a 'free' table a slot
-   * has a place only while it holds a pile: the place is set by the Ace that
-   * starts it and given up when the finished pile is cleared.
+   * every player, and drawn at the same place of the felt on every screen). A
+   * slot has a place only while it holds a pile: the place is set by the Ace
+   * that starts it and given up when the finished pile is cleared.
    */
   places: (Spot | null)[];
   /** Completed piles cleared off the table, oldest first. Each has 13 cards, King on top. Still scores. */
@@ -114,8 +107,8 @@ export type RoundStage = 'dealing' | 'ready' | 'countdown' | 'play';
 
 /**
  * Where a card can be dropped: one of your own work piles, one specific centre
- * slot, or (an Ace on a 'free' table) a point of the bare felt, in table
- * space, where a new pile is to start.
+ * slot, or (an Ace) a point of the bare felt, in table space, where a new
+ * pile is to start.
  */
 export type PileRef = { k: 'work'; i: number } | { k: 'slot'; i: number } | { k: 'felt'; x: number; y: number };
 
@@ -229,7 +222,7 @@ export interface RoomView {
   seat: number | null;
   /** Those at the table by seat; then those waiting for a seat, first to be seated first; then those just watching. */
   players: PlayerView[];
-  /** The table's house rules, as the next deal will read them. Only the host changes them, between rounds. */
+  /** The table's house rules. Only the host changes them, between rounds. */
   settings: TableSettings;
   /**
    * Redacted current round; null in the lobby. Kept through 'results' as the

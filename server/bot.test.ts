@@ -3,7 +3,7 @@ import WebSocket from 'ws';
 import { DEAL_MS, START_MS } from '../shared/protocol';
 import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, resolveStuck, startCountdown, SUITS, viewFor, type Rng } from '../shared/engine';
 import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
-import { spots } from '../shared/table';
+import { openPlace, type Spot } from '../shared/table';
 import type { Card, GameState, Intent, PlayerState, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
@@ -55,7 +55,14 @@ function table(mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'
     return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, dealt: 0, stuck: h.stuck ?? false, holding: null };
   };
   const slots = Array.from({ length: 8 }, (_, i): Card[] => middle[i] ?? []);
-  const state: GameState = { players: [player(0, mine), player(1, theirs)], table: 'spots', slots, places: spots(2), tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
+  const placed: Spot[] = [];
+  const places = slots.map((pile): Spot | null => {
+    if (pile.length === 0) return null;
+    const at = { ...openPlace(placed, 2)!, r: 0 };
+    placed.push(at);
+    return at;
+  });
+  const state: GameState = { players: [player(0, mine), player(1, theirs)], slots, places, tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }
@@ -114,14 +121,15 @@ describe('chooseIntent', () => {
     const state = table({ nertz: ['S2'], work: [['H3'], ['C9'], ['D9'], ['H9']] }, [{ owner: 1, suit: 'S', upTo: 1 }]);
     expect(look(state)?.intent).toEqual(move('S2', slot(0)));
     const ace = table({ nertz: ['S1'], work: [['H2'], ['C9'], [], ['D9']] });
-    expect(look(ace)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'slot' } }); // an Ace above all: not onto the red 2, nor the empty pile
-    expect(look(ace, freshMemory(), 0)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'slot' } }); // and never overlooked
+    expect(look(ace)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'felt' } }); // an Ace above all: not onto the red 2, nor the empty pile
+    expect(look(ace, freshMemory(), 0)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'felt' } }); // and never overlooked
   });
 
-  it('c. plays the nertz top to the middle: an Ace to an empty slot, anything else to the exact pile', () => {
+  it('c. plays the nertz top to the middle: an Ace to bare felt, anything else to the exact pile', () => {
     const ace = table({ nertz: ['S1'], work: DEAD }, [{ owner: 1, suit: 'H', upTo: 3 }]);
-    expect(look(ace)?.intent).toEqual(move('S1', slot(1)));
-    expect(look(ace, freshMemory(), 1, () => 0.999)?.intent).toEqual(move('S1', slot(7))); // any empty slot
+    const intent = look(ace)!.intent;
+    expect(intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'felt' } });
+    expect(applyIntent(ace, 0, intent).ok).toBe(true);
     const four = table({ nertz: ['H4'], work: DEAD }, [{ owner: 1, suit: 'S', upTo: 3 }, { owner: 1, suit: 'H', upTo: 3 }]);
     expect(look(four)?.intent).toEqual(move('H4', slot(1)));
   });
@@ -234,7 +242,7 @@ describe('chooseIntent', () => {
       // (The one thing it cannot miss is an Ace showing: that goes out to the middle.)
       const blind = look(state, freshMemory(), 0, rng)!.intent;
       expect(blind.k === 'flip' || (blind.k === 'move' && blind.to.k !== 'work')).toBe(true);
-      // With observance 1 the choice does not depend on the dice (short of which empty slot an Ace takes).
+      // With observance 1 the choice does not depend on the dice (short of where an Ace starts its pile).
       const a = look(state, freshMemory(), 1, seeded(1))!.intent;
       const b = look(state, freshMemory(), 1, seeded(2))!.intent;
       expect({ ...a, to: null }).toEqual({ ...b, to: null });

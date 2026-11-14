@@ -311,9 +311,9 @@ interface Flight {
 
 /**
  * What is in hand: one of your cards (with any run on top of it), a finished centre pile on its way to the tray, or
- * the top card of your stock on its way to the waste. `ace`: it is an Ace on a table without marked places, which
- * may start a pile wherever there is room. The stock card is face-down and nobody's business: the server
- * is not told it is held (no `hold`), so it can never count for the grace window; only its landing is sent.
+ * the top card of your stock on its way to the waste. `ace`: it is an Ace, which may start a pile wherever there is
+ * room. The stock card is face-down and nobody's business: the server is not told it is held (no `hold`), so it can
+ * never count for the grace window; only its landing is sent.
  */
 type Held = { k: 'card'; id: string; ace: boolean } | { k: 'pile'; slot: number } | { k: 'stock' };
 
@@ -462,7 +462,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   useEffect(() => setAside(null), [room.round]);
   // And the other way round: the table says so when it was you who beat someone.
   useEffect(() => onSniper((of) => (snipeSound('me'), setSniper((s) => ({ by: you, of, n: (s?.n ?? 0) + 1 })))), [you]);
-  /** On a table without marked places: the outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
+  /** The outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
   // ---- other players' cards in the air
@@ -726,10 +726,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** What a drag points with: the pointer, or under a finger (which hides what is beneath it) the middle of the card it carries. */
   const pointOf = (d: Drag, centre: { x: number; y: number } | null): { x: number; y: number } => (d.touch && centre ? centre : { x: d.px, y: d.py });
   /**
-   * On a table without marked places an Ace that is over no pile of yours
-   * aims at the felt under its own centre: that very point, nothing snaps.
-   * Returned as soon as any of the card is over the felt, whether or not a
-   * pile may start there (`ok`), for the outline.
+   * An Ace that is over no pile of yours aims at the felt under its own
+   * centre: that very point, nothing snaps. Returned as soon as any of the
+   * card is over the felt, whether or not a pile may start there (`ok`), for
+   * the outline.
    */
   const feltUnder = (d: Drag, centre: { x: number; y: number } | null): (Target & { ok: boolean }) | undefined => {
     if (d.held.k !== 'card' || !d.held.ace || !centre) return undefined;
@@ -792,8 +792,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const over = !!centre && offFelt(toTable(L.felt, centre.x, centre.y), game.players.length) < 0;
     for (const id of d.ids) reg.handles.get(id)?.o.set(over ? OVER_FELT : 1);
     const targets = targetsFor(d.held);
-    // (An empty marked place is not somewhere the card is known to be going: an Ace fits them all.)
-    if (centre) report(d, centre, targets.filter((t) => typeof t.to === 'object' && t.to.k === 'slot' && game.slots[t.to.i]!.length > 0));
+    if (centre) report(d, centre, targets.filter((t) => typeof t.to === 'object' && t.to.k === 'slot'));
     const pile = d.tapped ? undefined : dropTarget(targets, pointOf(d, centre), centre, reachOf(d));
     const felt = pile || d.tapped ? undefined : feltUnder(d, centre);
     setHot(pile?.key ?? (felt?.ok ? felt.key : null));
@@ -846,8 +845,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
     const el = (e.target as Element).closest('[data-id],[data-stock]');
     // A card that was tapped is in your hand, and this tap says where it goes: a pile that takes it (the nearest, if
-    // the finger is a little off), or for an Ace on a table without marked places that very spot of the felt. A tap
-    // anywhere else puts it back; on another card of yours, that one is taken up in its place.
+    // the finger is a little off), or for an Ace that very spot of the felt. A tap anywhere else puts it back; on
+    // another card of yours, that one is taken up in its place.
     const sel = drag.current?.tapped ? drag.current : null;
     if (sel && sel.held.k === 'card') {
       const at = { x: e.clientX, y: e.clientY };
@@ -881,7 +880,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       pick = { held: { k: 'pile', slot: placed.at }, ids, lead: ids[ids.length - 1]! };
     } else if (placed?.mine) {
       const g = grab(game, you, id);
-      if (g) pick = { held: { k: 'card', id, ace: game.table === 'free' && g.cards.length === 1 && g.cards[0]!.rank === 1 }, ids: g.cards.map((c) => c.id), lead: id };
+      if (g) pick = { held: { k: 'card', id, ace: g.cards.length === 1 && g.cards[0]!.rank === 1 }, ids: g.cards.map((c) => c.id), lead: id };
     }
     if (!pick) return;
     drag.current = {
@@ -1065,7 +1064,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     h: callerPile.h,
   };
   const finale = stage === 'spread' || stage === 'out' || stage === 'wash' || stage === 'sheet';
-  /** An Ace is in hand on a table without marked places. */
+  /** An Ace is in hand. */
   const placing = held?.k === 'card' && held.ace;
 
   return (
@@ -1084,7 +1083,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         if (!slot) return null;
         const full = game.slots[i]?.length === 13 && stage === 'live' && !(held?.k === 'pile' && held.slot === i);
         return (
-          <div key={i} className={`slot centre${game.table === 'free' ? ' bare' : ''}${full ? (toClear(i) ? ' yours' : ' done') : ''}`} style={box(slot)}>
+          <div key={i} className={`slot centre${full ? (toClear(i) ? ' yours' : ' done') : ''}`} style={box(slot)}>
             {full && toClear(i) && <em>Drag to tray</em>}
           </div>
         );

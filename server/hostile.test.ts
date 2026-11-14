@@ -10,7 +10,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import WebSocket from 'ws';
 import { checkInvariants, finishDeal, isHidden, legalDrops, grab, openPlay, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
-import type { TableSettings } from '../shared/settings';
 import type { AnyCard, Card, GameState, Intent, PileRef, Suit } from '../shared/types';
 import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
@@ -157,12 +156,11 @@ function nearlyDone(g: GameState, owner: number, i: number): GameState {
   expect(taken).toHaveLength(12);
   const ids = new Set(taken.map((c) => c.id));
   const without = (pile: AnyCard[]) => pile.filter((c) => !ids.has(c.id));
-  const at = g.table === 'free' ? { x: 0, y: 0, r: 0 } : g.places[i]!;
   return {
     ...g,
     players: g.players.map((q) => (q === p ? { ...q, nertz: without(q.nertz), stock: without(q.stock) } : q)),
     slots: g.slots.map((s, k) => (k === i ? taken : s)),
-    places: g.places.map((old, k) => (k === i ? at : old)),
+    places: g.places.map((old, k) => (k === i ? { x: 0, y: 0, r: 0 } : old)),
   };
 }
 
@@ -175,21 +173,17 @@ describe('a hostile client over real sockets', () => {
     clients.push(c);
     return c;
   };
-  /**
-   * A table of `n` people with the cards dealt (stage `dealing`, the deal timer running). With marked places for the
-   * piles unless a test asks otherwise: most of these aim their Aces at a slot by its number.
-   */
-  const dealt = async (n: number, settings: Partial<TableSettings> = { centre: 'spots' }) => {
+  /** A table of `n` people with the cards dealt (stage `dealing`, the deal timer running). */
+  const dealt = async (n: number) => {
     const players = [await open(null, 'P0')];
     for (let i = 1; i < n; i++) players.push(await open(players[0]!.code, `P${i}`));
-    if (Object.keys(settings).length > 0) players[0]!.send({ t: 'settings', patch: settings });
     players[0]!.send({ t: 'start' });
     await vi.waitFor(() => players.forEach((p) => expect(p.last.room.phase).toBe('playing')));
     return { room: server.rooms.get(players[0]!.code)!, players };
   };
   /** The same with play open and the hands rigged; every client has seen the rigged table. */
-  const playing = async (n: number, settings: Partial<TableSettings> = { centre: 'spots' }, emptyNertzFor: number[] = [], also: (g: GameState) => GameState = (g) => g) => {
-    const t = await dealt(n, settings);
+  const playing = async (n: number, emptyNertzFor: number[] = [], also: (g: GameState) => GameState = (g) => g) => {
+    const t = await dealt(n);
     t.room.game = also(rig(toPlay(t.room.game!), emptyNertzFor));
     expect(checkInvariants(t.room.game)).toBeNull();
     // Any change sends everyone the table as it now is.
@@ -223,12 +217,10 @@ describe('a hostile client over real sockets', () => {
     await Promise.all(clients.splice(0).map((c) => c.close()));
   });
 
-  it.each(['spots', 'free'] as const)('races on a %s table: one pile, one empty place: exactly one lands every time, the other goes home, everyone converges', async (centre) => {
-    const { room, players } = await playing(3, { centre });
-    expect(room.game!.table).toBe(centre);
-    const aceTo = (i: number): PileRef => (centre === 'free' ? felt(0.1, 0.1) : slot(i));
+  it('races: one pile, one patch of felt: exactly one lands every time, the other goes home, everyone converges', async () => {
+    const { room, players } = await playing(3);
     // Three Aces of spades for the same place, sent in the same instant.
-    const seqs = players.map((p) => p.intent(move(workTop(room.game!, p.seat, 0), aceTo(5))));
+    const seqs = players.map((p) => p.intent(move(workTop(room.game!, p.seat, 0), felt(0.1, 0.1))));
     await vi.waitFor(() => players.forEach((p, i) => expect(p.last.ack).toBe(seqs[i])));
     expect(piles(room.game!)).toHaveLength(1);
     const at = room.game!.slots.findIndex((s) => s.length === 1);
@@ -239,22 +231,20 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => players.forEach((p, i) => expect(p.last.ack).toBe(twos[i])));
     expect(room.game!.slots[at]!.map((c) => c.rank)).toEqual([1, 2]);
     expect(players.filter((p) => me(room.game!, p.seat).work[1]!.length === 1)).toHaveLength(2);
-    if (centre === 'free') {
-      // Overlapping, not identical, patches of felt: still one. A patch well clear of it: both.
-      const [a, b] = players as [Client, Client, Client];
-      const hearts = [a, b].map((p) => workTop(room.game!, p.seat, 2));
-      const s = [a.intent(move(hearts[0]!, felt(-0.5, -0.2))), b.intent(move(hearts[1]!, felt(-0.47, -0.18)))];
-      await vi.waitFor(() => [a, b].forEach((p, i) => expect(p.last.ack).toBe(s[i])));
-      expect(piles(room.game!)).toHaveLength(2);
-      const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.length === 1)!;
-      await loser.did(move(workTop(room.game!, loser.seat, 2), felt(1.2, -0.2)));
-      expect(piles(room.game!)).toHaveLength(3);
-      // Off the table, on another pile, or not an Ace: refused.
-      const c = players[2]!;
-      for (const to of [felt(2.7, 0), felt(0.1, 0.1), felt(2.6, 0.8)]) await c.did(move(workTop(room.game!, c.seat, 2), to));
-      await c.did(move(workTop(room.game!, c.seat, 3), felt(0, -0.6)));
-      expect(piles(room.game!)).toHaveLength(3);
-    }
+    // Overlapping, not identical, patches of felt: still one. A patch well clear of it: both.
+    const [a, b] = players as [Client, Client, Client];
+    const hearts = [a, b].map((p) => workTop(room.game!, p.seat, 2));
+    const s = [a.intent(move(hearts[0]!, felt(-0.5, -0.2))), b.intent(move(hearts[1]!, felt(-0.47, -0.18)))];
+    await vi.waitFor(() => [a, b].forEach((p, i) => expect(p.last.ack).toBe(s[i])));
+    expect(piles(room.game!)).toHaveLength(2);
+    const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.length === 1)!;
+    await loser.did(move(workTop(room.game!, loser.seat, 2), felt(1.2, -0.2)));
+    expect(piles(room.game!)).toHaveLength(3);
+    // Off the table, on another pile, or not an Ace: refused.
+    const c = players[2]!;
+    for (const to of [felt(2.7, 0), felt(0.1, 0.1), felt(2.6, 0.8)]) await c.did(move(workTop(room.game!, c.seat, 2), to));
+    await c.did(move(workTop(room.game!, c.seat, 3), felt(0, -0.6)));
+    expect(piles(room.game!)).toHaveLength(3);
     expect(checkInvariants(room.game!)).toBeNull();
     await converged(room, players);
   });
@@ -305,7 +295,7 @@ describe('a hostile client over real sockets', () => {
     const closed = new Promise<number>((ok) => a.ws.once('close', (code) => ok(code)));
     for (let i = 0; i < 3000; i++) a.drag(ace, (i % 100) / 1000, 0);
     const t0 = Date.now();
-    await b.did(move(workTop(room.game!, b.seat, 0), slot(0)));
+    await b.did(move(workTop(room.game!, b.seat, 0), felt(0, 0)));
     expect(Date.now() - t0).toBeLessThan(1000);
     expect(await closed).toBe(CLOSE_FLOOD);
     await vi.waitFor(() => expect(b.game.players.map((p) => p.holding)).toEqual([null, null, null])); // the flooder's card went home
@@ -358,7 +348,7 @@ describe('a hostile client over real sockets', () => {
   });
 
   it('nothing is accepted, forwarded or shown before play opens: every intent, a position report and a reconnect, in dealing, ready and the count', async () => {
-    const { room, players } = await dealt(3, { centre: 'free' });
+    const { room, players } = await dealt(3);
     const [a, b, c] = players as [Client, Client, Client];
     const truth = room.game!;
     const faceUp = (p: Client) => p.game.players.flatMap((q) => [...q.nertz, ...q.work.flat(), ...q.stock, ...q.waste]).filter((x) => !isHidden(x)).length;
@@ -417,8 +407,8 @@ describe('a hostile client over real sockets', () => {
     expect(DEAL_MS).toBeGreaterThan(0);
   }, 20_000);
 
-  it.each(['spots', 'free'] as const)('clear-first on a %s table cannot be got round: no intent of any kind, no report, no reconnect; and nobody else is held up', async (centre) => {
-    const { room, players } = await playing(2, { centre }, [0], (g) => nearlyDone(g, 0, 3));
+  it('clear-first cannot be got round: no intent of any kind, no report, no reconnect; and nobody else is held up', async () => {
+    const { room, players } = await playing(2, [0], (g) => nearlyDone(g, 0, 3));
     const [a, b] = players as [Client, Client];
     const king = workTop(room.game!, a.seat, 3);
     const ace = workTop(room.game!, a.seat, 0);
@@ -494,8 +484,8 @@ describe('a hostile client over real sockets', () => {
     // Nertz called while they are away: no grace window for a card nobody holds.
     const a3 = await open(a.code, 'P0', a.token);
     expect(a3.game).toEqual(wire(viewFor(room.game!, a.seat)));
-    await a3.did(move(ace, slot(1)));
-    expect(room.game!.slots[1]!.map((c) => c.id)).toEqual([ace]);
+    await a3.did(move(ace, felt(0, 0)));
+    expect(room.game!.slots[0]!.map((c) => c.id)).toEqual([ace]);
     expect(checkInvariants(room.game!)).toBeNull();
     await converged(room, [a3, b]);
   });
@@ -542,14 +532,13 @@ describe('four bots and a swarm at one table', () => {
   }
   afterEach(() => void vi.useRealTimers());
 
-  it.each(['spots', 'free'] as const)('a %s table: every invariant holds after every single intent, bots and swarm alike, through whole rounds', (centre) => {
+  it('every invariant holds after every single intent, bots and swarm alike, through whole rounds', () => {
     vi.useFakeTimers();
-    const rnd = seeded(centre === 'free' ? 5 : 6);
+    const rnd = seeded(5);
     const room = new Room('SWRM', { rng: seeded(31), schedule: (flush) => void setTimeout(flush, 0) });
     const taps = [new Tap(), new Tap()];
     taps.forEach((t, i) => expect(room.join(t, `S${i}`, `swarm-tok-${i}`, true)).toBeNull());
     for (let i = 0; i < 4; i++) room.handle(taps[0]!, { t: 'addBot', level: 'fast' });
-    room.handle(taps[0]!, { t: 'settings', patch: { centre } });
     // Every intent, whoever sends it, goes through this one method: look at the table after each.
     const inner = (room as unknown as { intent: (...args: unknown[]) => void }).intent.bind(room);
     const problems: string[] = [];
@@ -568,7 +557,6 @@ describe('four bots and a swarm at one table', () => {
     for (let round = 0; round < 3; round++) {
       room.handle(taps[0]!, { t: 'start' });
       expect(room.game!.players).toHaveLength(6);
-      expect(room.game!.table).toBe(centre);
       vi.advanceTimersByTime(1); // (the first snapshot of the round)
       // The swarm does not wait for the cards, the dealer or the count: it fires all the way through the opening.
       for (const [stage, ms] of [['dealing', DEAL_MS], ['ready', 1], ['countdown', START_MS]] as const) {

@@ -91,11 +91,10 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
     return piles.find((to) => me.work[to.i]!.length > 0) ?? piles[0];
   };
   /**
-   * A place in the middle that takes the card. An Ace fits every empty slot:
-   * any of them. On a table without marked places it starts its pile anywhere
-   * there is room: of a handful of places it glances at all over the felt, the
-   * clear one nearest the middle; and if none of those is clear, wherever the
-   * engine says there is room.
+   * A place in the middle that takes the card: any of them, if several do. An
+   * Ace starts its pile anywhere there is room: of a handful of places it
+   * glances at all over the felt, the clear one nearest the middle; and if none
+   * of those is clear, wherever the engine says there is room.
    */
   const slotFor = (card: AnyCard): PileRef | undefined => {
     const slots = drops(card).filter((to) => to.k !== 'work');

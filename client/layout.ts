@@ -116,7 +116,7 @@ export interface Layout {
   opponents: Seat[];
   /** The middle of the table: where table space is on this screen. */
   felt: Felt;
-  /** One per centre slot, in slot order; null for a slot that has no place (an unused one on a 'free' table). */
+  /** One per centre slot, in slot order; null for a slot that has no place (an unused one). */
   slots: (SlotRect | null)[];
   /** Drop area of each slot: the slot plus a margin smaller than half the gap, so neighbours never touch. */
   slotHit: (Rect | null)[];
@@ -741,7 +741,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, empty };
 }
 
-// ---------------------------------------------------------------- an Ace in hand on a table without marked places
+// ---------------------------------------------------------------- an Ace in hand
 
 /**
  * What is drawn while an Ace that may start a pile anywhere is in hand. The

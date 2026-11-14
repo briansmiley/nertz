@@ -55,14 +55,18 @@ describe('the small-table deal', () => {
 
 describe('the settings message', () => {
   it('is parsed into a clean patch of known options', () => {
-    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots' } })).toEqual({ t: 'settings', patch: { centre: 'spots' } });
-    expect(parseClientMsg('{"t":"settings","patch":{"centre":"free","cheat":1},"x":2}')).toEqual({ t: 'settings', patch: { centre: 'free' } });
-    expect(parseSettings({ fewerDown: true })).toBeNull(); // once an option, now simply the rule
+    expect(parseClientMsg('{"t":"settings","patch":{"stockDeal":"drag","cheat":1},"x":2}')).toEqual({ t: 'settings', patch: { stockDeal: 'drag' } });
     expect(parseClientMsg({ t: 'settings', patch: { stockDeal: 'click' } })).toEqual({ t: 'settings', patch: { stockDeal: 'click' } });
     expect(parseSettings({ stockDeal: 'drag', fewerDown: false, x: 1 })).toEqual({ stockDeal: 'drag' });
-    expect(parseSettings({ centre: 'free', other: 1 })).toEqual({ centre: 'free' });
-    expect(parseClientMsg({ t: 'settings', patch: { centre: 'spots', stockDeal: 'drag' } })).toEqual({ t: 'settings', patch: { stockDeal: 'drag', centre: 'spots' } });
-    for (const centre of ['FREE', 'anywhere', true, 1, null, undefined]) expect(parseSettings({ centre })).toBeNull();
+    for (const stockDeal of ['DRAG', 'tap', true, 1, null, undefined]) expect(parseSettings({ stockDeal })).toBeNull();
+  });
+
+  it('drops options there are no longer, whatever an older client sends', () => {
+    expect(parseSettings({ fewerDown: true })).toBeNull(); // now simply the rule
+    for (const centre of ['spots', 'free']) {
+      expect(parseSettings({ centre })).toBeNull(); // every middle is the free one
+      expect(parseClientMsg({ t: 'settings', patch: { centre, stockDeal: 'drag' } })).toEqual({ t: 'settings', patch: { stockDeal: 'drag' } });
+    }
   });
 
   it('is dropped when malformed', () => {
@@ -73,39 +77,36 @@ describe('the settings message', () => {
       { t: 'settings', patch: 'centre' },
       { t: 'settings', patch: {} },
       { t: 'settings', patch: { unknown: true } },
-      { t: 'settings', patch: { centre: 1 } },
-      { t: 'settings', patch: { centre: 'true' } },
-      { t: 'settings', patch: { centre: null } },
       { t: 'settings', patch: { stockDeal: 'tap' } },
       { t: 'settings', patch: { stockDeal: true } },
       { t: 'settings', patch: { stockDeal: null } },
-      { t: 'settings', patch: { centre: 'free', stockDeal: 'CLICK' } },
-      { t: 'settings', centre: 'spots' },
+      { t: 'settings', patch: { centre: 'spots', stockDeal: 'CLICK' } },
+      { t: 'settings', stockDeal: 'drag' },
     ];
     for (const raw of bad) expect(parseClientMsg(raw), JSON.stringify(raw)).toBeNull();
   });
 });
 
 describe('table settings in a room', () => {
-  it('start out as the defaults (the stock dealt by clicking, piles wherever their Aces are put down) and are in every view', () => {
+  it('start out as the defaults (the stock dealt by clicking) and are in every view', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ stockDeal: 'click', centre: 'free' });
-    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', centre: 'free' });
+    expect(DEFAULT_SETTINGS).toEqual({ stockDeal: 'click' });
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click' });
   });
 
   it('only the host changes them, and everyone is told', () => {
     const { room, conns } = roomWith(3);
     const [host, guest, other] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(guest, { t: 'settings', patch: { centre: 'spots' } });
+    room.handle(guest, { t: 'settings', patch: { stockDeal: 'drag' } });
     room.flush();
-    expect(room.settings.centre).toBe('free');
-    expect(other.last!.settings.centre).toBe('free');
+    expect(room.settings.stockDeal).toBe('click');
+    expect(other.last!.settings.stockDeal).toBe('click');
 
-    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
+    room.handle(host, { t: 'settings', patch: { stockDeal: 'drag' } });
     room.flush();
-    expect(room.settings.centre).toBe('spots');
-    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'click', centre: 'spots' });
+    expect(room.settings.stockDeal).toBe('drag');
+    for (const c of conns) expect(c.last!.settings).toEqual({ stockDeal: 'drag' });
   });
 
   it('how the stock is dealt is for the host to choose, between rounds: the round on the table keeps the way it was dealt under', () => {
@@ -143,32 +144,15 @@ describe('table settings in a room', () => {
     const { room, conns } = roomWith(3);
     const [host, guest] = conns as [FakeConn, FakeConn, FakeConn];
     room.disconnect(host);
-    room.handle(guest, { t: 'settings', patch: { centre: 'spots' } });
-    expect(room.settings.centre).toBe('spots');
+    room.handle(guest, { t: 'settings', patch: { stockDeal: 'drag' } });
+    expect(room.settings.stockDeal).toBe('drag');
   });
 
-  it('apply to the next deal, not to the round on the table', () => {
+  it('deals a small table fewer face-down cards, by how many are dealt in', () => {
     const { room, conns } = roomWith(2);
-    const [host, guest] = conns as [FakeConn, FakeConn];
-    room.handle(host, { t: 'start' });
-    expect(room.game!.table).toBe('free');
+    room.handle(conns[0]!, { t: 'start' });
     expect(room.game!.players.map((p) => p.down)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]);
     expect(room.game!.players[0]!.stock).toHaveLength(35);
-
-    // Not while a round is on: the cards on the table were dealt under the old rule.
-    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
-    expect(room.settings.centre).toBe('free');
-
-    // End the round, then change it on the score sheet.
-    const game = room.game!;
-    room.game = openPlay(startCountdown(finishDeal({ ...game, players: game.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) })));
-    room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
-    expect(room.phase).toBe('results');
-    room.handle(guest, { t: 'settings', patch: { centre: 'spots' } }); // still not the guest's to change
-    expect(room.settings.centre).toBe('free');
-    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
-    room.handle(host, { t: 'start' });
-    expect(room.game!.table).toBe('spots');
     expect(checkInvariants(room.game!)).toBeNull();
 
     const four = roomWith(4);
