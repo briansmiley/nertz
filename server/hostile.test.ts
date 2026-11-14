@@ -78,10 +78,16 @@ class Client {
     const client = new Client(ws, token);
     client.send(room === null ? { t: 'create', name, token } : { t: 'join', room, name, token });
     await vi.waitFor(() => expect(client.states.length).toBeGreaterThan(0));
+    if (room !== null) await client.sit();
     return client;
   }
   send(msg: unknown): void {
     this.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+  /** Whoever comes to a table watches until they ask for a seat: asks, and waits until they have one or are in the queue for one. */
+  async sit(): Promise<void> {
+    this.send({ t: 'sit', on: true });
+    await vi.waitFor(() => expect(this.last.room.seat !== null || !!this.last.room.players.find((p) => p.id === this.last.room.me)?.queued).toBe(true));
   }
   intent(intent: unknown): number {
     this.send({ t: 'intent', seq: this.seq, intent });
@@ -109,7 +115,7 @@ class Client {
     return this.last.room.game!;
   }
   get seat(): number {
-    return this.last.room.you;
+    return this.last.room.seat ?? -1;
   }
   get code(): string {
     return this.last.room.code;
@@ -541,7 +547,7 @@ describe('four bots and a swarm at one table', () => {
     const rnd = seeded(centre === 'free' ? 5 : 6);
     const room = new Room('SWRM', { rng: seeded(31), schedule: (flush) => void setTimeout(flush, 0) });
     const taps = [new Tap(), new Tap()];
-    taps.forEach((t, i) => expect(room.join(t, `S${i}`, `swarm-tok-${i}`)).toBeNull());
+    taps.forEach((t, i) => expect(room.join(t, `S${i}`, `swarm-tok-${i}`, true)).toBeNull());
     for (let i = 0; i < 4; i++) room.handle(taps[0]!, { t: 'addBot', level: 'fast' });
     room.handle(taps[0]!, { t: 'settings', patch: { centre } });
     // Every intent, whoever sends it, goes through this one method: look at the table after each.

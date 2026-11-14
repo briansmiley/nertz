@@ -94,11 +94,11 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   if (!a || !b || !prev.online || !next.online || a.code !== b.code) return [];
   if (a.round !== b.round) {
     if (b.phase !== 'playing' || !b.game) return [];
-    const hand = b.game.players.find((p) => p.seat === b.you) ?? b.game.players[0];
+    const hand = b.game.players.find((p) => p.seat === b.seat) ?? b.game.players[0];
     return [{ k: 'deal', work: hand?.work.flat().length ?? 10 }];
   }
   if (!a.game || !b.game || a.phase !== 'playing') return []; // nothing moves on a table that was already scored
-  const you = b.you;
+  const you = b.seat;
   const who = (seat: number): Who => (seat === you ? 'me' : 'other');
   const cues = new Map<string, Cue>();
   const add = (cue: Cue, key = '') => cues.set(`${cue.k}:${'who' in cue ? cue.who : ''}:${key}`, cue);
@@ -166,4 +166,4 @@ export function beatenTo(game: GameState, seat: number, card: string, slot: numb
 }
 
 /** The grace countdown ticks only for someone who still has a card to put down. */
-export const graceTicking = (room: RoomView | null): boolean => room?.phase === 'playing' && !!room.game?.grace.includes(room.you);
+export const graceTicking = (room: RoomView | null): boolean => room?.phase === 'playing' && room.seat !== null && !!room.game?.grace.includes(room.seat);

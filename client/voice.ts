@@ -4,7 +4,7 @@
 // server only forwards them. Who is in voice comes from the server
 // ({ t: 'social' }, see social.ts), and `sync` makes the connections match it.
 //
-// Of two players the one in the lower seat always makes the offer, so two
+// Of two players the one with the lower id always makes the offer, so two
 // offers can never cross.
 import { useSyncExternalStore } from 'react';
 import type { VoiceMember } from '../shared/chat';
@@ -36,7 +36,7 @@ export interface VoiceState {
   error: string | null;
   /** Seats making sound right now (this one included). */
   speaking: readonly number[];
-  /** How the connection to each other seat in voice stands: being set up, up, or not to be had (no path between the two networks). */
+  /** How the connection to each other player in voice (by id) stands: being set up, up, or not to be had (no path between the two networks). */
   links: Readonly<Record<number, Link>>;
 }
 export type Link = 'connecting' | 'on' | 'failed';
@@ -51,9 +51,9 @@ interface Peer {
 type Signal = { sdp: RTCSessionDescriptionInit } | { ice: RTCIceCandidateInit };
 
 let state: VoiceState = { status: 'off', muted: false, error: null, speaking: [], links: {} };
-const link = (seat: number, to: Link | null): void => {
-  const { [seat]: was, ...rest } = state.links;
-  if (was !== (to ?? undefined)) set({ links: to ? { ...rest, [seat]: to } : rest });
+const link = (id: number, to: Link | null): void => {
+  const { [id]: was, ...rest } = state.links;
+  if (was !== (to ?? undefined)) set({ links: to ? { ...rest, [id]: to } : rest });
 };
 const listeners = new Set<() => void>();
 let mic: MediaStream | null = null;
@@ -73,7 +73,7 @@ function set(next: Partial<VoiceState>): void {
 
 /** Read afresh: it changes while a function is waiting. */
 const status = (): VoiceState['status'] => state.status;
-const mySeat = (): number | undefined => current().room?.you;
+const myId = (): number | undefined => current().room?.me;
 
 // ---------------------------------------------------------------- the microphone
 
@@ -102,8 +102,8 @@ export async function joinVoice(): Promise<void> {
   ctx = made;
   void ctx.resume();
   for (const t of mic.getAudioTracks()) t.enabled = !state.muted;
-  const seat = mySeat();
-  if (seat !== undefined) meter(seat, mic);
+  const id = myId();
+  if (id !== undefined) meter(id, mic);
   meterTimer = setInterval(measure, METER_MS);
   set({ status: 'on' });
   post({ t: 'voice', on: true, muted: state.muted });
@@ -134,73 +134,73 @@ export function setMuted(muted: boolean): void {
 
 /** The websocket dropped: the connections are closed, the microphone is kept, and `sync` rejoins when we are back. */
 export function hangUp(): void {
-  for (const seat of [...peers.keys()]) closePeer(seat);
+  for (const id of [...peers.keys()]) closePeer(id);
   partial.clear();
 }
 
 /** The server said who is in voice: connect to whoever is new, drop whoever has gone. */
 export function sync(members: readonly VoiceMember[]): void {
-  const me = mySeat();
+  const me = myId();
   if (state.status !== 'on' || me === undefined) return;
-  if (!members.some((m) => m.seat === me)) {
+  if (!members.some((m) => m.id === me)) {
     // The server does not have us (this is a new socket after a reconnect): start over and say so.
     hangUp();
     post({ t: 'voice', on: true, muted: state.muted });
     return;
   }
-  for (const seat of [...peers.keys()]) if (!members.some((m) => m.seat === seat)) closePeer(seat);
-  for (const { seat } of members) {
-    if (seat === me || peers.has(seat)) continue;
-    const peer = open(seat);
-    if (me < seat) void offer(seat, peer);
+  for (const id of [...peers.keys()]) if (!members.some((m) => m.id === id)) closePeer(id);
+  for (const { id } of members) {
+    if (id === me || peers.has(id)) continue;
+    const peer = open(id);
+    if (me < id) void offer(id, peer);
   }
 }
 
-function open(seat: number): Peer {
+function open(id: number): Peer {
   const pc = new RTCPeerConnection({ iceServers: [...ICE_SERVERS, ...extraIce] });
   const audio = new Audio();
   audio.autoplay = true;
   const peer: Peer = { pc, audio, queued: [] };
-  peers.set(seat, peer);
+  peers.set(id, peer);
   for (const t of mic?.getAudioTracks() ?? []) pc.addTrack(t, mic!);
   pc.onicecandidate = (e) => {
-    if (e.candidate) signal(seat, { ice: e.candidate.toJSON() });
+    if (e.candidate) signal(id, { ice: e.candidate.toJSON() });
   };
   pc.ontrack = (e) => {
     const stream = e.streams[0] ?? new MediaStream([e.track]);
     audio.srcObject = stream;
     // Normally allowed (we joined with a click and hold the microphone). If not, the next click anywhere starts it.
     audio.play().catch(() => document.addEventListener('pointerdown', () => void audio.play().catch(() => {}), { once: true }));
-    meter(seat, stream);
+    meter(id, stream);
   };
   pc.onconnectionstatechange = () => {
-    if (peers.get(seat) !== peer) return;
-    link(seat, pc.connectionState === 'connected' ? 'on' : pc.connectionState === 'failed' ? 'failed' : 'connecting');
+    if (peers.get(id) !== peer) return;
+    link(id, pc.connectionState === 'connected' ? 'on' : pc.connectionState === 'failed' ? 'failed' : 'connecting');
     // A path that died (a network change) is tried again by the side that offers.
-    const me = mySeat();
-    if (pc.connectionState === 'failed' && me !== undefined && me < seat) void offer(seat, peer, true);
+    const me = myId();
+    if (pc.connectionState === 'failed' && me !== undefined && me < id) void offer(id, peer, true);
   };
-  link(seat, 'connecting');
+  link(id, 'connecting');
   return peer;
 }
 
-function closePeer(seat: number): void {
-  const peer = peers.get(seat);
+function closePeer(id: number): void {
+  const peer = peers.get(id);
   if (!peer) return;
-  peers.delete(seat);
+  peers.delete(id);
   peer.pc.onicecandidate = peer.pc.ontrack = peer.pc.onconnectionstatechange = null;
   peer.pc.close();
   peer.audio.pause();
   peer.audio.srcObject = null;
-  link(seat, null);
-  meters.get(seat)?.source.disconnect();
-  meters.delete(seat);
+  link(id, null);
+  meters.get(id)?.source.disconnect();
+  meters.delete(id);
 }
 
-async function offer(seat: number, peer: Peer, iceRestart = false): Promise<void> {
+async function offer(id: number, peer: Peer, iceRestart = false): Promise<void> {
   try {
     await peer.pc.setLocalDescription(await peer.pc.createOffer({ iceRestart }));
-    if (peers.get(seat) === peer && peer.pc.localDescription) signal(seat, { sdp: peer.pc.localDescription.toJSON() });
+    if (peers.get(id) === peer && peer.pc.localDescription) signal(id, { sdp: peer.pc.localDescription.toJSON() });
   } catch {
     // the connection was closed meanwhile
   }
@@ -212,7 +212,7 @@ function signal(to: number, what: Signal): void {
   for (let i = 0; i < text.length; i += PIECE) post({ t: 'signal', to, data: (i + PIECE < text.length ? '+' : '.') + text.slice(i, i + PIECE) });
 }
 
-/** A piece of signalling from seat `from` (the server vouches for the seat). */
+/** A piece of signalling from id `from` (the server vouches for the id). */
 export async function onSignal(from: number, data: string): Promise<void> {
   const text = (partial.get(from) ?? '') + data.slice(1);
   if (data[0] === '+') return void partial.set(from, text.length > 64_000 ? '' : text);
@@ -240,24 +240,24 @@ export async function onSignal(from: number, data: string): Promise<void> {
 
 // ---------------------------------------------------------------- who is speaking
 
-function meter(seat: number, stream: MediaStream): void {
+function meter(id: number, stream: MediaStream): void {
   if (!ctx) return;
-  meters.get(seat)?.source.disconnect();
+  meters.get(id)?.source.disconnect();
   const node = ctx.createAnalyser();
   node.fftSize = 512;
   const source = ctx.createMediaStreamSource(stream);
   source.connect(node); // not to the speakers: the audio elements do the playing
-  meters.set(seat, { node, source });
+  meters.set(id, { node, source });
 }
 
 function measure(): void {
   const speaking: number[] = [];
   const samples = new Float32Array(512);
-  for (const [seat, { node }] of meters) {
+  for (const [id, { node }] of meters) {
     node.getFloatTimeDomainData(samples);
     let sum = 0;
     for (const s of samples) sum += s * s;
-    if (Math.sqrt(sum / samples.length) > SPEAKING_LEVEL) speaking.push(seat);
+    if (Math.sqrt(sum / samples.length) > SPEAKING_LEVEL) speaking.push(id);
   }
   speaking.sort((a, b) => a - b);
   if (speaking.join() !== state.speaking.join()) set({ speaking });

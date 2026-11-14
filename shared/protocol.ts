@@ -1,8 +1,8 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
-import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg } from './chat';
+import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isPlayerId } from './chat';
 import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
-import type { BotLevel, Intent, PileRef, RoomView } from './types';
+import type { BotLevel, Intent, PileRef, PlayerView, RoomView } from './types';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
@@ -144,9 +144,9 @@ export function backGroups(): { name: string; backs: Back[] }[] {
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
 
 export type ClientMsg =
-  /** Open a new table; the server picks the code and answers with the first snapshot (`room.code`). */
+  /** Open a new table, and sit down at it; the server picks the code and answers with the first snapshot (`room.code`). */
   | { t: 'create'; name: string; token: string }
-  /** Sit down at (or reconnect to) an existing table. An unknown code is an error. */
+  /** Come into (or reconnect to) an existing table: to watch, until you ask for a seat (`sit`). An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
   /** Dealer only, once the cards are dealt and the table is waiting (`game.stage` is `ready`): count "1, 2, 3, Nertz!" and open play. */
@@ -172,10 +172,12 @@ export type ClientMsg =
   | { t: 'removeBot'; seat: number }
   /** I let a card go over the pile at `slot` and it was too late: someone else's very same card had just been put there. (Counted, if the table agrees.) */
   | { t: 'sniped'; slot: number }
-  /** Stand up from the table to watch (on), or ask for a seat again (off): yourself, or as whoever deals the person in `seat`. Not from a round you are being dealt cards in. */
-  | { t: 'stand'; on: boolean; seat?: number }
-  /** Whoever deals: send the person in `seat` away from the table. */
-  | { t: 'kick'; seat: number }
+  /** Ask for a seat (on: it is yours at once if one is free and no round is being played, and otherwise when your turn in the queue comes), or give up your seat or your place in the queue and just watch (off): yourself, or as whoever deals the person `id`. Not out of a round you hold cards in. */
+  | { t: 'sit'; on: boolean; id?: number }
+  /** Whoever deals: hand the table on to the person `id` (someone at it), who hosts it from then on. */
+  | { t: 'host'; id: number }
+  /** Whoever deals: send the person `id` away from the table. */
+  | { t: 'kick'; id: number }
   /** Whoever deals: what the bot in `seat` is called. */
   | { t: 'botName'; seat: number; name: string }
   /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table (`lot`; null: no lot, the back it has). */
@@ -232,8 +234,11 @@ export const DRAG_BURST = 12;
 export const MAX_MESSAGE_BYTES = 2048;
 export const MAX_NAME_LENGTH = 20;
 export const MIN_PLAYERS = 2;
-/** Beyond the seats, this many more may come in and watch (and wait for a seat). Their place in the queue is a seat number from MAX_PLAYERS up. */
+/** Beyond the seats, this many more may be in the room to watch (and wait for a seat). */
 export const MAX_WATCHERS = 20;
+/** Someone with a seat at the table (not: waiting for one, or just watching). */
+export type SeatedView = PlayerView & { seat: number };
+export const hasSeat = (p: PlayerView): p is SeatedView => p.seat !== null;
 export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
@@ -380,8 +385,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'redeal' };
     case 'ready':
       return typeof v.on === 'boolean' ? { t: 'ready', on: v.on } : null;
-    case 'stand':
-      return typeof v.on === 'boolean' && (v.seat === undefined || isIndex(v.seat, MAX_PLAYERS + MAX_WATCHERS)) ? { t: 'stand', on: v.on, ...(v.seat === undefined ? {} : { seat: v.seat as number }) } : null;
+    case 'sit':
+      return typeof v.on === 'boolean' && (v.id === undefined || isPlayerId(v.id)) ? { t: 'sit', on: v.on, ...(v.id === undefined ? {} : { id: v.id }) } : null;
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':
@@ -394,8 +399,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
     case 'sniped':
       return isIndex(v.slot, MAX_SLOTS) ? { t: 'sniped', slot: v.slot } : null;
+    case 'host':
+      return isPlayerId(v.id) ? { t: 'host', id: v.id } : null;
     case 'kick':
-      return isIndex(v.seat, MAX_PLAYERS + MAX_WATCHERS) ? { t: 'kick', seat: v.seat } : null; // (someone watching can be sent away too)
+      return isPlayerId(v.id) ? { t: 'kick', id: v.id } : null;
     case 'botName': {
       const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
       return isIndex(v.seat, MAX_PLAYERS) && name ? { t: 'botName', seat: v.seat, name } : null;

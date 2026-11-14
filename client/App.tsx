@@ -1,14 +1,14 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
-import type { BotLevel, RoomView } from '../shared/types';
+import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
+import type { BotLevel, PlayerView, RoomView } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBacks } from './BackPicker';
 import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
-import { addBot, botBack, create, join, kick, leave, nameBot, removeBot, resetTable, sit, stand, start, useNet } from './net';
+import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
@@ -77,9 +77,25 @@ export function App() {
       </>
     );
   }
-  const me = room.players.find((p) => p.seat === room.you);
+  const me = room.players.find((p) => p.id === room.me);
+  // Without a seat: watching, whatever the table is doing: by choice, until they ask for one; or having asked, until there is one (the table is full, or a round is on). With one, but come in the middle of a round: watching until the next.
   const nextRound = 'Spectating - You can join next round';
-  const spectating = me?.standing ? 'You are Spectating' : me?.watching ? (room.players.filter((p) => !p.watching).length >= MAX_PLAYERS ? (room.players.find((p) => p.watching && !p.standing && p.connected) === me ? 'Spectating - the table is full. You get the first seat that frees up' : 'Spectating - the table is full. You are in the queue for a seat') : nextRound) : room.phase === 'playing' && !room.game?.players.some((p) => p.seat === room.you) ? nextRound : null;
+  const free = MAX_PLAYERS - room.players.filter(hasSeat).length;
+  /** How many are before you in the queue for a seat (the list is in the order they will be seated). */
+  const ahead = room.players.filter((p) => p.queued && p.connected).findIndex((p) => p.id === room.me);
+  const spectating = !me
+    ? null
+    : hasSeat(me)
+      ? room.phase === 'playing' && !room.game?.players.some((p) => p.seat === me.seat)
+        ? nextRound
+        : null
+      : !me.queued
+        ? 'You are Spectating'
+        : ahead < free
+          ? nextRound
+          : ahead === free
+            ? 'Spectating - the table is full. You get the first seat that frees up'
+            : 'Spectating - the table is full. You are in the queue for a seat';
   return (
     <>
       <Corner room={room} />
@@ -89,15 +105,24 @@ export function App() {
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (
-        // Without a seat: watching, whatever the table is doing (by choice; or the table is full; or a round is on). With one, but come in the middle of a round: watching until the next.
-        spectating && <p className="banner low">{spectating}</p>
+        spectating && (
+          <p className="banner low">
+            {spectating}
+            {/* A seat is had only by asking for it; and whoever asked can think again. */}
+            {me && !hasSeat(me) && (
+              <button type="button" onClick={() => takeSeat(!me.queued)}>
+                {me.queued ? 'Just watch' : free > 0 ? 'Take a seat' : 'Join the queue'}
+              </button>
+            )}
+          </p>
+        )
       )}
     </>
   );
 }
 
 /** The server deals only to players who are connected, and needs two of them. */
-const enoughToDeal = (room: RoomView): boolean => room.players.filter((p) => p.connected && !p.watching).length >= MIN_PLAYERS;
+const enoughToDeal = (room: RoomView): boolean => room.players.filter((p) => p.connected && hasSeat(p)).length >= MIN_PLAYERS;
 
 function Pad({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return <section className={`pad${wide ? ' wide' : ''}`}>{children}</section>;
@@ -122,7 +147,7 @@ function Mini({ seat, suit, rank, style, back }: { seat?: number; suit?: 'S' | '
 /** For whoever deals, between rounds: a robot button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const full = room.players.filter((p) => !p.watching).length >= MAX_PLAYERS;
+  const full = room.players.filter(hasSeat).length >= MAX_PLAYERS;
   return (
     <Pop icon={<Robot />} label="Add a bot">
       <h3>Add a bot</h3>
@@ -148,9 +173,9 @@ function AddBot({ room }: { room: RoomView }) {
 
 /** A small × beside a bot's name, for whoever deals. */
 /** For whoever deals: send a bot away, or (`person`) a person: they are put out of the table, as if they had left. */
-function Unseat({ name, seat, person }: { name: string; seat: number; person?: boolean }) {
+function Unseat({ who }: { who: PlayerView }) {
   return (
-    <button type="button" className="unseat" aria-label={`Remove ${name}`} title={person ? `Remove ${name} from the table` : `Remove ${name}`} onClick={() => (person ? kick(seat) : removeBot(seat))}>
+    <button type="button" className="unseat" aria-label={`Remove ${who.name}`} title={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>
       ×
     </button>
   );
@@ -214,40 +239,100 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
   );
 }
 
-/** Up from the table to watch: your own row, or (whoever deals) someone else's. An eye; the × beside it sends away altogether. */
-function StandUp({ name, seat, mine }: { name: string; seat: number; mine: boolean }) {
-  const says = mine ? 'Stand up: watch without playing' : `Stand ${name} up: they watch without playing`;
+/**
+ * Up from the table to watch: your own row, or (whoever deals) someone else's. An eye; the × beside it sends away
+ * altogether. Whoever hosts the table is asked first whether to hand it on, and to whom: some go on dealing from the side.
+ */
+function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
+  const mine = who.id === room.me;
+  const says = mine ? 'Stand up: watch without playing' : `Stand ${who.name} up: they watch without playing`;
+  const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];
+  const [step, setStep] = useState<'ask' | 'pick' | null>(null);
+  const root = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!step) return;
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setStep(null);
+    };
+    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setStep(null);
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [step]);
+  const up = () => (takeSeat(false, mine ? undefined : who.id), setStep(null));
   return (
-    <button type="button" className="standup" aria-label={says} title={says} onClick={() => stand(true, mine ? undefined : seat)}>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
-        <circle cx="12" cy="12" r="2.8" />
-      </svg>
-    </button>
+    <span className="pop-at" ref={root}>
+      <button type="button" className="standup" aria-label={says} title={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
+          <circle cx="12" cy="12" r="2.8" />
+        </svg>
+      </button>
+      {step && (
+        <div className="pop handon" role="dialog" aria-label="Transfer host role">
+          {step === 'ask' ? (
+            <>
+              <h3>You're the room host. Transfer host role?</h3>
+              <div>
+                <button type="button" className="plain" onClick={() => setStep('pick')}>
+                  Yes
+                </button>
+                <button type="button" className="plain" onClick={up}>
+                  No
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>New host</h3>
+              <div>
+                {heirs.map((p) => (
+                  <button key={p.id} type="button" className="plain" onClick={() => (passHost(p.id), up())}>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </span>
   );
 }
 
-/** Those without a seat (the table is full): who is watching, in the order they will be seated. Whoever deals can send one away. */
+/** Those without a seat: who has asked for one (in the order they will be seated), and who is just watching. A seat is had by asking: oneself, or whoever deals for someone; whoever deals can also send one away. */
 function Watching({ room }: { room: RoomView }) {
-  const them = room.players.filter((p) => p.watching);
-  const host = room.players.find((p) => p.seat === room.you)?.isHost;
-  if (!them.length) return null;
+  const host = room.players.find((p) => p.id === room.me)?.isHost;
+  const list = (label: string, them: PlayerView[]) =>
+    them.length > 0 && (
+      <p className="watching">
+        <small>{label}</small>
+        {them.map((p) => (
+          <span key={p.id} className={p.id === room.me ? 'you' : ''}>
+            {p.name}
+            {!p.queued && (p.id === room.me || host) && (
+              <button type="button" className="sit" onClick={() => takeSeat(true, p.id === room.me ? undefined : p.id)}>
+                {p.id === room.me ? 'Take a seat' : 'Seat'}
+              </button>
+            )}
+            {p.queued && p.id === room.me && (
+              <button type="button" className="sit" onClick={() => takeSeat(false)}>
+                Just watch
+              </button>
+            )}
+            {host && p.id !== room.me && <Unseat who={p} />}
+          </span>
+        ))}
+      </p>
+    );
   return (
-    <p className="watching">
-      <small>Watching</small>
-      {them.map((p) => (
-        <span key={p.seat} className={p.seat === room.you ? 'you' : ''}>
-          {p.name}
-          {/* Someone who stood up by choice gets no seat until they (or whoever deals) say so. */}
-          {p.standing && (p.seat === room.you || host) && (
-            <button type="button" className="sit" onClick={() => stand(false, p.seat === room.you ? undefined : p.seat)}>
-              {p.seat === room.you ? 'Sit down' : 'Seat'}
-            </button>
-          )}
-          {host && p.seat !== room.you && <Unseat name={p.name} seat={p.seat} person />}
-        </span>
-      ))}
-    </p>
+    <>
+      {list('Waiting for a seat', room.players.filter((p) => p.seat === null && p.queued))}
+      {list('Watching', room.players.filter((p) => p.seat === null && !p.queued))}
+    </>
   );
 }
 
@@ -345,13 +430,13 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
 function Lobby({ room }: { room: RoomView }) {
   const [copied, setCopied] = useState(false);
   const link = `${location.origin}/?room=${room.code}`;
-  const me = room.players.find((p) => p.seat === room.you);
+  const me = room.players.find((p) => p.id === room.me);
   const prefs = usePrefs();
   /** My backs at this table: chosen here, or my usual ones. */
   const chosen = choiceAt(room.code, prefs);
   /** Whose backs are being chosen (the seat), if the sheet of backs is open: your own, or a bot's. */
   const [picking, setPicking] = useState<number | null>(null);
-  const picked = room.players.find((p) => p.seat === picking && (p.seat === room.you || (me?.isHost && p.bot)));
+  const picked = room.players.filter(hasSeat).find((p) => p.seat === picking && (p.id === room.me || (me?.isHost && p.bot)));
   const host = room.players.find((p) => p.isHost);
   const ready = enoughToDeal(room);
 
@@ -398,20 +483,20 @@ function Lobby({ room }: { room: RoomView }) {
         </div>
         <ul className="seats">
           {room.players
-            .filter((p) => !p.watching)
+            .filter(hasSeat)
             .map((p) => (
-            <li key={p.seat} className={`${p.connected ? '' : 'away'}${p.seat === room.you ? ' you' : ''}`}>
+            <li key={p.id} className={`${p.connected ? '' : 'away'}${p.id === room.me ? ' you' : ''}`}>
               {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
-              {p.seat === room.you || (me?.isHost && p.bot) ? (
-                <button type="button" className="swatch" aria-label={p.seat === room.you ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.seat === room.you ? (chosen.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs at this table') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
-                  <Mini seat={p.seat} back={p.seat === room.you ? (chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)) : p.back} />
+              {p.id === room.me || (me?.isHost && p.bot) ? (
+                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (chosen.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs at this table') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
+                  <Mini seat={p.seat} back={p.id === room.me ? (chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)) : p.back} />
                 </button>
               ) : (
                 <Mini seat={p.seat} back={p.back} />
               )}
               <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
               <span className="note">
-                {[p.seat === room.you && 'you', !p.connected && 'away'].filter(Boolean).join(', ')}
+                {[p.id === room.me && 'you', !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
                 {p.bot && (
                   <span className="botnote" title={`${p.bot} bot`} aria-label={`${p.bot} bot`}>
@@ -420,14 +505,14 @@ function Lobby({ room }: { room: RoomView }) {
                   </span>
                 )}
               </span>
-              {!p.bot && (p.seat === room.you || me?.isHost) && <StandUp name={p.name} seat={p.seat} mine={p.seat === room.you} />}
-              {me?.isHost && p.seat !== room.you && <Unseat name={p.name} seat={p.seat} person={!p.bot} />}
+              {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
+              {me?.isHost && p.id !== room.me && <Unseat who={p} />}
             </li>
             ))}
         </ul>
         <Watching room={room} />
         {picked &&
-          (picked.seat === room.you ? (
+          (picked.id === room.me ? (
             <BackPicker
               faces
               title="Deck style"
@@ -453,7 +538,7 @@ function Lobby({ room }: { room: RoomView }) {
             />
           ))}
         {/* Your backs at this table: the card, and a button to change it. */}
-        {me && !me.watching && (
+        {me && hasSeat(me) && (
           <div className="yourback">
             {/* One button: the card in a yellow frame, deeper at the bottom, where it says what pressing it does. */}
             <button type="button" className="frame" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
@@ -465,6 +550,12 @@ function Lobby({ room }: { room: RoomView }) {
           </div>
         )}
         <TableRules room={room} />
+        {/* Whoever has just come in is watching: a seat is theirs for the asking. */}
+        {me && !hasSeat(me) && !me.queued && (
+          <button className="go" onClick={() => takeSeat(true)}>
+            {room.players.filter(hasSeat).length < MAX_PLAYERS ? 'Take a seat' : 'Join the queue for a seat'}
+          </button>
+        )}
         {me?.isHost ? (
           <button className="go" disabled={!ready} onClick={start}>
             {ready ? 'Deal the first round' : 'Waiting for a second player'}
@@ -537,18 +628,18 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
 
 function Results({ room }: { room: RoomView }) {
   const round = room.lastRound;
-  const me = room.players.find((p) => p.seat === room.you);
+  const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
   const caller = rows.find((s) => s.seat === round?.calledBy);
   const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
-  /** Is this line of the round the line of whoever has its seat now? (Not once they stood up, left or were sent away: the seat may be someone else's.) */
-  const theirs = (s: { gone?: boolean; vacant?: boolean }) => !s.gone && !s.vacant;
+  /** Whose line of the round this is, if they are still in the room: a line goes by who played it, not by who has its seat now. */
+  const of = (s: { id: number }) => room.players.find((p) => p.id === s.id);
   const who = (seat: number) => {
     const line = round?.scores.find((s) => s.seat === seat);
-    return seat === room.you && (!line || theirs(line)) ? 'You' : (line?.name ?? room.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat + 1}`);
+    return line?.id === room.me ? 'You' : (line?.name ?? `Seat ${seat + 1}`);
   };
   const tally = new Map<number, number>();
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
@@ -578,19 +669,21 @@ function Results({ room }: { room: RoomView }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((s) => (
-              <tr key={s.seat} className={s.seat === room.you && theirs(s) ? 'you' : ''}>
+            {rows.map((s) => {
+              const p = of(s);
+              return (
+              <tr key={s.seat} className={s.id === room.me ? 'you' : ''}>
                 <th scope="row">
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
-                  <span className="nm">{me?.isHost && theirs(s) && room.players.some((p) => p.seat === s.seat && p.bot) ? <BotName name={room.players.find((p) => p.seat === s.seat)!.name} seat={s.seat} /> : s.name}</span>
+                  <span className="nm">{me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}</span>
                   {s.seat === round?.calledBy && (
-                    <span className="called" title={`${s.seat === room.you && theirs(s) ? 'You' : s.name} called Nertz`}>
+                    <span className="called" title={`${s.id === room.me ? 'You' : s.name} called Nertz`}>
                       Nertz!
                     </span>
                   )}
-                  {theirs(s) && room.players.some((p) => p.seat === s.seat && !p.bot) && (s.seat === room.you || me?.isHost) && <StandUp name={s.name} seat={s.seat} mine={s.seat === room.you} />}
-                  {theirs(s) && me?.isHost && s.seat !== room.you && room.players.some((p) => p.seat === s.seat) && <Unseat name={s.name} seat={s.seat} person={!room.players.some((p) => p.seat === s.seat && p.bot)} />}
+                  {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
+                  {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
                 </th>
                 <td>{signed(s.played)}</td>
@@ -607,17 +700,19 @@ function Results({ room }: { room: RoomView }) {
                 <td className="round">{signed(s.delta)}</td>
                 {total(s.total, s.rounds)}
               </tr>
-            ))}
+              );
+            })}
             {/* Whoever sat down since the round (a bot just added, someone who has just joined) has no line of it: they are shown under it, as coming in at the next deal. */}
             {room.players
-              .filter((p) => !p.watching && !rows.some((s) => s.seat === p.seat && theirs(s)))
+              .filter(hasSeat)
+              .filter((p) => !rows.some((s) => s.id === p.id))
               .map((p) => (
-                <tr key={`new${p.seat}`} className={`joining${p.seat === room.you ? ' you' : ''}`}>
+                <tr key={`new${p.id}`} className={`joining${p.id === room.me ? ' you' : ''}`}>
                   <th scope="row">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
                     {p.name}
-                    {!p.bot && (p.seat === room.you || me?.isHost) && <StandUp name={p.name} seat={p.seat} mine={p.seat === room.you} />}
-                    {me?.isHost && p.seat !== room.you && <Unseat name={p.name} seat={p.seat} person={!p.bot} />}
+                    {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
+                    {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </th>
                   <td colSpan={3} className="note">
                     In next round

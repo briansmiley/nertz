@@ -33,7 +33,7 @@ function roomWith(n: number, code = 'TEST'): { room: Room; conns: FakeConn[] } {
   const room = new Room(code, { schedule: () => {} });
   const conns = Array.from({ length: n }, (_, i) => {
     const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`)).toBeNull();
+    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
     return conn;
   });
   return { room, conns };
@@ -89,8 +89,8 @@ describe('text chat', () => {
     send(room, a, { t: 'chat', text: 'hi' });
     for (const conn of [a, b, c]) {
       expect(conn.lines.map(({ at: _, ...l }) => l)).toEqual([
-        { id: 1, seat: 1, name: 'P1', text: 'hello' },
-        { id: 2, seat: 0, name: 'P0', text: 'hi' },
+        { id: 1, who: 1, name: 'P1', text: 'hello' },
+        { id: 2, who: 0, name: 'P0', text: 'hi' },
       ]);
     }
     expect(other.conns[0]!.lines).toEqual([]);
@@ -115,7 +115,7 @@ describe('text chat', () => {
     expect(b.lines.map((l) => l.text)).toEqual([...Array.from({ length: CHAT_RATE_COUNT }, (_, i) => `a${i}`), 'b is not held back by a']);
     // A reconnect does not reset it: the limit is per player.
     const a2 = new FakeConn();
-    room.join(a2, 'P0', 'tok-0000');
+    room.join(a2, 'P0', 'tok-0000', true);
     send(room, a2, { t: 'chat', text: 'still too fast' });
     expect(b.lines.at(-1)!.text).toBe('b is not held back by a');
     vi.advanceTimersByTime(CHAT_RATE_MS);
@@ -135,7 +135,7 @@ describe('text chat', () => {
     const kept = Array.from({ length: CHAT_HISTORY }, (_, i) => `m${i + 10}`);
 
     const c = new FakeConn(); // a newcomer
-    room.join(c, 'P2', 'tok-0002');
+    room.join(c, 'P2', 'tok-0002', true);
     expect(c.of('chat')).toHaveLength(1);
     expect(c.of('chat')[0]!.history).toBe(true);
     expect(c.lines.map((l) => l.text)).toEqual(kept);
@@ -143,7 +143,7 @@ describe('text chat', () => {
 
     room.disconnect(b); // a reconnect
     const b2 = new FakeConn();
-    room.join(b2, 'P1', 'tok-0001');
+    room.join(b2, 'P1', 'tok-0001', true);
     expect(b2.of('chat')).toEqual(c.of('chat'));
     room.flush();
     send(room, a, { t: 'chat', text: 'after' });
@@ -199,7 +199,7 @@ describe('the host switches', () => {
     expect(a.lines.map((l) => l.text)).toEqual(['before']);
 
     const c = new FakeConn();
-    room.join(c, 'P2', 'tok-0002');
+    room.join(c, 'P2', 'tok-0002', true);
     expect(c.lines.map((l) => l.text)).toEqual(['before']);
     expect(c.social).toMatchObject({ text: false });
 
@@ -217,10 +217,10 @@ describe('voice', () => {
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     join(room, b);
     send(room, c, { t: 'voice', on: true, muted: true });
-    for (const conn of [a, b, c]) expect(conn.social.inVoice).toEqual([{ seat: 1, muted: false }, { seat: 2, muted: true }]); // prettier-ignore
+    for (const conn of [a, b, c]) expect(conn.social.inVoice).toEqual([{ id: 1, muted: false }, { id: 2, muted: true }]); // prettier-ignore
     send(room, c, { t: 'voice', on: true, muted: false });
     send(room, b, { t: 'voice', on: false, muted: false });
-    expect(a.social.inVoice).toEqual([{ seat: 2, muted: false }]);
+    expect(a.social.inVoice).toEqual([{ id: 2, muted: false }]);
   });
 
   it('forwards signalling only inside the table, between players in voice, with the sender seat stamped by the server', () => {
@@ -279,19 +279,19 @@ describe('voice', () => {
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     join(room, a, b, c);
     room.disconnect(b);
-    expect(a.social.inVoice.map((m) => m.seat)).toEqual([0, 2]);
+    expect(a.social.inVoice.map((m) => m.id)).toEqual([0, 2]);
     send(room, a, { t: 'signal', to: 1, data: '.x' }); // b is seated but away
     expect(b.of('signal')).toEqual([]);
 
     const c2 = new FakeConn(); // same token, second socket: it starts outside voice
-    room.join(c2, 'P2', 'tok-0002');
+    room.join(c2, 'P2', 'tok-0002', true);
     expect(c.closed).toBe(true);
-    expect(a.social.inVoice.map((m) => m.seat)).toEqual([0]);
-    expect(c2.social.inVoice.map((m) => m.seat)).toEqual([0]);
+    expect(a.social.inVoice.map((m) => m.id)).toEqual([0]);
+    expect(c2.social.inVoice.map((m) => m.id)).toEqual([0]);
     join(room, c2);
-    expect(a.social.inVoice.map((m) => m.seat)).toEqual([0, 2]);
+    expect(a.social.inVoice.map((m) => m.id)).toEqual([0, 2]);
 
     send(room, c2, { t: 'leave' });
-    expect(a.social.inVoice.map((m) => m.seat)).toEqual([0]);
+    expect(a.social.inVoice.map((m) => m.id)).toEqual([0]);
   });
 });

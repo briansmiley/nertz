@@ -31,7 +31,7 @@ export function nag(): void {
 /** Is the player we are rendering held up by a finished pile of their own right now? */
 function blocked(): boolean {
   const room = current().room;
-  return !!room?.game && room.phase === 'playing' && room.game.stage === 'play' && mustClear(room.game, room.you);
+  return !!room?.game && room.phase === 'playing' && room.game.stage === 'play' && room.seat !== null && mustClear(room.game, room.seat);
 }
 
 /** `send` from net.ts, which refuses whatever the engine refuses; if the reason is clear-first, the player is told. */

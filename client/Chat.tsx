@@ -3,35 +3,34 @@
 // voice, and once in it opens a small slip (who is there, mute yourself, leave).
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
-import { MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { keyName, touchOnly, usePrefs } from './prefs';
-import { kick, stand } from './net';
+import { kick, takeSeat } from './net';
 import { PASSING_MS, say, setOpen, useSocial, type SocialState } from './social';
 import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
 
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
 
-/** The colour a name is written in: its seat's. Someone watching has no seat and no colour (their number is past the table's): the colour of the words. */
-const nameColour = (seat: number): string | undefined => (seat < MAX_PLAYERS ? backColour(seat) : undefined);
+/** The colour a name is written in: that of the seat its player has now. Someone watching (or gone) has no seat and no colour: the colour of the words. */
+type Colour = (who: number) => string | undefined;
 
 /** One line: a name in its colour and what was said; or the table's notice that someone beat someone to a pile. */
-function Line({ line }: { line: ChatLine }) {
+function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
   return line.sniped ? (
     <em className="notice">
-      <b style={{ color: nameColour(line.seat) }}>{line.name}</b> sniped <b style={{ color: nameColour(line.sniped.seat) }}>{line.sniped.name}</b>
+      <b style={{ color: colour(line.who) }}>{line.name}</b> sniped <b style={{ color: colour(line.sniped.who) }}>{line.sniped.name}</b>
     </em>
   ) : (
     <>
-      <b style={{ color: nameColour(line.seat) }}>{line.name}</b> {line.text}
+      <b style={{ color: colour(line.who) }}>{line.name}</b> {line.text}
     </>
   );
 }
 
 /** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while, and never in the way of the pointer. */
-function Passing({ lines }: { lines: SocialState['passing'] }) {
+function Passing({ lines, colour }: { lines: SocialState['passing']; colour: Colour }) {
   const [, tick] = useState(0);
   const now = Date.now();
   const shown = lines.filter((p) => now - p.at < PASSING_MS);
@@ -46,7 +45,7 @@ function Passing({ lines }: { lines: SocialState['passing'] }) {
     <ol className="passing" aria-live="polite">
       {shown.map(({ line }) => (
         <li key={line.id}>
-          <Line line={line} />
+          <Line line={line} colour={colour} />
         </li>
       ))}
     </ol>
@@ -62,15 +61,19 @@ export function Chat({ room }: { room: RoomView }) {
   const [voiceOpen, setVoiceOpen] = useState(false);
   /** The slip that says who is watching. */
   const [eyeOpen, setEyeOpen] = useState(false);
-  const hosting = !!room.players.find((p) => p.seat === room.you)?.isHost;
+  const hosting = !!room.players.find((p) => p.id === room.me)?.isHost;
   const root = useRef<HTMLElement>(null);
-  const name = (seat: number) => room.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat + 1}`;
+  const name = (who: number) => room.players.find((p) => p.id === who)?.name ?? 'Someone';
+  const colour: Colour = (who) => {
+    const seat = room.players.find((p) => p.id === who)?.seat;
+    return seat == null ? undefined : backColour(seat);
+  };
   // With a card in hand everything here lets the pointer through, so it can never take a drop or a click meant for the table.
-  const holding = room.phase === 'playing' && !!room.game?.players.find((p) => p.seat === room.you)?.holding;
+  const holding = room.phase === 'playing' && !!room.game?.players.find((p) => p.seat === room.seat)?.holding;
   const inVoice = voice.status === 'on';
-  /** Those watching a full table, and whether you are one: the host may keep them out of the chat, or of voice. */
-  const watchers = room.players.filter((p) => p.watching);
-  const watching = watchers.some((p) => p.seat === room.you);
+  /** Those without a seat (waiting for one, or just watching), and whether you are one: the host may keep them out of the chat, or of voice. */
+  const watchers = room.players.filter((p) => p.seat === null);
+  const watching = room.seat === null;
   const mayText = social.text && (!watching || social.watchText !== false);
   const mayVoice = social.voice && (!watching || social.watchVoice !== false);
   const typing = social.open && mayText;
@@ -165,7 +168,7 @@ export function Chat({ room }: { room: RoomView }) {
             className={`mic join${social.inVoice.length ? ' calling' : ''}`}
             disabled={voice.status === 'asking'}
             aria-label={social.inVoice.length ? `Join voice: ${social.inVoice.length} in it` : 'Join voice'}
-            title={social.inVoice.length ? `Join voice: ${social.inVoice.map((m) => name(m.seat)).join(', ')}` : 'Join voice'}
+            title={social.inVoice.length ? `Join voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}` : 'Join voice'}
             onClick={() => void joinVoice()}
           >
             {headset}
@@ -176,10 +179,10 @@ export function Chat({ room }: { room: RoomView }) {
         {inVoice && (
           <button
             type="button"
-            className={`mic${voice.speaking.includes(room.you) && !voice.muted ? ' speaking' : ''}${voiceOpen ? ' open' : ''}`}
+            className={`mic${voice.speaking.includes(room.me) && !voice.muted ? ' speaking' : ''}${voiceOpen ? ' open' : ''}`}
             aria-expanded={voiceOpen}
             aria-label={`In voice: ${social.inVoice.length}. Who is there, mute yourself, leave`}
-            title={`In voice: ${social.inVoice.map((m) => name(m.seat)).join(', ')}`}
+            title={`In voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}`}
             onClick={() => (setVoiceOpen(!voiceOpen), setOpen(false), setEyeOpen(false))}
           >
             {headset}
@@ -187,7 +190,7 @@ export function Chat({ room }: { room: RoomView }) {
           </button>
         )}
         {mute}
-        {/* Who is watching (no seat: the table is full): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
+        {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
         {watchers.length > 0 && (
           <button type="button" className={`mic eye${eyeOpen ? ' open' : ''}`} aria-expanded={eyeOpen} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => (setEyeOpen(!eyeOpen), setVoiceOpen(false), setOpen(false))}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -207,16 +210,23 @@ export function Chat({ room }: { room: RoomView }) {
           </header>
           <ul>
             {watchers.map((p) => (
-              <li key={p.seat} className={p.seat === room.you ? 'you' : ''}>
+              <li key={p.id} className={p.id === room.me ? 'you' : ''}>
                 {p.name}
+                {p.queued && <small>wants a seat</small>}
                 {!p.connected && <small>away</small>}
-                {p.standing && (p.seat === room.you || hosting) && (
-                  <button type="button" onClick={() => stand(false, p.seat === room.you ? undefined : p.seat)}>
-                    {p.seat === room.you ? 'Sit down' : 'Seat'}
+                {/* A seat is had by asking for one: oneself, or whoever deals for someone. And given up again, to just watch. */}
+                {!p.queued && (p.id === room.me || hosting) && (
+                  <button type="button" onClick={() => takeSeat(true, p.id === room.me ? undefined : p.id)}>
+                    {p.id === room.me ? 'Take a seat' : 'Seat'}
                   </button>
                 )}
-                {hosting && p.seat !== room.you && (
-                  <button type="button" className="mic-at" aria-label={`Remove ${p.name}`} title={`Remove ${p.name} from the table`} onClick={() => kick(p.seat)}>
+                {p.queued && p.id === room.me && (
+                  <button type="button" onClick={() => takeSeat(false)}>
+                    Just watch
+                  </button>
+                )}
+                {hosting && p.id !== room.me && (
+                  <button type="button" className="mic-at" aria-label={`Remove ${p.name}`} title={`Remove ${p.name} from the table`} onClick={() => kick(p.id)}>
                     ×
                   </button>
                 )}
@@ -236,12 +246,12 @@ export function Chat({ room }: { room: RoomView }) {
           </header>
           <ul>
             {social.inVoice.map((m) => {
-              const me = m.seat === room.you;
+              const me = m.id === room.me;
               const off = me ? voice.muted : m.muted;
               return (
-                <li key={m.seat} className={`${voice.speaking.includes(m.seat) && !off ? 'speaking' : ''}${me ? ' you' : ''}`}>
-                  <i style={{ background: backColour(m.seat) }} />
-                  {name(m.seat)}
+                <li key={m.id} className={`${voice.speaking.includes(m.id) && !off ? 'speaking' : ''}${me ? ' you' : ''}`}>
+                  <i style={{ background: colour(m.id) }} />
+                  {name(m.id)}
                   {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
                   {me ? (
                     <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
@@ -254,8 +264,8 @@ export function Chat({ room }: { room: RoomView }) {
                       </span>
                     )
                   )}
-                  {!me && voice.links[m.seat] === 'failed' && <small className="bad" title="Your two networks cannot reach each other directly">can't connect</small>}
-                  {!me && voice.links[m.seat] === 'connecting' && <small>connecting…</small>}
+                  {!me && voice.links[m.id] === 'failed' && <small className="bad" title="Your two networks cannot reach each other directly">can't connect</small>}
+                  {!me && voice.links[m.id] === 'connecting' && <small>connecting…</small>}
                 </li>
               );
             })}
@@ -276,13 +286,13 @@ export function Chat({ room }: { room: RoomView }) {
               <ol className="passing still" aria-live="polite">
                 {social.lines.slice(-SHOWN).map((l) => (
                   <li key={l.id}>
-                    <Line line={l} />
+                    <Line line={l} colour={colour} />
                   </li>
                 ))}
               </ol>
             )
           ) : (
-            prefs.chatOver && <Passing lines={social.passing} />
+            prefs.chatOver && <Passing lines={social.passing} colour={colour} />
           )}
         </div>
       )}

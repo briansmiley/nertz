@@ -313,7 +313,7 @@ class FakeConn implements Conn {
 function hosted(seed = 1): { room: Room; host: FakeConn } {
   const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
   const host = new FakeConn();
-  expect(room.join(host, 'Ann', 'tok-host')).toBeNull();
+  expect(room.join(host, 'Ann', 'tok-host', true)).toBeNull();
   return { room, host };
 }
 const names = (room: Room, conn: FakeConn) => {
@@ -335,17 +335,17 @@ describe('Room with bots', () => {
   it('only the host adds and removes bots; a bot is a marked, connected player with its own seat and is never the host', () => {
     const { room, host } = hosted();
     const guest = new FakeConn();
-    room.join(guest, 'Bea', 'tok-guest');
+    room.join(guest, 'Bea', 'tok-guest', true);
     room.handle(guest, { t: 'addBot', level: 'fast' });
     expect(names(room, host)).toEqual(['Ann', 'Bea']);
     room.handle(host, { t: 'addBot', level: 'fast' });
     room.handle(host, { t: 'addBot', level: 'slow' });
     room.flush();
     expect(host.last.room.players).toEqual([
-      { seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, stuck: false, ending: false },
-      { seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false },
-      { seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
-      { seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
+      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, stuck: false, ending: false },
+      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false },
+      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
+      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot
@@ -362,7 +362,7 @@ describe('Room with bots', () => {
     room.flush();
     expect(guest.last.room.players.find((p) => p.isHost)?.name).toBe('Bea');
     const back = new FakeConn();
-    room.join(back, 'Ann', 'tok-host');
+    room.join(back, 'Ann', 'tok-host', true);
     room.handle(back, { t: 'leave' });
     room.handle(guest, { t: 'leave' });
     expect(room.empty).toBe(true); // only bots are left: nobody is
@@ -373,7 +373,7 @@ describe('Room with bots', () => {
     const { room, host } = hosted();
     for (let i = 0; i < 11; i++) room.handle(host, { t: 'addBot', level: 'medium' });
     expect(names(room, host)).toEqual(['Ann', 'Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy']);
-    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull(); // full: they come in to watch, and wait for a seat
+    expect(room.join(new FakeConn(), 'Late', 'tok-late', true)).toBeNull(); // full: they come in to watch, and wait for a seat
     expect(parseClientMsg({ t: 'join', room: 'TEST', name: 'Sly', token: 'bot:1-padding' })).toBeNull(); // a bot's token is not a token
     room.handle(host, { t: 'removeBot', seat: 1 }); // a seat comes free: whoever was watching has it
     expect(names(room, host)).toEqual(['Ann', 'Late', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy']);
@@ -494,7 +494,7 @@ describe('Room with bots', () => {
 
       // Next round: a removed bot has no timer, the others get theirs back.
       const back = new FakeConn();
-      room.join(back, 'Ann', 'tok-host');
+      room.join(back, 'Ann', 'tok-host', true);
       room.handle(back, { t: 'removeBot', seat: 2 });
       room.handle(back, { t: 'start' });
       opening(room, back);
@@ -513,7 +513,7 @@ describe('Room with bots', () => {
     vi.useFakeTimers();
     const { room, host } = hosted(5);
     const guest = new FakeConn();
-    room.join(guest, 'Bo', 'tok-guest');
+    room.join(guest, 'Bo', 'tok-guest', true);
     room.handle(host, { t: 'addBot', level: 'fast' });
     room.handle(host, { t: 'start' });
     opening(room, host);

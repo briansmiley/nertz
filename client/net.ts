@@ -53,8 +53,8 @@ export function predict(sync: Sync): RoomView | null {
   if (!room || room.phase !== 'playing' || !room.game) return room;
   let game = room.game;
   for (const p of sync.pending) {
-    const result = applyIntent(game, room.you, p.intent);
-    game = result.ok ? result.state : refused(game, room.you, p.intent); // as the server will see it
+    const result = applyIntent(game, room.seat ?? -1, p.intent);
+    game = result.ok ? result.state : refused(game, room.seat ?? -1, p.intent); // as the server will see it
   }
   return game === room.game ? room : { ...room, game };
 }
@@ -257,8 +257,8 @@ export const go = (): void => void post({ t: 'go' });
 /** Once the cards are dealt: say you are ready for Start (or not after all). */
 export const ready = (on: boolean): void => void post({ t: 'ready', on });
 
-/** Stand up from the table to watch (on), or ask for a seat again: yourself, or as whoever deals the person in `seat`. */
-export const stand = (on: boolean, seat?: number): void => void post({ t: 'stand', on, ...(seat === undefined ? {} : { seat }) });
+/** Ask for a seat (on), or give up your seat or your place in the queue and just watch (off): yourself, or as whoever deals the person `id`. */
+export const takeSeat = (on: boolean, id?: number): void => void post({ t: 'sit', on, ...(id === undefined ? {} : { id }) });
 
 export const pause = (on: boolean): void => void post({ t: 'pause', on });
 
@@ -266,7 +266,9 @@ export const pause = (on: boolean): void => void post({ t: 'pause', on });
 export const sit = (seat: number): void => void post({ t: 'seat', seat });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
 export const nameBot = (seat: number, name: string): void => void post({ t: 'botName', seat, name });
-export const kick = (seat: number): void => void post({ t: 'kick', seat });
+export const kick = (id: number): void => void post({ t: 'kick', id });
+/** Whoever deals: the table is the person `id`'s from now on. */
+export const passHost = (id: number): void => void post({ t: 'host', id });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
 /** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const redeal = (): void => void post({ t: 'redeal' });
@@ -289,7 +291,7 @@ export function setTableSettings(patch: Partial<TableSettings>): void {
 export function send(intent: Intent): boolean {
   const room = state.room;
   if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
-  if (!applyIntent(room.game, room.you, intent).ok) return false;
+  if (room.seat === null || !applyIntent(room.game, room.seat, intent).ok) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });
   set({ room: predict(sync) });

@@ -26,7 +26,7 @@ function roomWith(n: number): { room: Room; conns: FakeConn[] } {
   const room = new Room('TEST', { rng: seeded(3), schedule: () => {} });
   const conns = Array.from({ length: n }, (_, i) => {
     const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`)).toBeNull();
+    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
     return conn;
   });
   return { room, conns };

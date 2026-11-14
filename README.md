@@ -194,9 +194,19 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   No bonus for going out. Scores add up over rounds.
 - **Table management**: the person who opened the table deals. If they are not connected, the first connected player may deal
   instead; the role returns when they are back. A round is dealt only to players who are connected at that moment. Someone
-  who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. A new player may
-  join at any time: in the middle of a round they sit down and watch it, and are dealt in at the next. (Until the dealer has said Start nothing has been played: whoever sits down or comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the sum, where that is fewer than the table has played. Someone who presses Leave on the score sheet stays on that sheet, but no
-  longer counts towards the six seats: a newcomer can take the place.
+  who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. Whoever comes to a table
+  comes in to watch, and has a seat only by asking for one ("Take a seat"); whoever opens the table sits down at it. A
+  seat asked for is given at once if one is free and no round is being played, and otherwise by the queue, first asked
+  first, when the round is over or a seat comes free; whoever asked can think again and just watch, and anyone at the
+  table can stand up between rounds. (Until the dealer has said Start nothing has been played: whoever sits down or
+  comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
+  sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
+  free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
+- **Who is who.** Everyone in a room has an `id`, which is theirs for as long as the table stands and never anyone
+  else's: everything about a person goes by it (who you are, who said what, who is in voice, whose line of the score
+  sheet). What is about cards goes by seat. Where someone is, is exactly one of three things: at the table (a seat), in
+  the queue for one, or just watching; apart from that they are here or away. A window comes back as who it was by its
+  token, kept for as long as the window lives; a name proves nothing, and nobody takes a seat by typing one.
 
 ## The table
 

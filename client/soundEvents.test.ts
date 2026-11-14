@@ -39,8 +39,9 @@ const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): Ro
   code: 'ABCD',
   phase: 'playing',
   round: 1,
-  you,
-  players: game.players.map((p) => ({ seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, stuck: p.stuck, ending: false })),
+  me: you,
+  seat: you,
+  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, stuck: p.stuck, ending: false })),
   settings: DEFAULT_SETTINGS,
   game: viewFor(game, you),
   graceMs: null,
@@ -288,7 +289,7 @@ describe('sound cues from rendered state', () => {
     expect(soundCues({ room: sheet, online: true }, { room: small, online: true })).toEqual([{ k: 'deal', work: 7 }]);
     const four = roomOf(dealRound([0, 1, 2, 3], rng(9)), 2, { round: 3 });
     expect(soundCues({ room: sheet, online: true }, { room: four, online: true })).toEqual([{ k: 'deal', work: 10 }]);
-    expect(soundCues({ room: sheet, online: true }, { room: { ...small, you: 5 }, online: true })).toEqual([{ k: 'deal', work: 7 }]);
+    expect(soundCues({ room: sheet, online: true }, { room: { ...small, me: 5, seat: 5 }, online: true })).toEqual([{ k: 'deal', work: 7 }]);
     // The round being scored is not a deal, and the scored table makes no card sounds.
     expect(soundCues({ room: first, online: true }, { room: sheet, online: true })).toEqual([]);
     expect(soundCues({ room: sheet, online: true }, { room: { ...sheet, players: [] }, online: true })).toEqual([]);

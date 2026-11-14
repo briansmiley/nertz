@@ -350,7 +350,8 @@ const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.
 /** `sheet` (the scores) is laid over the table when the end-of-round sequence has played out. */
 export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const game = room.game!;
-  const you = room.you;
+  /** Your seat; or, watching without one, a seat that nobody has. */
+  const you = room.seat ?? -1;
   const results = room.phase === 'results';
   const [W, H] = useViewport();
   const prefs = usePrefs();
@@ -414,7 +415,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // (The screen's own edges are read again whenever the window changes: turning a phone moves its notch.)
   const pad = useMemo(() => insets(), [W, H]);
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
-  const seated = room.players.filter((p) => !p.watching).map((p) => p.seat).join(); // (those watching a full table have no place at it)
+  const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
   const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld, pad, sitting), [W, H, game, you, stage, peek, packet, groupHeld, pad, sitting]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
@@ -450,9 +451,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       if (line.id <= seenLine.current) continue;
       seenLine.current = line.id;
       const { sniped } = line;
-      if (!sniped || line.seat === you || sniped.seat === you) continue;
+      if (!sniped || line.who === room.me || sniped.who === room.me) continue;
       snipeSound('other');
-      setAside((a) => ({ by: line.seat, byName: line.name, of: sniped.seat, ofName: sniped.name, n: (a?.n ?? 0) + 1 }));
+      const seatOf = (id: number) => room.players.find((p) => p.id === id)?.seat ?? -1;
+      setAside((a) => ({ by: seatOf(line.who), byName: line.name, of: seatOf(sniped.who), ofName: sniped.name, n: (a?.n ?? 0) + 1 }));
     }
   }, [newest?.id]);
   useEffect(() => setAside(null), [room.round]);
@@ -1285,7 +1287,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     {paused && (
       <div className="paused-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
-        <p>{room.paused!.by === you ? 'You paused the round.' : `${name(room.paused!.by)} paused the round.`}</p>
+        <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
         {canResume(room) ? (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
             Carry on <small>P</small>

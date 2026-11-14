@@ -31,10 +31,10 @@ function useBeat(startMs: number | null): number {
 export function Opening({ room, at }: { room: RoomView; at: { x: number; y: number } }) {
   const stage = room.phase === 'playing' ? room.game?.stage : undefined;
   const dealer = room.players.find((p) => p.isHost);
-  const mine = stage === 'ready' && dealer?.seat === room.you;
+  const mine = stage === 'ready' && dealer?.id === room.me;
   /** Who was dealt in, and which of them have said they are ready. */
   const dealt = stage === 'ready' ? room.players.filter((p) => room.game!.players.some((g) => g.seat === p.seat)) : [];
-  const me = dealt.find((p) => p.seat === room.you);
+  const me = dealt.find((p) => p.id === room.me);
   const waiting = dealt.filter((p) => !p.isHost);
   const beat = useBeat(stage === 'countdown' ? room.startMs : null);
 
@@ -83,8 +83,8 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
           <>
             <ul className="readies" aria-label="Who is ready">
               {waiting.map((p) => (
-                <li key={p.seat} className={p.ready ? 'on' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
-                  <i style={{ background: backColour(p.seat) }} />
+                <li key={p.id} className={p.ready ? 'on' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
+                  <i style={{ background: backColour(p.seat ?? 0) }} />
                   {p.name}
                   {p.ready ? (
                     <b className="tick">✓</b>

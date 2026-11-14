@@ -28,7 +28,7 @@ function roomWith(n: number): { room: Room; conns: FakeConn[]; kept: (i: number)
   const room = new Room('TEST', { rng: () => ((x = (x * 16807) % 2147483647) - 1) / 2147483646, schedule: () => {} });
   const conns = Array.from({ length: n }, (_, i) => {
     const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`)).toBeNull();
+    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
     return conn;
   });
   const kept = (i: number): Kept => (room as unknown as { players: (Kept & { name: string })[] }).players.find((p) => p.name === `P${i}`)!;
@@ -71,22 +71,19 @@ describe('a back by lot', () => {
 });
 
 describe('a change of seat', () => {
-  it('takes what the player said with it, and puts them out of voice to join again from the new seat', () => {
+  it('changes nothing about who one is: what the player said is still theirs, and they stay in voice', () => {
     const { room, conns, kept } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     send(room, a, { t: 'chat', text: 'from a' });
     send(room, b, { t: 'chat', text: 'from b' });
     send(room, a, { t: 'voice', on: true, muted: false });
     send(room, b, { t: 'voice', on: true, muted: false });
+    const chats = a.sent.filter((m) => m.t === 'chat').length;
     send(room, b, { t: 'seat', seat: 4 });
     expect(kept(1).seat).toBe(4);
-    for (const conn of [a, b]) {
-      expect(conn.last('chat')).toMatchObject({ history: true, lines: [{ seat: 0, text: 'from a' }, { seat: 4, text: 'from b' }] }); // prettier-ignore
-      expect(conn.last('social').inVoice).toEqual([{ seat: 0, muted: false }]);
-    }
-    send(room, b, { t: 'voice', on: true, muted: false }); // what its window does on seeing that it is not in
-    expect(a.last('social').inVoice).toEqual([{ seat: 0, muted: false }, { seat: 4, muted: false }]); // prettier-ignore
-    send(room, a, { t: 'signal', to: 4, data: '.x' });
+    expect(a.sent.filter((m) => m.t === 'chat')).toHaveLength(chats); // (nothing to send again: a line goes by who said it, and its colour by the seat they have)
+    for (const conn of [a, b]) expect(conn.last('social').inVoice).toEqual([{ id: 0, muted: false }, { id: 1, muted: false }]); // prettier-ignore
+    send(room, a, { t: 'signal', to: 1, data: '.x' });
     expect(b.last('signal')).toEqual({ t: 'signal', from: 0, data: '.x' });
   });
 });
@@ -116,33 +113,34 @@ describe('sitting down after the deal', () => {
     send(room, a, { t: 'start' });
     expect(seats()).toEqual([0, 1]);
     const dealtTo = room.game;
-    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull();
+    expect(room.join(new FakeConn(), 'Late', 'tok-late', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2]); // the round is dealt again, with them in it
     expect(room.game).not.toBe(dealtTo);
     expect(room.round).toBe(1); // and is the same round
     (room as unknown as { dealt(): void }).dealt(); // the cards are down: the table waits for Start
-    expect(room.join(new FakeConn(), 'Later', 'tok-later')).toBeNull();
+    expect(room.join(new FakeConn(), 'Later', 'tok-later', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2, 3]);
     (room as unknown as { dealt(): void }).dealt(); // (dealt over again: down once more)
     send(room, a, { t: 'go' });
-    expect(room.join(new FakeConn(), 'Latest', 'tok-latest')).toBeNull();
+    expect(room.join(new FakeConn(), 'Latest', 'tok-latest', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2, 3]); // "1, 2, 3" has been said: they watch this one
   });
 });
 
 describe('coming back', () => {
-  it('as a stranger with the name of someone who is away takes their seat, score and cards, not a second seat', () => {
+  it('goes by the token alone: a stranger with the name of someone who is away is someone else, with no seat, score or cards of theirs', () => {
     const { room, conns, kept } = roomWith(3);
     const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
     send(room, a, { t: 'start' });
-    const hand = room.game!.players[2]!.nertz.map((card) => card.id);
     room.disconnect(c);
-    expect(room.join(new FakeConn(), 'P2', 'tok-another-window')).toBeNull(); // the old window is gone: a new token
-    expect((room as unknown as { players: unknown[] }).players).toHaveLength(3);
+    const players = () => (room as unknown as { players: { name: string; seat: number | null; conn: unknown }[] }).players;
+    expect(room.join(new FakeConn(), 'P2', 'tok-another-window', true)).toBeNull(); // the name of someone away, and a new token
+    expect(players()).toHaveLength(4);
+    expect(players().filter((p) => p.name === 'P2').map((p) => [p.seat, !!p.conn])).toEqual([[2, false], [3, true]]); // prettier-ignore
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 3]); // (before Start: dealt in, to their own seat; the one away is not)
+    expect(room.join(c, 'P2', 'tok-0002')).toBeNull(); // and the one who was away is back by their token: in their seat
     expect(kept(2).seat).toBe(2);
-    expect(room.game!.players[2]!.nertz.map((card) => card.id)).toEqual(hand);
-    expect(room.join(new FakeConn(), 'P1', 'tok-namesake')).toBeNull(); // P1 is here: a namesake is someone else
-    expect((room as unknown as { players: unknown[] }).players).toHaveLength(4);
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2, 3]);
   });
 
   it('whoever deals can deal the round over: unscored, the same round, with everyone who is here now', () => {
@@ -151,7 +149,7 @@ describe('coming back', () => {
     send(room, a, { t: 'start' });
     (room as unknown as { dealt(): void }).dealt();
     send(room, a, { t: 'go' });
-    expect(room.join(new FakeConn(), 'Late', 'tok-late')).toBeNull(); // too late: watching
+    expect(room.join(new FakeConn(), 'Late', 'tok-late', true)).toBeNull(); // too late: watching
     const first = room.game;
     send(room, b, { t: 'redeal' }); // not theirs to say
     expect(room.game).toBe(first);
@@ -169,15 +167,15 @@ describe('sent away', () => {
     const closed: FakeConn[] = [];
     for (const conn of conns) conn.close = () => void closed.push(conn);
     const seats = () => (room as unknown as { players: { seat: number }[] }).players.map((p) => p.seat);
-    send(room, b, { t: 'kick', seat: 2 }); // not theirs to say
-    send(room, a, { t: 'kick', seat: 0 }); // not oneself
+    send(room, b, { t: 'kick', id: 2 }); // not theirs to say
+    send(room, a, { t: 'kick', id: 0 }); // not oneself
     expect(seats()).toEqual([0, 1, 2]);
-    send(room, a, { t: 'kick', seat: 2 });
+    send(room, a, { t: 'kick', id: 2 });
     expect(seats()).toEqual([0, 1]);
     expect(c.sent.at(-1)).toEqual({ t: 'removed' });
     expect(closed).toEqual([c]);
     room.disconnect(b); // someone who is away can be sent away too
-    send(room, a, { t: 'kick', seat: 1 });
+    send(room, a, { t: 'kick', id: 1 });
     expect(seats()).toEqual([0]);
     expect(kept(0).seat).toBe(0);
   });

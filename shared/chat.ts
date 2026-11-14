@@ -16,17 +16,21 @@ export const CHAT_RATE_MS = 5000;
  */
 export const SIGNAL_MAX_LENGTH = 1200;
 
+/** Is `v` a player's id (`PlayerView.id`), as far as its shape goes? */
+export const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+
 export interface ChatLine {
   /** Rises by one per message in a room. */
   id: number;
-  seat: number;
+  /** Who said it: their `PlayerView.id`. (Its colour is that of the seat they have now, if any.) */
+  who: number;
   /** The sender's name when it was said, so the line stays right after they leave. */
   name: string;
   text: string;
   /** Server clock, ms since the epoch. */
   at: number;
-  /** Not something said, but a notice from the table: `seat`/`name` beat this player to a pile in the middle (`text` is then empty). */
-  sniped?: { seat: number; name: string };
+  /** Not something said, but a notice from the table: `who`/`name` beat this player to a pile in the middle (`text` is then empty). */
+  sniped?: { who: number; name: string };
 }
 
 /** The host's two switches. Both default to on. */
@@ -39,7 +43,8 @@ export interface SocialSettings {
 }
 
 export interface VoiceMember {
-  seat: number;
+  /** Their `PlayerView.id`. */
+  id: number;
   muted: boolean;
 }
 
@@ -56,7 +61,7 @@ export type SocialClientMsg =
   | { t: 'social'; text?: boolean; voice?: boolean; watchText?: boolean; watchVoice?: boolean }
   /** Join or leave the table's voice chat, and say whether the microphone is muted. */
   | { t: 'voice'; on: boolean; muted: boolean }
-  /** WebRTC signalling for the player in seat `to`; the server forwards it as it is. */
+  /** WebRTC signalling for the player `to` (an id); the server forwards it as it is. */
   | { t: 'signal'; to: number; data: string };
 
 export type SocialServerMsg =
@@ -64,7 +69,7 @@ export type SocialServerMsg =
   | { t: 'chat'; lines: ChatLine[]; history: boolean }
   /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
   | ({ t: 'social'; inVoice: VoiceMember[]; ice?: IceServer[] } & SocialSettings)
-  /** `from` is stamped by the server. */
+  /** `from` (an id) is stamped by the server. */
   | { t: 'signal'; from: number; data: string };
 
 /** Control characters become spaces; trimmed and capped. May return ''. */
@@ -93,8 +98,8 @@ export function parseSocialMsg(v: Record<string, unknown>): SocialClientMsg | nu
       return typeof v.on === 'boolean' && typeof v.muted === 'boolean' ? { t: 'voice', on: v.on, muted: v.muted } : null;
     case 'signal': {
       const { to, data } = v;
-      if (!Number.isInteger(to) || (to as number) < 0 || (to as number) > 63) return null;
-      return typeof data === 'string' && data.length > 0 && data.length <= SIGNAL_MAX_LENGTH ? { t: 'signal', to: to as number, data } : null;
+      if (!isId(to)) return null;
+      return typeof data === 'string' && data.length > 0 && data.length <= SIGNAL_MAX_LENGTH ? { t: 'signal', to, data } : null;
     }
     default:
       return null;

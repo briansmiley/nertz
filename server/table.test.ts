@@ -43,7 +43,7 @@ function roomWith(n: number, seed = 1): { room: Room; conns: FakeConn[] } {
   const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
   const conns = Array.from({ length: n }, (_, i) => {
     const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`)).toBeNull();
+    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
     return conn;
   });
   return { room, conns };
@@ -206,7 +206,7 @@ describe('card positions while dragging', () => {
     expect(b.room.game!.players[0]!.holding).toBeNull(); // the snapshot that sends the card home
     room.handle(a, at(held)); // a dead connection is not listened to
     const again = new FakeConn();
-    room.join(again, 'P0', 'tok-0000');
+    room.join(again, 'P0', 'tok-0000', true);
     room.handle(again, at(held)); // and the new one is not holding anything
     expect(b.drags).toHaveLength(1);
     room.close();
@@ -355,7 +355,7 @@ describe('bots on a table without marked places', () => {
         for (const seed of [21, 22, 23]) {
           const room = new Room('TEST', { rng: seeded(seed * 10 + bots), schedule: () => {} });
           const host = new FakeConn();
-          room.join(host, 'Ann', 'tok-host');
+          room.join(host, 'Ann', 'tok-host', true);
           room.handle(host, { t: 'settings', patch: { centre } });
           for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
           const players = Math.min(6, bots + 1);

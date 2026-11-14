@@ -149,14 +149,14 @@ function PauseIcon() {
 /** Can you pause the round right now? While it is being played, before anyone calls Nertz, if you were dealt in. */
 export function canPause(room: RoomView | null | undefined): boolean {
   const g = room?.game;
-  return !!room && room.phase === 'playing' && !room.paused && !!g && g.stage === 'play' && g.nertzCalledBy === null && !g.ended && g.players.some((p) => p.seat === room.you);
+  return !!room && room.phase === 'playing' && !room.paused && !!g && g.stage === 'play' && g.nertzCalledBy === null && !g.ended && g.players.some((p) => p.seat === room.seat);
 }
 
 /** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
 export function canResume(room: RoomView): boolean {
   if (!room.paused) return false;
-  const by = room.players.find((p) => p.seat === room.paused!.by);
-  return room.paused.by === room.you || !!room.players.find((p) => p.seat === room.you)?.isHost || !by?.connected;
+  const by = room.players.find((p) => p.id === room.paused!.by);
+  return room.paused.by === room.me || !!room.players.find((p) => p.id === room.me)?.isHost || !by?.connected;
 }
 
 const percent = (v: number) => `${Math.round(v * 100)}%`;
@@ -167,10 +167,10 @@ const percent = (v: number) => `${Math.round(v * 100)}%`;
  */
 function EndVote({ room }: { room: RoomView }) {
   const game = room.game;
-  const me = game?.players.find((p) => p.seat === room.you);
+  const me = game?.players.find((p) => p.seat === room.seat);
   if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
-  const people = room.players.filter((p) => p.connected && !p.bot && !p.watching);
-  const voted = people.filter((p) => p.ending || (p.seat === room.you && me.ending)).length;
+  const people = room.players.filter((p) => p.connected && !p.bot && p.seat !== null);
+  const voted = people.filter((p) => p.ending || (p.id === room.me && me.ending)).length;
   return (
     <div className="end-vote">
       <h3>This round</h3>
@@ -187,7 +187,7 @@ function EndVote({ room }: { room: RoomView }) {
 /** For whoever deals, during a round: deal it over (someone was left out, or dropped at the start). Asked twice, since the round in play is thrown away. */
 function DealAgain({ room }: { room: RoomView }) {
   const [sure, setSure] = useState(false);
-  const mine = room.players.find((p) => p.seat === room.you)?.isHost;
+  const mine = room.players.find((p) => p.id === room.me)?.isHost;
   useEffect(() => setSure(false), [room.round, room.phase]);
   if (!mine || room.phase !== 'playing' || !room.game) return null;
   return (
@@ -265,7 +265,7 @@ function Clock({ clock }: { clock: NonNullable<RoomView['clock']> }) {
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
   const social = useSocial();
-  const hosting = !!room?.players.find((p) => p.seat === room.you)?.isHost;
+  const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   /** Choosing the key that mutes your microphone: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
@@ -435,7 +435,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
  */
 export function TableRules({ room, children }: { room: RoomView; children?: ReactNode }) {
   const host = room.players.find((p) => p.isHost);
-  const mine = host?.seat === room.you;
+  const mine = host?.id === room.me;
   const set = (patch: Partial<TableSettings>) => setTableSettings(patch);
   return (
     <fieldset className={`rules${mine ? '' : ' locked'}`} title={mine ? undefined : 'Only the room host can set these.'}>

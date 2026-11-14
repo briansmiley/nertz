@@ -81,7 +81,7 @@ export function Feedback({ room }: { room?: RoomView | null }) {
     e.preventDefault();
     if (!text.trim() || state.k === 'sending') return;
     setState({ k: 'sending' });
-    const me = room?.players.find((p) => p.seat === room.you);
+    const me = room?.players.find((p) => p.id === room.me);
     const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.stage ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
     const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${navigator.userAgent}`;
     try {

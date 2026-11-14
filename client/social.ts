@@ -31,7 +31,7 @@ function set(next: Partial<SocialState>): void {
 
 onSocial((msg) => {
   if (msg.t === 'chat') {
-    const news = msg.history ? 0 : msg.lines.filter((l) => l.seat !== current().room?.you && !l.sniped).length;
+    const news = msg.history ? 0 : msg.lines.filter((l) => l.who !== current().room?.me && !l.sniped).length;
     const now = Date.now();
     // (With text chat switched off the table still sends its notices, for the sound and the flash: they pass, and are not kept to read.)
     const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...msg.lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);
@@ -41,7 +41,7 @@ onSocial((msg) => {
     set({ text: msg.text, voice: msg.voice, watchText: msg.watchText !== false, watchVoice: msg.watchVoice !== false, inVoice: msg.inVoice });
     // (Voice switched off for those watching, and we are one of them: out, like when it is switched off for all.)
     const me = current().room;
-    const shut = msg.watchVoice === false && !!me?.players.find((p) => p.seat === me.you)?.watching;
+    const shut = msg.watchVoice === false && !!me && me.seat === null;
     if (msg.voice && !shut) sync(msg.inVoice);
     else leaveVoice(false); // the host switched voice off: the microphone is released at once
   } else {

@@ -156,6 +156,8 @@ export interface RoundScore {
 
 /** One line of the score sheet. Carries the name and total so the sheet stays right if that player leaves the table: and their cards' faces and backs, so the cards they left on it stay as they were. */
 export interface RoundLine extends RoundScore {
+  /** Whose line it is (`PlayerView.id`): the person, wherever they sit now, or if they are gone. `seat` is where they sat that round, and so whose cards on its table were theirs. */
+  id: number;
   name: string;
   /** Running total including this round. */
   total: number;
@@ -163,8 +165,6 @@ export interface RoundLine extends RoundScore {
   rounds: number;
   /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
-  /** They have the seat no longer (stood up, or left, and it may be someone else's now): the line stays on the sheet as theirs, and is not taken for the line of whoever sits there. */
-  vacant?: boolean;
   /** Their faces and backs when the round ended, named as in `PlayerView`. */
   deck?: string;
   back?: string;
@@ -184,8 +184,15 @@ export type Phase = 'lobby' | 'playing' | 'results';
 /** How quick and how observant a bot is (the numbers are in server/bot.ts). */
 export type BotLevel = 'slow' | 'medium' | 'fast';
 
+/**
+ * Someone in the room. Who they are is `id`; where they are is one of three things: at the table (`seat`), waiting
+ * for a seat (`queued`), or neither: just watching. Whether they are here or away (`connected`) is apart from that.
+ */
 export interface PlayerView {
-  seat: number;
+  /** Who this is, for as long as the table stands: it never changes and is never anyone else's. Everything about a person goes by it (who you are, who said what, who is in voice, whose line of the score sheet); what is about cards goes by `seat`. */
+  id: number;
+  /** Their seat at the table, which is their colour and whose cards are theirs; null for someone without one (watching). */
+  seat: number | null;
   name: string;
   connected: boolean;
   /** Total across finished rounds. */
@@ -198,10 +205,8 @@ export interface PlayerView {
   ending: boolean;
   /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */
   ready?: boolean;
-  /** No seat at the table (it is full): watching, and waiting for one. `seat` is then their place in the queue, from MAX_PLAYERS up; they are dealt no cards and have no colour of their own. */
-  watching?: boolean;
-  /** Watching by choice: they stood up (or were stood up by whoever deals), and are given no seat until they ask for one again. */
-  standing?: boolean;
+  /** Without a seat, and waiting for one: it is theirs when one is free and no round is being played, in the order they asked (the order of the list). Without a seat and without this: watching by choice. */
+  queued?: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
   /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */
@@ -212,13 +217,17 @@ export interface PlayerView {
   lot?: string;
 }
 
-/** Everything one client needs to render, personalised for seat `you`. */
+/** Everything one client needs to render, personalised for the player `me`. */
 export interface RoomView {
   code: string;
   phase: Phase;
   /** Rounds started so far (0 in the first lobby). */
   round: number;
-  you: number;
+  /** Who you are: your `PlayerView.id`. */
+  me: number;
+  /** Your seat, or null if you have none (watching): the same as your line of `players` says. */
+  seat: number | null;
+  /** Those at the table by seat; then those waiting for a seat, first to be seated first; then those just watching. */
   players: PlayerView[];
   /** The table's house rules, as the next deal will read them. Only the host changes them, between rounds. */
   settings: TableSettings;
@@ -250,7 +259,7 @@ export interface RoomView {
    * at what the round took. Null before the first round is under way.
    */
   clock: { ms: number; running: boolean } | null;
-  /** The round is paused (by this seat): every card is hidden, no move is taken and the bots wait. Null otherwise. */
+  /** The round is paused (by this player, an `id`): every card is hidden, no move is taken and the bots wait. Null otherwise. */
   paused: { by: number } | null;
   lastRound: RoundResult | null;
 }

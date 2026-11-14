@@ -4,9 +4,10 @@
 import { CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, type ChatLine, type IceServer, type SocialClientMsg, type SocialServerMsg } from '../shared/chat';
 import type { Conn } from './room';
 
-/** As much of a seated player as chat needs. A player without a connection (away, or a bot) is simply never sent anything. */
+/** As much of someone in the room as chat needs. One without a connection (away, or a bot) is simply never sent anything; one without a seat is watching. */
 export interface Member {
-  seat: number;
+  id: number;
+  seat: number | null;
   name: string;
   conn: Conn | null;
 }
@@ -31,11 +32,9 @@ export class Social {
   /** The host's switches. To merge into a generic table-settings object, keep these two booleans there instead. */
   text = true;
   voice = true;
-  /** And whether those watching a full table (a seat number past the table's: `isWatching`) may take part in each. */
+  /** And whether those watching (no seat) may take part in each. */
   watchText = true;
   watchVoice = true;
-  /** Is this member only watching? Told by the room, which knows what a seat number means. */
-  isWatching: (m: Member) => boolean = () => false;
 
   private lines: ChatLine[] = [];
   private nextId = 1;
@@ -57,19 +56,9 @@ export class Social {
     if (this.inVoice.delete(member)) this.announce(members);
   }
 
-  /**
-   * `member` took another seat (it was `from`). What they said goes with them, so that it is not shown in the colour
-   * of whoever sits there next; and if they were in voice they are put out of it, since every connection there is
-   * known by its seat: their window sees that it is no longer in, and joins again from the new one.
-   */
-  moved(member: Member, from: number, members: readonly Member[]): void {
-    // (A notice of a snipe names two: the one who was beaten to the pile moves with their seat as well.)
-    const theirs = (at: { seat: number; name: string } | undefined) => at?.seat === from && at.name === member.name;
-    if (this.lines.some((l) => theirs(l) || theirs(l.sniped))) {
-      this.lines = this.lines.map((l) => (theirs(l) || theirs(l.sniped) ? { ...l, ...(theirs(l) ? { seat: member.seat } : {}), ...(theirs(l.sniped) ? { sniped: { ...l.sniped!, seat: member.seat } } : {}) } : l));
-      for (const m of members) m.conn?.send({ t: 'chat', lines: this.lines, history: true });
-    }
-    if (this.inVoice.delete(member)) this.announce(members);
+  /** `member` has given up their seat to watch: out of voice, if those watching are kept out of it. */
+  unseated(member: Member, members: readonly Member[]): void {
+    if (!this.watchVoice && this.inVoice.delete(member)) this.announce(members);
   }
 
   handle(member: Member, members: readonly Member[], isHost: boolean, msg: SocialClientMsg): void {
@@ -83,32 +72,32 @@ export class Social {
         this.watchText = msg.watchText ?? this.watchText;
         this.watchVoice = msg.watchVoice ?? this.watchVoice;
         if (!this.voice) this.inVoice.clear(); // everyone is out at once; nobody is put back in when it returns
-        else if (!this.watchVoice) for (const m of [...this.inVoice.keys()]) if (this.isWatching(m)) this.inVoice.delete(m); // those watching are put out
+        else if (!this.watchVoice) for (const m of [...this.inVoice.keys()]) if (m.seat === null) this.inVoice.delete(m); // those watching are put out
         return this.announce(members);
       }
       case 'voice': {
-        if (!this.voice || (msg.on && !this.watchVoice && this.isWatching(member))) return;
+        if (!this.voice || (msg.on && !this.watchVoice && member.seat === null)) return;
         if (msg.on) this.inVoice.set(member, msg.muted);
         else if (!this.inVoice.delete(member)) return;
         return this.announce(members);
       }
       case 'signal': {
         // Only between two players of this table who have both joined voice.
-        const to = members.find((m) => m.seat === msg.to);
+        const to = members.find((m) => m.id === msg.to);
         if (!this.voice || !to || to === member || !this.inVoice.has(member) || !this.inVoice.has(to)) return;
-        to.conn?.send({ t: 'signal', from: member.seat, data: msg.data });
+        to.conn?.send({ t: 'signal', from: member.id, data: msg.data });
       }
     }
   }
 
   private say(member: Member, members: readonly Member[], text: string): void {
-    if (!this.text || (!this.watchText && this.isWatching(member))) return; // switched off (or off for those watching): refused, and the history stays as it is
+    if (!this.text || (!this.watchText && member.seat === null)) return; // switched off (or off for those watching): refused, and the history stays as it is
     const now = Date.now();
     const recent = (this.recent.get(member) ?? []).filter((at) => now - at < CHAT_RATE_MS);
     this.recent.set(member, recent);
     if (recent.length >= CHAT_RATE_COUNT) return;
     recent.push(now);
-    const line: ChatLine = { id: this.nextId++, seat: member.seat, name: member.name, text, at: now };
+    const line: ChatLine = { id: this.nextId++, who: member.id, name: member.name, text, at: now };
     this.lines.push(line);
     if (this.lines.length > CHAT_HISTORY) this.lines.shift();
     for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
@@ -120,7 +109,7 @@ export class Social {
    * flashes it.
    */
   sniped(members: readonly Member[], by: Member, of: Member): void {
-    const line: ChatLine = { id: this.nextId++, seat: by.seat, name: by.name, text: '', at: Date.now(), sniped: { seat: of.seat, name: of.name } };
+    const line: ChatLine = { id: this.nextId++, who: by.id, name: by.name, text: '', at: Date.now(), sniped: { who: of.id, name: of.name } };
     if (this.text) {
       this.lines.push(line);
       if (this.lines.length > CHAT_HISTORY) this.lines.shift();
@@ -129,7 +118,7 @@ export class Social {
   }
 
   private state(): SocialServerMsg {
-    return { t: 'social', text: this.text, voice: this.voice, ...(this.watchText ? {} : { watchText: false }), ...(this.watchVoice ? {} : { watchVoice: false }), inVoice: [...this.inVoice].map(([m, muted]) => ({ seat: m.seat, muted })), ...(ICE ? { ice: ICE } : {}) };
+    return { t: 'social', text: this.text, voice: this.voice, ...(this.watchText ? {} : { watchText: false }), ...(this.watchVoice ? {} : { watchVoice: false }), inVoice: [...this.inVoice].map(([m, muted]) => ({ id: m.id, muted })), ...(ICE ? { ice: ICE } : {}) };
   }
 
   private announce(members: readonly Member[]): void {

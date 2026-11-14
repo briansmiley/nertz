@@ -185,7 +185,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
             if (rooms.size >= MAX_ROOMS) return send({ t: 'error', message: 'The server is full. Try again later.' });
             target = new Room(freshCode(), { flipMs });
           }
-          const refusal = target.join(conn, msg.name, msg.token);
+          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create'); // (whoever opens a table sits down at it; whoever comes to one watches until they ask for a seat)
           if (refusal) return send({ t: 'error', message: refusal });
           rooms.set(target.code, target);
           idleSince.delete(target);
