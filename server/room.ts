@@ -10,7 +10,7 @@
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
-import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
+import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -105,6 +105,8 @@ export class Room {
   round = 0;
   /** Bumped on every change, including a rejected intent (its sender's ack changed). */
   rev = 0;
+  /** When the last of those changes was (ms epoch). */
+  changedAt = Date.now();
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. */
   game: GameState | null = null;
   lastRound: RoundResult | null = null;
@@ -334,6 +336,18 @@ export class Room {
       p.dirty = false;
       p.conn?.send({ t: 'state', rev: this.rev, ack: p.ack, room: this.view(p) });
     }
+  }
+
+  /** The room as the home page lists it, for anyone: see `TableSummary`. */
+  summary(): TableSummary {
+    return {
+      code: this.code,
+      names: this.table.filter((p) => !p.out).map((p) => p.name), // (whoever is gone holds their seat only for their cards)
+      seats: MAX_PLAYERS,
+      watching: this.players.filter((p) => !seated(p) && p.conn).length,
+      round: this.round,
+      playing: this.phase === 'playing',
+    };
   }
 
   // ------------------------------------------------------------ internals
@@ -899,6 +913,7 @@ export class Room {
   /** Records a change: bumps rev, marks who is owed a snapshot (default everyone) and schedules one flush. */
   private changed(only?: Player): void {
     this.rev++;
+    this.changedAt = Date.now();
     for (const p of only ? [only] : this.players) p.dirty = true;
     if (this.flushScheduled) return;
     this.flushScheduled = true;

@@ -1276,6 +1276,54 @@ button {
   color: var(--ink);
 }
 
+/* Home: the tables someone is at, a line each, written on the pad's own rules. */
+.tables {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.tables ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tables li button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+}
+
+.tables li b {
+  letter-spacing: 0.06em;
+}
+
+.tables .names {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tables li span:not(.names) {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.tables li button:hover b,
+.tables li button:hover .names {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .error,
 .hint,
 .wait {

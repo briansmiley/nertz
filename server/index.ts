@@ -1,11 +1,12 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists) and /healthz; websockets on /ws carry the game.
+// built client (when dist/ exists), /healthz and the home page's list of /tables; websockets on /ws carry the game.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
+import type { TableSummary } from '../shared/types';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { Room, type Conn } from './room';
 
@@ -14,6 +15,7 @@ const LOBBY_TTL_MS = 60_000; // ...unless it never dealt a round: an abandoned l
 const SWEEP_MS = 60_000;
 const HEARTBEAT_MS = 30_000;
 const MAX_ROOMS = 2000;
+const MAX_LISTED = 20; // tables on the home page's list: those where something happened last
 const MAX_BUFFERED_BYTES = 1 << 20; // a client this far behind on snapshots is dropped
 const FLIP_SLACK_MS = 100; // two cards sent STOCK_CARD_MS apart may arrive a little closer together than that
 const RATE_PER_SECOND = 60; // sustained messages per connection; far above what a hand can do
@@ -109,6 +111,19 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       if (path === '/healthz') {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify({ ok: true, rooms: rooms.size, connections: wss.clients.size }));
+      } else if (path === '/tables') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD' });
+          return void res.end('Method not allowed');
+        }
+        // Only tables someone is at just now: one left behind is kept for a while for whoever was there, not for anyone else.
+        const listed: TableSummary[] = [...rooms.values()]
+          .filter((room) => room.connected > 0)
+          .sort((a, b) => b.changedAt - a.changedAt)
+          .slice(0, MAX_LISTED)
+          .map((room) => room.summary());
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ tables: listed }));
       } else if (path === '/feedback') {
         feedback(req, res).catch(() => {
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });

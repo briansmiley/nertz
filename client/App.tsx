@@ -2,7 +2,7 @@
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
-import type { BotLevel, PlayerView, RoomView } from '../shared/types';
+import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBacks } from './BackPicker';
 import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
@@ -344,13 +344,80 @@ function Leave() {
   );
 }
 
+/** How often the list of tables is asked for again while it is open, ms. */
+const TABLES_MS = 5000;
+
+/** What a table is doing, as its line of the list says it. */
+const roundOf = (t: TableSummary): string => (t.playing ? `round ${t.round}` : t.round > 0 ? `after round ${t.round}` : 'not started');
+
+/** The tables someone is at just now (server/index.ts `/tables`): pressed, the list; a line of it, that table. */
+function Tables({ onPick }: { onPick: (code: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [tables, setTables] = useState<TableSummary[] | null>(null);
+  useEffect(() => {
+    if (!open) return setTables(null);
+    let live = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/tables', { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = (await res.json()) as { tables: TableSummary[] };
+        if (live) setTables(body.tables);
+      } catch {
+        // the server is out of reach: the list stays as it was, and is asked for again
+      }
+    };
+    void load();
+    const again = setInterval(load, TABLES_MS);
+    return () => {
+      live = false;
+      clearInterval(again);
+    };
+  }, [open]);
+  return (
+    <div className="tables">
+      <button type="button" className="quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Tables
+      </button>
+      {open &&
+        tables &&
+        (tables.length ? (
+          <ul>
+            {tables.map((t) => (
+              <li key={t.code}>
+                <button type="button" title={t.watching ? `${t.watching} watching` : undefined} onClick={() => onPick(t.code)}>
+                  <b>{t.code}</b>
+                  <span className="names">{t.names.join(', ')}</span>
+                  <span>
+                    {t.names.length}/{t.seats}
+                  </span>
+                  <span>{roundOf(t)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="hint">No tables yet</p>
+        ))}
+    </div>
+  );
+}
+
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(() => read('localStorage'));
   const [code, setCode] = useState(invited);
+  const nameField = useRef<HTMLInputElement>(null);
   const clean = cleanName(name);
   const typed = code.trim().toUpperCase();
   const ready = !!clean && !busy;
+  /** A table picked off the list: as if its code were typed and Join pressed; without a name yet, the code waits in its field for one. */
+  const pick = (room: string) => {
+    if (busy) return;
+    setCode(room);
+    if (ready) enter(room, clean);
+    else nameField.current?.focus();
+  };
 
   // Enter in the form does the obvious thing: join if a code is filled in, otherwise start a table.
   const submit = (e: FormEvent) => {
@@ -381,6 +448,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
             {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
             <span className="named">
               <input
+                ref={nameField}
                 autoFocus
                 value={name}
                 maxLength={MAX_NAME_LENGTH}
@@ -421,6 +489,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
               {busy && !typed ? 'Connecting…' : 'New Table'}
             </button>
           </div>
+          <Tables onPick={pick} />
         </form>
       </Pad>
     </main>
