@@ -6,6 +6,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
+import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { Room, type Conn } from './room';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
@@ -58,6 +59,8 @@ export interface ServerOptions {
   rate?: number;
   /** Least time between two cards one person deals off their stock (ms). Defaults to a little under the client's pace. */
   flipMs?: number;
+  /** Where bug reports go (server/feedback.ts). Defaults to what the environment says. */
+  feedback?: FeedbackOptions;
 }
 
 export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
@@ -99,12 +102,18 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
 
   // ---------------------------------------------------------------- http
 
+  const feedback = feedbackHandler(options.feedback);
   const http = createServer((req, res) => {
     try {
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
       if (path === '/healthz') {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify({ ok: true, rooms: rooms.size, connections: wss.clients.size }));
+      } else if (path === '/feedback') {
+        feedback(req, res).catch(() => {
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('{"ok":false}');
+        });
       } else {
         serveStatic(dist, path, req, res);
       }

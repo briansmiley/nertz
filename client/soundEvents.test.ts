@@ -366,7 +366,7 @@ describe('a table without fixed places', () => {
     expect(s.frame.room!.game!.places[1]).toMatchObject({ x: 0.4, y: 0.3 });
   });
 
-  it('an Ace that lost the race for its patch of felt goes home with the disappointed sound', () => {
+  it('an Ace that lost the race for its patch of felt just goes home: it has other places to go, so no disappointed sound', () => {
     const s = session(riggedFree());
     const mine = top(s.game, 0, 0);
     const theirs = top(s.game, 1, 2);
@@ -374,7 +374,8 @@ describe('a table without fixed places', () => {
     s.me({ k: 'hold', cardId: mine });
     expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
     const cues = s.confirm();
-    expect(cues).toContainEqual({ k: 'lost' });
+    expect(cues).not.toContainEqual({ k: 'lost' });
+    expect(cues).toContainEqual({ k: 'home', who: 'me' });
     expect(cues).toContainEqual({ k: 'centre', who: 'other', rank: 1 });
     expect(top(s.frame.room!.game!, 0, 0)).toBe(mine);
   });

@@ -22,7 +22,7 @@ import { Finale, sortAt, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
-import { onDrag, pause, post } from './net';
+import { onDrag, onSniper, pause, post } from './net';
 import { canResume } from './Settings';
 import { calm, choiceAt, deckOf, usePrefs } from './prefs';
 import { beaten, stage as stageSound } from './sound';
@@ -436,8 +436,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [held, setHeld] = useState<Held | null>(null);
   const [hot, setHot] = useState<string | null>(null);
   /** Who last beat you to a pile (and a count, so that the same name flashes again). */
-  const [sniper, setSniper] = useState<{ by: number; n: number } | null>(null);
+  const [sniper, setSniper] = useState<{ by: number; n: number; of?: number } | null>(null);
   useEffect(() => setSniper(null), [room.round]);
+  // And the other way round: the table says so when it was you who beat someone.
+  useEffect(() => onSniper((of) => setSniper((s) => ({ by: you, of, n: (s?.n ?? 0) + 1 }))), [you]);
   /** On a table without marked places: the outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
@@ -813,8 +815,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** Beaten to the pile at `slot`: the sound of it, the name of whoever did it across the middle for a moment, and a word to the table, which keeps count. */
   const snipedAt = (slot: number) => {
     const top = game.slots[slot]?.at(-1);
+    if (!top || top.rank === 1) return; // (an Ace beaten to a place has others to go to: it goes home like any card)
     beaten();
-    if (!top || top.rank === 1) return; // (an Ace beaten to a place has others to go to: the sound, no more)
     post({ t: 'sniped', slot });
     setSniper({ by: top.owner, n: (sniper?.n ?? 0) + 1 });
   };
@@ -1228,7 +1230,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {/* Beaten to a pile: who by, across the middle, there and gone in under a second. */}
       {sniper && !called && (
         <div key={`sniped${sniper.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          <span style={{ color: backColour(sniper.by) }}>Sniped by {name(sniper.by)}!</span>
+          <span style={{ color: backColour(sniper.of ?? sniper.by) }}>{sniper.of === undefined ? `Sniped by ${name(sniper.by)}!` : `You sniped ${name(sniper.of)}!`}</span>
         </div>
       )}
       {callerBox && (

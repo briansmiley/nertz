@@ -10,6 +10,7 @@ export default defineConfig({
     port: Number(process.env.VITE_PORT) || 5173, // (VITE_PORT and PORT: a second checkout can run beside the first)
     strictPort: true,
     proxy: {
+      '/feedback': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/ws': { target: `ws://localhost:${Number(process.env.PORT) || 8787}`, ws: true },
     },
   },

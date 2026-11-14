@@ -31,13 +31,21 @@ export interface Prefs {
    * or from one kind (the name of a group in `BACK_GROUPS`). Null: always `back`.
    */
   random: string | null;
+  /** The key that mutes and unmutes your microphone while you are in voice (a KeyboardEvent `code`); null: none. */
+  voiceKey: string | null;
 }
 
 /** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
 export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => deckNamed(p.deck, p.night);
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true };
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, voiceKey: 'KeyV' };
 const KEY = 'nertz.prefs';
+/** Keys the game already uses: not to be had for the microphone. */
+export const TAKEN_KEYS = ['KeyM', 'KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
+/** A phone or tablet: no keyboard to speak of, so no key is offered or named. */
+export const touchOnly = (): boolean => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
+/** A key as it is shown: "V" for KeyV, "7" for Digit7, otherwise its own name. */
+export const keyName = (code: string): string => code.replace(/^(Key|Digit)/, '');
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
 
@@ -56,6 +64,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     botVoice: v.botVoice !== false,
     chatOver: v.chatOver !== false,
     random: isLot(v.random) ? v.random : null,
+    voiceKey: v.voiceKey === null ? null : typeof v.voiceKey === 'string' && /^[A-Za-z0-9]{1,20}$/.test(v.voiceKey) && !TAKEN_KEYS.includes(v.voiceKey) ? v.voiceKey : DEFAULT_PREFS.voiceKey,
   };
 }
 

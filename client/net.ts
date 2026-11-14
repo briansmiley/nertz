@@ -109,6 +109,13 @@ function token(): string {
   }
 }
 
+/** You beat someone to a pile (the server says so, to you alone): told to the table (client/Table.tsx). Returns the way to stop listening. */
+const sniperListeners = new Set<(of: number) => void>();
+export const onSniper = (fn: (of: number) => void): (() => void) => {
+  sniperListeners.add(fn);
+  return () => void sniperListeners.delete(fn);
+};
+
 /** Chat and voice messages go to whoever asked for them (client/social.ts); this store only knows the game. */
 const socialListeners = new Set<(msg: SocialServerMsg) => void>();
 export const onSocial = (fn: (msg: SocialServerMsg) => void): void => void socialListeners.add(fn);
@@ -201,6 +208,8 @@ function connect(): void {
       else stop(msg.message);
     } else if (msg.t === 'removed') {
       stop('You were removed from the table by whoever deals.');
+    } else if (msg.t === 'sniper') {
+      for (const fn of sniperListeners) fn(msg.of);
     } else if (msg.t === 'drag') {
       for (const fn of dragListeners) fn(msg);
     } else {
@@ -244,6 +253,9 @@ export function start(): void {
 
 /** The dealer's Start, once the cards are dealt: "1, 2, 3, Nertz!". The server ignores it from anyone else, or at any other time. */
 export const go = (): void => void post({ t: 'go' });
+
+/** Once the cards are dealt: say you are ready for Start (or not after all). */
+export const ready = (on: boolean): void => void post({ t: 'ready', on });
 
 export const pause = (on: boolean): void => void post({ t: 'pause', on });
 

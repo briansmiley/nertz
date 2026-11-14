@@ -194,6 +194,8 @@ export interface PlayerView {
   stuck: boolean;
   /** Has voted to end the round where it stands. */
   ending: boolean;
+  /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */
+  ready?: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
   /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */

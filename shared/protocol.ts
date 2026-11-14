@@ -151,6 +151,8 @@ export type ClientMsg =
   | { t: 'start' }
   /** Dealer only, once the cards are dealt and the table is waiting (`game.stage` is `ready`): count "1, 2, 3, Nertz!" and open play. */
   | { t: 'go' }
+  /** Once the cards are dealt, before Start: I am ready (or, off, not after all). Shown to everyone; the dealer still says when. */
+  | { t: 'ready'; on: boolean }
   /** Host only, between rounds: change some table settings. They apply from the next deal. */
   | { t: 'settings'; patch: Partial<TableSettings> }
   | { t: 'intent'; seq: number; intent: Intent }
@@ -189,6 +191,8 @@ export type ServerMsg =
   | { t: 'error'; message: string }
   /** Whoever deals has sent you away from the table: the connection is closed next, and is not to be made again. */
   | { t: 'removed' }
+  /** To you alone: you have just beaten the player in seat `of` to a pile in the middle with the very card they were about to put there. */
+  | { t: 'sniper'; of: number }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
   | SocialServerMsg;
@@ -370,6 +374,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'debugBotOut' };
     case 'redeal':
       return { t: 'redeal' };
+    case 'ready':
+      return typeof v.on === 'boolean' ? { t: 'ready', on: v.on } : null;
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':

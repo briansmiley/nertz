@@ -1638,3 +1638,30 @@ describe('server over real sockets', () => {
     expect(server.rooms.has(code)).toBe(false);
   });
 });
+
+describe('ready, before Start', () => {
+  it('whoever was dealt in says ready and everyone sees it; it is forgotten once play opens and at the next deal', () => {
+    vi.useFakeTimers();
+    try {
+      const { room, conns } = roomWith(3);
+      const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+      room.handle(a, { t: 'start' });
+      room.handle(b, { t: 'ready', on: true }); // while the cards are still being dealt is fine
+      vi.advanceTimersByTime(DEAL_MS);
+      room.flush();
+      expect(c.last.room.players.map((p) => !!p.ready)).toEqual([false, true, false]);
+      room.handle(b, { t: 'ready', on: false });
+      room.handle(c, { t: 'ready', on: true });
+      room.flush();
+      expect(a.last.room.players.map((p) => !!p.ready)).toEqual([false, false, true]);
+      expect(room.game!.stage).toBe('ready'); // the dealer still says when
+      room.handle(a, { t: 'go' });
+      vi.advanceTimersByTime(START_MS);
+      room.handle(c, { t: 'ready', on: false }); // too late to matter: ignored
+      room.flush();
+      expect(a.last.room.players.some((p) => p.ready)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { go } from './net';
+import { backColour } from './cards/Face';
+import { go, ready } from './net';
 
 /** How long the word stays up once play is open. It lets every click through. */
 const WORD_MS = 650;
@@ -31,6 +32,10 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
   const stage = room.phase === 'playing' ? room.game?.stage : undefined;
   const dealer = room.players.find((p) => p.isHost);
   const mine = stage === 'ready' && dealer?.seat === room.you;
+  /** Who was dealt in, and which of them have said they are ready. */
+  const dealt = stage === 'ready' ? room.players.filter((p) => room.game!.players.some((g) => g.seat === p.seat)) : [];
+  const me = dealt.find((p) => p.seat === room.you);
+  const waiting = dealt.filter((p) => !p.isHost);
   const beat = useBeat(stage === 'countdown' ? room.startMs : null);
 
   // The word, only in a window that watched the count: a reload into a round that is already on shows nothing.
@@ -60,14 +65,45 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
 
   const inner =
     stage === 'ready' ? (
-      mine ? (
-        <button type="button" className="kickoff" onClick={() => go()}>
-          Start
-          <small>Space</small>
-        </button>
-      ) : (
-        <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
-      )
+      <>
+        {mine ? (
+          <button type="button" className="kickoff" onClick={() => go()}>
+            Start
+          </button>
+        ) : me ? (
+          <button type="button" className={`kickoff readyup${me.ready ? ' on' : ''}`} aria-pressed={!!me.ready} onClick={(e) => (ready(!me.ready), e.currentTarget.blur())}>
+            {me.ready ? 'Ready ✓' : 'Ready?'}
+            <small>{me.ready ? `Waiting for ${dealer?.name ?? 'the dealer'} to start` : 'Press when you are set'}</small>
+          </button>
+        ) : (
+          <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
+        )}
+        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick. Under them, how many have. */}
+        {waiting.length > 0 && (
+          <>
+            <ul className="readies" aria-label="Who is ready">
+              {waiting.map((p) => (
+                <li key={p.seat} className={p.ready ? 'on' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
+                  <i style={{ background: backColour(p.seat) }} />
+                  {p.name}
+                  {p.ready ? (
+                    <b className="tick">✓</b>
+                  ) : (
+                    <span className="dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="tally">
+              {waiting.filter((p) => p.ready).length}/{waiting.length}
+            </p>
+          </>
+        )}
+      </>
     ) : stage === 'countdown' && beat ? (
       <b key={beat} className="beat">
         {START_BEATS + 1 - beat}

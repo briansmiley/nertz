@@ -9,8 +9,10 @@ import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
 import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
+import { Feedback } from './Feedback';
 import { BACKS } from './cards/Face';
-import { calm, DECKS, setPrefs, usePrefs } from './prefs';
+import { calm, keyName, setPrefs, TAKEN_KEYS, touchOnly, usePrefs } from './prefs';
+import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
 const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElement ? !['range', 'checkbox'].includes(el.type) : el instanceof HTMLTextAreaElement);
@@ -19,7 +21,8 @@ function Speaker({ off }: { off: boolean }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" fill="currentColor" stroke="none" />
-      {off ? <path d="M15.5 9.2l5 5.6M20.5 9.2l-5 5.6" /> : <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />}
+      <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />
+      {off && <path d="M4.5 4.5l15 15" strokeWidth="2.4" />}
     </svg>
   );
 }
@@ -59,12 +62,13 @@ function Info({ children }: { children: ReactNode }) {
 export function Robot() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3.5" y="8" width="13" height="10" rx="2.5" />
-      <path d="M10 8V5" />
-      <circle cx="10" cy="4.2" r="1.1" fill="currentColor" stroke="none" />
-      <circle cx="7.6" cy="12.6" r="1.25" fill="currentColor" stroke="none" />
-      <circle cx="12.4" cy="12.6" r="1.25" fill="currentColor" stroke="none" />
-      <path d="M20.5 9v6M17.5 12h6" />
+      <rect x="2" y="8" width="11.5" height="10" rx="2.5" />
+      <path d="M7.75 8V5" />
+      <circle cx="7.75" cy="4.2" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="5.7" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="9.8" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
+      {/* the plus, clear of the head */}
+      <path d="M19.8 10v5M17.3 12.5h5" />
     </svg>
   );
 }
@@ -238,8 +242,28 @@ function Clock({ clock }: { clock: NonNullable<RoomView['clock']> }) {
 
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
+  const social = useSocial();
+  const hosting = !!room?.players.find((p) => p.seat === room.you)?.isHost;
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  /** Choosing the key that mutes your microphone: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
+  const [keying, setKeying] = useState(false);
+  useEffect(() => {
+    if (!keying) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation(); // (not a game key, nor the mute key itself, while one is being chosen)
+      if (e.code === 'Backspace' || e.code === 'Delete') setPrefs({ voiceKey: null });
+      else if (e.code !== 'Escape' && !TAKEN_KEYS.includes(e.code) && /^[A-Za-z0-9]+$/.test(e.code) && !/^(Shift|Control|Alt|Meta)/.test(e.code)) setPrefs({ voiceKey: e.code });
+      else if (e.code !== 'Escape') return; // a key the game has: wait for another
+      setKeying(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [keying]);
+  useEffect(() => {
+    if (!open) setKeying(false);
+  }, [open]);
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
@@ -273,15 +297,14 @@ export function Corner({ room }: { room?: RoomView | null }) {
         type="button"
         className={`knob${prefs.muted ? ' off' : ''}`}
         aria-pressed={prefs.muted}
-        aria-label={`${sound}. ${prefs.muted ? 'Unmute' : 'Mute'} (M)`}
-        title={`${sound} (M)`}
+        aria-label={`${sound}. ${prefs.muted ? 'Unmute' : 'Mute'}`}
+        title={touchOnly() ? sound : `${sound} (M)`}
         onClick={(e) => {
           setPrefs({ muted: !prefs.muted });
           e.currentTarget.blur(); // keep Space for flipping
         }}
       >
         <Speaker off={prefs.muted} />
-        {prefs.muted && <span>Muted</span>}
       </button>
       {pausable && (
         <button
@@ -297,18 +320,13 @@ export function Corner({ room }: { room?: RoomView | null }) {
           <PauseIcon />
         </button>
       )}
-      <button type="button" className={`knob${open ? ' on' : ''}`} aria-expanded={open} aria-controls="your-settings" aria-label="Your settings" title="Your settings" onClick={() => setOpen(!open)}>
+      <button type="button" className={`knob${open ? ' on' : ''}`} aria-expanded={open} aria-controls="your-settings" aria-label="Settings" title="Settings" onClick={() => setOpen(!open)}>
         <Gear />
       </button>
+      <Feedback room={room} />
       {open && (
-        <section className="slip" id="your-settings" aria-label="Your settings">
-          <h3>Your settings</h3>
-          <label className="check">
-            <input type="checkbox" checked={!prefs.muted} onChange={(e) => setPrefs({ muted: !e.target.checked })} />
-            <span>
-              Sound <small>M switches it from anywhere</small>
-            </span>
-          </label>
+        <section className="slip" id="your-settings" aria-label="Settings">
+          <h3>Settings</h3>
           <label className="level">
             <span>
               Volume <output>{percent(prefs.volume)}</output>
@@ -323,37 +341,49 @@ export function Corner({ room }: { room?: RoomView | null }) {
           </label>
           <label className="check">
             <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-            <span>
-              Bots say "Nertz" <small>in a robot voice, when one goes out</small>
-            </span>
+            <span>Bots say "Nertz"</span>
           </label>
           <label className="check">
             <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
-            <span>
-              Show chat over the table <small>what is said appears at the top left for a moment</small>
-            </span>
+            <span>Show chat over the table</span>
           </label>
           <label className="check">
             <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
-            <span>
-              Reduce motion <small>{prefs.calm === null ? 'following your system setting' : 'cards jump instead of gliding'}</small>
-            </span>
+            <span>Reduce motion</span>
           </label>
-          <label className="level">
-            <span>Card faces</span>
-            <a className="mybacks" href="/?decks" target="_blank" rel="noreferrer">
-              <span className="what">
-                <b>{DECKS[prefs.deck]}</b>
-                <small>Change</small>
-              </span>
-            </a>
-            <label className="check">
-              <input type="checkbox" checked={prefs.night} onChange={(e) => setPrefs({ night: e.target.checked })} />
-              <span>Dark cards</span>
-            </label>
-            <span>Card backs</span>
+          <div className="level">
+            <span>Card back</span>
             <YourBacks colour={BACKS[0]} />
-          </label>
+          </div>
+          {/* Keys: only where there is a keyboard. */}
+          {!touchOnly() && (
+            <div className="hotkeys">
+              <h3>Hotkeys</h3>
+              <p>
+                Mute sound <kbd>M</kbd>
+              </p>
+              <p>
+                Mute mic
+                <button type="button" className={keying ? 'on' : ''} title="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(!keying), e.currentTarget.blur())}>
+                  {keying ? 'Press a key…' : prefs.voiceKey ? keyName(prefs.voiceKey) : 'none'}
+                </button>
+              </p>
+            </div>
+          )}
+          {/* Whoever hosts: whether this table has text chat and voice at all. */}
+          {hosting && (
+            <div className="end-vote">
+              <h3>Host</h3>
+              <label className="check">
+                <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
+                <span>Allow text chat</span>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
+                <span>Allow voice chat</span>
+              </label>
+            </div>
+          )}
           <WholeScreen />
           {room && <EndVote room={room} />}
           {room && <DealAgain room={room} />}
@@ -372,7 +402,7 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
   const mine = host?.seat === room.you;
   const set = (patch: Partial<TableSettings>) => setTableSettings(patch);
   return (
-    <fieldset className="rules">
+    <fieldset className={`rules${mine ? '' : ' locked'}`} title={mine ? undefined : 'Only the room host can set these.'}>
       <legend>Table rules</legend>
       <label className="check">
         <input type="checkbox" checked={room.settings.centre === 'spots'} disabled={!mine} onChange={(e) => set({ centre: e.target.checked ? 'spots' : 'free' })} />
@@ -381,7 +411,6 @@ export function TableRules({ room, children }: { room: RoomView; children?: Reac
         </span>
       </label>
       {children}
-      {!mine && <p className="hint">{host?.name ?? 'The host'} sets these.</p>}
     </fieldset>
   );
 }

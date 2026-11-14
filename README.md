@@ -47,6 +47,7 @@ Controls:
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | Press M, or the speaker button bottom left | mute or unmute |
 | The gear beside it | your own settings: volume, other players' volume, reduce motion |
+| The bug beside that | report a bug or ask for a feature: a few words and, if you like, a screenshot |
 
 There is no click-to-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
 Nothing shows where a card in hand may go: no pile is outlined for it. (On a touch screen a tap takes a card up and the
@@ -76,7 +77,7 @@ What you see around a round:
   moment on every screen, so that everyone can look at their layout. The nertz piles stay face-down. With "reduce
   motion" switched on the cards simply fade in where they belong; the wait and the turn are the same.
 - **The start.** The table now waits, for as long as it takes, for the dealer. The dealer has a big **Start** button in
-  the middle of the felt (Space or Enter does the same); everyone else reads "Waiting for Brian to start" there. Pressing
+  the middle of the felt (Space or Enter does the same); everyone else has a **Ready?** button there, and under it the names of those waiting, lit as each says ready. Being ready starts nothing: the dealer still says when. Pressing
   it counts "1", "2", "3" in the middle of every screen, about 0.7 seconds each, and on "NERTZ!" every nertz pile's top
   card turns over and play is open. Nothing can be touched before the word: no card, no stock, no patch of felt, and
   nobody's card is shown moving. With "reduce motion" the numbers do not bounce.
@@ -700,3 +701,19 @@ would still need one of the options above, and serving both from one origin is s
 - **Chat in a small window.** With the panel open during a round in a window under about 1250 px wide, it lies over the
   captions under your nertz pile and, narrower still, over the pile's edge. Hide it to play.
 - **No spectators, no persistence.** Restarting the server ends every game and forgets the chat.
+
+## Feedback
+
+The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever the server was told, to both if both are set:
+
+- `FEEDBACK_WEBHOOK`: a Discord webhook URL (channel settings, Integrations, Webhooks: no bot needed). The report is
+  posted there with the screenshot attached. On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
+- `FEEDBACK_DIR`: a directory. Each report is a line in `feedback.jsonl` there, the screenshot a file beside it. Outside
+  production it defaults to `./feedback` (git-ignored); in production it is off unless set, since a machine's own disk
+  does not survive a deploy: point it at a mounted volume if a copy is wanted.
+
+- `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
+  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
+  if the team has none of that name), with the screenshot in its description.
+
+Five reports per address per ten minutes; a screenshot is scaled down in the browser first.

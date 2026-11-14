@@ -51,6 +51,8 @@ interface Player {
   drags?: { left: number; at: number };
   /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
   flipped?: number;
+  /** Said they are ready for Start, for the round now dealt. */
+  ready?: boolean;
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
   bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null; pending: { intent: Intent; memory: BotMemory } | null };
 }
@@ -171,6 +173,12 @@ export class Room {
         return this.start(player);
       case 'go':
         return this.go(player);
+      case 'ready': {
+        const stage = this.phase === 'playing' ? this.game?.stage : undefined;
+        if ((stage !== 'dealing' && stage !== 'ready') || !this.game!.players.some((g) => g.seat === player.seat) || !!player.ready === msg.on) return;
+        player.ready = msg.on;
+        return this.changed();
+      }
       case 'settings':
         return this.configure(player, msg.patch);
       case 'intent':
@@ -311,6 +319,7 @@ export class Room {
   private dealOut(): void {
     const dealt = this.players.filter((p) => p.conn);
     this.snipes = [];
+    for (const p of this.players) delete p.ready;
     for (const p of dealt) if (p.lot && !p.drew) this.drawBack(p); // a back by lot is drawn now: once, and kept for every round at this table
     this.game = deal(
       dealt.map((p) => p.seat),
@@ -374,6 +383,7 @@ export class Room {
     if (!showing.some((c) => c && 'suit' in c && c.suit === top.suit && c.rank === top.rank)) return;
     if (this.snipes.some((s) => s.of === victim.seat && s.card === top.id)) return;
     this.snipes.push({ by: top.owner, of: victim.seat, card: top.id });
+    this.players.find((p) => p.seat === top.owner)?.conn?.send({ t: 'sniper', of: victim.seat });
   }
 
   private stopTimers(): void {
@@ -770,6 +780,7 @@ export class Room {
         isHost: p === dealer,
         stuck: stuck(p.seat),
         ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,
+        ...(this.phase === 'playing' && (game?.stage === 'dealing' || game?.stage === 'ready') && (p.bot || p.ready) && game.players.some((g) => g.seat === p.seat) ? { ready: true } : {}),
         bot: p.bot?.level,
         deck: p.deck && deckNamed(p.deck, p.night),
         // (A back by lot is not known until a round is dealt: before the first, a card with a question mark.)

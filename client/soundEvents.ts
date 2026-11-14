@@ -125,8 +125,10 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     } else if (to.pile === 'tray') {
       if (from.pile === 'slot') add({ k: 'clear', who: who(b.game.tray[to.i]!.at(-1)!.owner) }, `${to.i}`);
     } else if (from.pile === 'slot' || (from.pile === 'work' && to.pile !== 'work')) {
-      // No move goes that way: a predicted one was undone. Ours: we lost a race for that place.
-      add(who(to.seat) === 'me' ? { k: 'lost' } : { k: 'home', who: who(to.seat) });
+      // No move goes that way: a predicted one was undone. Ours: we lost a race for that place. (Not with an Ace:
+      // someone started a pile where ours was going, and it has other places to go. It just comes home.)
+      const ace = from.pile === 'slot' && a.game.slots[from.i]?.find((c) => c.id === id)?.rank === 1;
+      add(who(to.seat) === 'me' && !ace ? { k: 'lost' } : { k: 'home', who: who(to.seat) });
     } else if (to.pile === 'work') {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
     } else if (to.pile === 'waste' && from.pile === 'stock') {

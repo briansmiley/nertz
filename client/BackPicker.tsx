@@ -8,9 +8,12 @@ import { createPortal } from 'react-dom';
 import { backNamed, CARD_BACKS, type Back } from '../shared/protocol';
 import { BackShelf } from './BackShelf';
 import { backOf } from './cards/Face';
+import { FaceShelf } from './FaceShelf';
 import { setPrefs, usePrefs } from './prefs';
 
-export function BackPicker({ title, colour, bare, back, random, onPick, onRandom, onBare, onClose }: { title: string; colour: string; bare: boolean; back: Back; random: string | null; onPick: (back: Back) => void; onRandom: (scope: string | null) => void; onBare?: (bare: boolean) => void; onClose: () => void }) {
+/** `faces`: your own cards are being chosen, so the sheet has a second panel, for the faces (as the page of cards has). */
+export function BackPicker({ title, colour, bare, back, random, onPick, onRandom, onBare, onClose, faces }: { faces?: boolean; title: string; colour: string; bare: boolean; back: Back; random: string | null; onPick: (back: Back) => void; onRandom: (scope: string | null) => void; onBare?: (bare: boolean) => void; onClose: () => void }) {
+  const [panel, setPanel] = useState<'backs' | 'faces'>('backs');
   useEffect(() => {
     const key = (e: KeyboardEvent): void => void (e.key === 'Escape' && onClose());
     addEventListener('keydown', key);
@@ -22,21 +25,33 @@ export function BackPicker({ title, colour, bare, back, random, onPick, onRandom
       <div className="sheet showroom">
         <div className="heading">
           <h2>{title}</h2>
-          {onBare && (
+          {faces && (
+            <div className="panels" role="tablist">
+              <button type="button" role="tab" aria-selected={panel === 'backs'} className={panel === 'backs' ? 'on' : ''} onClick={() => setPanel('backs')}>
+                Backs
+              </button>
+              <button type="button" role="tab" aria-selected={panel === 'faces'} className={panel === 'faces' ? 'on' : ''} onClick={() => setPanel('faces')}>
+                Faces
+              </button>
+            </div>
+          )}
+          {panel === 'backs' && onBare && (
             <button type="button" className={`edge${bare ? ' on' : ''}`} aria-pressed={bare} title="Backs without the white edge: the pattern runs to the edge of the card" onClick={() => onBare(!bare)}>
               <span className="lever" />
               Borderless
             </button>
           )}
-          <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} title="Any back at all, drawn by lot when the first round is dealt, and kept for the table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
-            <span className="lever" />
-            Random
-          </button>
+          {panel === 'backs' && (
+            <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} title="Any back at all, drawn by lot when the first round is dealt, and kept for the table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
+              <span className="lever" />
+              Random
+            </button>
+          )}
           <button type="button" className="shut" aria-label="Close" onClick={onClose}>
             ×
           </button>
         </div>
-        <BackShelf colour={colour} bare={bare} back={back} random={random} onPick={onPick} onRandom={onRandom} />
+        {panel === 'backs' ? <BackShelf colour={colour} bare={bare} back={back} random={random} onPick={onPick} onRandom={onRandom} /> : <FaceShelf />}
       </div>
     </div>,
     document.body,
@@ -60,7 +75,7 @@ export function YourBacks({ colour, compact }: { colour: string; compact?: boole
           </span>
         )}
       </button>
-      {open && <BackPicker title="Your card backs" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), setOpen(false))} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={() => setOpen(false)} />}
+      {open && <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), setOpen(false))} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={() => setOpen(false)} />}
     </>
   );
 }
