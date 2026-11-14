@@ -9,6 +9,7 @@
 import { useSyncExternalStore } from 'react';
 import type { VoiceMember } from '../shared/chat';
 import { current, post } from './net';
+import { getPrefs, loudness, watchPrefs } from './prefs';
 
 /**
  * STUN only: enough when at least one side of a pair can be reached directly,
@@ -132,6 +133,12 @@ export function setMuted(muted: boolean): void {
 
 // ---------------------------------------------------------------- the mesh
 
+/** How loud the others' voices play: the voice chat's level (the game's mute is not for it). */
+const heard = (): number => loudness(getPrefs(), 'voice');
+watchPrefs(() => {
+  for (const { audio } of peers.values()) audio.volume = heard();
+});
+
 /** The websocket dropped: the connections are closed, the microphone is kept, and `sync` rejoins when we are back. */
 export function hangUp(): void {
   for (const id of [...peers.keys()]) closePeer(id);
@@ -160,6 +167,7 @@ function open(id: number): Peer {
   const pc = new RTCPeerConnection({ iceServers: [...ICE_SERVERS, ...extraIce] });
   const audio = new Audio();
   audio.autoplay = true;
+  audio.volume = heard();
   const peer: Peer = { pc, audio, queued: [] };
   peers.set(id, peer);
   for (const t of mic?.getAudioTracks() ?? []) pc.addTrack(t, mic!);
