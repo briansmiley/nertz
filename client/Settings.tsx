@@ -8,7 +8,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
 import { pause, send, setTableSettings } from './net';
-import { calm, CARD_BACKS, DECKS, setPrefs, usePrefs, type Back, type Deck } from './prefs';
+import { YourBacks } from './BackPicker';
+import { BACKS } from './cards/Face';
+import { calm, DECKS, setPrefs, usePrefs } from './prefs';
 
 /** Is this key press going into a text field (a name, a table code)? */
 const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElement ? !['range', 'checkbox'].includes(el.type) : el instanceof HTMLTextAreaElement);
@@ -296,6 +298,12 @@ export function Corner({ room }: { room?: RoomView | null }) {
             <input type="range" min="0" max="1" step="0.05" value={prefs.others} disabled={prefs.muted} onChange={(e) => setPrefs({ others: Number(e.target.value) })} />
           </label>
           <label className="check">
+            <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+            <span>
+              Bots say "Nertz" <small>in a robot voice, when one goes out</small>
+            </span>
+          </label>
+          <label className="check">
             <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
             <span>
               Reduce motion <small>{prefs.calm === null ? 'following your system setting' : 'cards jump instead of gliding'}</small>
@@ -303,27 +311,18 @@ export function Corner({ room }: { room?: RoomView | null }) {
           </label>
           <label className="level">
             <span>Card faces</span>
-            <select value={prefs.deck} onChange={(e) => setPrefs({ deck: e.target.value as Deck })}>
-              {Object.entries(DECKS).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <a className="mybacks" href="/?decks" target="_blank" rel="noreferrer">
+              <span className="what">
+                <b>{DECKS[prefs.deck]}</b>
+                <small>Change</small>
+              </span>
+            </a>
             <label className="check">
               <input type="checkbox" checked={prefs.night} onChange={(e) => setPrefs({ night: e.target.checked })} />
               <span>Dark cards</span>
             </label>
-            <select value={prefs.back} onChange={(e) => setPrefs({ back: e.target.value as Back })} aria-label="Card backs">
-              {Object.entries(CARD_BACKS).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label} backs
-                </option>
-              ))}
-            </select>
-            <a className="decks" href="/?decks" target="_blank" rel="noreferrer">
-              See all the decks
-            </a>
+            <span>Card backs</span>
+            <YourBacks colour={BACKS[0]} />
           </label>
           <WholeScreen />
           {room && <EndVote room={room} />}

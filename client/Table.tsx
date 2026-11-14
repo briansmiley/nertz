@@ -14,7 +14,7 @@ import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
-import { DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
+import { backNamed, DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
@@ -24,7 +24,7 @@ import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, pause, post } from './net';
 import { canResume } from './Settings';
-import { calm, deckOf, usePrefs } from './prefs';
+import { calm, choiceAt, deckOf, usePrefs } from './prefs';
 import { beaten, stage as stageSound } from './sound';
 import { beatenTo } from './soundEvents';
 
@@ -333,6 +333,8 @@ interface Drag {
   report: ({ t: 'drag' } & DragAt) | null;
   sent: number;
   timer: ReturnType<typeof setTimeout> | undefined;
+  /** The card on top of every pile in the middle when this one was picked up (its id; none for an empty place): what has been played since is what there was a race for. */
+  tops: (string | undefined)[];
 }
 
 
@@ -536,7 +538,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'KeyD' || !e.shiftKey || e.repeat || (e.target as Element).closest?.('input,textarea')) return;
+      if (e.repeat || !e.shiftKey || (e.target as Element).closest?.('input,textarea')) return;
+      // Shift+N: a bot goes out now (to see and hear it without playing a round through; the server refuses it in production).
+      if (e.code === 'KeyN') return void post({ t: 'debugBotOut' });
+      if (e.code !== 'KeyD') return;
       setReplay((n) => n + 1);
       setReplaying(true);
     };
@@ -581,6 +586,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [dealing, dealMs, game.players, L, you]);
   const inGrace = called && !results && game.grace.length > 0;
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
+  /** My own backs, as they are named for drawing: my choice at this table, shown at once; or, if they are by lot, the one the table drew for me (it comes with the deal). */
+  const chosen = choiceAt(room.code, prefs);
+  const myBack = chosen.random ? info(you)?.back : backNamed(chosen.back, prefs.bare);
   /** This seat's line of the round just scored. The finished table goes by it: whoever played the round may have left since. */
   const line = (seat: number) => (results ? room.lastRound?.scores.find((s) => s.seat === seat) : undefined);
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
@@ -800,6 +808,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       touch: e.pointerType !== 'mouse',
       active: false,
       report: null,
+      tops: game.slots.map((pile) => pile.at(-1)?.id),
       sent: 0,
       timer: undefined,
     };
@@ -894,11 +903,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     } else if (d.held.k === 'stock') {
       if (t) send({ k: 'flip' });
     } else if (!t || t.to === 'tray' || t.to === 'waste' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
-      // Let go over a pile in the middle that will not take it because someone else's same card is already there: beaten to it.
+      // Let go over a pile in the middle that will not take it because someone else's same card is there, put there
+      // since this one was picked up: beaten to it. (The same card lying there all along is no race lost, only a
+      // card that has nowhere to go: it goes home with the plain sound.)
       const id = d.held.id;
       const c = centreOf(d);
       const over = d.ids.length === 1 && !t ? L.slotHit.findIndex((r) => r && (inside(r, d.px, d.py) || (c && inside(r, c.x, c.y)))) : -1;
-      if (over >= 0 && beatenTo(game, you, id, over)) beaten();
+      if (over >= 0 && game.slots[over]?.at(-1)?.id !== d.tops[over] && beatenTo(game, you, id, over)) beaten();
       send({ k: 'release' });
     }
     letGo(d);
@@ -929,7 +940,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const waiting = game.slots.some((_, i) => toClear(i));
   /** Upright: the room between your nertz pile and your stock, for your name. (The stuck button is a small pill in the top bar, after Chat.) */
   const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
-  const callerBox = called ? (game.nertzCalledBy === you ? me?.box : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.box) : undefined;
+  // The NERTZ! stamp comes down on the place the caller's nertz pile stood (now empty), not across their whole hand:
+  // large enough to read at any seat, and kept inside the window.
+  const callerPile = called ? (game.nertzCalledBy === you ? me?.nertz : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.nertz) : undefined;
+  const stampSize = callerPile ? Math.max(22, Math.min(callerPile.w * 0.78, 60)) : 0;
+  const callerBox = callerPile && {
+    x: clamp(callerPile.x + callerPile.w / 2 - stampSize * 2, 4, Math.max(4, W - stampSize * 4 - 4)),
+    y: callerPile.y,
+    w: stampSize * 4,
+    h: callerPile.h,
+  };
   const finale = stage === 'spread' || stage === 'out' || stage === 'wash' || stage === 'sheet';
   /** An Ace is in hand on a table without marked places. */
   const placing = held?.k === 'card' && held.ace;
@@ -1071,9 +1091,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             rot={c.rot}
             mine={c.mine}
             up={c.up && !replaying}
-            mini={c.s * CARD_W < MINI_BELOW}
+            // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
+            mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
             deck={c.card.owner === you ? deckOf(prefs) : info(c.card.owner)?.deck}
-            back={c.card.owner === you ? prefs.back : info(c.card.owner)?.back}
+            back={c.card.owner === you ? myBack : info(c.card.owner)?.back}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
             cls={cardClass(c)}
@@ -1088,7 +1109,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} />
 
       {callerBox && (
-        <div className="shout" style={{ left: callerBox.x, top: callerBox.y, width: callerBox.w, height: callerBox.h, fontSize: Math.min(callerBox.w * 0.2, callerBox.h * 0.95) }}>
+        <div className="shout" style={{ left: callerBox.x, top: callerBox.y, width: callerBox.w, height: callerBox.h, fontSize: stampSize }}>
           <span>Nertz!</span>
         </div>
       )}
@@ -1102,7 +1123,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} backs={(seat) => (seat === you ? prefs.back : info(seat)?.back)} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} backs={(seat) => (seat === you ? myBack : info(seat)?.back)} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {results && stage !== 'sheet' && (
         <button type="button" className="skip" onClick={skip}>

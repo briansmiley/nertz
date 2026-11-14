@@ -2,9 +2,9 @@
 // browser, not to the table, and are remembered in localStorage when there is
 // one (without it they last as long as the page).
 import { useSyncExternalStore } from 'react';
-import { isBack, isDeck, type Back, type Deck } from '../shared/protocol';
+import { backNamed, isBack, isDeck, isLot, type Back, type Deck } from '../shared/protocol';
 
-export { CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
+export { backGroups, CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 
 export interface Prefs {
   muted: boolean;
@@ -20,13 +20,24 @@ export interface Prefs {
   back: Back;
   /** Your cards dark: light on a dark card. */
   night: boolean;
+  /** A bot that goes out says "Nertz" aloud, in a machine's voice (the browser's own speech, where it has any). */
+  botVoice: boolean;
+  /** Your backs without the white edge: the pattern runs to the edge of the card. */
+  bare: boolean;
+  /**
+   * A back drawn by lot for each table (when its first round is dealt), in place of `back`: from all of them ('all'),
+   * or from one kind (the name of a group in `BACK_GROUPS`). Null: always `back`.
+   */
+  random: string | null;
 }
 
 /** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
+/** Your back as it is named for drawing: its name, with `:bare` after it for the one without an edge. */
+export const backOfPrefs = (p: Pick<Prefs, 'back' | 'bare'>): string => backNamed(p.back, p.bare)!;
 export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => `${p.deck}${p.night ? ':night' : ''}`;
 
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false };
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true };
 const KEY = 'nertz.prefs';
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
@@ -42,6 +53,9 @@ export function cleanPrefs(raw: unknown): Prefs {
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
     night: typeof v.night === 'boolean' ? v.night : v.deck === 'night', // ("night" was once a deck of its own)
     back: isBack(v.back) ? v.back : DEFAULT_PREFS.back,
+    bare: v.bare === true,
+    botVoice: v.botVoice !== false,
+    random: isLot(v.random) ? v.random : null,
   };
 }
 
@@ -67,8 +81,46 @@ function apply(): void {
 
 export const getPrefs = (): Prefs => prefs;
 
+// A choice of backs made at a table (from the card beside your name in its lobby) is for that table only: it stands
+// in place of your own choice while you are there, and is forgotten at the next. (Kept over a reload of the page,
+// where the browser allows.) Changing your own choice, in your settings or on the page of cards, takes its place.
+export interface Choice {
+  back: Back;
+  random: string | null;
+}
+const HERE = 'nertz.here';
+let here: ({ room: string } & Choice) | null = null;
+try {
+  const v = JSON.parse(sessionStorage.getItem(HERE) ?? 'null') as ({ room: string } & Choice) | null;
+  if (v && typeof v.room === 'string' && isBack(v.back) && (v.random === null || isLot(v.random))) here = v;
+} catch {
+  // no storage: a reload goes back to your own choice
+}
+function keep(): void {
+  try {
+    if (here) sessionStorage.setItem(HERE, JSON.stringify(here));
+    else sessionStorage.removeItem(HERE);
+  } catch {
+    // no storage
+  }
+}
+
+/** The backs you have at the table `room`: the choice made there if there is one, else your own. */
+export const choiceAt = (room: string | null | undefined, p: Pick<Prefs, 'back' | 'random'> = prefs): Choice => (here && here.room === room ? { back: here.back, random: here.random } : { back: p.back, random: p.random });
+
+/** Chooses backs for the table `room` only, and tells whoever is listening. */
+export function chooseAt(room: string, choice: Choice): void {
+  here = { room, ...choice };
+  keep();
+  for (const l of listeners) l();
+}
+
 export function setPrefs(patch: Partial<Prefs>): void {
   prefs = cleanPrefs({ ...prefs, ...patch });
+  if ('back' in patch || 'random' in patch) {
+    here = null; // your own choice, made anew, stands everywhere: also at the table you are at
+    keep();
+  }
   try {
     localStorage.setItem(KEY, JSON.stringify(prefs));
   } catch {

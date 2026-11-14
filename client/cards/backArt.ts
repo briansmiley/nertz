@@ -9,8 +9,25 @@ const pts = (p: readonly (readonly [number, number])[]): string => p.map(([x, y]
 /** The field the pattern fills: inside the edge and the thin line. */
 const F = { x: 9, y: 9, w: W - 18, h: H - 18 };
 
+/**
+ * Set while a back is drawn without its edge (`drawnBack`): the picture is then only the field, drawn larger. The
+ * field is a little taller for its width than the card, so either its width is fitted to the card's and a sliver of
+ * its top and bottom is lost ('fill': a pattern that covers the field), or its height is, and it stops just short of
+ * the sides ('fit': a single figure on bare ground, where that does not show and nothing of the figure is lost).
+ */
+let bare: 'fill' | 'fit' | null = null;
+const FIGURES = new Set(['penrose-triangle', 'sunburst', 'mystic-star', 'mystic-day', 'mystic-moons', 'mystic-sun', 'mystic-eye', 'lotus', 'giglio', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'compass', 'lightcone', 'arbor', 'guilloche']);
+
+// (Each picture says how large it is, 90 by 126: without that it has no size of its own, and the end-of-round canvas,
+// which draws a back by its picture's own size, drew only a part of it, out of shape.)
 const frame = (body: string, stroke = 1.3, small = false): string =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
+  bare
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="${bare === 'fill' ? `${F.x} ${n(F.y + (F.h - (F.w * H) / W) / 2)} ${F.w} ${n((F.w * H) / W)}` : `${n(W / 2 - (F.h * W) / H / 2)} ${F.y} ${n((F.h * W) / H)} ${F.h}`}" preserveAspectRatio="none">` +
+      `<g fill="none" stroke="#fff" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">${body}</g></svg>`
+    : framed(body, stroke, small);
+
+const framed = (body: string, stroke: number, small: boolean): string =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
   `<path fill="#fff" fill-rule="evenodd" d="M0 0H${W}V${H}H0ZM4.5 7.5a3 3 0 0 1 3-3H${W - 7.5}a3 3 0 0 1 3 3V${H - 7.5}a3 3 0 0 1-3 3H7.5a3 3 0 0 1-3-3Z"/>` +
   `<g fill="none" stroke="#fff" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">` +
   `${small ? '' : `<rect x="6.6" y="6.6" width="${W - 13.2}" height="${H - 13.2}" rx="1.6" stroke-width="0.7"/>`}${body}</g></svg>`;
@@ -537,27 +554,47 @@ function pinwheel(small: boolean): string {
   return frame(clipped(`<path d="${white}" fill="#fff" stroke="none"/><path d="${half}" fill="${HALF}" stroke="none"/>`), 1, small);
 }
 
-/** A mosaic: little stones, none quite square or straight, and two bands of white ones winding down the card across each other, their middles a half tone. */
+/**
+ * A mosaic, laid as the Romans laid a medallion: ring upon ring of little stones round the middle of the card, none
+ * quite true, in three tones that make a flower of petals at the centre, a band round it, and arms that wind
+ * outwards from the band to the corners.
+ */
 function mosaic(small: boolean): string {
-  const size = small ? 6 : 3.6;
-  const cols = Math.round(F.w / size);
-  const rows = Math.round(F.h / size);
-  const [w, h] = [F.w / cols, F.h / rows];
+  const t = small ? 6.4 : 3.5; // from one ring to the next
+  const gap = small ? 1.2 : 0.62;
+  const petals = small ? 6 : 8;
+  const heart = small ? 24 : 27; // how far out the flower reaches
   const roll = dice(41);
+  const [cx, cy] = [W / 2, H / 2];
   const tones: Record<string, string> = { white: '', half: '', faint: '' };
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const [cx, cy] = [F.x + (c + 0.5) * w, F.y + (r + 0.5) * h];
-      const swing = F.w * 0.3 * Math.sin((2 * Math.PI * (cy - F.y)) / (F.h / 2));
-      const off = Math.min(Math.abs(cx - (W / 2 + swing)), Math.abs(cx - (W / 2 - swing)));
-      const band = small ? 7 : 5.5;
-      const tone = off < band * 0.38 ? 'half' : off < band ? 'white' : 'faint';
-      const turn = (roll() - 0.5) * 0.5;
-      const [rx, ry] = [(w / 2) * (0.74 + roll() * 0.14), (h / 2) * (0.74 + roll() * 0.14)];
-      tones[tone] += poly(([[-rx, -ry], [rx, -ry], [rx, ry], [-rx, ry]] as const).map(([x, y]) => [cx + x * Math.cos(turn) - y * Math.sin(turn), cy + x * Math.sin(turn) + y * Math.cos(turn)] as const));
+  const first = t * 0.85;
+  tones.half += `M${n(cx + first)} ${n(cy)}A${n(first)} ${n(first)} 0 1 0 ${n(cx - first)} ${n(cy)}A${n(first)} ${n(first)} 0 1 0 ${n(cx + first)} ${n(cy)}Z`;
+  for (let ring = 0; first + gap + ring * t < Math.hypot(F.w, F.h) / 2; ring++) {
+    const [r0, r1] = [first + gap + ring * t, first + ring * t + t];
+    const mid = (r0 + r1) / 2;
+    const count = Math.max(6, Math.round((2 * Math.PI * mid) / (t * 1.05)));
+    const start = roll() * 2 * Math.PI;
+    for (let k = 0; k < count; k++) {
+      const a = start + (k / count) * 2 * Math.PI;
+      const [px, py] = [cx + mid * Math.cos(a), cy + mid * Math.sin(a)];
+      if (px < F.x - t || px > F.x + F.w + t || py < F.y - t || py > F.y + F.h + t) {
+        roll(), roll(), roll();
+        continue;
+      }
+      // Which tone this stone is: by where its middle lies in the picture.
+      const reach = heart * (0.38 + 0.62 * Math.abs(Math.cos((petals * a) / 2)) ** 1.4);
+      const band = Math.round((heart + t * 1.2 - first) / t); // the ring just outside the flower
+      const arm = (((a * petals) / (2 * Math.PI) + (mid - heart) / (t * 5.5)) % 1 + 1) % 1;
+      const tone = mid < reach ? (mid < heart * 0.3 ? 'half' : 'white') : ring === band ? 'white' : ring === band - 1 || ring === band + 1 || mid < heart + t ? 'faint' : arm < 0.42 ? 'half' : 'faint';
+      // The stone: a piece of its ring, a little short of its neighbours, and knocked a little out of true.
+      const half = Math.PI / count - gap / 2 / mid;
+      const turn = (roll() - 0.5) * 0.07;
+      const [in0, out0] = [r0 + roll() * gap * 0.5, r1 - roll() * gap * 0.5];
+      const at = (r: number, da: number): readonly [number, number] => [cx + r * Math.cos(a + da), cy + r * Math.sin(a + da)];
+      tones[tone] += poly([at(in0, -half + turn * 0.3), at(out0, -half - turn * 0.3), at(out0, half - turn * 0.3), at(in0, half + turn * 0.3)]);
     }
   }
-  return frame(`<path d="${tones.white}" fill="#fff" stroke="none"/><path d="${tones.half}" fill="${HALF}" stroke="none"/><path d="${tones.faint}" fill="rgba(255,255,255,0.2)" stroke="none"/>`, 1, small);
+  return frame(clipped(`<path d="${tones.white}" fill="#fff" stroke="none"/><path d="${tones.half}" fill="${HALF}" stroke="none"/><path d="${tones.faint}" fill="rgba(255,255,255,0.2)" stroke="none"/>`), 1, small);
 }
 
 /** Flower tiles: an eight-petalled flower in every tile, and a small four-pointed star where four tiles meet. */
@@ -639,6 +676,18 @@ function lightcone(small: boolean): string {
   ];
   const k = Math.min((F.w * (small ? 0.98 : 0.94)) / 158.1, (F.h * 0.94) / 201.2);
   return frame(`<g transform="translate(${n(W / 2 - (158.1 * k) / 2)} ${n(H / 2 - (201.2 * k) / 2)}) scale(${Math.round(k * 10000) / 10000})" fill="#fff" fill-rule="evenodd" stroke="none">${shapes.map((d) => `<path d="${d}"/>`).join('')}</g>`, 1, small);
+}
+
+/**
+ * The Arbor mark (the owner's own organisation's logo): a binary tree of seven round nodes, as it is in the logo's
+ * file (253 by 228), fitted into the middle of the card.
+ */
+function arbor(small: boolean): string {
+  const at: [number, number][] = [[126.63, 29], [61.56, 114], [191.71, 114], [29.02, 199], [94.1, 199], [159.17, 199], [224.24, 199]];
+  const k = (F.w * (small ? 0.96 : 0.9)) / 253;
+  const twigs = [1, 2, 3, 4, 5, 6].map((i) => `M${at[(i - 1) >> 1]![0]} ${at[(i - 1) >> 1]![1]}L${at[i]![0]} ${at[i]![1]}`).join('');
+  const nodes = at.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="19.5"/>`).join('');
+  return frame(`<g transform="translate(${n(W / 2 - (253 * k) / 2)} ${n(H / 2 - (228 * k) / 2)}) scale(${Math.round(k * 10000) / 10000})"><path d="${twigs}" stroke-width="8"/><g fill="#fff" stroke="none">${nodes}</g></g>`, 1, small);
 }
 
 /**
@@ -889,7 +938,7 @@ function largerClusters([H, T, P, F]: [Meta, Meta, Meta, Meta]): [Meta, Meta, Me
 }
 
 /** The hat tiling: a patch of it over the card, each hat outlined; the hats that are turned over (about one in seven) are white, and the three round each of them shaded. */
-function hat(small: boolean): string {
+function hat(small: boolean, tones: 1 | 2 | 3 = 3): string {
   let clusters = firstClusters();
   for (let i = 0; i < 3; i++) clusters = largerClusters(clusters);
   const hats: { kind: string; at: Pt2[] }[] = [];
@@ -902,7 +951,7 @@ function hat(small: boolean): string {
   };
   gather(clusters[0], [1, 0, 0, 0, 1, 0]);
   // One step of the hat's own grid is `u` px; the patch's middle is put at the middle of the card.
-  const u = small ? 6.4 : 3.6;
+  const u = small ? 9 : 5.2;
   const cx = hats.reduce((t, h) => t + h.at[0]!.x, 0) / hats.length;
   const cy = hats.reduce((t, h) => t + h.at[0]!.y, 0) / hats.length;
   const fill: Record<string, string> = { H1: '', H: '' };
@@ -914,7 +963,10 @@ function hat(small: boolean): string {
     lines += d;
     if (h.kind in fill) fill[h.kind] += d;
   }
-  return frame(clipped(`<path d="${fill.H1}" fill="#fff" stroke="none"/><path d="${fill.H}" fill="rgba(255,255,255,0.3)" stroke="none"/><path d="${lines}" stroke-linejoin="round"/>`), small ? 1.2 : 0.6, small);
+  // `tones`: 3 as described; 2 without the shading (turned-over hats white, the rest bare); 1 outlines only.
+  const solid = tones >= 2 ? `<path d="${fill.H1}" fill="#fff" stroke="none"/>` : '';
+  const shade = tones >= 3 ? `<path d="${fill.H}" fill="rgba(255,255,255,0.3)" stroke="none"/>` : '';
+  return frame(clipped(`${solid}${shade}<path d="${lines}" stroke-linejoin="round"/>`), small ? 1.2 : 0.6, small);
 }
 
 /** Chains: rows of oval links, each through the next: where two cross, one passes over and the other is broken off short of it. Every other row is half a link along. */
@@ -987,7 +1039,441 @@ function pulsar(small: boolean): string {
   return frame(clipped(`<path d="${d}"/>`), small ? 1.3 : 0.7, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, waves, flow, life, penrose, hat, chain, pulsar };
+/**
+ * Packed circles: circles of every size, each as large as the room where it fell allows (by a fixed roll of the
+ * dice) and so all but touching a neighbour: big ones first, then smaller and smaller ones into the gaps left.
+ */
+function bubbles(small: boolean): string {
+  const roll = dice(small ? 19 : 8);
+  const gap = small ? 1.6 : 0.75;
+  const out = small ? 8 : 6; // (how far outside the field a circle's middle may be: the field cuts those off)
+  const all: { x: number; y: number; r: number }[] = [];
+  // Rounds of smaller and smaller circles: in each, one is kept only if it has room to be nearly as big as the round allows.
+  for (const [most, tries] of small ? [[19, 60], [11, 300], [6.5, 1500], [4, 3000]] as const : [[13, 80], [8.5, 400], [5.5, 1500], [3.4, 4000], [2.2, 10000]] as const) {
+    for (let t = 0; t < tries; t++) {
+      const [x, y] = [F.x - out + roll() * (F.w + 2 * out), F.y - out + roll() * (F.h + 2 * out)];
+      let r: number = most;
+      for (const c of all) r = Math.min(r, Math.hypot(x - c.x, y - c.y) - c.r - gap);
+      if (r >= most * 0.62) all.push({ x, y, r });
+    }
+  }
+  return frame(clipped(all.map((c) => `<circle cx="${n(c.x)}" cy="${n(c.y)}" r="${n(c.r)}"/>`).join('')), small ? 1.5 : 0.75, small);
+}
+
+// The outline of a fleur-de-lis, 584 by 593 ("Fleur de lis flat.svg", Wikimedia Commons, CC0), and of the lily of
+// Florence with its stamens, 347.465 by 475.946 ("Fleur de lis of Florence.svg", Wikimedia Commons, public domain).
+const LIS = 'M 291.5,-0.5 C 292.167,-0.5 292.833,-0.5 293.5,-0.5C 296.695,2.85212 300.362,5.68545 304.5,8C 322.991,17.4119 341.325,27.0785 359.5,37C 374.753,45.2489 387.92,56.0822 399,69.5C 416.942,100.784 416.942,132.118 399,163.5C 384.728,183.706 369.728,203.373 354,222.5C 335.913,253.107 326.079,286.273 324.5,322C 324.667,325.167 324.833,328.333 325,331.5C 325.494,338.841 329.327,341.341 336.5,339C 337.333,338.167 338.167,337.333 339,336.5C 347.152,283.694 369.985,238.528 407.5,201C 430.639,179.601 457.973,167.101 489.5,163.5C 535.074,168.922 565.241,193.256 580,236.5C 581.607,243.912 582.773,251.245 583.5,258.5C 583.5,259.5 583.5,260.5 583.5,261.5C 581.563,296.546 566.23,324.046 537.5,344C 516.373,354.325 494.039,358.825 470.5,357.5C 472.038,351.421 473.871,345.421 476,339.5C 479.045,329.13 479.045,318.797 476,308.5C 462.086,292.063 444.919,287.23 424.5,294C 403.371,302.456 392.871,317.956 393,340.5C 393.69,343.196 395.19,345.363 397.5,347C 407.809,349.99 417.476,354.323 426.5,360C 439.712,370.373 439.712,380.706 426.5,391C 416.963,397.52 406.63,402.52 395.5,406C 393.406,407.255 392.406,409.088 392.5,411.5C 396.803,428.943 405.803,443.443 419.5,455C 434.523,465.482 448.857,464.482 462.5,452C 469.764,444.64 474.264,435.807 476,425.5C 476.347,423.82 477.347,422.82 479,422.5C 497.213,431.083 508.38,445.25 512.5,465C 506.525,498.975 486.525,518.975 452.5,525C 418.583,529.123 391.75,517.29 372,489.5C 360.642,472.116 351.976,453.449 346,433.5C 344.713,425.219 344.213,416.886 344.5,408.5C 336.5,408.5 328.5,408.5 320.5,408.5C 321.743,424.032 324.243,439.365 328,454.5C 332.939,467.428 340.273,478.761 350,488.5C 356.305,498.444 360.972,509.111 364,520.5C 367.252,535.742 362.752,548.242 350.5,558C 345.442,562.057 340.108,565.724 334.5,569C 319.784,576.354 305.451,584.187 291.5,592.5C 291.167,592.5 290.833,592.5 290.5,592.5C 286.438,588.291 281.772,584.791 276.5,582C 262.356,575.43 248.689,568.097 235.5,560C 216.748,544.168 213.248,525.335 225,503.5C 227.599,497.911 230.599,492.577 234,487.5C 247.88,474.074 256.214,457.741 259,438.5C 260.496,428.531 261.663,418.531 262.5,408.5C 254.5,408.5 246.5,408.5 238.5,408.5C 239.914,426.511 236.414,443.511 228,459.5C 219.709,478.949 207.876,495.782 192.5,510C 163.588,529.908 133.588,531.574 102.5,515C 82.4515,501.947 72.2848,483.447 72,459.5C 77.36,442.31 88.1933,429.976 104.5,422.5C 105.647,422.818 106.481,423.484 107,424.5C 110.476,443.971 121.643,456.471 140.5,462C 153.379,462.479 163.879,457.646 172,447.5C 180.069,438.033 186.069,427.366 190,415.5C 191.71,409.531 189.543,405.697 183.5,404C 173.33,400.915 163.997,396.248 155.5,390C 143.955,377.919 145.288,367.252 159.5,358C 168.934,353.635 178.434,349.468 188,345.5C 192.115,337.621 192.115,329.621 188,321.5C 175.251,297.041 155.417,287.541 128.5,293C 118.136,296.375 110.636,302.875 106,312.5C 103.991,328.12 106.491,342.953 113.5,357C 50.4546,360.752 12.4546,331.919 -0.5,270.5C -0.5,261.5 -0.5,252.5 -0.5,243.5C 7.23656,207.919 28.5699,184.419 63.5,173C 92.9844,164.356 120.984,167.689 147.5,183C 193.48,209.327 223.314,248.161 237,299.5C 238.964,311.916 241.297,324.249 244,336.5C 247.795,339.803 251.962,340.303 256.5,338C 259.585,299.813 252.085,263.646 234,229.5C 221.427,212.256 208.093,195.589 194,179.5C 182.86,165.889 174.86,150.556 170,133.5C 165.241,108.2 171.241,85.8664 188,66.5C 199.767,53.3881 213.267,42.5548 228.5,34C 250.524,23.9955 271.524,12.4955 291.5,-0.5 Z';
+const GIGLIO = 'M294.504 168.985l-.754.008c-25.586 0-54.656 14.508-73.578 55.508-10.117 22.727-15.754 48.809-15.793 75.293h-8.102c0-54.859 13.848-102.258 33.922-124.641 5.582-6.531 14.633-9.508 23.773-8.531a29.16 29.16 0 0 1 5.5 1.129c-2.18-4.727-6.719-8.219-12.266-8.812-2.5-.266-4.922.09-7.117.938l7.105-9.211v.004c2.641-3.008 3.738-3.707 5.941-4.633l-.012.004c2.359-.84 4.891-1.098 7.363-.754 2.484.359 4.086 1.262 7.187 2.316 4.125 1.406 7.68 1.699 11.941 1.34a23.81 23.81 0 0 0 15.07-6.684c-4.309 1.258-8.918 1.309-13.281.09-4.512-1.367-7.297-3.648-12.934-5.723-2.902-1.078-6.039-1.266-9.02-.625l10.031-11.016h.004c1.957-2.121 4.672-4.137 5.621-4.797 2.773-1.844 5.27-2.977 7.34-3.664l-.004-.008c2-.629 4.074-.965 6.152-.988l-.019-.039c-1.852-2.988-1.633-6.945.797-9.734a8.22 8.22 0 0 1 11.594-.789 8.21 8.21 0 0 1 1.121 11.176c3.434.555 7.066-.504 9.688-3.18a11.11 11.11 0 0 0-.168-15.715c-.895-.879-1.965-1.633-3.035-2.145 0 0-1.023-.437-2.531-.789-2.141-.496-3.289-.824-3.289-.824a.55.55 0 0 1-.156-.098.56.56 0 0 1-.055-.789.54.54 0 0 1 .406-.187c2.492-.062 3.035-.164 3.035-.164s1.398 0 3.07-.43l-.004-.004c2.023-.504 3.707-1.668 4.883-3.207.699-.977 1.219-2.047 1.563-3.266.609-2.105.695-4.648.301-7.91-.68-5.719-.504-9.645-.504-9.645s-3.875.695-9.629.773c-3.281.047-5.793.469-7.797 1.344-1.164.508-2.16 1.168-3.031 1.984-1.371 1.367-2.301 3.191-2.531 5.266h-.004c-.211 1.711-.023 3.098-.023 3.098s-.031.551.238 3.027c.019.152-.023.309-.133.43a.56.56 0 0 1-.789.051c-.043-.043-.082-.09-.113-.141 0 0-.48-1.102-1.254-3.152-.543-1.449-1.117-2.402-1.117-2.402a11.69 11.69 0 0 0-2.531-2.73c-4.836-3.781-11.816-2.918-15.598 1.918a11.07 11.07 0 0 0-1.867 10.027c3.035-3.043 7.949-3.25 11.223-.371a8.22 8.22 0 0 1 .758 11.598c-2.441 2.777-6.336 3.516-9.539 2.078l-.047-.016c.254 2.063.195 4.168-.164 6.23l-.012-.004c-.441 2.344-1.344 5.258-3.082 8.598-.762 1.375-1.816 2.695-2.547 3.543l-11.289 12.379c.082-2.918-.613-5.844-2.078-8.43-2.746-4.871-5.473-7.262-7.715-11.848-1.898-4.113-2.586-8.676-2.031-13.129a23.8 23.8 0 0 0-4.195 15.941c.332 4.262 1.184 7.727 3.23 11.578 1.539 2.895 2.688 4.328 3.441 6.727.73 2.379.875 4.91.43 7.367-.504 2.367-2.105 4.777-2.934 5.906l-8.895 11.52a15.23 15.23 0 0 0-1.59-8.902c-2.563-4.957-7.465-7.918-12.66-8.242a28.78 28.78 0 0 1 3.047 4.719c2.25 4.344 3.445 9.059 3.465 13.656l-.008-.008c-.027 6.859-8.566 18.875-10.992 22.836-16.164 26.305-26.723 69.703-26.723 118.785h-8.031v-29.93c0-60.625 15.008-115.563 41.512-165.66 4.035-7.629 6.426-17.734 6.426-26.965l.004-.004.004-.871a54.05 54.05 0 0 0-11.102-32.902c-3.203-4.203-7.008-7.918-11.281-11.028-5.203-3.914-16.699-10.07-20.898-12.496A23.4 23.4 0 0 1 173.723 0a23.4 23.4 0 0 1-11.121 19.938c-4.195 2.426-15.691 8.582-20.895 12.496-4.277 3.109-8.078 6.824-11.285 11.027-6.961 9.129-11.102 20.531-11.102 32.902l.008.871v.004c0 9.23 2.398 19.336 6.43 26.965 26.504 50.098 41.512 105.035 41.512 165.66v29.93h-8.031c0-49.082-10.559-92.48-26.719-118.785-2.43-3.961-10.969-15.977-10.996-22.836l-.008.008c.019-4.598 1.219-9.312 3.465-13.656a28.78 28.78 0 0 1 3.047-4.719c-5.195.324-10.094 3.285-12.656 8.242-1.473 2.848-1.961 5.945-1.594 8.902l-8.895-11.52c-.824-1.129-2.43-3.539-2.93-5.906-.449-2.457-.301-4.988.426-7.367.758-2.398 1.902-3.832 3.441-6.727 2.047-3.852 2.902-7.316 3.234-11.578.52-5.496-.852-11.164-4.199-15.941.555 4.453-.133 9.016-2.031 13.129-2.242 4.586-4.969 6.977-7.711 11.848-1.469 2.586-2.164 5.512-2.082 8.43l-11.289-12.379c-.727-.848-1.781-2.168-2.547-3.543-1.738-3.34-2.641-6.254-3.086-8.598l-.004.004c-.363-2.062-.418-4.168-.168-6.23l-.043.016a8.23 8.23 0 0 1-9.543-2.078 8.22 8.22 0 0 1 .758-11.598 8.21 8.21 0 0 1 11.227.371c1-3.332.43-7.074-1.871-10.027-3.781-4.836-10.762-5.699-15.598-1.918a11.51 11.51 0 0 0-2.527 2.73s-.57.953-1.117 2.402c-.777 2.051-1.258 3.152-1.258 3.152-.031.051-.07.098-.113.141a.56.56 0 0 1-.789-.051c-.109-.121-.152-.277-.133-.43.27-2.477.238-3.027.238-3.027s.188-1.387-.02-3.098h-.004c-.23-2.074-1.16-3.898-2.531-5.266-.875-.817-1.867-1.477-3.035-1.984-2.004-.875-4.516-1.297-7.797-1.344-5.754-.078-9.629-.773-9.629-.773s.176 3.926-.504 9.645c-.395 3.262-.305 5.805.301 7.91.344 1.219.863 2.289 1.566 3.266 1.172 1.539 2.855 2.703 4.879 3.207l-.004.004c1.672.43 3.07.43 3.07.43s.543.102 3.035.164c.148 0 .301.066.406.188a.56.56 0 0 1-.055.789.55.55 0 0 1-.156.098s-1.156.328-3.289.824c-1.508.352-2.527.789-2.527.789a11.5 11.5 0 0 0-3.039 2.145 11.11 11.11 0 0 0-.168 15.715c2.621 2.676 6.254 3.734 9.688 3.18-2.609-3.414-2.164-8.309 1.121-11.176a8.22 8.22 0 0 1 12.391 10.523l-.02.039a21.28 21.28 0 0 1 6.152.988l-.004.008c2.07.688 4.57 1.82 7.34 3.664.953.66 3.664 2.676 5.625 4.797L87.993 136c-2.977-.641-6.113-.453-9.02.625-5.633 2.074-8.418 4.355-12.934 5.723-4.359 1.219-8.973 1.168-13.281-.09a23.81 23.81 0 0 0 15.066 6.684c4.266.359 7.82.066 11.949-1.34 3.094-1.055 4.699-1.957 7.184-2.316 2.477-.344 5.008-.086 7.363.754l-.012-.004c2.211.926 3.301 1.625 5.941 4.633v-.004l7.109 9.211a15.25 15.25 0 0 0-7.121-.937c-5.547.594-10.086 4.086-12.266 8.813 1.762-.543 3.598-.926 5.504-1.129 9.137-.977 18.187 2 23.77 8.531 20.074 22.383 33.922 69.781 33.926 124.641h-8.09c-.039-26.484-5.672-52.566-15.797-75.293-18.918-41-47.988-55.508-73.574-55.508-.066 0-.684-.008-.758-.008C23.707 168.985 0 192.695 0 221.945c0 21.422 12.715 39.871 31.012 48.215 5.25 2.391 10.648 4.566 16.461 5.867 13.141 2.941 21.379 5.023 29.074 9.746 4.609 2.684 7.707 7.68 7.707 13.398a15.44 15.44 0 0 1-4.625 11.043l.019-.004-4.246 3.93-2.008 1.711c-2.816 2.297-7.434 4.645-11.387 5.105-.418.055-.848-.102-1.133-.453a1.25 1.25 0 0 1-.266-.984l.004.019a11.36 11.36 0 0 0 .125-2.687c-.453-6.137-5.793-10.742-11.93-10.293a14.82 14.82 0 0 0-.715.078c-.016.004-.031.008-.047.008a9.28 9.28 0 0 0-.574.098c-.027.004-.059.012-.086.016l-.57.137c-.016 0-.031.004-.047.012-5.082 1.34-8.652 6.148-8.25 11.586a11.09 11.09 0 0 0 1.461 4.762c.02.027.039.055.055.086.074.125.152.246.23.371l.207.309a1.45 1.45 0 0 0 .09.125c.016.023.027.047.047.07.027.039.066.078.094.121.109.145.227.293.34.434.66.801 1.414 1.52 2.207 2.078 0 0 .285.195.793.461a11.54 11.54 0 0 0 1.645.785c1.984.836 3.047 1.344 3.047 1.344a.8.8 0 0 1 .137.121c.195.242.156.594-.082.789a.57.57 0 0 1-.434.121c-2.477-.363-3.035-.355-3.035-.355s-1.379-.238-3.102-.094v.004a8.81 8.81 0 0 0-5.375 2.34 10.45 10.45 0 0 0-2.105 2.969c-.953 1.977-1.477 4.484-1.645 7.773-.289 5.773-1.133 9.633-1.133 9.633s3.949-.043 9.66.84c3.258.504 5.816.496 7.949-.031a10.54 10.54 0 0 0 3.332-1.461c1.582-1.125 2.805-2.777 3.383-4.789h.004c.488-1.66.535-3.059.535-3.059s.121-.543.266-3.043a.56.56 0 0 1 .207-.398c.238-.195.594-.16.789.078.039.051.07.105.09.16a76.45 76.45 0 0 0 .703 3.254 10.92 10.92 0 0 0 .43 1.77c.164.547.289.871.289.871.391.891.941 1.777 1.59 2.578.117.145.234.289.355.426.035.039.063.082.102.117.02.019.039.039.059.063.035.031.07.074.105.109a16.89 16.89 0 0 0 .262.266c.102.102.211.199.316.301.023.019.051.047.074.066a11.08 11.08 0 0 0 4.363 2.402c5.242 1.496 10.672-1.027 13.02-5.734.008-.012.016-.027.023-.043l.246-.531c.012-.027.023-.051.031-.078a13.28 13.28 0 0 0 .215-.547.18.18 0 0 0 .016-.043c.078-.227.156-.449.219-.684 1.688-5.918-1.738-12.082-7.656-13.766-.887-.254-1.781-.395-2.664-.422l.019.004a1.26 1.26 0 0 1-.91-.457c-.281-.352-.348-.805-.211-1.199 1.254-3.785 4.238-7.277 6.926-9.727 1.688-1.547 6.738-5.746 10.715-11.109l.016-.004c.953-1.227 1.797-2.535 2.535-3.914 1.043-1.879 1.867-3.84 2.328-5.836.004-.012.008-.023.008-.035.512-1.891.824-3.859.922-5.883h-.004c.086-7.051-1.43-11.277-4.152-16.238-2.937-5.348-7.699-11.867-7.699-19.027 0-8.648 7.008-15.656 15.656-15.656 1.035 0 2.508.07 3.488.227 10.645 1.68 17.496 8.047 22.812 16.039l.012.012c7.695 11.867 12.199 26.039 12.297 41.207-6.512.23-12.477 3.781-15.754 9.453-3.383 5.863-3.383 13.09 0 18.953s9.645 9.473 16.418 9.473h20.234c-.031 1.09-.238 2.129-.605 3.063-6.137 15.684-30.602 22.617-64.707 37.055-18.148 7.684-22.836 19.711-23.195 29.402l.004.016c-.012.258-.012.512-.012.773 0 4.352.992 8.367 2.801 12.02a24.5 24.5 0 0 1 22.656-24.223c3.687-.273 7.617-.27 11.672-.27 1.379 0 2.445.047 3.672-.086 16.23-1.652 22.25-12.008 28.332-18.082s13.141-8.602 13.801-8.883c.836-.355 1.785-.477 2.746-.477 4.367 0 7.906 3.539 7.906 7.906a7.91 7.91 0 0 1-.152 1.562c-.066.328-.199.629-.332.926-5.109 11-19.051 15.859-42.973 25.988-12.723 5.391-16.012 13.824-16.266 20.621l.004.008-.008.547a18.83 18.83 0 0 0 1.965 8.426c.074-8.988 7.047-16.332 15.891-16.988 2.582-.191 5.34-.191 8.184-.191.969 0 1.719.035 2.578-.055 11.379-1.16 15.605-8.422 19.863-12.684 4.266-4.258 9.219-6.031 9.68-6.23.59-.246 1.254-.336 1.93-.336 3.063 0 5.543 2.484 5.543 5.547 0 .375-.035.742-.105 1.094-.121.492-1.07 5.684-4.582 10.582s-9.988 10.246-9.281 21.668c.445 7.238 2.391 10.328-.473 14.793 0 0 7.402-.594 13.207-8.473a.5.5 0 0 1 .406-.207.51.51 0 0 1 .508.504.53.53 0 0 1-.098.301c-7.477 10.512 1.906 20.816 4.016 24.094s3.223 8.543 3.223 8.543 1.121-5.262 3.227-8.543 11.492-13.582 4.016-24.094c-.062-.086-.098-.187-.098-.301 0-.277.227-.504.508-.504a.52.52 0 0 1 .41.207c5.797 7.879 13.199 8.473 13.199 8.473-2.863-4.465-.914-7.555-.465-14.793.699-11.422-5.781-16.77-9.289-21.668s-4.457-10.09-4.578-10.582c-.07-.352-.109-.719-.109-1.094a5.55 5.55 0 0 1 5.547-5.547c.672 0 1.336.09 1.926.336.465.199 5.418 1.973 9.676 6.23 4.27 4.262 8.492 11.523 19.875 12.684.855.09 1.605.055 2.574.055 2.844 0 5.602 0 8.184.191 8.84.656 15.82 8 15.887 16.988a18.73 18.73 0 0 0 1.969-8.426l-.008-.547v-.008c-.246-6.797-3.539-15.23-16.266-20.621-23.918-10.129-37.859-14.988-42.969-25.988-.137-.297-.266-.598-.332-.926a7.91 7.91 0 0 1-.156-1.562c0-4.367 3.539-7.906 7.906-7.906.961 0 1.91.121 2.754.477.656.281 7.715 2.813 13.797 8.883s12.098 16.43 28.332 18.082c1.223.133 2.293.086 3.672.086 4.055 0 7.984-.004 11.668.27 12.605.934 22.555 11.406 22.656 24.223 1.809-3.652 2.805-7.668 2.805-12.02l-.008-.773v-.016c-.363-9.691-5.047-21.719-23.195-29.402-34.109-14.437-58.57-21.371-64.707-37.055-.367-.934-.57-1.973-.602-3.063h19.883a18.94 18.94 0 0 0 16.406-28.422c-3.211-5.57-9.016-9.102-15.391-9.441.098-15.176 4.602-29.352 12.297-41.223l.012-.012c5.316-7.992 12.168-14.359 22.809-16.039.984-.156 2.457-.227 3.492-.227a15.66 15.66 0 0 1 15.66 15.656c0 7.16-4.766 13.68-7.699 19.027-2.723 4.961-4.246 9.188-4.152 16.238h-.008a27.59 27.59 0 0 0 .922 5.883.07.07 0 0 0 .008.027c.453 1.996 1.277 3.961 2.324 5.84a27.32 27.32 0 0 0 2.539 3.918l.016.004c3.977 5.363 9.027 9.563 10.715 11.109 2.684 2.449 5.668 5.941 6.926 9.727.137.395.066.848-.211 1.199a1.26 1.26 0 0 1-.91.457l.019-.004c-.883.027-1.773.168-2.664.422a11.14 11.14 0 0 0-7.656 13.766 12.68 12.68 0 0 0 .219.684.11.11 0 0 0 .019.043 7.16 7.16 0 0 0 .211.547c.012.027.023.051.035.078.074.18.156.355.242.531.008.016.012.031.019.043 2.348 4.707 7.781 7.23 13.02 5.734 1.676-.477 3.152-1.312 4.367-2.402.027-.019.047-.047.074-.066l.316-.301c.09-.086.176-.176.262-.266.035-.035.07-.078.109-.109.012-.023.039-.043.059-.062.031-.035.063-.078.098-.117.121-.137.238-.281.355-.426.648-.801 1.199-1.687 1.59-2.578 0 0 .125-.324.285-.871.199-.574.34-1.168.438-1.77.414-2.109.699-3.254.699-3.254.019-.055.051-.109.09-.16.195-.238.547-.273.789-.078a.56.56 0 0 1 .207.398c.145 2.5.266 3.043.266 3.043s.047 1.398.535 3.059a8.9 8.9 0 0 0 3.387 4.789 10.54 10.54 0 0 0 3.332 1.461c2.137.527 4.691.535 7.949.031 5.711-.883 9.656-.84 9.656-.84s-.84-3.859-1.129-9.633c-.168-3.289-.695-5.797-1.645-7.773-.551-1.148-1.25-2.121-2.102-2.969-1.426-1.32-3.289-2.187-5.383-2.34l.008-.004c-1.727-.145-3.109.094-3.109.094s-.555-.008-3.031.355c-.148.019-.309-.019-.434-.121a.56.56 0 0 1-.078-.789c.039-.047.086-.086.129-.121 0 0 1.063-.508 3.051-1.344.57-.219 1.121-.48 1.641-.785.508-.266.797-.461.797-.461.793-.559 1.547-1.277 2.203-2.078.121-.141.234-.289.344-.434.031-.043.066-.082.098-.121.012-.023.027-.047.047-.07a3.36 3.36 0 0 0 .082-.125l.211-.309c.082-.125.156-.246.23-.371.016-.031.031-.059.055-.086.813-1.414 1.336-3.027 1.465-4.762a11.14 11.14 0 0 0-8.254-11.586c-.016-.008-.031-.012-.047-.012-.187-.051-.379-.094-.57-.137-.027-.004-.059-.012-.086-.016-.191-.039-.383-.07-.578-.098a.23.23 0 0 1-.047-.008 13.66 13.66 0 0 0-.711-.078c-6.137-.449-11.477 4.156-11.93 10.293a11.16 11.16 0 0 0 .125 2.688v-.019c.055.34-.027.699-.262.984a1.24 1.24 0 0 1-1.129.453c-3.961-.461-8.574-2.809-11.391-5.105-.652-.531-2.008-1.711-2.008-1.711l-4.246-3.93.019.004a15.44 15.44 0 0 1-4.625-11.043c0-5.719 3.098-10.715 7.707-13.398 7.695-4.723 15.934-6.805 29.07-9.746 5.816-1.301 11.215-3.477 16.461-5.867 18.301-8.344 31.02-26.793 31.02-48.215 0-29.25-23.711-52.961-52.961-52.961';
+
+/** Fleurs-de-lis strewn over the card as on the old French arms: rows of them, each row half a step along from the last. */
+function fleur(small: boolean): string {
+  const cols = small ? 2 : 3;
+  const step = F.w / cols;
+  const pitch = step * 0.98;
+  const k = (step * 0.7) / 584;
+  let all = '';
+  for (let r = -Math.ceil(F.h / pitch / 2) - 1; r <= Math.ceil(F.h / pitch / 2) + 1; r++) {
+    for (let c = -1; c <= cols; c++) {
+      const [x, y] = [F.x + (c + 0.5 + (r % 2 ? 0.5 : 0)) * step, H / 2 + r * pitch];
+      all += `<use href="#l" transform="translate(${n(x - 292 * k)} ${n(y - 296.5 * k)}) scale(${Math.round(k * 10000) / 10000})"/>`;
+    }
+  }
+  return frame(`<defs><path id="l" d="${LIS}"/></defs>` + clipped(`<g fill="#fff" fill-rule="evenodd" stroke="none">${all}</g>`), 1, small);
+}
+
+/** The lily of Florence, alone in the middle of the card. */
+function giglio(small: boolean): string {
+  const k = Math.min((F.w * (small ? 0.98 : 0.9)) / 347.465, (F.h * 0.9) / 475.946);
+  return frame(`<path d="${GIGLIO}" transform="translate(${n(W / 2 - (347.465 * k) / 2)} ${n(H / 2 - (475.946 * k) / 2)}) scale(${Math.round(k * 10000) / 10000})" fill="#fff" fill-rule="evenodd" stroke="none"/>`, 1, small);
+}
+
+/**
+ * A lotus seen from the side, drawn the same on both halves: pointed petals fanned out from one foot, the nearer
+ * ones lying over the farther, each with a vein down its middle; an arch over it and the water under it. (The petals
+ * are painted one over another in a mask, each with a bare rim round it, so that a nearer one cuts into those behind.)
+ */
+function lotus(small: boolean): string {
+  const [cx, by] = [W / 2, H / 2 + 15];
+  const rim = small ? 2.6 : 1.5;
+  const rad = (deg: number): number => (deg * Math.PI) / 180;
+  /** A petal from the foot: `lean` degrees off upright, `long` from foot to tip, `wide` at its widest, its foot `out` to the side. */
+  const petal = (lean: number, long: number, wide: number, out = 0, vein = true): string => {
+    const [dx, dy] = [Math.sin(rad(lean)), -Math.cos(rad(lean))];
+    const [px, py] = [-dy, dx];
+    const [bx, b2] = [cx + out, by];
+    const at = (along: number, side: number): string => `${n(bx + dx * long * along + px * wide * side)} ${n(b2 + dy * long * along + py * wide * side)}`;
+    const shape = `M${at(0, 0)}C${at(0.22, 0.95)} ${at(0.68, 1.05)} ${at(1, 0)}C${at(0.68, -1.05)} ${at(0.22, -0.95)} ${at(0, 0)}Z`;
+    return (
+      `<path d="${shape}" fill="#fff" stroke="#000" stroke-width="${rim * 2}" paint-order="stroke"/>` +
+      (vein && !small ? `<path d="M${at(0.2, 0)}L${at(0.86, 0)}" stroke="#000" stroke-width="0.8" fill="none"/>` : '')
+    );
+  };
+  // From the back to the front: the tall ones behind, then each pair further out and lower, then the short ones in front.
+  const order: [lean: number, long: number, wide: number][] = [[0, 46, 9.5], [20, 43, 9], [40, 40, 9], [60, 37, 8.5], [79, 35, 7.5], [95, 31, 6]];
+  let petals = '';
+  for (const [lean, long, wide] of order) petals += lean ? petal(-lean, long, wide) + petal(lean, long, wide) : petal(0, long, wide);
+  petals += petal(-30, 31, 8.5) + petal(30, 31, 8.5) + petal(-11, 28, 8) + petal(11, 28, 8) + petal(0, 24, 7.5);
+  // The arch over it (two broken rings), and the water: lines under the foot, shorter and shorter.
+  const ring = (r: number, from: number, to: number): string => `M${n(cx + r * Math.sin(rad(from)))} ${n(by - 14 - r * Math.cos(rad(from)))}A${r} ${r} 0 0 1 ${n(cx + r * Math.sin(rad(to)))} ${n(by - 14 - r * Math.cos(rad(to)))}`;
+  const line = small ? 1.6 : 0.8;
+  const arch = small ? ring(33, -62, 62) : ring(34, -82, 82) + ring(30, -38, 38) + ring(30, -70, -50) + ring(30, 50, 70);
+  const water = [[30, 6], [22, 10], [13, 14]].map(([half, down]) => `M${n(cx - half!)} ${n(by + down!)}H${n(cx + half!)}`).join('');
+  return frame(
+    `<mask id="lo" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#000" stroke="none"/>` +
+      `<path d="${arch}${small ? '' : water}" stroke="#fff" stroke-width="${line}" fill="none"/>${petals}</mask>` +
+      `<rect x="${F.x}" y="${F.y}" width="${F.w}" height="${F.h}" fill="#fff" stroke="none" mask="url(#lo)"/>`,
+    1,
+    small,
+  );
+}
+
+/**
+ * The flower of life: circles all of one size, each through the middles of its six neighbours, so that every one is
+ * cut into petals. They run over the whole card; the nineteen in the middle (seven on a small card) are ringed, and
+ * drawn heavier.
+ */
+function flowerOfLife(small: boolean): string {
+  const r = small ? 16.4 : (F.w / 2 - 3.4) / 3; // (so that the ring round the middle ones clears the sides of the field)
+  const [cx, cy] = [W / 2, H / 2];
+  const reach = small ? 1.05 : 2.05; // the middle ones: within this many radii
+  let [mid, rest] = ['', ''];
+  for (let j = -8; j <= 8; j++) {
+    for (let i = -8; i <= 8; i++) {
+      const [x, y] = [cx + (i + j / 2) * r, cy + ((j * Math.sqrt(3)) / 2) * r];
+      if (x < F.x - r || x > F.x + F.w + r || y < F.y - r || y > F.y + F.h + r) continue;
+      const circle = `<circle cx="${n(x)}" cy="${n(y)}" r="${n(r)}"/>`;
+      if (Math.hypot(x - cx, y - cy) < reach * r) mid += circle;
+      else rest += circle;
+    }
+  }
+  const out = (small ? 2 : 3) * r;
+  return frame(
+    clipped(
+      `<g stroke-width="${small ? 0.9 : 0.45}" opacity="0.55">${rest}</g><g stroke-width="${small ? 1.5 : 0.85}">${mid}</g>` +
+        `<circle cx="${cx}" cy="${cy}" r="${n(out)}" stroke-width="${small ? 2.2 : 1.5}"/>${small ? '' : `<circle cx="${cx}" cy="${cy}" r="${n(out + 2.2)}" stroke-width="0.5"/>`}`,
+    ),
+    1,
+    small,
+  );
+}
+
+// ---------------------------------------------------------------- the night sky
+//
+// Three backs in the manner of fortune-telling cards: fine lines and small solid shapes (moons, stars, an eye) inside
+// a thin frame with its corners cut in. Each reads the same either way up, or nearly. These are what they share.
+
+/** A four-pointed star, its points drawn in to the middle: `r` tall, a little narrower across. */
+const spark = (x: number, y: number, r: number, across = 0.62): string =>
+  `M${n(x)} ${n(y - r)}Q${n(x)} ${n(y)} ${n(x + r * across)} ${n(y)}Q${n(x)} ${n(y)} ${n(x)} ${n(y + r)}Q${n(x)} ${n(y)} ${n(x - r * across)} ${n(y)}Q${n(x)} ${n(y)} ${n(x)} ${n(y - r)}Z`;
+/** A small star of two crossed hairlines. */
+const twinkle = (x: number, y: number, r: number): string => `M${n(x)} ${n(y - r)}V${n(y + r)}M${n(x - r * 0.7)} ${n(y)}H${n(x + r * 0.7)}`;
+/**
+ * A crescent moon about (x, y), `r` across its back, its horns turned `turn` degrees from pointing right; `bite` is
+ * how much is taken out of it (the nearer to 1, the thinner the moon).
+ */
+function crescent(x: number, y: number, r: number, turn: number, bite = 0.78): string {
+  const [cut, off] = [r * bite * 1.08, r * 0.5];
+  const ix = (off * off + r * r - cut * cut) / (2 * off);
+  const iy = Math.sqrt(r * r - ix * ix);
+  return `<path transform="translate(${n(x)} ${n(y)}) rotate(${turn})" d="M${n(ix)} ${n(-iy)}A${n(r)} ${n(r)} 0 1 0 ${n(ix)} ${n(iy)}A${n(cut)} ${n(cut)} 0 ${ix > off ? 1 : 0} 1 ${n(ix)} ${n(-iy)}Z" fill="#fff" stroke="none"/>`;
+}
+/** A ring of dots. */
+const dotted = (x: number, y: number, r: number, size: number, gap: number): string => `<circle cx="${n(x)}" cy="${n(y)}" r="${n(r)}" stroke-width="${size}" stroke-dasharray="0 ${gap}"/>`;
+/** Rays round (x, y), from `from` out to `long` and `short` by turns. */
+function rays(x: number, y: number, count: number, from: number, long: number, short: number): string {
+  let d = '';
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * 2 * Math.PI;
+    const to = i % 2 ? short : long;
+    d += `M${n(x + from * Math.cos(a))} ${n(y + from * Math.sin(a))}L${n(x + to * Math.cos(a))} ${n(y + to * Math.sin(a))}`;
+  }
+  return d;
+}
+/** The thin frame inside the card's own line: its corners cut in, a row of dots down each side. */
+function skyFrame(small: boolean): string {
+  const [x0, y0, x1, y1, c] = small ? [F.x + 1, F.y + 1, F.x + F.w - 1, F.y + F.h - 1, 7] : [F.x + 2, F.y + 2, F.x + F.w - 2, F.y + F.h - 2, 4.5];
+  const line = `<path d="M${x0 + c} ${y0}H${x1 - c}A${c} ${c} 0 0 0 ${x1} ${y0 + c}V${y1 - c}A${c} ${c} 0 0 0 ${x1 - c} ${y1}H${x0 + c}A${c} ${c} 0 0 0 ${x0} ${y1 - c}V${y0 + c}A${c} ${c} 0 0 0 ${x0 + c} ${y0}Z" stroke-width="${small ? 1.1 : 0.5}"/>`;
+  if (small) return line; // (a small card keeps the frame, heavier, without the rows of dots)
+  return (
+    line +
+    `<path d="M${x0 + 2.2} ${y0 + 12}V${y1 - 12}M${x1 - 2.2} ${y0 + 12}V${y1 - 12}" stroke-width="0.7" stroke-dasharray="0 2.6"/>`
+  );
+}
+/** What a small card keeps of the sky: the frame, a tall star in each corner, a spark at the top and at the bottom. */
+const smallSky = (corners = true): string =>
+  skyFrame(true) +
+  (corners ? `<path d="${twinkle(W / 2 - 23, 24, 6)}${twinkle(W / 2 + 23, 24, 6)}${twinkle(W / 2 - 23, H - 24, 6)}${twinkle(W / 2 + 23, H - 24, 6)}" stroke-width="1.1"/>` : '') +
+  `<path d="${spark(W / 2, 20, 4.6)}${spark(W / 2, H - 20, 4.6)}" fill="#fff" stroke="none"/>`;
+
+/** Stars strewn in the four quarters of the card, the same in each: sparks (`big`) and twinkles (`fine`), given for the top right quarter. */
+function strewn(big: [number, number, number][], fine: [number, number, number][]): string {
+  const [cx, cy] = [W / 2, H / 2];
+  let [solid, lines] = ['', ''];
+  for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+    for (const [x, y, r] of big) solid += spark(cx + sx * x, cy - sy * y, r);
+    for (const [x, y, r] of fine) lines += twinkle(cx + sx * x, cy - sy * y, r);
+  }
+  return `<path d="${solid}" fill="#fff" stroke="none"/><path d="${lines}" stroke-width="0.45"/>`;
+}
+
+/** Two crescent moons, back to back at the top and bottom with their horns towards each other, a star between them, each in a ring of dots. */
+function mysticMoons(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2];
+  const [r, away] = small ? [15.5, 24] : [11, 21];
+  const moons = crescent(cx, cy - away, r, 90) + crescent(cx, cy + away, r, -90);
+  if (small) return frame(smallSky(false) + dotted(cx, cy - away, 23.5, 1.4, 4.1) + dotted(cx, cy + away, 23.5, 1.4, 4.1) + `${moons}<path d="${spark(cx, cy, 9)}" fill="#fff" stroke="none"/><path d="${twinkle(cx - 26, cy, 4.5)}${twinkle(cx + 26, cy, 4.5)}" stroke-width="1.1"/>`, 1.2, true);
+  const ticks = [-1, 1].map((s) => `M${cx - 17} ${cy + s * (away + 3)}l-3 ${-s * 1.2}M${cx - 17} ${cy + s * (away - 3)}l-3 ${s * 1.2}M${cx + 17} ${cy + s * (away + 3)}l3 ${-s * 1.2}M${cx + 17} ${cy + s * (away - 3)}l3 ${s * 1.2}`).join('');
+  return frame(
+    skyFrame(false) +
+      dotted(cx, cy - away, 21, 0.7, 2.3) +
+      dotted(cx, cy + away, 21, 0.7, 2.3) +
+      moons +
+      `<path d="${spark(cx, cy, 6.5)}${spark(cx, cy - 46, 3.6)}${spark(cx, cy + 46, 3.6)}" fill="#fff" stroke="none"/>` +
+      `<path d="${ticks}M${cx - 12} ${cy}h-5M${cx + 12} ${cy}h5" stroke-width="0.5"/>` +
+      strewn([[25, 40, 2.6]], [[27, 12, 2.2], [30, 30, 1.5], [20, 47, 1.6], [29, 3, 1.3]]),
+    0.6,
+    false,
+  );
+}
+
+/** A moon and a star in a ring, with rays all round it and a ring of dots round those; four tall stars about it. */
+function mysticSun(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2];
+  if (small) return frame(smallSky() + `<circle cx="${cx}" cy="${cy}" r="11.5" stroke-width="1.5"/>${crescent(cx - 1.6, cy, 8, 0, 0.8)}<path d="${spark(cx + 3.4, cy, 3.4)}" fill="#fff" stroke="none"/><path d="${rays(cx, cy, 28, 15.5, 27, 21.5)}" stroke-width="1.15"/>` + dotted(cx, cy, 31.5, 1.4, 4.1), 1.2, true);
+  return frame(
+    skyFrame(false) +
+      `<circle cx="${cx}" cy="${cy}" r="8.6" stroke-width="0.6"/><circle cx="${cx}" cy="${cy}" r="10.2" stroke-width="0.4"/>` +
+      crescent(cx - 1.2, cy, 6, 0, 0.8) +
+      `<path d="${spark(cx + 2.4, cy, 2.6)}" fill="#fff" stroke="none"/>` +
+      `<path d="${rays(cx, cy, 48, 12, 25, 20)}" stroke-width="0.5"/>` +
+      dotted(cx, cy, 28.5, 0.7, 2.25) +
+      `<path d="${twinkle(cx - 17, cy - 38, 6)}${twinkle(cx + 17, cy - 38, 6)}${twinkle(cx - 17, cy + 38, 6)}${twinkle(cx + 17, cy + 38, 6)}" stroke-width="0.6"/>` +
+      `<path d="${spark(cx, cy - 45, 3)}${spark(cx, cy + 45, 3)}" fill="#fff" stroke="none"/>` +
+      `<path d="M${cx} ${cy - 40}V${cy - 31}M${cx} ${cy + 40}V${cy + 31}" stroke-width="0.8" stroke-dasharray="0 2.2"/>` +
+      strewn([], [[27, 44, 1.6], [28, 24, 1.4], [9, 36, 1.2], [26, 8, 1.3]]),
+    0.6,
+    false,
+  );
+}
+
+/** An eye with a moon in it and lashes over it; over that a drop between two leaves, under it a hanging row of dots; stars about. */
+function mysticEye(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2 + 3];
+  const [half, high] = small ? [29, 15] : [17, 8.5];
+  const lid = `M${cx - half} ${cy}Q${cx} ${cy - high * 2} ${cx + half} ${cy}Q${cx} ${cy + high * 2} ${cx - half} ${cy}Z`;
+  if (small) return frame(smallSky() + `<path d="${lid}" stroke-width="1.6"/><circle cx="${cx}" cy="${cy}" r="10" stroke-width="1.4"/>${crescent(cx, cy - 1.2, 6.8, -90, 0.75)}<path d="M${cx} ${cy - 20}v-7M${cx - 11} ${cy - 17}l-4 -6M${cx + 11} ${cy - 17}l4 -6M${cx - 21} ${cy - 11}l-5 -4M${cx + 21} ${cy - 11}l5 -4" stroke-width="1.2"/>` + [0, 1, 2].map((k) => `<circle cx="${cx}" cy="${cy + 22 + k * 7}" r="${n(2.4 - k * 0.6)}" fill="#fff" stroke="none"/>`).join('') + `<circle cx="${cx - 9}" cy="${cy + 20}" r="1.5" fill="#fff" stroke="none"/><circle cx="${cx + 9}" cy="${cy + 20}" r="1.5" fill="#fff" stroke="none"/>`, 1.2, true);
+  let lashes = '';
+  for (const deg of [-50, -25, 0, 25, 50]) {
+    const a = ((deg - 90) * Math.PI) / 180;
+    lashes += `M${n(cx + 13 * Math.cos(a))} ${n(cy + 3 + 13 * Math.sin(a))}L${n(cx + 17.5 * Math.cos(a))} ${n(cy + 3 + 17.5 * Math.sin(a))}`;
+  }
+  // The drop over the eye, and a pair of leaves curling away from its foot on each side.
+  const top = cy - 26;
+  const drop = `M${cx} ${top - 12}C${cx + 2.4} ${top - 4} ${cx + 1.6} ${top} ${cx} ${top}C${cx - 1.6} ${top} ${cx - 2.4} ${top - 4} ${cx} ${top - 12}Z`;
+  const leaf = (s: number, out: number, up: number): string => `M${cx + s * 2.5} ${top + 2.5}C${cx + s * (out * 0.5)} ${top + 3} ${cx + s * out} ${top - up * 0.3} ${cx + s * out} ${top - up}C${cx + s * (out * 0.75)} ${top - up * 0.2} ${cx + s * (out * 0.4)} ${top + 0.5} ${cx + s * 2.5} ${top + 2.5}Z`;
+  const hang = [0, 1, 2, 3].map((k) => `<circle cx="${cx}" cy="${n(cy + 15 + k * 4)}" r="${n(1.5 - k * 0.3)}" fill="#fff" stroke="none"/>`).join('') + [1, 2, 3].map((k) => [-1, 1].map((s) => `<circle cx="${n(cx + s * k * 4.6)}" cy="${n(cy + 15 - k * k * 0.5)}" r="${n(1.1 - k * 0.2)}" fill="#fff" stroke="none"/>`).join('')).join('');
+  return frame(
+    skyFrame(false) +
+      `<path d="${lid}" stroke-width="0.7"/><circle cx="${cx}" cy="${cy}" r="6.2" stroke-width="0.6"/>` +
+      crescent(cx, cy - 0.6, 4.2, -90, 0.75) +
+      `<path d="${spark(cx, cy - 2.4, 1.7)}" fill="#fff" stroke="none"/>` +
+      `<path d="${lashes}" stroke-width="0.55"/>` +
+      `<path d="${drop}${leaf(1, 9, 5)}${leaf(-1, 9, 5)}${leaf(1, 6, 9)}${leaf(-1, 6, 9)}" fill="#fff" stroke="none"/><circle cx="${cx}" cy="${top + 3.4}" r="1.3" fill="#fff" stroke="none"/>` +
+      hang +
+      `<path d="${twinkle(cx - 22, 22, 5)}${twinkle(cx + 22, 22, 5)}${twinkle(cx - 22, H - 22, 5)}${twinkle(cx + 22, H - 22, 5)}" stroke-width="0.6"/>` +
+      `<path d="${spark(cx, 19, 2.6)}${spark(cx, H - 19, 2.6)}" fill="#fff" stroke="none"/>` +
+      strewn([], [[27, 34, 1.5], [12, 44, 1.4], [29, 12, 1.6], [24, 22, 1.1], [10, 30, 1]]),
+    0.6,
+    false,
+  );
+}
+
+/** The sun: a disc in a ring, with sixteen rays round it, straight ones and shorter flames by turns, in a ring of dots; stars about it. */
+function mysticDay(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2];
+  const [disc, from, long, short, wide] = small ? [8.6, 13.4, 27.5, 22, 3.2] : [7.2, 11.5, 25.5, 20.5, 2.5];
+  let beams = '';
+  for (let i = 0; i < 16; i++) {
+    const reach = (i % 2 ? short : long) - from;
+    // A straight ray is a thin spearhead; a flame is the same, bent one way and then the other.
+    const bend = i % 2 ? (small ? 2.7 : 2.2) : 0;
+    const d =
+      `M${n(-wide)} ${n(-from)}C${n(-wide * 0.66 + bend)} ${n(-from - reach * 0.33)} ${n(-wide * 0.33 - bend)} ${n(-from - reach * 0.66)} 0 ${n(-from - reach)}` +
+      `C${n(wide * 0.33 - bend)} ${n(-from - reach * 0.66)} ${n(wide * 0.66 + bend)} ${n(-from - reach * 0.33)} ${n(wide)} ${n(-from)}Z`;
+    beams += `<path d="${d}" transform="translate(${cx} ${cy}) rotate(${i * 22.5})"/>`;
+  }
+  const sun = `<g fill="#fff" stroke="none">${beams}<circle cx="${cx}" cy="${cy}" r="${disc}"/></g><circle cx="${cx}" cy="${cy}" r="${n(disc + (small ? 2.6 : 2.2))}" stroke-width="${small ? 1.2 : 0.6}"/>`;
+  if (small) return frame(smallSky() + sun + dotted(cx, cy, 31.5, 1.4, 4.1), 1.2, true);
+  return frame(
+    skyFrame(false) +
+      sun +
+      dotted(cx, cy, 29, 0.7, 2.25) +
+      `<path d="${twinkle(cx - 17, cy - 39, 6)}${twinkle(cx + 17, cy - 39, 6)}${twinkle(cx - 17, cy + 39, 6)}${twinkle(cx + 17, cy + 39, 6)}" stroke-width="0.6"/>` +
+      `<path d="${spark(cx, cy - 45, 3.2)}${spark(cx, cy + 45, 3.2)}" fill="#fff" stroke="none"/>` +
+      `<path d="M${cx} ${cy - 40}V${cy - 32}M${cx} ${cy + 40}V${cy + 32}" stroke-width="0.8" stroke-dasharray="0 2.2"/>` +
+      strewn([[28, 30, 1.8]], [[27, 44, 1.6], [9, 37, 1.2], [26, 9, 1.3], [29, 20, 1.1]]),
+    0.6,
+    false,
+  );
+}
+
+/**
+ * A star: one great eight-pointed star, tall and narrow, drawn as an outline with a smaller star and fine rays
+ * inside it, in a sky of little six-pointed stars (strewn by a fixed roll of the dice, the same in the lower half
+ * as in the upper turned round), with a rayed quarter-sun in two opposite corners.
+ */
+function mysticStar(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2];
+  /** An eight-pointed star about the middle: how far its points reach up and down, across, and slantwise; and how far out its inner corners are. */
+  const star = (tall: number, across: number, slant: number, waist: number): string =>
+    poly(
+      Array.from({ length: 16 }, (_, k): [number, number] => {
+        const r = k % 2 ? waist : k % 8 === 0 ? tall : k % 8 === 4 ? across : slant;
+        const a = (k * 22.5 - 90) * (Math.PI / 180);
+        return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+      }),
+    );
+  // (A small card has the same things, fewer and heavier: a dozen little stars for forty, five rays to a corner for seven.)
+  const hair = small ? 1 : 0.42;
+  let fine = '';
+  if (!small) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k * 45 + 22.5 - 90) * (Math.PI / 180);
+      fine += `M${n(cx + 9.5 * Math.cos(a))} ${n(cy + 9.5 * Math.sin(a))}L${n(cx + 15 * Math.cos(a))} ${n(cy + 15 * Math.sin(a))}`;
+    }
+  }
+  // The little stars: each three crossed hairlines, turned any way; none on the great star, none too near another.
+  const roll = dice(small ? 9 : 64);
+  const [most, apart, least, more, fan] = small ? [14, 13.5, 2.7, 1.3, 19] : [46, 7.2, 1.3, 1.5, 13];
+  const sky: { x: number; y: number }[] = [];
+  for (let tries = 0; tries < 900 && sky.length < most; tries++) {
+    const [x, y, r] = [F.x + 5 + roll() * (F.w - 10), F.y + 5 + roll() * (F.h / 2 - 5), least + roll() * more];
+    const turn = roll() * Math.PI;
+    if (Math.abs(x - cx) / (small ? 31 : 27) + Math.abs(y - cy) / (small ? 53 : 49) < 1.12) continue; // on the great star
+    if (Math.hypot(x - (F.x + F.w), y - F.y) < fan + 4) continue; // in the corner with the quarter-sun
+    if (sky.some((q) => Math.hypot(q.x - x, q.y - y) < apart)) continue;
+    sky.push({ x, y }, { x: 2 * cx - x, y: 2 * cy - y });
+    for (const [sx, sy] of [[x, y], [2 * cx - x, 2 * cy - y]]) for (let k = 0; k < 3; k++) fine += `M${n(sx! - r * Math.cos(turn + k * 1.047))} ${n(sy! - r * Math.sin(turn + k * 1.047))}L${n(sx! + r * Math.cos(turn + k * 1.047))} ${n(sy! + r * Math.sin(turn + k * 1.047))}`;
+  }
+  // A quarter of a rayed sun in the top right corner, and the same in the bottom left.
+  const corner = (px: number, py: number, sx: number, sy: number): string => {
+    const [inner, count] = [fan * 0.35, small ? 5 : 8];
+    let d = `M${n(px + sx * fan)} ${py}A${fan} ${fan} 0 0 ${sx * sy > 0 ? 1 : 0} ${px} ${n(py + sy * fan)}M${n(px + sx * inner)} ${py}A${n(inner)} ${n(inner)} 0 0 ${sx * sy > 0 ? 1 : 0} ${px} ${n(py + sy * inner)}`;
+    for (let k = 1; k < count; k++) {
+      const a = (k / count) * (Math.PI / 2);
+      d += `M${n(px + sx * (inner + 1.2) * Math.cos(a))} ${n(py + sy * (inner + 1.2) * Math.sin(a))}L${n(px + sx * (fan - 1) * Math.cos(a))} ${n(py + sy * (fan - 1) * Math.sin(a))}`;
+    }
+    return d;
+  };
+  const inset = small ? 1 : 2;
+  const [x0, y0, x1, y1] = [F.x + inset, F.y + inset, F.x + F.w - inset, F.y + F.h - inset];
+  return frame(
+    `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" stroke-width="${small ? 1.1 : 0.5}"/>` +
+      `<path d="${corner(x1, y0, -1, 1)}${corner(x0, y1, 1, -1)}" stroke-width="${small ? 1 : 0.45}"/>` +
+      `<path d="${fine}" stroke-width="${hair}"/>` +
+      (small
+        ? `<path d="${star(47, 28, 19.5, 8.2)}" stroke-width="1.9" stroke-linejoin="miter" stroke-miterlimit="12"/><path d="${star(15, 10, 7.2, 2.8)}" fill="#fff" stroke="none"/>`
+        : `<path d="${star(45, 26, 18.5, 7.2)}" stroke-width="1.05" stroke-linejoin="miter" stroke-miterlimit="12"/><path d="${star(14, 9, 6.5, 2.4)}" stroke-width="0.5" stroke-linejoin="miter" stroke-miterlimit="12"/><circle cx="${cx}" cy="${cy}" r="1.1" fill="#fff" stroke="none"/>`),
+    0.6,
+    small,
+  );
+}
+
+/**
+ * A sunburst: nothing in the middle but a bare disc, and spokes all round it, long ones, shorter ones between them
+ * and a close ring of short ones at the hub; the long spokes reach further up and down the card than across it.
+ */
+function sunburst(small: boolean): string {
+  const [cx, cy] = [W / 2, H / 2];
+  const [count, hub, line] = small ? [28, 8.5, 1.15] : [56, 5.2, 0.5];
+  /** How far a spoke may reach in a direction: to an oval that fills the card. */
+  const reach = (a: number): number => 1 / Math.hypot(Math.cos(a) / (F.w / 2 - 3), Math.sin(a) / (F.h / 2 - 4));
+  const roll = dice(15);
+  let d = '';
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * 2 * Math.PI;
+    const far = reach(a) * (i % 2 ? 0.66 + roll() * 0.1 : 0.9 + roll() * 0.1); // long and shorter by turns, none quite the same
+    d += `M${n(cx + (hub + (i % 2 ? 4.5 : 2)) * Math.cos(a))} ${n(cy + (hub + (i % 2 ? 4.5 : 2)) * Math.sin(a))}L${n(cx + far * Math.cos(a))} ${n(cy + far * Math.sin(a))}`;
+  }
+  let close = '';
+  for (let i = 0; i < count * 2; i++) {
+    const a = ((i + 0.5) / (count * 2)) * 2 * Math.PI;
+    close += `M${n(cx + (hub + 1) * Math.cos(a))} ${n(cy + (hub + 1) * Math.sin(a))}L${n(cx + (hub + (small ? 6 : 8.5)) * Math.cos(a))} ${n(cy + (hub + (small ? 6 : 8.5)) * Math.sin(a))}`;
+  }
+  return frame(`<path d="${d}" stroke-width="${line}"/><path d="${close}" stroke-width="${small ? 0.8 : 0.42}"/>`, 0.6, small);
+}
+
+/**
+ * A tiled floor (after one the owner saw): big square tiles, tiles half their width set upright or on their sides,
+ * and small dark squares, fitted together in a block five small squares each way that repeats: three big tiles,
+ * five halves and three dark squares to a block. The dark squares are left bare; the lines between tiles are bare too.
+ */
+function bathroom(small: boolean): string {
+  const across = small ? 5 : 10; // how many small squares wide the field is
+  const u = F.w / across;
+  const gap = small ? 1.3 : 0.75;
+  // One block, by its small squares: [column, row, wide, high] of every pale tile (the three squares not named are the dark ones).
+  const block: [number, number, number, number][] = [[1, 0, 2, 2], [3, 0, 2, 2], [0, 3, 2, 2], [0, 1, 1, 2], [1, 2, 2, 1], [3, 2, 1, 2], [2, 3, 1, 2], [4, 3, 1, 2]];
+  let d = '';
+  for (let by = 0; by * 5 * u < F.h; by++) {
+    for (let bx = 0; bx * 5 < across; bx++) {
+      for (const [c, r, w, h] of block) {
+        const [x, y] = [F.x + (bx * 5 + c) * u + gap / 2, F.y + (by * 5 + r) * u + gap / 2];
+        d += `M${n(x)} ${n(y)}h${n(w * u - gap)}v${n(h * u - gap)}h${n(-(w * u - gap))}Z`;
+      }
+    }
+  }
+  return frame(clipped(`<path d="${d}" fill="#fff" stroke="#fff" stroke-width="${small ? 0.5 : 0.3}" stroke-linejoin="round"/>`), 1, small);
+}
+
+/**
+ * The Penrose triangle: three square bars that each meet the next at a right angle and yet close into a triangle,
+ * which no solid thing can. Drawn flat, as it always is: each bar an L in one tone (white, half, faint), running
+ * along the outside of one side and the inside of the next. Two of them on a full card, the lower one turned over.
+ */
+function penroseTriangle(small: boolean): string {
+  const [L, t] = [10, 1]; // the triangle's side and a bar's width, in steps of a three-way grid
+  // One bar, by grid steps (i along the bottom, j up the left side): the outer band of the bottom, then the inner band of the right side.
+  const bar: [number, number][] = [[0, t], [t, 0], [L - t, 0], [L - t, t], [L - 2 * t, t], [2 * t, L - 3 * t], [2 * t, L - 4 * t], [L - 3 * t, t]];
+  /** The same bar a third of a turn on: each step along the bottom becomes one up the left side, and so round. */
+  const turn = (p: [number, number][]): [number, number][] => p.map(([i, j]) => [L - i - j, i]);
+  const bars = [bar, turn(bar), turn(turn(bar))];
+  const tones = ['#fff', 'rgba(255,255,255,0.58)', 'rgba(255,255,255,0.26)'];
+  const draw = (cx: number, cy: number, wide: number, flip: boolean): string => {
+    const s = wide / L;
+    const high = (L * s * Math.sqrt(3)) / 2;
+    const at = ([i, j]: [number, number]): [number, number] => {
+      const [x, y] = [cx - wide / 2 + (i + j / 2) * s, cy + high / 2 - ((j * Math.sqrt(3)) / 2) * s];
+      return flip ? [2 * cx - x, 2 * cy - y] : [x, y];
+    };
+    return bars.map((b, k) => `<path d="${poly(b.map(at))}" fill="${tones[k]}"/>`).join('');
+  };
+  const wide = small ? F.w * 0.94 : 55;
+  const high = (wide * Math.sqrt(3)) / 2;
+  const body = small ? draw(W / 2, H / 2 + 2, wide, false) : draw(W / 2, H / 2 - high / 2 - 2.5, wide, false) + draw(W / 2, H / 2 + high / 2 + 2.5, wide, true);
+  return frame(`<g stroke-width="${small ? 1.1 : 0.6}" stroke-linejoin="round">${body}</g>`, 1, small);
+}
+
+/**
+ * Tumbling blocks: six-sided tiles each cut into three diamonds, a white one on top, a half-toned one to the left
+ * and a bare one to the right, so that the card looks like a heap of cubes lit from above (or, looked at long
+ * enough, like the same cubes seen from below).
+ */
+function blocks(small: boolean): string {
+  const a = small ? 10.4 : 6; // from the middle of a tile to a corner
+  const [dx, dy] = [(a * Math.sqrt(3)) / 2, a / 2];
+  let [top, left] = ['', ''];
+  for (let row = -1; row * 1.5 * a < F.h + a; row++) {
+    for (let col = -1; col * 2 * dx < F.w + 2 * dx; col++) {
+      const [x, y] = [F.x + col * 2 * dx + (row % 2 ? dx : 0), F.y + row * 1.5 * a];
+      top += poly([[x, y], [x - dx, y - dy], [x, y - a], [x + dx, y - dy]]);
+      left += poly([[x, y], [x - dx, y - dy], [x - dx, y + dy], [x, y + a]]);
+    }
+  }
+  return frame(clipped(`<path d="${top}" fill="#fff" stroke="none"/><path d="${left}" fill="${HALF}" stroke="none"/>`), 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
@@ -996,11 +1482,19 @@ export const isDrawn = (back: string): boolean => back in DRAW;
 /**
  * A drawn back as a CSS image. Each is worked out once in this browser, the first time it is wanted, and kept; the
  * dice are fixed, so it is the same picture for everybody. `small`: the simpler drawing of it, with heavier lines,
- * for a card too small for the full one to read (other players' piles).
+ * for a card too small for the full one to read (other players' piles). `edgeless`: without the white edge and the
+ * thin line, what is inside them drawn out to the edge of the card.
  */
-export function drawnBack(back: string, small = false): string {
-  const k = `${back} ${small}`;
+export function drawnBack(back: string, small = false, edgeless = false): string {
+  const k = `${back} ${small} ${edgeless}`;
   let url = made.get(k);
-  if (!url) made.set(k, (url = `url("data:image/svg+xml,${encodeURIComponent(DRAW[back]!(small))}")`));
+  if (!url) {
+    bare = edgeless ? (FIGURES.has(back) ? 'fit' : 'fill') : null;
+    try {
+      made.set(k, (url = `url("data:image/svg+xml,${encodeURIComponent(DRAW[back]!(small))}")`));
+    } finally {
+      bare = null;
+    }
+  }
   return url;
 }

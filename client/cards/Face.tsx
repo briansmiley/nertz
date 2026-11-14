@@ -18,34 +18,45 @@ export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#2
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
 
 /** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */
-const PICTURES = new Set(['carpet', 'plaid-blue', 'plaid-green']);
+const PICTURES = new Set<string>([]); // (none now: every back is one colour. The three there were are kept in art/colour-backs: see its README.)
 
 /**
  * How much larger a picture back is shown on a small card (another player's pile), so that only its middle shows:
  * a fine pattern needs more, and one that is a single figure (the two circles of the Rider back) is shown whole (1).
  */
-const SMALL: Record<string, number> = { bicycle: 1, suits: 1, lion: 1, ornate: 1.8, rosette: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, carpet: 1.8, 'plaid-blue': 2, 'plaid-green': 2 };
-/** Patterns with no frame of their own: they get the card's usual white edge. */
-const EDGED = new Set(['check']);
+/**
+ * Which issue of the picture files this is: put after their addresses, so that a browser that has an older picture
+ * of the same name fetches the new one. Count it up whenever a file in public/cards/backs is changed.
+ */
+const ART = 2;
+const SMALL: Record<string, number> = { 'carpet-tint': 1.8, waterlily: 1.2, lilypads: 1.2, maple: 1.2, 'dandelion-1': 1.1, daisy: 1.2, tulip: 1.2, poppies: 1.2, sequoia: 1.25, fronds: 1.15, oak: 1.3, thistle: 1.2, lily: 1.2, rose: 1.25, iris: 1.15, sunflower: 1.15, acanthus: 1.7, fern: 1.5, ginkgo: 1, 'ginkgo-ring': 1.4, 'ginkgo-scatter': 2, piatnik: 1.5, atlas: 1.4, bicycle: 1, lion: 1, ornate: 1.8, rosette: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, 'tarot-star-tint': 2, 'tarot-eye-tint': 1.9 };
 
 /**
  * The picture a back is made of (none for the plain one): whether it has colours of its own or is printed in the
  * player's, how many times larger than the card it is shown (`zoom`: more than 1 on a small card), and whether it
  * lies inside a white edge.
  */
-export function backArt(back: string | undefined, small = false): { src: string; picture: boolean; zoom: number; edge: boolean } | null {
-  if (!back || back === 'plain') return null;
-  if (isDrawn(back)) return { src: drawnBack(back, small).slice(5, -2), picture: false, zoom: 1, edge: false };
+export function backArt(named: string | undefined, small = false): { src: string; picture: boolean; zoom: number; edge: boolean } | null {
+  const [back, bare] = bareOf(named);
+  if (back === 'plain') return null;
+  if (isDrawn(back)) return { src: drawnBack(back, small, bare).slice(5, -2), picture: false, zoom: 1, edge: false };
   const picture = PICTURES.has(back);
   const zoom = small ? (SMALL[back] ?? 1.8) : 1;
-  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}`, picture, zoom, edge: !picture && (zoom > 1 || EDGED.has(back)) };
+  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}?v=${ART}`, picture, zoom, edge: !picture && !bare };
 }
+
+/** A back as it is named for drawing, taken apart: which back, and whether it is the one without its white edge (`:bare` after its name). */
+export const bareOf = (named: string | undefined): [back: string, bare: boolean] => {
+  const bare = !!named?.endsWith(':bare');
+  return [(bare ? named!.slice(0, -5) : named) || 'plain', bare];
+};
 
 /** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
 export function backOf(colour: string, back: string | undefined, small = false): { className: string; style: CSSProperties } {
   const vars = { '--back': colour } as CSSProperties;
+  if (back === 'any') return { className: 'back any', style: vars }; // a back by lot, not drawn yet: a question mark (the stylesheet's)
   const art = backArt(back, small);
-  if (!art) return { className: 'back', style: vars };
+  if (!art) return { className: `back${bareOf(back)[1] ? ' bare' : ''}`, style: vars };
   return {
     className: `back ${art.picture ? 'pic' : 'tint'}${art.edge ? ' edged' : ''}`,
     style: { ...vars, backgroundImage: `url("${art.src}")`, ...(art.zoom > 1 ? { backgroundSize: `${art.zoom * 100}% ${art.zoom * 100}%`, backgroundPosition: 'center' } : {}) },

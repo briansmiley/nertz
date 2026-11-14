@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
+import { ANY_BACK, backNamed, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -40,6 +40,11 @@ interface Player {
   deck?: Deck;
   back?: Back;
   night?: boolean;
+  /** Their backs without the white edge. */
+  bare?: boolean;
+  /** Their back is drawn from this lot (`backPool`: 'all', or a kind of back) once for the table: at the first deal after it was chosen. `drew`: that has been done. */
+  lot?: string;
+  drew?: boolean;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
   /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
@@ -166,6 +171,18 @@ export class Room {
         return this.addBot(player, msg.level);
       case 'removeBot':
         return this.removeBot(player, msg.seat);
+      case 'reset':
+        return this.reset(player);
+      case 'debugBotOut':
+        return this.debugBotOut();
+      case 'botBack': {
+        // Whoever deals dresses the bots: any time, since it changes nothing but how their cards look.
+        const bot = this.players.find((p) => p.seat === msg.seat);
+        if (player !== this.dealer || !bot?.bot) return;
+        if (msg.back) bot.back = msg.back;
+        if (msg.lot !== undefined) this.setLot(bot, msg.lot);
+        return this.changed();
+      }
       case 'pause':
         return this.pause(player, msg.on);
       case 'seat':
@@ -175,10 +192,12 @@ export class Room {
         this.players.sort((a, b) => a.seat - b.seat);
         return this.changed();
       case 'deck':
-        if (player.deck === msg.deck && player.back === (msg.back ?? player.back) && !!player.night === (msg.night ?? !!player.night)) return;
+        if (player.deck === msg.deck && player.back === (msg.back ?? player.back) && !!player.night === (msg.night ?? !!player.night) && !!player.bare === (msg.bare ?? !!player.bare) && (msg.lot === undefined || (player.lot ?? null) === msg.lot)) return;
         player.deck = msg.deck;
         player.back = msg.back ?? player.back;
         player.night = msg.night ?? player.night;
+        player.bare = msg.bare ?? player.bare;
+        if (msg.lot !== undefined) this.setLot(player, msg.lot);
         return this.changed();
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
@@ -231,6 +250,7 @@ export class Room {
     this.players = this.players.filter((p) => !p.left);
     if (!this.host || !this.players.includes(this.host)) this.host = player;
     this.round++;
+    for (const p of dealt) if (p.lot && !p.drew) this.drawBack(p); // a back by lot is drawn now: once, and kept for every round at this table
     this.game = deal(
       dealt.map((p) => p.seat),
       this.rng,
@@ -441,6 +461,46 @@ export class Room {
     this.changed();
   }
 
+  /**
+   * Starts the table over, for whoever deals and only between rounds: every score back to nothing, no round played,
+   * no last round to show, and the table in its lobby again (where colours can be changed) with everyone who is still
+   * sitting at it. Its rules, and everyone's cards and seats, stay as they are.
+   */
+  private reset(by: Player): void {
+    if (by !== this.dealer || this.phase !== 'results') return;
+    this.players = this.players.filter((p) => !p.left);
+    for (const p of this.players) {
+      p.score = 0;
+      if (p.lot) p.drew = false; // a table started over draws its lots over
+    }
+    this.round = 0;
+    this.lastRound = null;
+    this.game = null;
+    this.phase = 'lobby';
+    this.changed();
+  }
+
+  /** A player's back is to be drawn by lot (or, with null, no longer): once, at the next deal, and kept at this table from then on. If a round is on, it is drawn at once. */
+  private setLot(player: Player, lot: string | null): void {
+    if (lot === null) {
+      delete player.lot;
+      delete player.drew;
+      return;
+    }
+    if (player.lot === lot) return;
+    player.lot = lot;
+    player.drew = false; // a lot chosen anew is drawn anew: at the next deal, or now if a round is on
+    if (this.phase === 'playing') this.drawBack(player);
+  }
+
+  /** Draws a back for a player from their lot: not the one they had, if there is another to be had. */
+  private drawBack(player: Player): void {
+    const pool = backPool(player.lot!);
+    const fresh = pool.length > 1 ? pool.filter((b) => b !== player.back) : pool;
+    player.back = fresh[Math.floor(this.rng() * fresh.length)]!;
+    player.drew = true;
+  }
+
   private removeBot(by: Player, seat: number): void {
     const player = this.players.find((p) => p.seat === seat);
     if (by !== this.dealer || this.phase === 'playing' || !player?.bot) return;
@@ -549,6 +609,21 @@ export class Room {
     step();
   }
 
+  /**
+   * For trying things out (seeing and hearing a bot go out without playing a round through): never in production.
+   * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
+   */
+  private debugBotOut(): void {
+    if (process.env.NODE_ENV === 'production' || this.phase !== 'playing' || !this.game || this.game.stage !== 'play' || this.game.nertzCalledBy !== null) return;
+    const bot = this.players.find((p) => p.bot && this.game!.players.some((g) => g.seat === p.seat));
+    if (!bot?.bot) return;
+    if (bot.bot.timer) clearTimeout(bot.bot.timer);
+    bot.bot.timer = null;
+    bot.bot.pending = null;
+    this.game = { ...this.game, players: this.game.players.map((g) => (g.seat === bot.seat ? { ...g, holding: null, nertz: [], stock: [...g.nertz, ...g.stock] } : g)) };
+    this.intent(bot, bot.ack + 1, { k: 'nertz' });
+  }
+
   /** The bot's plan came to nothing before it acted on it: it picks another and acts on that after a short pause, not a whole one. */
   private rethink(player: Player): void {
     const bot = player.bot!;
@@ -597,7 +672,9 @@ export class Room {
         ending: this.phase === 'playing' && !!game?.players.find((g) => g.seat === p.seat)?.ending,
         bot: p.bot?.level,
         deck: p.deck && `${p.deck}${p.night ? ':night' : ''}`,
-        back: p.back,
+        // (A back by lot is not known until a round is dealt: before the first, a card with a question mark.)
+        back: p.lot && this.phase === 'lobby' ? ANY_BACK : backNamed(p.back, p.bare),
+        ...(p.lot ? { lot: p.lot } : {}),
       })),
       settings: this.settings,
       game,

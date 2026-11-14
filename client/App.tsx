@@ -1,12 +1,16 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
 import { GalleryLegacy } from './GalleryLegacy';
+import { GalleryFlat } from './GalleryFlat';
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, RoomView } from '../shared/types';
-import { backColour, BACKS, Face } from './cards/Face';
+import { backColour, backOf, BACKS, Face } from './cards/Face';
+import { BackPicker, YourBacks } from './BackPicker';
+import { choiceAt, chooseAt, setPrefs, usePrefs } from './prefs';
+import { backNamed, isBack } from '../shared/protocol';
 import { Chat } from './Chat';
-import { addBot, create, join, leave, removeBot, sit, start, useNet } from './net';
+import { addBot, botBack, create, join, leave, removeBot, resetTable, sit, start, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
@@ -67,6 +71,7 @@ export function App() {
   }, [code]);
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks-legacy')) return <GalleryLegacy />; // TEMPORARY
+  if (!room && new URLSearchParams(location.search).has('decks-flat')) return <GalleryFlat />; // TEMPORARY
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   if (!room) {
     return (
@@ -100,7 +105,7 @@ function Pad({ children, wide }: { children: ReactNode; wide?: boolean }) {
 }
 
 /** A small card, used as decoration and as each player's colour swatch. */
-function Mini({ seat, suit, rank, style }: { seat?: number; suit?: 'S' | 'H' | 'D' | 'C'; rank?: number; style?: CSSProperties }) {
+function Mini({ seat, suit, rank, style, back }: { seat?: number; suit?: 'S' | 'H' | 'D' | 'C'; rank?: number; style?: CSSProperties; back?: string }) {
   return (
     <span className="mini" style={style}>
       {suit && rank ? (
@@ -108,7 +113,7 @@ function Mini({ seat, suit, rank, style }: { seat?: number; suit?: 'S' | 'H' | '
           <Face suit={suit} rank={rank} mini={false} />
         </span>
       ) : (
-        <span className="back" style={{ '--back': backColour(seat ?? 0) } as CSSProperties} />
+        <span {...backOf(backColour(seat ?? 0), back, true)} />
       )}
     </span>
   );
@@ -191,14 +196,18 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
           <h2>Pull up a chair</h2>
           <label>
             Your name
-            <input
-              autoFocus
-              value={name}
-              maxLength={MAX_NAME_LENGTH}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="What the others will see"
-              autoComplete="nickname"
-            />
+            {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
+            <span className="named">
+              <input
+                autoFocus
+                value={name}
+                maxLength={MAX_NAME_LENGTH}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="What the others will see"
+                autoComplete="nickname"
+              />
+              <YourBacks colour={BACKS[0]} compact />
+            </span>
           </label>
           {error && (
             <p className="error" role="alert">
@@ -240,6 +249,12 @@ function Lobby({ room }: { room: RoomView }) {
   const [copied, setCopied] = useState(false);
   const link = `${location.origin}/?room=${room.code}`;
   const me = room.players.find((p) => p.seat === room.you);
+  const prefs = usePrefs();
+  /** My backs at this table: chosen here, or my usual ones. */
+  const chosen = choiceAt(room.code, prefs);
+  /** Whose backs are being chosen (the seat), if the sheet of backs is open: your own, or a bot's. */
+  const [picking, setPicking] = useState<number | null>(null);
+  const picked = room.players.find((p) => p.seat === picking && (p.seat === room.you || (me?.isHost && p.bot)));
   const host = room.players.find((p) => p.isHost);
   const ready = enoughToDeal(room);
 
@@ -273,13 +288,45 @@ function Lobby({ room }: { room: RoomView }) {
         <ul className="seats">
           {room.players.map((p) => (
             <li key={p.seat} className={p.connected ? '' : 'away'}>
-              <Mini seat={p.seat} />
+              {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
+              {p.seat === room.you || (me?.isHost && p.bot) ? (
+                <button type="button" className="swatch" aria-label={p.seat === room.you ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.seat === room.you ? (chosen.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs at this table') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
+                  <Mini seat={p.seat} back={p.seat === room.you ? (chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)) : p.back} />
+                </button>
+              ) : (
+                <Mini seat={p.seat} back={p.back} />
+              )}
               <span className="name">{p.name}</span>
               <span className="note">{[p.seat === room.you && 'you', p.isHost && 'deals', !p.connected && 'away', p.bot && `${p.bot} bot`].filter(Boolean).join(', ')}</span>
               {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
             </li>
           ))}
         </ul>
+        {picked &&
+          (picked.seat === room.you ? (
+            <BackPicker
+              title="Your card backs"
+              colour={backColour(picked.seat)}
+              bare={prefs.bare}
+              back={chosen.back}
+              random={chosen.random}
+              onPick={(back) => (chooseAt(room.code, { back, random: null }), setPicking(null))}
+              onRandom={(random) => chooseAt(room.code, { back: chosen.back, random })}
+              onBare={(bare) => setPrefs({ bare })}
+              onClose={() => setPicking(null)}
+            />
+          ) : (
+            <BackPicker
+              title={`${picked.name}'s card backs`}
+              colour={backColour(picked.seat)}
+              bare={false}
+              back={isBack(picked.back) ? picked.back : 'plain'}
+              random={picked.lot ?? null}
+              onPick={(back) => (botBack(picked.seat, { back, lot: null }), setPicking(null))}
+              onRandom={(lot) => botBack(picked.seat, { lot })}
+              onClose={() => setPicking(null)}
+            />
+          ))}
         {/* Your colour is your seat: any that nobody has is yours for the taking, until the first deal. */}
         {me && room.round === 0 && (
           <div className="colours" role="radiogroup" aria-label="Your colour">
@@ -302,6 +349,29 @@ function Lobby({ room }: { room: RoomView }) {
         )}
       </Pad>
     </main>
+  );
+}
+
+/** For whoever deals, on the score sheet: start the table over (every score to nothing, back to before the first deal). Asked twice, since it cannot be undone. */
+function StartOver() {
+  return (
+    <Pop icon={<Again />} label="Start over">
+      <h3>Start over?</h3>
+      <p className="hint">Everyone's score goes back to 0 and the table to before round 1. This cannot be undone.</p>
+      <button type="button" className="plain" onClick={resetTable}>
+        Reset the scores
+      </button>
+    </Pop>
+  );
+}
+
+/** A turning arrow: again from the start. */
+function Again() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5.5 12a6.5 6.5 0 1 0 2.2-4.9" />
+      <path d="M5 4.5v3.4h3.4" />
+    </svg>
   );
 }
 
@@ -352,6 +422,22 @@ function Results({ room }: { room: RoomView }) {
                 <td className="total">{s.total < 0 ? `−${-s.total}` : s.total}</td>
               </tr>
             ))}
+            {/* Whoever sat down since the round (a bot just added, someone who has just joined) has no line of it: they are shown under it, as coming in at the next deal. */}
+            {room.players
+              .filter((p) => !rows.some((s) => s.seat === p.seat))
+              .map((p) => (
+                <tr key={`new${p.seat}`} className={`joining${p.seat === room.you ? ' you' : ''}`}>
+                  <th scope="row">
+                    <i className="chip" style={{ background: backColour(p.seat) }} />
+                    {p.name}
+                    {me?.isHost && p.bot && <Unseat name={p.name} seat={p.seat} />}
+                  </th>
+                  <td colSpan={3} className="note">
+                    in from the next round
+                  </td>
+                  <td className="total">{p.score < 0 ? `−${-p.score}` : p.score}</td>
+                </tr>
+              ))}
           </tbody>
         </table>
         {me?.isHost ? (
@@ -366,6 +452,7 @@ function Results({ room }: { room: RoomView }) {
             <TableRules room={room} />
           </Pop>
           {me?.isHost && <AddBot room={room} />}
+          {me?.isHost && <StartOver />}
           <Leave />
         </div>
       </Pad>

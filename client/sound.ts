@@ -231,6 +231,11 @@ export function riffle(): void {
   setTimeout(stop, 240);
 }
 
+/** A pile of backs dealt out (the decks page): five light cards put down one after another, a little unevenly, each softer than a card played at the table, and thinned so that there is the pat of the card but no knock of the table under it. */
+export function layOut(): void {
+  for (let i = 0; i < 5; i++) hit(pick(PLACES), { gain: rand(0.14, 0.19), rate: rand(1.3, 1.5), thin: 600, delay: i * 0.062 + rand(0, 0.014) });
+}
+
 export function recycle(who: Who = 'me'): void {
   hit('slide-2', { gain: 0.3, rate: 1.1, who });
 }
@@ -273,6 +278,34 @@ let beatenAt = -Infinity;
 export function beaten(): void {
   beatenAt = performance.now();
 }
+
+/**
+ * A bot that goes out says so: "Nertz", in the browser's own speech, in as mechanical a voice as it has (one of the
+ * old novelty voices of macOS if there is one; otherwise whatever voice there is, pitched down and slowed). Only if
+ * you have it switched on, and no louder than the rest. Where the browser cannot speak, nothing happens.
+ */
+const ROBOTS = ['Zarvox', 'Trinoids', 'Cellos', 'Fred', 'Ralph', 'Albert', 'Junior'];
+export function botSays(): void {
+  const p = getPrefs();
+  if (!p.botVoice || p.muted || p.volume <= 0 || typeof speechSynthesis === 'undefined') return;
+  try {
+    const say = new SpeechSynthesisUtterance('Nertz');
+    const voices = speechSynthesis.getVoices();
+    const robot = ROBOTS.map((name) => voices.find((v) => v.name.startsWith(name))).find(Boolean);
+    if (robot) say.voice = robot;
+    else {
+      say.pitch = 0.1;
+      say.rate = 0.8;
+    }
+    say.volume = Math.min(1, p.volume);
+    speechSynthesis.cancel(); // (never two at once: a second table's call, or one still queued)
+    speechSynthesis.speak(say);
+  } catch {
+    // no speech here
+  }
+}
+// (Browsers load their voices late: asking once, early, means they are there by the time a bot goes out.)
+if (typeof speechSynthesis !== 'undefined') speechSynthesis.getVoices();
 
 /** Nertz is called: the one loud sound, the same for everyone, landing with the stamp. */
 export function nertz(): void {
@@ -356,6 +389,7 @@ function play(cue: Cue): void {
     case 'lost':
       return lost();
     case 'nertz':
+      if (cue.bot) botSays();
       return nertz();
     case 'count':
       return cue.at.forEach(countBeat);

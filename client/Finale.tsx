@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
-import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
+import { backArt, backColour, bareOf, CARD_H, CARD_W } from './cards/Face';
 import { MINI_BELOW } from './layout';
 import { seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect } from './layout';
 
@@ -258,8 +258,14 @@ export function planFinale(L: Layout, game: GameState): Plan {
     }),
   );
   // Draw order is shuffled so the colours mix in the wash; a card's place in its sorted pile follows the draw order.
+  // Not the finished piles that come out of the tray, though: those are set down on the wash as it lies, so when they
+  // spread every card of them stays over all that it came out on top of: over the whole wash, and over the cards that
+  // were under it in its own pile. (Shuffled in with the rest, each went to a height of its own, some to the bottom.)
   const order = movers.map((_, i) => noise(i, 1));
-  const shuffled = movers.map((mv, i) => ({ mv, o: order[i]! })).sort((a, b) => a.o - b.o).map((e) => e.mv);
+  const shuffled = movers
+    .map((mv, i) => ({ mv, i, o: order[i]! }))
+    .sort((a, b) => a.mv.from - b.mv.from || (a.mv.from ? a.i - b.i : a.o - b.o))
+    .map((e) => e.mv);
   shuffled.forEach((mv, i) => {
     mv.angle = noise(i, 2) * Math.PI * 2;
     mv.radius = Math.sqrt(0.04 + 0.96 * noise(i, 3)); // even over the felt
@@ -293,7 +299,7 @@ function pictureOf(src: string, loaded: () => void): HTMLImageElement | null {
 const plan0 = (game: GameState): number[] => game.players.map((p) => p.seat);
 
 /** One card's back, drawn once: the plain cross-hatch, or the back its owner chose (`art`) once its picture has arrived. */
-function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; picture: boolean; zoom: number; edge: boolean }): HTMLCanvasElement {
+function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; picture: boolean; zoom: number; edge: boolean }, bare = false): HTMLCanvasElement {
   const pad = Math.ceil(w * 0.08);
   const sprite = document.createElement('canvas');
   sprite.width = Math.ceil((w + 2 * pad) * dpr);
@@ -332,9 +338,9 @@ function backSprite(colour: string, w: number, h: number, dpr: number, art?: { i
     c.restore();
     return sprite;
   }
-  const b = 4.5 * u;
+  const b = bare ? 0 : 4.5 * u; // (the plain back without its white edge: the cross-hatch out to the edge of the card)
   c.beginPath();
-  c.roundRect(b, b, w - 2 * b, h - 2 * b, 2.5 * u);
+  c.roundRect(b, b, w - 2 * b, h - 2 * b, bare ? 7 * u : 2.5 * u);
   c.fillStyle = colour;
   c.fill();
   c.save();
@@ -359,6 +365,7 @@ function backSprite(colour: string, w: number, h: number, dpr: number, art?: { i
   c.arc(w / 2, h / 2, ray * 0.17, 0, Math.PI * 2);
   c.fill();
   c.restore();
+  if (bare) return sprite;
   c.strokeStyle = 'rgba(255, 255, 255, 0.75)';
   c.lineWidth = 1.2 * u;
   c.beginPath();
@@ -474,7 +481,7 @@ export function Finale({ L, game, scores, name, instant, backs }: Props) {
         plan.piles.map((p) => {
           const art = backArt(backs?.(p.seat), plan.w < MINI_BELOW);
           const img = art && pictureOf(art.src, () => setArrived((a) => a + 1));
-          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k, art && img ? { img, picture: art.picture, zoom: art.zoom, edge: art.edge } : undefined)];
+          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k, art && img ? { img, picture: art.picture, zoom: art.zoom, edge: art.edge } : undefined, bareOf(backs?.(p.seat))[1])];
         }),
       );
     };

@@ -3,9 +3,10 @@
 // dark, with the whole deck behind "See all 52". Each is shown with its small rendition too: what other players'
 // piles are drawn with. What is picked here is your own: everyone at your table sees your cards so.
 import { Fragment, useState, type CSSProperties } from 'react';
-import { CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
+import { DECKS, type Deck } from '../shared/protocol';
+import { BackShelf } from './BackShelf';
 import type { Suit } from '../shared/types';
-import { BACKS, backOf, Face } from './cards/Face';
+import { BACKS, Face } from './cards/Face';
 import { setPrefs, usePrefs } from './prefs';
 import { riffle } from './sound';
 
@@ -13,8 +14,6 @@ const SUITS: Suit[] = ['S', 'H', 'C', 'D'];
 const RANKS = Array.from({ length: 13 }, (_, i) => i + 1);
 /** The hand a deck is shown by: an Ace, pip cards, and the court cards last, the King on top where the whole of him shows. */
 const HAND: [Suit, number][] = [['S', 1], ['D', 2], ['H', 7], ['S', 10], ['D', 11], ['C', 12], ['H', 13]];
-/** How each card of a spread lies: a few degrees off square. */
-const LIE = [-3, 2, -1.5, 3, -2.5, 1, -1, 2.5];
 
 function Card({ deck, suit, rank, mini }: { deck: string; suit: Suit; rank: number; mini: boolean }) {
   return (
@@ -33,7 +32,7 @@ export function Gallery() {
   const [all, setAll] = useState<Deck | null>(null);
   const colour = BACKS[ink]!;
   /** A deck as it is shown here: light or dark, as you have yours. */
-  const named = (deck: Deck): string => `${deck}${prefs.night ? ':night' : ''}`;
+  const faces = (deck: Deck): string => `${deck}${prefs.night ? ':night' : ''}`;
   return (
     <main className="showroom">
       <header>
@@ -42,31 +41,29 @@ export function Gallery() {
             <path d="M14.5 5.5L8 12l6.5 6.5" />
           </svg>
         </a>
-        <h1>Your cards</h1>
+        <h1>Deck Style</h1>
+        {/* A back drawn by lot for a table, from all of them: up here, apart from how the backs are shown below. (From one kind only: the first card of that kind's spread.) */}
+        <button type="button" className={`edge${prefs.random === 'all' ? ' on' : ''}`} aria-pressed={prefs.random === 'all'} title="Any back at all, drawn by lot when a table's first round is dealt, and kept for that table" onClick={() => setPrefs({ random: prefs.random === 'all' ? null : 'all' })}>
+          <span className="lever" />
+          Random back
+        </button>
       </header>
 
       <section>
         <div className="heading">
           <h2>Backs</h2>
+          {/* With or without the white edge: yours, like the back itself. */}
+          <button type="button" className={`edge${prefs.bare ? ' on' : ''}`} aria-pressed={prefs.bare} title="Backs without the white edge: the pattern runs to the edge of the card" onClick={() => setPrefs({ bare: !prefs.bare })}>
+            <span className="lever" />
+            Borderless
+          </button>
           <div className="inks" role="radiogroup" aria-label="Show the backs in this colour">
             {BACKS.map((c, i) => (
               <button key={c} type="button" role="radio" aria-checked={i === ink} aria-label={`Colour ${i + 1}`} className={i === ink ? 'on' : ''} style={{ background: c }} onClick={() => setInk(i)} />
             ))}
           </div>
         </div>
-        <div className="dealt">
-          {(Object.keys(CARD_BACKS) as Back[]).map((back, i) => (
-            <button key={back} type="button" className={`lay${prefs.back === back ? ' on' : ''}`} style={{ '--lie': `${LIE[i % LIE.length]}deg` } as CSSProperties} aria-pressed={prefs.back === back} onClick={() => setPrefs({ back })}>
-              <span className="mini">
-                <span {...backOf(colour, back)} />
-              </span>
-              <span className="mini small">
-                <span {...backOf(colour, back, true)} />
-              </span>
-              <em>{CARD_BACKS[back]}</em>
-            </button>
-          ))}
-        </div>
+        <BackShelf colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => setPrefs({ back, random: null })} onRandom={(random) => setPrefs({ random })} />
       </section>
 
       <section>
@@ -86,7 +83,7 @@ export function Gallery() {
                 <button type="button" className="fan" aria-pressed={prefs.deck === deck} aria-label={`Use the ${DECKS[deck]} deck`} onClick={() => setPrefs({ deck })} onPointerEnter={(e) => e.pointerType === 'mouse' && riffle()}>
                   {HAND.map(([suit, rank], i) => (
                     <span key={i} className="leaf" style={{ '--i': i - (HAND.length - 1) / 2 } as CSSProperties}>
-                      <Card deck={named(deck)} suit={suit} rank={rank} mini={false} />
+                      <Card deck={faces(deck)} suit={suit} rank={rank} mini={false} />
                     </span>
                   ))}
                 </button>
@@ -96,7 +93,7 @@ export function Gallery() {
                     <h3>{DECKS[deck]}</h3>
                     <div className="smalls">
                       {HAND.map(([suit, rank], i) => (
-                        <Card key={i} deck={named(deck)} suit={suit} rank={rank} mini />
+                        <Card key={i} deck={faces(deck)} suit={suit} rank={rank} mini />
                       ))}
                     </div>
                   </div>
@@ -106,7 +103,7 @@ export function Gallery() {
                 </div>
               </article>
               {/* Laid out under the row its deck is in, across the whole page: the decks themselves stay where they are. */}
-              {all === deck && <div className="all">{SUITS.flatMap((suit) => RANKS.map((rank) => <Card key={`${suit}${rank}`} deck={named(deck)} suit={suit} rank={rank} mini={false} />))}</div>}
+              {all === deck && <div className="all">{SUITS.flatMap((suit) => RANKS.map((rank) => <Card key={`${suit}${rank}`} deck={faces(deck)} suit={suit} rank={rank} mini={false} />))}</div>}
             </Fragment>
           ))}
         </div>

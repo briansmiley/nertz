@@ -26,12 +26,15 @@ white-on-nothing pattern that is printed in each player's colour.
 | `cobble` | Niebieska Koszulka z Wzoru Berlińskiego.png | Joh. Müller (Schaffhausen) | Public domain |
 | `stars` | Swiss card deck - 1850 - Back side.jpg | Unknown author | Public domain |
 | `lion` | Koszulka z wzoru rzymskiego.png | Marteau i Georges | CC0 |
+| `piatnik` | Kártya - Piatnik Nándor és fiai R.T. Budapest (14).jpg (its middle) | Derzsi Elekes Andor | CC BY-SA 3.0 (attribution and share-alike: say so before deploying) |
+| `atlas` | Атласная колода экстра рубашка.jpg | Adolf Charlemagne, 1850 | Public domain |
 | `check` | Back03.svg | Nicu Buculei | CC0 |
-| `suits` | Back09.svg | Nicu Buculei | CC0 |
-| `carpet` | Russian style card back.jpg | Dondorf GmbH (Germany) | Public domain |
-| `plaid-blue` | Atlas deck card back blue and brown.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
-| `plaid-green` | Atlas deck card back green and dark red.svg | Дмитрий Фомин (Dmitry Fomin) | CC0 |
+| `carpet-tint` (its coloured original is kept, unused, in `art/colour-backs`) | Russian style card back.jpg | Dondorf GmbH (Germany) | Public domain |
 
+- `fleur` (drawn in `backArt.ts`) uses the outline of "Fleur de lis flat.svg" (Wikimedia Commons, BrazilianInBattleofVerdun, CC0), and
+  `giglio` that of "Fleur de lis of Florence.svg" (Wikimedia Commons, F l a n k e r, public domain).
+- `arbor` (drawn in `backArt.ts`) is the logo of Arbor, the owner's own organisation, redrawn from its file.
+- `acanthus`, `daisy`, `tulip`, `fronds`, `oak`, `waterlily`, `lilypads`, `maple`, the `dandelion-` backs, `thistle`, `lily`, `rose`, `iris`, `sunflower`, `poppies`, `sequoia`, `fern`, `ginkgo`, `ginkgo-ring`, `ginkgo-scatter`, `tarot-star` and `tarot-eye` (and the tarot pair's one-colour `-tint` prints) are pictures the owner made in Midjourney.
 - `lightcone` (drawn in `backArt.ts`) is the logo of Lightcone Infrastructure, taken from the owner's own copy of its
   file. It is their mark, not this project's: the owner's choice to include; check with them before it is deployed publicly.
 - `hat` (the aperiodic "einstein" tiling, drawn in `backArt.ts`) is built by the method of Craig S. Kaplan's hatviz,

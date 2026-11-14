@@ -7,11 +7,11 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
-import { getPrefs, watchPrefs } from './prefs';
+import { choiceAt, getPrefs, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import type { ClientMsg, ServerMsg } from '../shared/protocol';
+import type { Back, ClientMsg, ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
@@ -123,10 +123,14 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 
 // A change of deck in the settings is passed on to the table.
 let toldDeck: string | null = null;
-watchPrefs(() => {
-  const { deck, back, night } = getPrefs();
-  if (`${deck} ${back} ${night}` !== toldDeck && post({ t: 'deck', deck, back, night })) toldDeck = `${deck} ${back} ${night}`;
-});
+/** Tells the table my cards' faces and backs (the backs chosen for this table, if any were: `choiceAt`), if it has not been told just that already. A back by lot is drawn by the table, at every deal. */
+function tell(): void {
+  const { deck, night, bare } = getPrefs();
+  const { back, random } = choiceAt(state.room?.code ?? session?.room);
+  const now = `${deck} ${back} ${night} ${bare} ${random}`;
+  if (now !== toldDeck && post({ t: 'deck', deck, back, night, bare, lot: random })) toldDeck = now;
+}
+watchPrefs(tell);
 
 /** Sends one message if the socket is open. Game intents go through `send` instead. */
 export function post(msg: ClientMsg): boolean {
@@ -153,9 +157,8 @@ function connect(): void {
   ws.onopen = () => {
     if (socket === ws && session) {
       post(hello(session.room, session.name, token()));
-      const mine = getPrefs();
-      post({ t: 'deck', deck: mine.deck, back: mine.back, night: mine.night }); // my cards' faces and backs, for everyone at the table
-      toldDeck = `${mine.deck} ${mine.back} ${mine.night}`;
+      toldDeck = null;
+      tell(); // my cards' faces and backs, for everyone at the table
     }
   };
   ws.onmessage = (e) => {
@@ -171,6 +174,7 @@ function connect(): void {
       if (session) session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
       sync = onSnapshot(sync, msg);
       set({ status: 'online', room: predict(sync), error: null });
+      tell(); // (a table just opened has its code only now, and a choice of backs made at a table goes by it)
     } else if (msg.t === 'error') {
       // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
       if (sync.server) set({ error: msg.message });
@@ -225,6 +229,10 @@ export const pause = (on: boolean): void => void post({ t: 'pause', on });
 export const sit = (seat: number): void => void post({ t: 'seat', seat });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
+/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
+export const resetTable = (): void => void post({ t: 'reset' });
+/** Whoever deals: the back a bot plays with. */
+export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });
 
 /** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
 export function setTableSettings(patch: Partial<TableSettings>): void {

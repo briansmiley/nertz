@@ -41,7 +41,8 @@ export type Cue =
    * go over a pile that someone else has just taken makes the same sound: client/sound.ts `beaten`.)
    */
   | { k: 'lost' }
-  | { k: 'nertz' }
+  /** Nertz is called. `bot`: by a bot (which may say so aloud: client/sound.ts `botSays`). */
+  | { k: 'nertz'; bot?: boolean }
   /** The dealer said go: one tick per number of "1, 2, 3" still to come, each `at` that many seconds from now. */
   | { k: 'count'; at: number[] }
   /** The word at the start, "NERTZ!": play is open. (Not the call that ends a round: that is `nertz`.) */
@@ -145,7 +146,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });
   }
 
-  if (a.game.nertzCalledBy === null && b.game.nertzCalledBy !== null) add({ k: 'nertz' });
+  if (a.game.nertzCalledBy === null && b.game.nertzCalledBy !== null) add({ k: 'nertz', ...(b.players.find((p) => p.seat === b.game!.nertzCalledBy)?.bot ? { bot: true } : {}) });
   return [...cues.values()];
 }
 

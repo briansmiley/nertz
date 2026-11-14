@@ -22,35 +22,53 @@ export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object
 export const CARD_BACKS = {
   plain: 'Plain',
   // Drawn in code (client/cards/backArt.ts):
-  hilbert: 'Hilbert curve',
+  hilbert: 'Hilbert',
   key: 'Greek key',
   braid: 'Braids',
   loops: 'Loops',
   rings: 'Rings',
   guilloche: 'Guilloche',
   voronoi: 'Voronoi',
-  tree: 'Binary tree',
-  dragon: 'Dragon curve',
-  koch: 'Koch snowflake',
+  bubbles: 'Circles',
+  tree: 'Binary',
+  dragon: 'Dragon',
+  koch: 'Koch',
   mandelbrot: 'Mandelbrot',
-  walk: 'Random walk',
+  walk: 'Walk',
   mondrian: 'Mondrian',
   diamonds: 'Diamond tile',
   herringbone: 'Herringbone',
-  honeycomb: 'Honeycomb',
-  starcross: 'Star and cross',
+  honeycomb: 'Hexes',
+  starcross: 'Starcrossed',
   houndstooth: 'Houndstooth',
   shards: 'Shards',
   pinwheel: 'Pinwheel',
   mosaic: 'Mosaic',
-  flowers: 'Flower tile',
-  compass: 'Compass rose',
+  flowers: 'Flowers',
+  compass: 'Compass',
   lightcone: 'Lightcone',
+  arbor: 'Arbor',
+  fleur: 'Fleur-de-lis',
+  giglio: 'Florence',
+  lotus: 'Lotus',
+  'flower-of-life': 'Flower',
+  'mystic-moons': 'Moons',
+  'mystic-sun': 'Moon',
+  'mystic-eye': 'Eye',
+  'mystic-day': 'Sun',
+  'mystic-star': 'Star',
+  bathroom: 'Tiles',
+  sunburst: 'Sunburst',
+  'penrose-triangle': 'Penrose',
+  blocks: 'Blocks',
   waves: 'Waves',
   flow: 'Flow',
-  life: 'Game of Life',
-  penrose: 'Penrose',
-  hat: 'Einstein hat',
+  life: 'Life',
+  penrose: 'Rhombs',
+  hat: 'Einstein 3',
+  // (Three renditions of the hat tiling: outlines only, the turned-over hats white, and those with the hats round them shaded.)
+  'hat-two': 'Einstein 2',
+  'hat-lines': 'Einstein 1',
   chain: 'Chain',
   pulsar: 'Pulsar',
   // Pictures (public/cards/backs):
@@ -60,13 +78,67 @@ export const CARD_BACKS = {
   cobble: 'Cobble',
   stars: 'Stars',
   lion: 'Lion',
+  piatnik: 'Piatnik',
+  atlas: 'Atlas',
   check: 'Check',
-  suits: 'Suits',
-  carpet: 'Carpet',
-  'plaid-blue': 'Plaid, blue',
-  'plaid-green': 'Plaid, green',
+  'carpet-tint': 'Carpet',
+  // Made by the owner in Midjourney: in their own colours, and as one-colour prints of the same pictures.
+  acanthus: 'Acanthus',
+  fern: 'Fern',
+  ginkgo: 'Ginkgo',
+  'ginkgo-ring': 'Ginkgo ring',
+  'ginkgo-scatter': 'Ginkgos',
+  fronds: 'Fronds',
+  daisy: 'Daisy',
+  tulip: 'Tulip',
+  oak: 'Oak',
+  thistle: 'Thistle',
+  lily: 'Lily',
+  rose: 'Rose',
+  iris: 'Iris',
+  sunflower: 'Sunflower',
+  waterlily: 'Water lily',
+  lilypads: 'Lily pads',
+  maple: 'Maple',
+  'dandelion-1': 'Dandelion',
+  poppies: 'Poppies',
+  sequoia: 'Sequoia',
+  'tarot-star-tint': 'Tarot stars',
+  'tarot-eye-tint': 'Tarot eye',
 } as const;
 export type Back = keyof typeof CARD_BACKS;
+/**
+ * A back can be had without its white edge (`bare`): what is inside the edge is drawn larger, out to the edge of the
+ * card. Where a back is named for drawing, such a one is its name with `:bare` after it (as a dark deck has `:night`).
+ */
+export const backNamed = (back: Back | undefined, bare: boolean | undefined): string | undefined => (bare ? `${back ?? 'plain'}:bare` : back);
+/** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
+export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
+  { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life'] },
+  { name: 'Tilings', backs: ['check', 'diamonds', 'herringbone', 'honeycomb', 'starcross', 'houndstooth', 'shards', 'pinwheel', 'mosaic', 'flowers', 'voronoi', 'mondrian', 'penrose', 'hat-lines', 'hat-two', 'hat', 'bathroom', 'blocks'] },
+  { name: 'Maths', backs: ['hilbert', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'life', 'pulsar', 'penrose-triangle'] },
+  { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia'] },
+  { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'stars', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
+  { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'fleur', 'giglio'] },
+  { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye'] },
+];
+/**
+ * A lot: backs to draw one from by chance, in place of a back of one's own choosing: once for a table, when its first
+ * round is dealt (or the first after the lot was chosen), and kept there for every round after. 'all' is every back;
+ * otherwise the name of a kind (a group above). Until it is drawn, such a player's back is shown as `ANY_BACK`: a
+ * card with a question mark.
+ */
+export const isLot = (v: unknown): v is string => typeof v === 'string' && (v === 'all' || BACK_GROUPS.some((g) => g.name === v));
+export const backPool = (lot: string): readonly Back[] => BACK_GROUPS.find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
+/** What a back not yet drawn is called where backs are named for drawing. */
+export const ANY_BACK = 'any';
+
+/** `BACK_GROUPS`, with any back that is in none of them gathered at the end. */
+export function backGroups(): { name: string; backs: Back[] }[] {
+  const seen = new Set(BACK_GROUPS.flatMap((g) => g.backs));
+  const rest = (Object.keys(CARD_BACKS) as Back[]).filter((b) => !seen.has(b));
+  return [...BACK_GROUPS.map((g) => ({ name: g.name, backs: [...g.backs] })), ...(rest.length ? [{ name: 'Other', backs: rest }] : [])];
+}
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
 
 export type ClientMsg =
@@ -81,13 +153,19 @@ export type ClientMsg =
   | { t: 'settings'; patch: Partial<TableSettings> }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
+  /** Whoever deals, between rounds: start over. Everyone's score goes back to nothing and the table to its lobby, as before the first deal. */
+  | { t: 'reset' }
+  /** For trying things out, refused by a server in production: make a bot go out now (its nertz pile is put under its stock, and it calls). */
+  | { t: 'debugBotOut' }
   /** Pause the round for everyone (on), or carry on (off). */
   | { t: 'pause'; on: boolean }
   /** Which card faces I play with: everyone sees the cards of my deck drawn that way. */
-  | { t: 'deck'; deck: Deck; back?: Back; night?: boolean }
+  | { t: 'deck'; deck: Deck; back?: Back; night?: boolean; bare?: boolean; lot?: string | null }
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
+  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from at every deal (`lot`; null: no lot, the back it has). */
+  | { t: 'botBack'; seat: number; back?: Back; lot?: string | null }
   /** In the lobby: move to another seat nobody has, which is to take its colour. */
   | { t: 'seat'; seat: number }
   /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
@@ -274,16 +352,22 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'go' };
     case 'leave':
       return { t: 'leave' };
+    case 'reset':
+      return { t: 'reset' };
+    case 'debugBotOut':
+      return { t: 'debugBotOut' };
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
     case 'deck':
-      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}) } : null;
+      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}), ...(typeof v.bare === 'boolean' ? { bare: v.bare } : {}), lot: isLot(v.lot) ? v.lot : null } : null;
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
+    case 'botBack':
+      return isIndex(v.seat, MAX_PLAYERS) && (isBack(v.back) || v.lot === null || isLot(v.lot)) ? { t: 'botBack', seat: v.seat, ...(isBack(v.back) ? { back: v.back } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
     case 'seat':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
     case 'settings': {
