@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { applyIntent, canDrop, checkInvariants, deal as dealRound, DEAL_MS, finishDeal, isHidden, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
 import type { AnyCard, Card, GameState } from '../shared/types';
-import { LABEL, planFinale, restAt, TILT } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect } from './layout';
+import { frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
+import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
@@ -469,6 +469,51 @@ describe('table layout', () => {
     expect(plan.piles.map((p) => p.total)).toEqual([16, 13, 13, 13]);
     for (const m of plan.movers) expect(plan.piles[m.pile]!.seat).toBe(m.owner);
     for (const [i, a] of plan.piles.entries()) for (const b of plan.piles.slice(i + 1)) expect(overlap(a, b)).toBe(false);
+  });
+
+  it('hands every card of the middle from the table to the wash once, where it lies: through the end of a round each is drawn by exactly one of the two, whatever the canvas\'s clock says', () => {
+    for (const n of [2, 4, 6]) {
+      const base = played(deal(seats(n), rng(11)));
+      // Besides the piles in the tray, one that was finished and not yet cleared when Nertz was called: it lies in the middle.
+      const whole = base.players[1]!.stock.slice(0, 13) as Card[];
+      const game: GameState = { ...base, slots: base.slots.map((s, i) => (i === 0 ? whole : s)), places: base.places.map((at, i) => (i === 0 ? { x: 0.6, y: 0, r: 0 } : at)), players: base.players.map((p, i) => (i === 1 ? { ...p, stock: p.stock.slice(13) } : p)) };
+      const middle = [...game.slots.flat(), ...game.tray.flat()].map((c) => c.id).sort();
+      expect(middle).toHaveLength(13 + 3 + 13 * n);
+      const drawn = (stage: Stage, t: number) => {
+        const L = computeLayout(1280, 800, game, 0, stage);
+        return { table: L.cards.filter((c) => c.pile === 'slot' || c.pile === 'tray'), canvas: frameAt(planFinale(L, game), stage, t, trayAt).cards, w: L.fs * CARD_W };
+      };
+      // The canvas's clock starts when it is first drawn and is read once a frame, so it runs a little behind the
+      // table's stages or ahead of them: a card is on one layer or the other all the same, never on neither or both.
+      const STAGES: Stage[] = ['flip', 'spread', 'out', 'wash', 'sheet'];
+      for (const stage of STAGES) {
+        for (const t of [-30, 0, TIMING.spread, trayAt - 30, trayAt, trayAt + 30, 60000]) {
+          const { table, canvas } = drawn(stage, t);
+          expect([...table.map((c) => c.card.id), ...canvas.map(([mv]) => mv.id)].sort()).toEqual(middle);
+          expect(canvas.every(([mv]) => onCanvas(stage, mv.tray ? 'tray' : 'slot'))).toBe(true);
+        }
+      }
+      // And where the table last drew a card is where the canvas first draws it: the same middle, tilt and size, back up.
+      const taken = (from: Stage, to: Stage, t: number): number => {
+        const was = new Map(drawn(from, t).table.map((c) => [c.card.id, c]));
+        const { canvas, w } = drawn(to, t);
+        const got = canvas.filter(([mv]) => was.has(mv.id));
+        for (const [mv, x, y, rot, size] of got) {
+          const c = was.get(mv.id)!;
+          expect(c.up).toBe(false);
+          expect(x).toBeCloseTo(c.x + (c.s * CARD_W) / 2, 6);
+          expect(y).toBeCloseTo(c.y + (c.s * CARD_H) / 2, 6);
+          expect(rot).toBeCloseTo((c.rot * Math.PI) / 180, 9);
+          expect(size * w).toBeCloseTo(c.s * CARD_W, 6);
+        }
+        return got.length;
+      };
+      expect(taken('flip', 'spread', 0)).toBe(13 + 3);
+      expect(taken('flip', 'spread', -12)).toBe(13 + 3); // (a frame stamped before the clock started)
+      expect(taken('spread', 'out', TIMING.spread)).toBe(0);
+      expect(taken('out', 'wash', trayAt)).toBe(13 * n);
+      expect(taken('out', 'wash', trayAt - 12)).toBe(13 * n);
+    }
   });
 
   it('gathers each pile out in front of its player, on the felt and clear of the wash, with a label that touches nothing else: 2 to 6 players, every chair', () => {
