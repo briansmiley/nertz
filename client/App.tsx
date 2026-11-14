@@ -413,6 +413,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const ready = !!clean && !busy;
   /** A table picked off the list: as if its code were typed and Join pressed; without a name yet, the code waits in its field for one. */
   const pick = (room: string) => {
+    if (busy) return;
     setCode(room);
     if (ready) enter(room, clean);
     else nameField.current?.focus();

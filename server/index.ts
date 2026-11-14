@@ -113,8 +113,8 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
         res.end(JSON.stringify({ ok: true, rooms: rooms.size, connections: wss.clients.size }));
       } else if (path === '/tables') {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
-          res.writeHead(405, { 'content-type': 'application/json' });
-          return void res.end('{"ok":false}');
+          res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD' });
+          return void res.end('Method not allowed');
         }
         // Only tables someone is at just now: one left behind is kept for a while for whoever was there, not for anyone else.
         const listed: TableSummary[] = [...rooms.values()]
