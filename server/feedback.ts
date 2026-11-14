@@ -5,6 +5,9 @@
 //   feedback.jsonl there, and the screenshot is saved beside it. Outside production it defaults to ./feedback.
 // - LINEAR_API_KEY and LINEAR_TEAM (a team's key, like NRZ): an issue is filed in that team, titled "[FEEDBACK] ...",
 //   labelled Bug or Feature (the label is made if the team has none of that name), the screenshot in its description.
+//   Optional, each left alone if unset: LINEAR_PRIORITY (1 urgent, 2 high, 3 medium, 4 low), LINEAR_ASSIGNEE (an
+//   email address, or `me` for whoever the key belongs to), LINEAR_STATE (a status of the team by name, like Todo)
+//   and LINEAR_PROJECT (a project by name).
 // With none of them, the sender is told that feedback is not set up.
 import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
@@ -54,7 +57,7 @@ export interface FeedbackOptions {
   webhook?: string;
   dir?: string;
   /** A Linear personal API key, and the key of the team the issues go to. */
-  linear?: { key: string; team: string };
+  linear?: { key: string; team: string; priority?: number; assignee?: string; state?: string; project?: string };
   /** For tests. */
   fetch?: typeof fetch;
 }
@@ -64,7 +67,12 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
   const dir = options.dir ?? process.env.FEEDBACK_DIR ?? (process.env.NODE_ENV === 'production' ? undefined : 'feedback');
   const post = options.fetch ?? fetch;
   const recent = new Map<string, number[]>();
-  const linear = options.linear ?? (process.env.LINEAR_API_KEY && process.env.LINEAR_TEAM ? { key: process.env.LINEAR_API_KEY, team: process.env.LINEAR_TEAM } : undefined);
+  const env = process.env;
+  const linear =
+    options.linear ??
+    (env.LINEAR_API_KEY && env.LINEAR_TEAM
+      ? { key: env.LINEAR_API_KEY, team: env.LINEAR_TEAM, priority: /^[1-4]$/.test(env.LINEAR_PRIORITY ?? '') ? Number(env.LINEAR_PRIORITY) : undefined, assignee: env.LINEAR_ASSIGNEE || undefined, state: env.LINEAR_STATE || undefined, project: env.LINEAR_PROJECT || undefined }
+      : undefined);
 
   /** One call to Linear's GraphQL API: its `data`, or an error. */
   const gql = async <T>(query: string, variables: Record<string, unknown>): Promise<T> => {
@@ -79,7 +87,7 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
    * or the workspace has one for every team; otherwise it is made for the team. (Asked in two small queries: one that
    * reads every label of a team inside the team is refused by Linear as too complex.)
    */
-  let team: Promise<{ id: string; labels: Record<Report['kind'], string> }> | null = null;
+  let team: Promise<{ id: string; labels: Record<Report['kind'], string>; extra: Record<string, unknown> }> | null = null;
   const findTeam = (): NonNullable<typeof team> =>
     (team ??= (async () => {
       const found = await gql<{ teams: { nodes: { id: string }[] } }>('query($key: String!) { teams(filter: { key: { eq: $key } }, first: 1) { nodes { id } } }', { key: linear!.team.toUpperCase() });
@@ -93,7 +101,23 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
         const made = await gql<{ issueLabelCreate: { issueLabel: { id: string } } }>('mutation($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { issueLabel { id } } }', { input: { name, color, teamId: id } });
         return made.issueLabelCreate.issueLabel.id;
       };
-      return { id, labels: { bug: await label('Bug', '#cf2233'), idea: await label('Feature', '#f2b320') } };
+      // What else an issue is given, where the server was told: each looked up by name, and left out (with a word in the log) if there is no such thing.
+      const extra: Record<string, unknown> = {};
+      const lookup = async (what: string, field: string, find: () => Promise<string | undefined>): Promise<void> => {
+        try {
+          const found = await find();
+          if (found) extra[field] = found;
+          else console.error(`feedback: Linear has no ${what}; issues are filed without it`);
+        } catch (e) {
+          console.error(`feedback: looking up the Linear ${what}`, e);
+        }
+      };
+      if (linear!.priority) extra.priority = linear!.priority;
+      const { assignee, state, project } = linear!;
+      if (assignee) await lookup(`user ${assignee}`, 'assigneeId', async () => (assignee.toLowerCase() === 'me' ? (await gql<{ viewer: { id: string } }>('query { viewer { id } }', {})).viewer.id : (await gql<{ users: { nodes: { id: string }[] } }>('query($email: String!) { users(filter: { email: { eq: $email } }, first: 1) { nodes { id } } }', { email: assignee })).users.nodes[0]?.id));
+      if (state) await lookup(`status "${state}" in the team`, 'stateId', async () => (await gql<{ workflowStates: { nodes: { id: string }[] } }>('query($team: ID!, $name: String!) { workflowStates(filter: { team: { id: { eq: $team } }, name: { eqIgnoreCase: $name } }, first: 1) { nodes { id } } }', { team: id, name: state })).workflowStates.nodes[0]?.id);
+      if (project) await lookup(`project "${project}"`, 'projectId', async () => (await gql<{ projects: { nodes: { id: string }[] } }>('query($name: String!) { projects(filter: { name: { eqIgnoreCase: $name } }, first: 1) { nodes { id } } }', { name: project })).projects.nodes[0]?.id);
+      return { id, labels: { bug: await label('Bug', '#cf2233'), idea: await label('Feature', '#f2b320') }, extra };
     })().catch((e: unknown) => {
       team = null; // (not remembered: the next report tries again)
       throw e;
@@ -121,7 +145,7 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
     const about = [r.name && `**From:** ${r.name}`, r.room && `**Table:** ${r.room}`, r.context && `**Where:** ${r.context}`, `**Report:** ${id}`].filter(Boolean).join('  \n');
     // (What a stranger typed is quoted, so that it cannot pass for the issue's own text.)
     const description = `${r.text.split('\n').map((l) => `> ${l}`).join('\n')}${picture}\n\n${about}`;
-    const made = await gql<{ issueCreate: { issue: { identifier: string; url: string } } }>('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { identifier url } } }', { input: { teamId: t.id, title, description, labelIds: [t.labels[r.kind]] } });
+    const made = await gql<{ issueCreate: { issue: { identifier: string; url: string } } }>('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { identifier url } } }', { input: { teamId: t.id, title, description, labelIds: [t.labels[r.kind]], ...t.extra } });
     return made.issueCreate.issue;
   };
 

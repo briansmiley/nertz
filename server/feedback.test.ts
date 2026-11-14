@@ -55,16 +55,19 @@ describe('feedback', () => {
         if (String(url) === 'https://discord.invalid/hook') return new Response(null, { status: 204 });
       if (String(url) !== 'https://api.linear.app/graphql') return new Response(null, { status: 200 }); // the upload
       const q = (body as { query: string }).query;
-      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'bug', team: null }, { id: 'other', name: 'Feature', team: { id: 'team2' } }] } } : q.includes('issueLabelCreate') ? { issueLabelCreate: { issueLabel: { id: 'feat1' } } } : q.includes('fileUpload') ? { fileUpload: { uploadFile: { uploadUrl: 'https://upload.invalid/x', assetUrl: 'https://asset.invalid/x.png', headers: [{ key: 'x-h', value: '1' }] } } } : { issueCreate: { issue: { identifier: 'NRZ-7', url: 'https://linear.invalid/NRZ-7' } } };
+      const data = q.includes('viewer') ? { viewer: { id: 'me1' } } : q.includes('workflowStates') ? { workflowStates: { nodes: [{ id: 'todo1' }] } } : q.includes('projects(') ? { projects: { nodes: [] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'bug', team: null }, { id: 'other', name: 'Feature', team: { id: 'team2' } }] } } : q.includes('issueLabelCreate') ? { issueLabelCreate: { issueLabel: { id: 'feat1' } } } : q.includes('fileUpload') ? { fileUpload: { uploadFile: { uploadUrl: 'https://upload.invalid/x', assetUrl: 'https://asset.invalid/x.png', headers: [{ key: 'x-h', value: '1' }] } } } : { issueCreate: { issue: { identifier: 'NRZ-7', url: 'https://linear.invalid/NRZ-7' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz' }, fetch: fake } });
+    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
     expect((await send({ kind: 'idea', text: 'a ready button\nwould be nice', name: 'Sam', image: PNG })).status).toBe(200);
     const issue = calls.find((c) => (c.body as { query?: string })?.query?.includes('issueCreate'))!.body as { variables: { input: { title: string; description: string; labelIds: string[]; teamId: string } } };
     expect(issue.variables.input).toMatchObject({ teamId: 'team1', title: '[FEEDBACK] a ready button', labelIds: ['feat1'] });
+    // Priority, assignee and status as the server was told; a project nobody has is left out, and the issue is filed all the same.
+    expect(issue.variables.input).toMatchObject({ priority: 2, assigneeId: 'me1', stateId: 'todo1' });
+    expect(issue.variables.input).not.toHaveProperty('projectId');
     expect(issue.variables.input.description).toContain('> a ready button\n> would be nice');
     expect(issue.variables.input.description).toContain('![screenshot](https://asset.invalid/x.png)');
     expect(calls.some((c) => c.url === 'https://upload.invalid/x' && c.method === 'PUT')).toBe(true);

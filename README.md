@@ -715,5 +715,8 @@ The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
   if the team has none of that name), with the screenshot in its description.
+  Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
+
+Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
 Five reports per address per ten minutes; a screenshot is scaled down in the browser first.
