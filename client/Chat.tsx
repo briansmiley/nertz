@@ -19,7 +19,7 @@ type Colour = (who: number) => string | undefined;
 /** Points as the score sheet writes them: with their sign, and a true minus. */
 export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
-/** One line: a name in its colour and what was said; or a notice from the table (a snipe, a round dealt or over, the table started over). */
+/** One line: a name in its colour and what was said; or a notice from the table (a snipe, a round started or over, the table started over). */
 function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
   const named = (n: Named) => <b style={{ color: colour(n.who) }}>{n.name}</b>;
   /** "A", "A and B", "A, B and C". */
@@ -39,19 +39,21 @@ function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
   }
   let notice: ReactNode;
   if (line.k === 'sniped') notice = <>{named(line.by)} sniped {named(line.of)}</>;
-  else if (line.k === 'dealt') notice = <>Round {line.round} dealt</>;
+  else if (line.k === 'started') notice = <>Round {line.round} started</>;
   else if (line.k === 'reset') notice = <>{named(line.by)} started the table over</>;
   else {
+    // Whoever scored most in the round wins it (as the table says at its end); whoever called Nertz is named too when that is someone else.
     const { end, best } = line;
     const caller = typeof end === 'string' ? null : end;
     notice = (
       <>
-        Round {line.round} over: {caller ? <>{named(caller)} called Nertz ({signed(caller.points)})</> : end === 'jam' ? 'the table jammed' : 'ended by agreement'}
-        {best.some((b) => b.who !== caller?.who) && (
+        Round {line.round} over
+        {best.length > 0 && (
           <>
-            , {all(best)} scored most ({signed(best[0]!.points)})
+            : {all(best)} {best.length > 1 ? 'win' : 'wins'} ({signed(best[0]!.points)})
           </>
         )}
+        {caller ? !best.some((b) => b.who === caller.who) && <>, {named(caller)} called Nertz ({signed(caller.points)})</> : end === 'jam' ? ', the table jammed' : ', ended by agreement'}
       </>
     );
   }

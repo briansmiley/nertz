@@ -178,23 +178,27 @@ describe('Room', () => {
     sendIntent(room, a, 1, move(twoA, slot(0)));
     sendIntent(room, b, 0, move(twoB, slot(0))); // too late
     room.handle(b, { t: 'sniped', slot: 0 }); // said again by their window: still one line
-    const lines = got.flatMap((m) => (m.t === 'chat' && !m.history ? m.lines : [])).filter((l) => l.k === 'sniped'); // (not the round's own notice that it was dealt)
+    const lines = got.flatMap((m) => (m.t === 'chat' && !m.history ? m.lines : [])).filter((l) => l.k === 'sniped'); // (not the round's own notice that it started)
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ k: 'sniped', by: { who: 0, name: 'P0' }, of: { who: 1, name: 'P1' } });
     expect(got.some((m) => m.t === 'sniper')).toBe(false); // (that one is for the sniper only)
   });
 
-  it('tells the table where the chat is of a round dealt, of how it went with the score sheet\'s numbers, and of the table started over', () => {
+  it('tells the table where the chat is of a round started, of how it went with the score sheet\'s numbers, and of the table started over', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     const got: ServerMsg[] = [];
     room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc'); // only watching
     const told = (msgs: ServerMsg[], history = false) => msgs.flatMap((m) => (m.t === 'chat' && m.history === history ? m.lines.map(({ id: _, at: __, ...l }) => l) : []));
+    const opened = () => (room as unknown as { opened(): void }).opened(); // "...NERTZ!": play opens
     room.handle(a, { t: 'start' });
+    expect(told(got)).toEqual([]); // dealt, not started: nothing is told yet
+    opened();
     const first = room.game;
-    room.handle(a, { t: 'redeal' }); // dealt over: the same round, not told again
+    room.handle(a, { t: 'redeal' }); // dealt over and started anew: the same round, not told again
     expect(room.game).not.toBe(first);
-    expect(told(got).filter((l) => l.k === 'dealt')).toEqual([{ k: 'dealt', round: 1 }]);
+    opened();
+    expect(told(got).filter((l) => l.k === 'started')).toEqual([{ k: 'started', round: 1 }]);
     room.game = rigged([0, 1], [0, 1]);
     sendIntent(room, a, 0, move(workTop(room.game, 0, 0), felt(-0.6, 0)));
     sendIntent(room, a, 1, move(workTop(room.game, 0, 1), slot(0)));
@@ -206,7 +210,7 @@ describe('Room', () => {
     expect(room.lastRound!.scores.map((s) => s.delta)).toEqual([2, 3]);
     room.handle(a, { t: 'reset' });
     const lines = [
-      { k: 'dealt', round: 1 },
+      { k: 'started', round: 1 },
       { k: 'over', round: 1, end: { who: 0, name: 'P0', points: 2 }, best: [{ who: 1, name: 'P1', points: 3 }] },
       { k: 'reset', by: { who: 0, name: 'P0' } },
     ];
@@ -218,7 +222,8 @@ describe('Room', () => {
     // With text chat switched off they are still told (as a snipe is), but not kept.
     room.handle(a, { t: 'social', text: false });
     room.handle(a, { t: 'start' });
-    expect(told(got).at(-1)).toEqual({ k: 'dealt', round: 1 });
+    opened();
+    expect(told(got).at(-1)).toEqual({ k: 'started', round: 1 });
     const later: ServerMsg[] = [];
     room.join({ send: (m) => void later.push(wire(m)), close: () => {} }, 'Ed', 'tok-eeee');
     expect(told(later, true)).toEqual(lines);

@@ -136,6 +136,8 @@ export class Room {
   private dealEndsAt = 0;
   /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
   private startTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The last round whose start the chat was told of. */
+  private startTold = 0;
   private startEndsAt = 0;
   /** Who paused the round in play, if it is paused. */
   private pausedBy: Player | null = null;
@@ -376,7 +378,6 @@ export class Room {
     if (player !== this.dealer || this.phase === 'playing' || this.present < MIN_PLAYERS) return;
     this.round++;
     this.dealOut();
-    this.social.tell(this.players, { k: 'dealt', round: this.round });
   }
 
   /**
@@ -430,6 +431,8 @@ export class Room {
     this.startTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = openPlay(this.game);
+    // Told once a round, where the chat is: not again if the round is dealt over and started anew.
+    if (this.startTold !== this.round) this.social.tell(this.players, { k: 'started', round: (this.startTold = this.round) });
     this.played = 0;
     this.playingSince = Date.now();
     // Play is open: the bots start looking at their cards now, like everyone else.
@@ -734,6 +737,7 @@ export class Room {
       if (p.lot) p.drew = false; // a table started over draws its lots over
     }
     this.round = 0;
+    this.startTold = 0;
     this.lastRound = null;
     this.game = null;
     this.phase = 'lobby';
