@@ -847,7 +847,7 @@ describe('a group dealt off the stock', () => {
   it('lies over a pile of the middle that it reaches, as all of your own hand does; everyone else\'s hand lies under the middle', () => {
     const box = (c: Layout['cards'][number]): Rect => ({ x: c.x, y: c.y, w: c.s * CARD_W, h: c.s * CARD_H });
     for (const [W, H] of DESKTOPS) {
-      const start = deal(seats(6), rng(6), 'free');
+      const start = deal(seats(6), rng(6));
       // A pile as near your edge of the felt as the rules allow, straight above your stock.
       const stock = computeLayout(W, H, start, 0).me!.stock;
       const spot = { x: toTable(computeLayout(W, H, start, 0).felt, stock.x + stock.w / 2, 0).x, y: 1 - cardSize(6).h / 2 - 1e-6, r: 0 };

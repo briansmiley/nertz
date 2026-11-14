@@ -39,7 +39,7 @@ Controls:
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
 | ...or tap or click it, then the pile (if the table moves without dragging) | the same, without carrying it |
 | Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there |
-| Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
+| Drag a finished pile (one you put the King on) to the tray, bottom right (or tap or click it, then the tray, if the table moves without dragging) | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
 | Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
@@ -58,8 +58,9 @@ touch, and a card let go between two piles goes back where it came from.
 
 At a table that moves without dragging (the table rule "Move without dragging", on by default) a tap or a click also
 takes a card up without carrying it: it stands lifted where it was, and the next tap or click puts it down, on the pile
-it points at (or, for an Ace, that spot of the felt). Anywhere else, or Escape, puts it back. A mouse does exactly what a
-finger does. A card moved so is never seen crossing the table. With the rule off, every card is dragged, on a touch
+it points at (or, for an Ace, that spot of the felt). A pile you finished is taken up the same way, and the next tap or
+click on the tray clears it. Anywhere else, or Escape, puts it back and does nothing more: a click on the stock with a
+card taken up does not deal. A mouse does exactly what a finger does. A card moved so is never seen crossing the table. With the rule off, every card is dragged, on a touch
 screen too.
 
 What you see around a round:

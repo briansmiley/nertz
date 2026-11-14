@@ -828,13 +828,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : d.held.k === 'pile' ? !toClear(d.held.slot) : frozen || mine?.stock.at(-1)?.id !== d.lead;
     if (gone) letGo(d);
   });
-  // Escape puts a card that was tapped (or clicked) back, as a tap anywhere else would.
+  // Escape puts what was tapped (or clicked) back, as a tap anywhere else would.
   useEffect(() => {
-    if (held?.k !== 'card') return;
+    if (!held || held.k === 'stock') return;
     const onKey = (e: KeyboardEvent) => {
       const d = drag.current;
       if (e.code !== 'Escape' || !d?.tapped) return;
-      send({ k: 'release' });
+      if (d.held.k === 'card') send({ k: 'release' });
       letGo(d);
     };
     window.addEventListener('keydown', onKey);
@@ -858,12 +858,19 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
     const el = (e.target as Element).closest('[data-id],[data-stock]');
-    // A card that was tapped (or clicked) is in your hand, and this tap says where it goes: a pile that takes it (the
-    // nearest, if the finger is a little off), or for an Ace that very spot of the felt. A tap anywhere else puts it
-    // back; on another card of yours, that one is taken up in its place.
+    // What was tapped (or clicked) is in your hand, and this tap says where it goes: for a card a pile that takes it
+    // (the nearest, if the finger is a little off), or for an Ace that very spot of the felt; for a finished pile the
+    // tray. A tap anywhere else puts it back and does nothing more, exactly as letting go of it there would: it does
+    // not deal from the stock, nor take up another card.
     const sel = drag.current?.tapped ? drag.current : null;
-    if (sel && sel.held.k === 'card' && e.button === 0) {
+    if (sel && e.button === 0) {
       const at = { x: e.clientX, y: e.clientY };
+      if (sel.held.k === 'pile') {
+        if (dropTarget(targetsFor(sel.held), at, null, reachOf(sel))) send({ k: 'clear', slot: sel.held.slot });
+        letGo(sel);
+        return void (untap.current = sel.lead);
+      }
+      if (sel.held.k !== 'card') return;
       const felt = feltUnder(sel, at);
       const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
       const moved = !!t && typeof t.to === 'object' && send({ k: 'move', cardId: sel.held.id, count: sel.ids.length, to: t.to });
@@ -873,9 +880,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         if (over >= 0 && game.slots[over]?.at(-1)?.id !== sel.tops[over] && beatenTo(game, you, sel.held.id, over)) snipedAt(over);
         send({ k: 'release' });
       }
-      const same = el?.getAttribute('data-id') === sel.lead;
       letGo(sel);
-      if (moved || same) return void (untap.current = sel.lead);
+      return void (untap.current = sel.lead);
     }
     if (frozen || drag.current || e.button !== 0) return;
     if (!el) return;
@@ -989,16 +995,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     // On a touch screen a tap on one of your work piles fans it out in full, and another tap (anywhere) closes it.
     const again = untap.current;
     untap.current = null;
-    // Where the table allows it, a tap or a click on a card of yours (or a run of them) takes it up without carrying
-    // it: it stands lifted where it was, and the next tap or click puts it down (see `onPointerDown`). The server is
-    // told as for any card in hand. On a touch screen a finished pile of yours goes to the tray at a tap: there is
-    // nowhere else for it.
+    // Where the table allows it, a tap or a click on a card of yours (or a run of them, or a pile you finished) takes
+    // it up without carrying it: it stands lifted where it was, and the next tap or click puts it down (see
+    // `onPointerDown`). The server is told of a card as of any card in hand (a finished pile is not held: nobody
+    // else can move it).
     if (d && !d.active && e.pointerId === d.pointer && stage === 'live') {
-      if (d.touch && d.held.k === 'pile') {
-        send({ k: 'clear', slot: d.held.slot });
-        return void (drag.current = null);
-      }
-      if (tapToMove && d.held.k === 'card' && again === null && send({ k: 'hold', cardId: d.held.id })) {
+      if (tapToMove && again === null && (d.held.k === 'pile' || (d.held.k === 'card' && send({ k: 'hold', cardId: d.held.id })))) {
         d.active = true;
         d.tapped = true;
         d.pointer = -1;
