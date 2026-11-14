@@ -103,8 +103,8 @@ export const CARD_BACKS = {
   'dandelion-1': 'Dandelion',
   poppies: 'Poppies',
   sequoia: 'Sequoia',
-  'tarot-star-tint': 'Tarot stars',
-  'tarot-eye-tint': 'Tarot eye',
+  'tarot-star-tint': 'Medallion',
+  'tarot-eye-tint': 'Vision',
 } as const;
 export type Back = keyof typeof CARD_BACKS;
 /**
