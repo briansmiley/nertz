@@ -1,6 +1,6 @@
-// The bug button in the corner: a slip with a text box and an optional screenshot (a file, or pasted), sent to the
+// The bug button in the corner: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent to the
 // server's /feedback (server/feedback.ts), which passes it on. Bug report or feature request: the same slip.
-import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 
 const MAX_TEXT = 2000;
@@ -66,6 +66,12 @@ export function Feedback({ room }: { room?: RoomView | null }) {
       setState({ k: 'error', message: 'That picture could not be read.' });
     }
   };
+  /** A picture dragged from elsewhere and let go anywhere on the slip. */
+  const onDrop = (e: DragEvent) => {
+    const file = [...e.dataTransfer.files].find((f) => f.type.startsWith('image/'));
+    e.preventDefault(); // (whatever it was: the browser must not open it in place of the game)
+    if (file) void attach(file);
+  };
   const onPaste = (e: ClipboardEvent) => {
     const file = [...e.clipboardData.files].find((f) => f.type.startsWith('image/'));
     if (file) (e.preventDefault(), void attach(file));
@@ -108,7 +114,7 @@ export function Feedback({ room }: { room?: RoomView | null }) {
       </button>
       {open && (
         // (Keys typed here are not the game's: Space deals, M mutes.)
-        <form className="slip feedback" aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onKeyDown={(e) => e.stopPropagation()}>
+        <form className="slip feedback" aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
           <h3>Feedback</h3>
           {state.k === 'sent' ? (
             <>
@@ -129,7 +135,7 @@ export function Feedback({ room }: { room?: RoomView | null }) {
                   Idea
                 </button>
               </div>
-              <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? 'What happened, and what did you expect?' : 'What would make the game better?'} aria-label="Your report" />
+              <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'} aria-label="Your report" />
               {image ? (
                 <div className="shot">
                   <img src={image} alt="The attached screenshot" />
@@ -142,7 +148,12 @@ export function Feedback({ room }: { room?: RoomView | null }) {
               ) : (
                 <label className="attach">
                   <input type="file" accept="image/*" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
-                  Attach a screenshot <small>or paste one here</small>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <circle cx="8.5" cy="10" r="1.6" />
+                    <path d="M4 17.5l5-5 3.5 3.5 2.5-2.5 5 4.5" />
+                  </svg>
+                  Screenshot <small>(click, drag, or paste)</small>
                 </label>
               )}
               {state.k === 'error' && (
