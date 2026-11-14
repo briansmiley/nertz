@@ -192,8 +192,7 @@ function Volume({ prefs }: { prefs: Prefs }) {
             type="button"
             className={`${open === ch ? 'on' : ''}${quiet(ch) ? ' quiet' : ''}`}
             aria-expanded={open === ch}
-            aria-controls="mix-level"
-            aria-label={`${CHANNEL_NAMES[ch][1]} ${percent(levels[ch])}`}
+            aria-controls={open === ch ? 'mix-level' : undefined}
             title={CHANNEL_NAMES[ch][1]}
             onClick={() => setOpen(open === ch ? null : ch)}
           >
