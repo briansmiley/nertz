@@ -3761,6 +3761,7 @@ body:has(main.showroom) {
   background: var(--marigold);
   font: 700 0.7rem/1.35 var(--ui);
   letter-spacing: 0.02em;
+  transform: rotate(-5deg);
 }
 
 /* The rules, for whoever does not deal: there to read, greyed, and a word on hover as to why. */
