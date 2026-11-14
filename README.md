@@ -20,7 +20,7 @@ Then open **http://localhost:5173** in two browser windows (two tabs of the same
 
 1. Window 1: type a name, press **New Table**. The server picks the table code; you land in the lobby with an
    invite link like `http://localhost:5173/?room=ABCD`.
-2. Window 2: paste the invite link (or open the home page and type the code), type a different name, press **Join table**.
+2. Window 2: paste the invite link (or open the home page and type the code, or pick the table under **Tables**), type a different name, press **Join table**.
    A code that no table has is refused with a message; it never opens a new table.
 3. Window 1: press **Deal the first round**. The cards are dealt and the table waits.
 4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays. Cards come off the stock one at a
@@ -554,7 +554,7 @@ server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, the relay of card positions, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
-  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
+  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list)
 client/   Vite + React
   net.ts        websocket store and prediction
   layout.ts     pure geometry: where the felt, every hand, card, pile, tray pile, drop area and the countdown goes for a given window size; where another player's held card is drawn; the deal's schedule
@@ -652,6 +652,8 @@ would still need one of the options above, and serving both from one origin is s
 
 - **Someone who never comes back** keeps their seat until they press Leave or the table expires. They are not dealt cards
   while away, but they count towards the six seats. There is no kick.
+- **Every table is on the home page.** **Tables** lists, to anyone, each table someone is at just now (the twenty where
+  something happened last): its code, the names at it, and its round. There is no private table.
 - **An abandoned lobby lasts a minute.** If you open a table and everyone's connection drops for more than a minute before
   the first deal, the table is gone and the invite link reports no such table.
 - **Only the dealer can start.** Once the cards are dealt the table waits for the dealer's Start with no time limit. If

@@ -11,6 +11,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/feedback': `http://localhost:${Number(process.env.PORT) || 8787}`,
+      '/tables': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/ws': { target: `ws://localhost:${Number(process.env.PORT) || 8787}`, ws: true },
     },
   },

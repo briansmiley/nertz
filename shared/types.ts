@@ -263,3 +263,21 @@ export interface RoomView {
   paused: { by: number } | null;
   lastRound: RoundResult | null;
 }
+
+/**
+ * A table as the home page lists it (`GET /tables`), for anyone to see before coming to it: what it is doing and who is
+ * at it by the names they go by. Nothing that says who anyone is beyond that (no `id`, never a token).
+ */
+export interface TableSummary {
+  code: string;
+  /** Those at the table, by seat. */
+  names: string[];
+  /** How many it seats. */
+  seats: number;
+  /** Those here without a seat: watching, or waiting for one. */
+  watching: number;
+  /** Rounds started so far (0: none yet). */
+  round: number;
+  /** Round `round` is on: dealt, and not yet scored. */
+  playing: boolean;
+}
