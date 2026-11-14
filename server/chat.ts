@@ -63,8 +63,10 @@ export class Social {
    * known by its seat: their window sees that it is no longer in, and joins again from the new one.
    */
   moved(member: Member, from: number, members: readonly Member[]): void {
-    if (this.lines.some((l) => l.seat === from && l.name === member.name)) {
-      this.lines = this.lines.map((l) => (l.seat === from && l.name === member.name ? { ...l, seat: member.seat } : l));
+    // (A notice of a snipe names two: the one who was beaten to the pile moves with their seat as well.)
+    const theirs = (at: { seat: number; name: string } | undefined) => at?.seat === from && at.name === member.name;
+    if (this.lines.some((l) => theirs(l) || theirs(l.sniped))) {
+      this.lines = this.lines.map((l) => (theirs(l) || theirs(l.sniped) ? { ...l, ...(theirs(l) ? { seat: member.seat } : {}), ...(theirs(l.sniped) ? { sniped: { ...l.sniped!, seat: member.seat } } : {}) } : l));
       for (const m of members) m.conn?.send({ t: 'chat', lines: this.lines, history: true });
     }
     if (this.inVoice.delete(member)) this.announce(members);
@@ -112,12 +114,17 @@ export class Social {
     for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
   }
 
-  /** The table's own notice, for everyone to read where the chat is: `by` beat `of` to a pile. (Not while text chat is switched off: there is nowhere to read it.) */
+  /**
+   * The table's own notice, for everyone to read where the chat is: `by` beat `of` to a pile. While text chat is
+   * switched off there is nowhere to read it, and it is not kept; it is still sent, since the table also sounds and
+   * flashes it.
+   */
   sniped(members: readonly Member[], by: Member, of: Member): void {
-    if (!this.text) return;
     const line: ChatLine = { id: this.nextId++, seat: by.seat, name: by.name, text: '', at: Date.now(), sniped: { seat: of.seat, name: of.name } };
-    this.lines.push(line);
-    if (this.lines.length > CHAT_HISTORY) this.lines.shift();
+    if (this.text) {
+      this.lines.push(line);
+      if (this.lines.length > CHAT_HISTORY) this.lines.shift();
+    }
     for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
   }
 

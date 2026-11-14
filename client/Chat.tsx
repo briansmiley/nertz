@@ -3,6 +3,7 @@
 // voice, and once in it opens a small slip (who is there, mute yourself, leave).
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
+import { MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { keyName, touchOnly, usePrefs } from './prefs';
@@ -13,15 +14,18 @@ import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
 
+/** The colour a name is written in: its seat's. Someone watching has no seat and no colour (their number is past the table's): the colour of the words. */
+const nameColour = (seat: number): string | undefined => (seat < MAX_PLAYERS ? backColour(seat) : undefined);
+
 /** One line: a name in its colour and what was said; or the table's notice that someone beat someone to a pile. */
 function Line({ line }: { line: ChatLine }) {
   return line.sniped ? (
     <em className="notice">
-      <b style={{ color: backColour(line.seat) }}>{line.name}</b> sniped <b style={{ color: backColour(line.sniped.seat) }}>{line.sniped.name}</b>
+      <b style={{ color: nameColour(line.seat) }}>{line.name}</b> sniped <b style={{ color: nameColour(line.sniped.seat) }}>{line.sniped.name}</b>
     </em>
   ) : (
     <>
-      <b style={{ color: backColour(line.seat) }}>{line.name}</b> {line.text}
+      <b style={{ color: nameColour(line.seat) }}>{line.name}</b> {line.text}
     </>
   );
 }
@@ -73,6 +77,14 @@ export function Chat({ room }: { room: RoomView }) {
   useEffect(() => {
     if (!inVoice) setVoiceOpen(false);
   }, [inVoice]);
+  // Stood up while in voice, at a table where those watching are kept out of it: out, and the microphone released.
+  useEffect(() => {
+    if (inVoice && !mayVoice) leaveVoice(false);
+  }, [inVoice, mayVoice]);
+  // (The last of those watching sat down: their slip has nothing to show, and must not keep the chat's lines hidden.)
+  useEffect(() => {
+    if (!watchers.length) setEyeOpen(false);
+  }, [watchers.length]);
   // A press anywhere else puts the voice slip away.
   useEffect(() => {
     if (!voiceOpen && !eyeOpen) return;

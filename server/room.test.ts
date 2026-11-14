@@ -280,6 +280,67 @@ describe('Room', () => {
     expect(room.game!.players).toHaveLength(MAX_PLAYERS);
   });
 
+  it('seats those watching in the order they came, whatever numbers the queue has given them; and not someone who is away', () => {
+    const { room, conns } = roomWith(MAX_PLAYERS);
+    const [a, b, c] = [new FakeConn(), new FakeConn(), new FakeConn()];
+    const seatOf = (name: string) => (room.flush(), conns[0]!.last.room.players.find((p) => p.name === name)!.seat);
+    room.join(a, 'A', 'tok-aaaa');
+    room.join(b, 'B', 'tok-bbbb');
+    room.handle(conns[3]!, { t: 'leave' });
+    expect(seatOf('A')).toBe(3);
+    room.join(c, 'C', 'tok-cccc'); // takes the number A had in the queue: but came after B
+    expect(seatOf('C')).toBeLessThan(seatOf('B'));
+    room.handle(conns[4]!, { t: 'leave' });
+    expect(seatOf('B')).toBe(4);
+    expect(seatOf('C')).toBeGreaterThanOrEqual(MAX_PLAYERS);
+    // C's window goes: the next seat is kept from them, and is theirs when they are back.
+    room.disconnect(c);
+    room.handle(conns[5]!, { t: 'leave' });
+    expect(seatOf('C')).toBeGreaterThanOrEqual(MAX_PLAYERS);
+    room.join(new FakeConn(), 'C', 'tok-cccc');
+    expect(seatOf('C')).toBe(5);
+  });
+
+  it('deals in whoever sits down after the deal but before Start; and deals nothing over to one player and someone watching', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    room.handle(c, { t: 'stand', on: true });
+    room.handle(a, { t: 'start' });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    room.handle(c, { t: 'stand', on: false }); // the cards are dealt, nothing is played: dealt again with them
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    expect(room.game!.stage).toBe('dealing');
+    // Up again (not out of a round they hold cards in: so, on the next score sheet).
+    room.game = rigged([0, 1, 2], [0]);
+    sendIntent(room, a, 0, { k: 'nertz' });
+    room.handle(c, { t: 'stand', on: true });
+    startRound(room, a);
+    room.disconnect(b);
+    const before = room.game;
+    room.handle(a, { t: 'redeal' }); // one at the table and one watching by choice: not a round
+    expect(room.game).toBe(before);
+  });
+
+  it('takes the line of someone who stands up off the score sheet, so that whoever has the seat next is not shown as them', () => {
+    const { room, conns } = roomWith(MAX_PLAYERS);
+    const all = Array.from({ length: MAX_PLAYERS }, (_, i) => i);
+    const w = new FakeConn();
+    room.join(w, 'W', 'tok-wwww');
+    startRound(room, conns[0]!);
+    room.game = rigged(all, [0]);
+    sendIntent(room, conns[0]!, 0, { k: 'nertz' });
+    room.handle(conns[3]!, { t: 'stand', on: true });
+    room.flush();
+    expect(w.last.room.you).toBe(3);
+    expect(w.last.room.lastRound!.scores.find((s) => s.seat === 3)).toMatchObject({ name: 'P3', gone: true });
+    // And a seat in the lobby is not to be had by asking for a colour: only by the queue, or by sitting down again.
+    room.handle(conns[0]!, { t: 'reset' });
+    room.handle(conns[4]!, { t: 'stand', on: true });
+    room.handle(conns[4]!, { t: 'seat', seat: 4 });
+    room.flush();
+    expect(w.last.room.players.find((p) => p.name === 'P4')).toMatchObject({ watching: true, standing: true });
+  });
+
   // Regression: someone who pressed Leave on the score sheet still counted towards the six seats until the next deal.
   it('gives the seat of a player who left after the round to a newcomer, and keeps their line on the score sheet', () => {
     const { room, conns } = roomWith(MAX_PLAYERS);

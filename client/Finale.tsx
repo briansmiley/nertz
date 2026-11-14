@@ -195,7 +195,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const towardsHands = (w: number) =>
     game.players.map((p, i) => {
       const box = L.opponents.find((o) => o.seat === p.seat)?.box;
-      if (!box || w === 0) return round[i]!; // you (or a hand with no place): as before
+      if (!box) return round[i]!; // you (or a hand with no place): as before
       const vx = (box.x + box.w / 2 - d.cx) / d.rx;
       const vy = (box.y + box.h / 2 - d.cy) / d.ry;
       const len = Math.hypot(vx, vy) || 1;
@@ -209,7 +209,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const clear = (set: typeof round): boolean => set.every((a, i) => set.every((b, j) => j <= i || apart(pileReach(a), pileReach(b))));
 
   /** The labels for the piles at `spots`, and how badly they sit (0: nothing overlaps and every label is where it likes). */
-  const label = (spots: typeof round) => {
+  const label = (spots: typeof round, most = 200000) => {
     // Labels. What a label must keep off: every hand with its name, your own hand down to the bottom edge, the tray,
     // the drawn-in wash, every pile, the labels placed before it, and the edges of the window.
     const hands: Rect[] = L.opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H }));
@@ -248,14 +248,14 @@ export function planFinale(L: Layout, game: GameState): Plan {
       return clear.length > 0 ? clear : options;
     });
     // One label per pile with nothing overlapping, each on the best side that allows it: a search, since the first
-    // pile's favourite place may be the only one left for another's (there are at most six piles and twelve places
+    // pile's favourite place may be the only one left for another's (there are at most ten piles and sixteen places
     // each). If the window is too small for that, the arrangement that overlaps least.
     let labels = choices.map((options) => options[0]!);
     let least = Infinity;
     const pick: (typeof labels)[number][] = [];
     let tries = 0;
     const search = (i: number, cost: number): void => {
-      if (cost >= least || ++tries > 200000) return;
+      if (cost >= least || ++tries > most) return;
       if (i === choices.length) {
         least = cost;
         labels = [...pick];
@@ -277,7 +277,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
     for (const w of [1, 0.75, 0.5, 0.25]) {
       const set = towardsHands(w);
       if (!clear(set)) continue;
-      const tried = label(set);
+      const tried = label(set, 40000); // (a second opinion, four times over: on a smaller allowance, so the end of a round does not stall)
       if (tried.least <= best.least) {
         best = tried;
         break;

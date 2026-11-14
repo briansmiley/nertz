@@ -77,6 +77,9 @@ export function App() {
       </>
     );
   }
+  const me = room.players.find((p) => p.seat === room.you);
+  const nextRound = 'Spectating - You can join next round';
+  const spectating = me?.standing ? 'You are Spectating' : me?.watching ? (room.players.filter((p) => !p.watching).length >= MAX_PLAYERS ? 'Spectating - the table is full. You get the first seat that frees up' : nextRound) : room.phase === 'playing' && !room.game?.players.some((p) => p.seat === room.you) ? nextRound : null;
   return (
     <>
       <Corner room={room} />
@@ -86,12 +89,8 @@ export function App() {
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (
-        // Without a seat (the table was full): watching, whatever the table is doing. With one, but come in the middle of a round: watching until the next.
-        (room.players.find((p) => p.seat === room.you)?.watching ? (
-          <p className="banner low">{room.players.find((p) => p.seat === room.you)?.standing ? 'Spectating - you stood up. Sit down again from the eye, top left' : room.players.filter((p) => !p.watching).length >= MAX_PLAYERS ? 'Spectating - the table is full. You get the first seat that frees up' : 'Spectating - You can join next round'}</p>
-        ) : (
-          room.phase === 'playing' && !room.game?.players.some((p) => p.seat === room.you) && <p className="banner low">Spectating - You can join next round</p>
-        ))
+        // Without a seat: watching, whatever the table is doing (by choice; or the table is full; or a round is on). With one, but come in the middle of a round: watching until the next.
+        spectating && <p className="banner low">{spectating}</p>
       )}
     </>
   );

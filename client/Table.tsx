@@ -449,8 +449,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     for (const { line } of passing) {
       if (line.id <= seenLine.current) continue;
       seenLine.current = line.id;
-      if (line.sniped && line.seat !== you && line.sniped.seat !== you) snipeSound('other');
-      if (line.sniped && line.seat !== you && line.sniped.seat !== you) setAside((a) => ({ by: line.seat, byName: line.name, of: line.sniped!.seat, ofName: line.sniped!.name, n: (a?.n ?? 0) + 1 }));
+      const { sniped } = line;
+      if (!sniped || line.seat === you || sniped.seat === you) continue;
+      snipeSound('other');
+      setAside((a) => ({ by: line.seat, byName: line.name, of: sniped.seat, ofName: sniped.name, n: (a?.n ?? 0) + 1 }));
     }
   }, [newest?.id]);
   useEffect(() => setAside(null), [room.round]);

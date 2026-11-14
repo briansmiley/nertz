@@ -296,9 +296,8 @@ export function home(who: Who = 'me'): void {
   hit(pick(TAPS), { gain: 0.36, rate: rand(0.8, 0.9), dull: 900, who });
 }
 
-/** Somebody got there first: the card's tap, then a little "wah-wah-wahh", three falling semitones, the last held. */
+/** Somebody got there first: the card's tap, then a womp: two low, dull notes, each sagging as it sounds, the second lower and longer. */
 export function lost(): void {
-  // A womp: two low, dull notes, each sagging as it sounds, the second lower and longer.
   home('me');
   glide(196, 150, { gain: 0.26, dur: 0.16, delay: 0.03, partials: DULL });
   glide(156, 110, { gain: 0.28, dur: 0.42, delay: 0.2, partials: DULL });

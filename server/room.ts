@@ -55,6 +55,8 @@ interface Player {
   ready?: boolean;
   /** Stood up to watch: not to be given a seat until they ask for one. */
   standing?: boolean;
+  /** When they began to wait for a seat (a count, not a clock): seats go to those watching in this order, whatever their numbers in the queue. */
+  queued?: number;
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
   bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null; pending: { intent: Intent; memory: BotMemory } | null };
 }
@@ -93,6 +95,8 @@ export class Room {
   readonly social = new Social();
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
   private snipes: { by: number; of: number; card: string }[] = [];
+  /** The last number given out to someone who began to wait for a seat (`Player.queued`). */
+  private queue = 0;
 
   private players: Player[] = []; // in seat order
   private conns = new Map<Conn, Player>();
@@ -152,11 +156,10 @@ export class Room {
       // the queue), and seats are given out when it is over, first come first, as far as there are any. With no round
       // on (the lobby, the score sheet, or cards dealt that nobody has played yet) there is nothing to wait for: they
       // sit down at once if a seat is free, and watch only if the table is full.
-      const stage = this.phase === 'playing' ? this.game?.stage : undefined;
-      const roundOn = stage === 'countdown' || stage === 'play';
-      const seat = (roundOn ? null : this.freeSeat()) ?? this.queuePlace();
+      const seat = (this.roundOn ? null : this.freeSeat()) ?? this.queuePlace();
       if (seat === null) return 'That room is full.';
       player = { token, name, seat, score: 0, conn: null, ack: -1, dirty: false, left: false };
+      if (watching(player)) player.queued = ++this.queue;
       this.players.push(player);
       this.players.sort((a, b) => a.seat - b.seat);
     } else if (player.conn) {
@@ -170,6 +173,7 @@ export class Room {
     this.conns.set(conn, player);
     if (!watching(player)) this.host ??= player;
     this.social.joined(player, this.players);
+    if (watching(player)) this.seatWatchers(); // (someone watching who was away and is back: a seat that came free meanwhile was kept from them)
     // Before the dealer has said Start nothing has been played: whoever arrives then is dealt in.
     if (this.phase === 'playing' && this.game && (this.game.stage === 'dealing' || this.game.stage === 'ready') && !watching(player) && !this.game.players.some((g) => g.seat === player.seat)) this.dealOut();
     this.settle();
@@ -212,14 +216,13 @@ export class Room {
           if (!watching(who)) {
             const place = this.queuePlace();
             if (place === null) return;
-            const from = who.seat;
-            who.seat = place;
-            this.players.sort((a, b) => a.seat - b.seat);
-            this.social.moved(who, from, this.players);
+            this.offSheet(who.seat); // their line of the last round goes with them: whoever has the seat next is not shown as them
+            this.moveTo(who, place);
           }
           who.standing = true;
         } else {
           delete who.standing;
+          who.queued = ++this.queue; // behind whoever is waiting already
         }
         this.seatWatchers(); // the seat they left is someone's who was waiting; or, sitting down again, one is theirs if there is one
         return this.changed();
@@ -234,12 +237,13 @@ export class Room {
           this.conns.delete(theirs);
           out.conn = null;
         }
-        if (this.lastRound) this.lastRound = { ...this.lastRound, scores: this.lastRound.scores.map((s) => (s.seat === out.seat && !s.gone ? { ...s, gone: true } : s)) };
+        this.offSheet(out.seat);
         this.depart(out, true);
         // Sent away is gone: not left on the list as someone away who comes in at the next deal. (Unless a round is on
         // with their cards in it: then at its end.)
         if (this.players.includes(out) && !(this.phase === 'playing' && this.game?.players.some((g) => g.seat === out.seat))) {
           this.players = this.players.filter((p) => p !== out);
+          if (this.host === out) this.host = this.heir();
           this.seatWatchers();
           this.changed();
         }
@@ -254,10 +258,11 @@ export class Room {
         return this.reset(player);
       case 'redeal':
         // Whoever deals may deal the round over, at any point of it: nothing of it is scored, and everyone who is here now is in it.
-        if (player !== this.dealer || this.phase !== 'playing' || !this.game || this.players.filter((p) => p.conn).length < MIN_PLAYERS) return;
+        if (player !== this.dealer || this.phase !== 'playing' || !this.game) return;
+        this.seatWatchers(true); // (whoever was watching is here now, too)
+        if (this.players.filter((p) => p.conn && !watching(p)).length < MIN_PLAYERS) return; // (those who only watch are dealt nothing)
         this.stopBots();
         for (const p of this.players) if (p.bot) p.bot.pending = null; // what a bot was about to do was about cards that are gone
-        this.seatWatchers(true); // (whoever was watching is here now, too)
         return this.dealOut();
       case 'debugBotOut':
         return this.debugBotOut(player);
@@ -280,7 +285,8 @@ export class Room {
         return this.pause(player, msg.on);
       case 'seat':
         // A seat is a colour, and a place round the table. Only before the first deal (scores and the last round go by seat), and only an empty one.
-        if (this.phase !== 'lobby' || this.players.some((p) => p.seat === msg.seat)) return;
+        // (Not for someone watching: a seat is theirs by the queue, or by sitting down again.)
+        if (this.phase !== 'lobby' || watching(player) || this.players.some((p) => p.seat === msg.seat)) return;
         {
           const from = player.seat;
           player.seat = msg.seat;
@@ -575,7 +581,7 @@ export class Room {
     // (Nor has someone who never had a seat: they are simply gone, whatever the table is doing.)
     if (leaving && (watching(player) || this.phase === 'lobby' || (this.phase === 'playing' && !this.game?.players.some((g) => g.seat === player.seat)))) {
       this.players = this.players.filter((p) => p !== player);
-      if (this.host === player) this.host = this.players.find((p) => p.conn && !p.bot && !watching(p)) ?? this.players.find((p) => !p.bot && !watching(p)) ?? null;
+      if (this.host === player) this.host = this.heir();
       this.seatWatchers(); // a seat is free: the first in the queue has it
     } else if (leaving) {
       player.left = true; // their cards are on the table; the seat is freed when the next round is dealt
@@ -592,23 +598,59 @@ export class Room {
   /** A place in the queue of those watching: the first seat number past the table's that nobody has, or null when the queue is full too. */
   private queuePlace(): number | null {
     for (let seat = MAX_PLAYERS; seat < MAX_PLAYERS + MAX_WATCHERS; seat++) if (!this.players.some((p) => p.seat === seat)) return seat;
-    return null;
+    // Full: but someone watching whose window is long gone holds a place for nobody. The one away of those gives it up.
+    const gone = this.players.find((p) => watching(p) && !p.conn && p !== this.host);
+    if (!gone) return null;
+    this.players = this.players.filter((p) => p !== gone);
+    return gone.seat;
+  }
+
+  /** Who the table falls to when its host is gone: someone with a seat, a person, and one who is here if there is one. */
+  private heir(): Player | null {
+    return this.players.find((p) => p.conn && !p.bot && !watching(p)) ?? this.players.find((p) => !p.bot && !watching(p)) ?? null;
+  }
+
+  /** The line of the last round that belongs to `seat` is taken off the score sheet: whoever sat there is gone from the seat. */
+  private offSheet(seat: number): void {
+    if (this.lastRound) this.lastRound = { ...this.lastRound, scores: this.lastRound.scores.map((s) => (s.seat === seat && !s.gone ? { ...s, gone: true } : s)) };
   }
 
   /** Seats at the table that have come free go to those watching, first come first: each takes the seat, and with it a colour; what they said and their voice go with them. */
   private seatWatchers(redealing = false): void {
     // (Not while a round is being played: whoever watches it sits down when it is over. Nor those who stood up by choice.)
-    const stage = this.phase === 'playing' ? this.game?.stage : undefined;
-    if ((stage === 'countdown' || stage === 'play') && !redealing) return; // (dealt over: the round is as good as not begun)
-    for (const p of this.players.filter((q) => watching(q) && !q.standing)) {
+    if (this.roundOn && !redealing) return; // (dealt over: the round is as good as not begun)
+    // (Nor someone whose window is gone: their place in the queue is kept, and a seat is theirs when they are back.)
+    const waiting = this.players.filter((q) => watching(q) && !q.standing && q.conn).sort((a, b) => (a.queued ?? 0) - (b.queued ?? 0));
+    let seated = false;
+    for (const p of waiting) {
       const seat = this.freeSeat();
-      if (seat === null) return;
-      const from = p.seat;
-      p.seat = seat;
-      this.players.sort((a, b) => a.seat - b.seat);
-      this.social.moved(p, from, this.players);
+      if (seat === null) break;
+      this.moveTo(p, seat);
+      delete p.queued;
       this.host ??= p;
+      seated = true;
     }
+    // Cards dealt that nobody has played yet: whoever sits down then is dealt in, like someone who arrives then.
+    if (seated && !redealing && this.phase === 'playing') this.dealOut();
+  }
+
+  /** Is a round being played (the count, and play)? Not: the lobby, the score sheet, or cards dealt that nobody has played yet. */
+  private get roundOn(): boolean {
+    const stage = this.phase === 'playing' ? this.game?.stage : undefined;
+    return stage === 'countdown' || stage === 'play';
+  }
+
+  /** `p` takes another seat (or a place in the queue): what they said goes with them, and their voice is put out to join again from there. */
+  private moveTo(p: Player, seat: number): void {
+    const from = p.seat;
+    p.seat = seat;
+    this.players.sort((a, b) => a.seat - b.seat);
+    this.social.moved(p, from, this.players);
+  }
+
+  /** What a bot is at this table just now: its level, at the number of players dealt in. */
+  private botNow(bot: NonNullable<Player['bot']>): { delayMs: number; observance: number } {
+    return botAt(bot.level, this.game?.players.length ?? 2);
   }
 
   /** The lowest free seat, or null when the table is full. */
@@ -687,7 +729,7 @@ export class Room {
     if (player.bot.timer) clearTimeout(player.bot.timer);
     this.players = this.players.filter((p) => p !== player);
     // Its line of the last round stays for the cards it left on the table, but is taken off the score sheet: a bot sent away is gone.
-    if (this.lastRound) this.lastRound = { ...this.lastRound, scores: this.lastRound.scores.map((s) => (s.seat === seat && !s.gone ? { ...s, gone: true } : s)) };
+    this.offSheet(seat);
     this.seatWatchers(); // its seat is free: the first in the queue has it
     this.changed();
   }
@@ -703,7 +745,7 @@ export class Room {
       bot.pending = null;
     }
     if (bot.timer) clearTimeout(bot.timer);
-    const think = botAt(bot.level, this.game?.players.length ?? 2).delayMs * (0.5 + this.rng());
+    const think = this.botNow(bot).delayMs * (0.5 + this.rng());
     // What needs no thinking takes no thinking time, whatever the bot's level or the size of the table: a pile it has
     // just finished is carried to the tray (a moment to react, and the time a hand takes to carry it there), and
     // Nertz is called as soon as there is nothing left to put down (a moment to react).
@@ -751,7 +793,7 @@ export class Room {
   private decide(player: Player, midGroup = false, spent = 0): void {
     const bot = player.bot!;
     if (this.phase !== 'playing' || !this.game) return;
-    bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, botAt(bot.level, this.game?.players.length ?? 2).observance);
+    bot.pending = chooseIntent(viewFor(this.game, player.seat), player.seat, bot.memory, this.rng, this.botNow(bot).observance);
     this.wake(player, undefined, midGroup && bot.pending?.intent.k === 'flip', spent);
   }
 
@@ -816,7 +858,7 @@ export class Room {
   /** The bot's plan came to nothing before it acted on it: it picks another and acts on that after a short pause, not a whole one. */
   private rethink(player: Player): void {
     const bot = player.bot!;
-    bot.pending = chooseIntent(viewFor(this.game!, player.seat), player.seat, bot.memory, this.rng, botAt(bot.level, this.game?.players.length ?? 2).observance);
+    bot.pending = chooseIntent(viewFor(this.game!, player.seat), player.seat, bot.memory, this.rng, this.botNow(bot).observance);
     if (bot.timer) clearTimeout(bot.timer);
     bot.timer = setTimeout(() => this.look(player), RETHINK_MS * (0.6 + 0.8 * this.rng()));
     bot.timer.unref?.();
