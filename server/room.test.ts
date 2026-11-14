@@ -319,6 +319,20 @@ describe('Room', () => {
     const before = room.game;
     room.handle(a, { t: 'redeal' }); // one at the table and one watching by choice: not a round
     expect(room.game).toBe(before);
+    // Whoever sat down while nobody dealt in was here is dealt in when one of them is back.
+    room.disconnect(a);
+    room.handle(c, { t: 'stand', on: false }); // mid-round: waits
+    room.join(b, 'P1', 'tok-0001');
+    room.game = rigged([0, 1], [1]);
+    sendIntent(room, b, 0, { k: 'nertz' });
+    room.handle(b, { t: 'start' }); // (the dealer while the host is away)
+    room.disconnect(b);
+    room.disconnect(c);
+    const d = new FakeConn();
+    room.join(d, 'D', 'tok-dddd'); // alone at the table: not dealt to
+    expect(room.game!.players.map((p) => p.seat)).toEqual([1, 2]);
+    room.join(b, 'P1', 'tok-0001');
+    expect(room.game!.players.map((p) => p.seat)).toEqual([1, 3]);
   });
 
   it('marks the line of someone who stands up as no longer the seat\'s, so that whoever has the seat next is not shown as them', () => {
@@ -340,6 +354,13 @@ describe('Room', () => {
     room.flush();
     expect(w.last.room.players.find((p) => p.name === 'P5')).toMatchObject({ seat: 5 });
     expect(w.last.room.lastRound!.scores.find((s) => s.seat === 5)).not.toHaveProperty('vacant');
+    // (Also when a lower seat is free: P8 leaves, P9 stands up and sits down, and has seat 9 again, not 8.)
+    room.handle(conns[8]!, { t: 'kick', seat: 3 }); // not theirs to send away
+    room.handle(conns[0]!, { t: 'kick', seat: 8 });
+    room.handle(conns[9]!, { t: 'stand', on: true });
+    room.handle(conns[9]!, { t: 'stand', on: false });
+    room.flush();
+    expect(w.last.room.players.find((p) => p.name === 'P9')).toMatchObject({ seat: 9 });
     // And a seat in the lobby is not to be had by asking for a colour: only by the queue, or by sitting down again.
     room.handle(conns[0]!, { t: 'reset' });
     room.handle(conns[4]!, { t: 'stand', on: true });

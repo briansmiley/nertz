@@ -176,8 +176,10 @@ export class Room {
     if (!watching(player)) this.host ??= player;
     this.social.joined(player, this.players);
     if (watching(player)) this.seatWatchers(); // (someone watching who was away and is back: a seat that came free meanwhile was kept from them)
-    // Before the dealer has said Start nothing has been played: whoever arrives then is dealt in.
-    if (this.phase === 'playing' && this.game && (this.game.stage === 'dealing' || this.game.stage === 'ready') && !watching(player) && !this.game.players.some((g) => g.seat === player.seat) && this.present >= MIN_PLAYERS) this.dealOut();
+    // Before the dealer has said Start nothing has been played: whoever arrives then is dealt in. (And whoever sat down
+    // while there were not two here to deal to: with this one back, there are.)
+    const game = this.game;
+    if (this.phase === 'playing' && game && (game.stage === 'dealing' || game.stage === 'ready') && this.present >= MIN_PLAYERS && this.players.some((p) => p.conn && !watching(p) && !game.players.some((g) => g.seat === p.seat))) this.dealOut();
     this.settle();
     this.changed();
     return null;
@@ -658,7 +660,9 @@ export class Room {
     const waiting = this.players.filter((q) => watching(q) && !q.standing && q.conn).sort((a, b) => (a.queued ?? 0) - (b.queued ?? 0));
     let seated = false;
     for (const p of waiting) {
-      const seat = this.freeSeat();
+      // (The seat they stood up from, if nobody has it: their colour, and their line of the last round, are theirs again.)
+      const own = this.lastRound?.scores.find((l) => l.vacant && l.name === p.name && !this.players.some((q) => q.seat === l.seat))?.seat;
+      const seat = own ?? this.freeSeat();
       if (seat === null) break;
       this.moveTo(p, seat);
       delete p.queued;
@@ -728,6 +732,7 @@ export class Room {
   private reset(by: Player): void {
     if (by !== this.dealer || this.phase !== 'results') return;
     this.players = this.players.filter((p) => !p.left);
+    this.mendHost();
     for (const p of this.players) {
       p.score = 0;
       delete p.rounds;
