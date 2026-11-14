@@ -630,7 +630,7 @@ describe('table layout', () => {
         expect(full.slice(0, 2).every((step) => step >= cardH * 0.13)).toBe(true);
         const ids = new Set(game.players[0]!.work[1]!.map((c) => c.id));
         const zs = P.cards.filter((c) => ids.has(c.card.id)).map((c) => c.z);
-        expect(Math.min(...zs)).toBeGreaterThan(Math.max(...P.cards.filter((c) => c.pile === 'slot' || c.pile === 'tray').map((c) => c.z), 0));
+        expect(Math.min(...zs)).toBeGreaterThan(Math.max(...P.cards.filter((c) => !ids.has(c.card.id)).map((c) => c.z), 0)); // and above the rest of your hand
         expect(Math.min(...P.cards.filter((c) => ids.has(c.card.id)).map((c) => c.y))).toBeGreaterThanOrEqual(8);
         expect(P.me!.workHit).toEqual(L.me!.workHit);
         expect(P.me!.work).toEqual(L.me!.work);
@@ -825,6 +825,31 @@ describe('a group dealt off the stock', () => {
     expect(landed.every((c) => c.pile === 'waste' && c.x === L.me!.waste.x && c.y === L.me!.waste.y && c.rot === 0)).toBe(true);
     expect(landed[2]!.up).toBe(true);
     expect(landed[2]!.z).toBeGreaterThan(Math.max(landed[0]!.z, landed[1]!.z)); // the last card dealt covers the other two
+  });
+
+  it('lies over a pile of the middle that it reaches, as all of your own hand does; everyone else\'s hand lies under the middle', () => {
+    const box = (c: Layout['cards'][number]): Rect => ({ x: c.x, y: c.y, w: c.s * CARD_W, h: c.s * CARD_H });
+    for (const [W, H] of DESKTOPS) {
+      const start = deal(seats(6), rng(6), 'free');
+      // A pile as near your edge of the felt as the rules allow, straight above your stock.
+      const stock = computeLayout(W, H, start, 0).me!.stock;
+      const spot = { x: toTable(computeLayout(W, H, start, 0).felt, stock.x + stock.w / 2, 0).x, y: 1 - cardSize(6).h / 2 - 1e-6, r: 0 };
+      expect(roomAt(spot, [], 6)).toBe(true);
+      const pile: Card[] = [1, 2].map((rank) => ({ id: `club${rank}`, owner: 1, suit: 'C', rank }));
+      let g: GameState = { ...start, slots: start.slots.map((s, i) => (i === 0 ? pile : s)), places: start.places.map((at, i) => (i === 0 ? spot : at)) };
+      for (let k = 1; k <= 3; k++) {
+        g = flip(g);
+        // While it is counted off (the cards that come up under the ones held travel at the level they lie at), and held whole for its beat.
+        const L = computeLayout(W, H, g, 0, 'live', null, true, k === 3 ? new Map([[0, 3]]) : undefined);
+        const middle = L.cards.filter((c) => c.pile === 'slot');
+        const held = L.cards.filter((c) => c.mine && c.pile === 'stock' && c.y < L.me!.stock.y);
+        expect(middle.map((c) => c.card.id)).toEqual(['club1', 'club2']);
+        expect(held).toHaveLength(k);
+        if (k === 3) expect(held.some((c) => overlap(box(c), box(middle[1]!)))).toBe(true); // the whole group reaches onto the felt, and that pile
+        expect(Math.min(...L.cards.filter((c) => c.mine).map((c) => c.z))).toBeGreaterThan(Math.max(...middle.map((c) => c.z)));
+        expect(Math.max(...L.cards.filter((c) => !c.mine && c.pile !== 'slot' && c.pile !== 'tray').map((c) => c.z))).toBeLessThan(Math.min(...middle.map((c) => c.z)));
+      }
+    }
   });
 
   it('keeps the outline under the stock where its bottom card lies, the size of a card', () => {
