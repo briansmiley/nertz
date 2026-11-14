@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, takeKey } from './prefs';
+import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, takeKey, type Levels, type Prefs } from './prefs';
 
 describe('cleanPrefs: hotkeys', () => {
   it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
@@ -23,6 +23,56 @@ describe('cleanPrefs: hotkeys', () => {
     expect(cleanPrefs({ soundKey: 'KeyV', voiceKey: 'KeyV' })).toMatchObject({ soundKey: 'KeyV', voiceKey: null });
     expect(cleanPrefs({ soundKey: 'KeyV' })).toMatchObject({ soundKey: 'KeyV', voiceKey: null });
     expect(cleanPrefs({ voiceKey: 'KeyM' })).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV' });
+  });
+});
+
+describe('cleanPrefs: levels', () => {
+  const close = (got: Levels, want: Levels) => {
+    for (const k of ['master', 'mine', 'others', 'voice'] as const) expect(got[k]).toBeCloseTo(want[k], 9);
+  };
+  /** What played before there were levels: the game's sounds at volume², other players' cards at volume² × others (× sound.ts's OTHERS), voice chat at full. */
+  const before = (volume: number, others: number) => ({ mine: volume ** 2, others: volume ** 2 * others, voice: 1 });
+  const now = (p: Prefs) => ({ mine: loudness(p, 'mine'), others: loudness(p, 'others'), voice: loudness(p, 'voice') });
+
+  it('carries a volume and a share for other players over just as loud, and defaults as loud as they were', () => {
+    for (const [volume, others] of [[0.8, 0.25], [0.3, 1], [1, 0], [0.55, 0.6], [0, 0.5]] as const) {
+      const p = cleanPrefs({ volume, others });
+      const was = before(volume, others);
+      const is = now(p);
+      expect(is.mine).toBeCloseTo(was.mine, 9);
+      expect(is.others).toBeCloseTo(was.others, 9);
+      expect(is.voice).toBe(1);
+      expect(p).not.toHaveProperty('volume');
+    }
+    const fresh = now(cleanPrefs(null));
+    expect(fresh.mine).toBeCloseTo(before(0.8, 0.25).mine, 9);
+    expect(fresh.others).toBeCloseTo(before(0.8, 0.25).others, 9);
+    expect(DEFAULT_PREFS.levels).toMatchObject({ master: 1, voice: 1 });
+    close(cleanPrefs({ volume: 0.5 }).levels, cleanPrefs({ volume: 0.5, others: 0.25 }).levels);
+  });
+
+  it('keeps levels stored as such, over any old volume, and mends a damaged one', () => {
+    const levels = { master: 0.6, mine: 0.2, others: 0.9, voice: 0.45 };
+    expect(cleanPrefs({ levels, volume: 0.1, others: 0.1 }).levels).toEqual(levels);
+    expect(cleanPrefs({ levels: { ...levels, voice: 7, mine: 'loud' } }).levels).toEqual({ ...levels, voice: 1, mine: DEFAULT_PREFS.levels.mine });
+    expect(cleanPrefs({ levels: { master: -1 } }).levels).toEqual({ ...DEFAULT_PREFS.levels, master: 0 });
+    expect(cleanPrefs({ levels: 'all of them' }).levels).toEqual(DEFAULT_PREFS.levels);
+    expect(cleanPrefs(cleanPrefs({ volume: 0.3, others: 0.7 }))).toEqual(cleanPrefs({ volume: 0.3, others: 0.7 }));
+  });
+});
+
+describe('loudness', () => {
+  const levels = { master: 0.5, mine: 0.8, others: 0.4, voice: 1 };
+  it('is the master times the channel, squared', () => {
+    expect(loudness({ muted: false, levels }, 'mine')).toBeCloseTo(0.16, 9);
+    expect(loudness({ muted: false, levels }, 'others')).toBeCloseTo(0.04, 9);
+    expect(loudness({ muted: false, levels }, 'voice')).toBeCloseTo(0.25, 9);
+    expect(loudness({ muted: false, levels: { ...levels, master: 0 } }, 'voice')).toBe(0);
+  });
+  it('mutes the game, not voice chat', () => {
+    expect(loudness({ muted: true, levels }, 'mine')).toBe(0);
+    expect(loudness({ muted: true, levels }, 'others')).toBe(0);
+    expect(loudness({ muted: true, levels }, 'voice')).toBeCloseTo(0.25, 9);
   });
 });
 

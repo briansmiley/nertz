@@ -46,7 +46,7 @@ Controls:
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | Press M (or the key you set under Hotkeys in the settings), or the speaker button bottom left | mute or unmute |
-| The gear beside it | your own settings: volume, other players' volume, reduce motion |
+| The gear beside it | your own settings: volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion |
 | The bug beside that | report a bug or ask for a feature: a few words and, if you like, a screenshot |
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
@@ -382,7 +382,10 @@ else's much quieter (a quarter, until you move the slider).
   card id. So a move sounds once, when it is predicted, and not again when the server confirms it; a predicted move that is
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
 
-**Your settings** (the gear, bottom left on every screen): sound on or off, volume, other players' volume, reduce motion.
+**Your settings** (the gear, bottom left on every screen): sound on or off, the levels, reduce motion.
+Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
+bot's spoken "Nertz"), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
+opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
 Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
 storage they last until the page closes.
 
