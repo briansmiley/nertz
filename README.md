@@ -729,4 +729,4 @@ The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever
 
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
-Five reports per address per ten minutes; a screenshot is scaled down in the browser first.
+Ten reports per address per minute; a screenshot is scaled down in the browser first.

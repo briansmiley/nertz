@@ -43,7 +43,7 @@ describe('feedback', () => {
 
     expect((await send({ kind: 'bug' })).status).toBe(400);
     expect((await real(`http://localhost:${server.port}/feedback`)).status).toBe(405);
-    for (let i = 0; i < 3; i++) await send({ kind: 'idea', text: 'more' });
+    for (let i = 0; i < 8; i++) await send({ kind: 'idea', text: 'more' });
     expect((await send({ kind: 'idea', text: 'more' })).status).toBe(429);
   });
 
