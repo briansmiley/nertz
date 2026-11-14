@@ -7,11 +7,9 @@ import { deckNamed, isBack, isDeck, isLot, type Back, type Deck } from '../share
 export { backGroups, CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 
 export interface Prefs {
+  /** The game's sounds off. Voice chat is not muted by it: only by its own level, or by `levels.master`. */
   muted: boolean;
-  /** Everything, 0..1. */
-  volume: number;
-  /** Other players' cards relative to your own, 0..1. */
-  others: number;
+  levels: Levels;
   /** Reduced motion: true or false overrides the system setting; null follows it. */
   calm: boolean | null;
   /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so. */
@@ -37,10 +35,38 @@ export interface Prefs {
   voiceKey: string | null;
 }
 
+/** How loud things are, each 0..1. Every channel plays at `master` times its own. */
+export interface Levels {
+  /** Everything, voice chat included. */
+  master: number;
+  /** The game's sounds at your end of the table: your cards, and those of the whole table (the count, the call of Nertz, a bot's spoken "Nertz"). */
+  mine: number;
+  /** Other players' cards. */
+  others: number;
+  /** Other players' voices, in voice chat. */
+  voice: number;
+}
+export type Channel = Exclude<keyof Levels, 'master'>;
+export const CHANNELS = ['mine', 'others', 'voice'] as const satisfies readonly Channel[];
+
+/** A channel's gain as it plays: squared, so that a slider feels even. Muted, the game's channels are silent and voice chat is not. */
+export const loudness = (p: Pick<Prefs, 'muted' | 'levels'>, ch: Channel): number => (p.muted && ch !== 'voice' ? 0 : (p.levels.master * p.levels[ch]) ** 2);
+
 /** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
 export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => deckNamed(p.deck, p.night);
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, soundKey: 'KeyM', voiceKey: 'KeyV' };
+const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
+
+/**
+ * The levels from when there was one volume, for the game's sounds only (`volume`: voice chat was always at full), and
+ * other players' cards as a share of it (`others`): everything just as loud as it was. Unset, as they were by default.
+ */
+function fromOne(volume?: unknown, others?: unknown): Levels {
+  const mine = unit(volume, 0.8);
+  return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
+}
+
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, soundKey: 'KeyM', voiceKey: 'KeyV' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
@@ -61,15 +87,18 @@ export const keyName = (code: string): string => code.replace(/^(Key|Digit)/, ''
 /** A hotkey as a button's tooltip names it: not on a phone, nor when there is none. */
 export const hotkeyName = (code: string | null): string | null => (code && !touchOnly() ? keyName(code) : null);
 
-const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
+function cleanLevels(v: Record<string, unknown>): Levels {
+  const was = fromOne(v.volume, v.others);
+  const l = typeof v.levels === 'object' && v.levels !== null ? (v.levels as Record<string, unknown>) : {};
+  return { master: unit(l.master, was.master), mine: unit(l.mine, was.mine), others: unit(l.others, was.others), voice: unit(l.voice, was.voice) };
+}
 
 /** Whatever was stored, made into valid preferences: unknown or damaged fields fall back to the defaults. */
 export function cleanPrefs(raw: unknown): Prefs {
   const v = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   return {
     muted: typeof v.muted === 'boolean' ? v.muted : DEFAULT_PREFS.muted,
-    volume: unit(v.volume, DEFAULT_PREFS.volume),
-    others: unit(v.others, DEFAULT_PREFS.others),
+    levels: cleanLevels(v),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
     night: typeof v.night === 'boolean' ? v.night : v.deck === 'night', // ("night" was once a deck of its own)
@@ -160,6 +189,8 @@ export function setPrefs(patch: Partial<Prefs>): void {
   apply();
   for (const l of listeners) l();
 }
+
+export const setLevel = (which: keyof Levels, to: number): void => setPrefs({ levels: { ...prefs.levels, [which]: to } });
 
 /** Calls `l` after every change. Returns the way to stop. */
 export const watchPrefs = (l: () => void): (() => void) => {

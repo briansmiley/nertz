@@ -12,7 +12,7 @@ import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { Feedback } from './Feedback';
 import { BACKS } from './cards/Face';
-import { calm, getPrefs, HOTKEYS, hotkeyName, keyFree, keyName, setPrefs, touchOnly, usePrefs, type Hotkey } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyFree, keyName, setLevel, setPrefs, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -164,6 +164,61 @@ export function canResume(room: RoomView): boolean {
 }
 
 const percent = (v: number) => `${Math.round(v * 100)}%`;
+
+/** Each channel as the row under Volume names it, and in full. */
+const CHANNEL_NAMES: Record<Channel, [short: string, full: string]> = { mine: ['Yours', 'Your cards'], others: ['Others', "Other players' cards"], voice: ['Voice', 'Voice chat'] };
+
+/** Volume, for everything; under it a row of the channels' levels, of which the one pressed opens its own slider. */
+function Volume({ prefs }: { prefs: Prefs }) {
+  const [open, setOpen] = useState<Channel | null>(null);
+  const slider = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) slider.current?.focus();
+  }, [open]);
+  const { levels } = prefs;
+  const quiet = (ch: Channel) => prefs.muted && ch !== 'voice';
+  return (
+    <div className="volume">
+      <label className="level">
+        <span>
+          Volume <output>{percent(levels.master)}</output>
+        </span>
+        <input type="range" min="0" max="1" step="0.05" value={levels.master} onChange={(e) => setLevel('master', Number(e.target.value))} />
+      </label>
+      <div className="mix">
+        {CHANNELS.map((ch) => (
+          <button
+            key={ch}
+            type="button"
+            className={`${open === ch ? 'on' : ''}${quiet(ch) ? ' quiet' : ''}`}
+            aria-expanded={open === ch}
+            aria-controls="mix-level"
+            aria-label={`${CHANNEL_NAMES[ch][1]} ${percent(levels[ch])}`}
+            title={CHANNEL_NAMES[ch][1]}
+            onClick={() => setOpen(open === ch ? null : ch)}
+          >
+            {CHANNEL_NAMES[ch][0]}
+            <output>{percent(levels[ch])}</output>
+          </button>
+        ))}
+      </div>
+      {open && (
+        <input
+          id="mix-level"
+          ref={slider}
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          aria-label={CHANNEL_NAMES[open][1]}
+          value={levels[open]}
+          disabled={quiet(open)}
+          onChange={(e) => setLevel(open, Number(e.target.value))}
+        />
+      )}
+    </div>
+  );
+}
 
 /**
  * Ending the round where it stands, for a round that drags on (everyone voting: bots go along). Shown while a round
@@ -359,18 +414,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
       {open && (
         <section className="slip" id="your-settings" aria-label="Settings">
           <h3>Settings</h3>
-          <label className="level">
-            <span>
-              Volume <output>{percent(prefs.volume)}</output>
-            </span>
-            <input type="range" min="0" max="1" step="0.05" value={prefs.volume} disabled={prefs.muted} onChange={(e) => setPrefs({ volume: Number(e.target.value) })} />
-          </label>
-          <label className="level">
-            <span>
-              Other players' cards <output>{percent(prefs.others)}</output>
-            </span>
-            <input type="range" min="0" max="1" step="0.05" value={prefs.others} disabled={prefs.muted} onChange={(e) => setPrefs({ others: Number(e.target.value) })} />
-          </label>
+          <Volume prefs={prefs} />
           <label className="check">
             <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
             <span>Bots say "Nertz"</span>

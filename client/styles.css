@@ -2060,6 +2060,52 @@ label.check {
   color: #9a9482;
 }
 
+/* Volume, and under it the level of each channel: the one pressed opens its slider below them. */
+.volume {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mix {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mix button {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.1rem 0 0.15rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  background: none;
+}
+
+.mix output {
+  font: 700 0.95rem/1 var(--num);
+  color: var(--ink);
+}
+
+.mix button.on {
+  color: var(--ink);
+  border-bottom-color: var(--red);
+}
+
+.mix button.quiet,
+.mix button.quiet output {
+  color: #9a9482;
+}
+
+.volume > input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--red);
+}
+
 /* Voting to end the round, at the bottom of your settings slip. */
 .end-vote {
   display: grid;
