@@ -1,5 +1,5 @@
 // What the tests build their tables from: seeded generators, a round in play, a rigged hand, a pile in the middle, the
-// intents, and a room as one window sees it. For tests only: nothing outside a *.test.ts imports this.
+// intents, and a room as one window sees it. For tests only: imported by *.test.ts files and server/testkit.ts.
 import { expect } from 'vitest';
 import { deal, finishDeal, isHidden, openPlay, startCountdown, viewFor, type Rng } from './engine';
 import { DEFAULT_SETTINGS } from './settings';
@@ -56,7 +56,11 @@ export function rig(g: GameState, hand: { work: [Face, Face, Face, Face]; waste?
     ...g,
     players: g.players.map((p) => {
       const cards = [...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste] as Card[];
-      const take = (face: Face) => cards.splice(cards.findIndex(is(face)), 1)[0]!;
+      const take = (face: Face) => {
+        const i = cards.findIndex(is(face));
+        if (i < 0) throw new Error(`rig: no ${face} left in seat ${p.seat}'s hand`);
+        return cards.splice(i, 1)[0]!;
+      };
       const work = hand.work.map((f) => [take(f)]);
       const waste = (hand.waste ?? []).map(take);
       const nertz = hand.emptyNertz?.includes(p.seat) ? [] : cards.splice(0, 13);
