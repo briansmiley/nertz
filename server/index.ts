@@ -165,9 +165,13 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
     /** The socket closed: the seat is kept for a reconnect. */
     const detach = (): void => {
       if (!room) return;
-      room.disconnect(conn);
-      released(room);
+      const left = room;
       room = null;
+      try {
+        left.disconnect(conn);
+      } finally {
+        released(left); // even if the disconnect threw, or the room would never be forgotten
+      }
     };
     /**
      * The socket is going to another table. A seat in a lobby is given up (so a
