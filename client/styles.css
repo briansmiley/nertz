@@ -1449,7 +1449,7 @@ button {
   box-sizing: border-box;
   width: min(680px, 100%);
   max-height: min(86vh, 760px);
-  overflow-y: auto;
+  overflow: hidden auto; /* (not sideways: the last pile's fan runs a few pixels past the edge on a phone) */
   padding: 16px 18px 20px;
   border-radius: 14px;
   background: #123a41;
@@ -3048,11 +3048,16 @@ body:has(main.showroom),
   transform: translateX(10px);
 }
 
-/* The colour the backs are shown in: six counters. */
+/* The colour the backs are shown in: a counter of each. (And one of all of them, which a phone shows in their place.) */
 .showroom .inks {
+  position: relative;
   display: flex;
   gap: 8px;
   order: 2;
+}
+
+.showroom .inks .counters {
+  display: contents;
 }
 
 .showroom .inks button {
@@ -3069,6 +3074,10 @@ body:has(main.showroom),
   box-shadow:
     0 0 0 3px var(--marigold),
     0 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+.showroom .inks .pie {
+  display: none;
 }
 
 /* The backs lie in a loose spread, as if dealt out: no boxes. Yours is lifted, with a counter on it. */
@@ -3419,24 +3428,115 @@ body:has(main.showroom),
 }
 
 @media (max-width: 720px) {
+  /* On a phone the spread is four across, close together: the cards smaller than they are in your own hand there, their small renditions about the size of another player's. */
   .showroom .dealt {
-    justify-content: center;
-    gap: 26px 18px;
-    padding: 16px 4px 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 4px 0;
+    padding: 10px 4px 8px;
   }
 
-  /* The backs' heading has a switch and six counters after it: on a phone they go onto a line of their own. */
+  .showroom .lay {
+    width: auto;
+    gap: 6px;
+    padding: 8px 2px 6px;
+  }
+
+  /* (Placed from the middle of its card, not from the edge of a column whose width depends on the phone.) */
+  .showroom .lay .mini.small {
+    left: 50%;
+    right: auto;
+    top: 0;
+    zoom: 1;
+    transform-origin: 0 0;
+    transform: translate(12px, 40px) rotate(8deg) scale(0.26);
+  }
+
+  .showroom .lay em {
+    font-size: 12px;
+  }
+
+  /* The page's title on one line, and the backs close under it. */
+  .showroom h1 {
+    font-size: clamp(1rem, 8vw - 8px, 1.6rem);
+    white-space: nowrap;
+  }
+
+  .showroom header {
+    gap: 10px;
+    margin-bottom: 0;
+  }
+
+  .showroom .back-to {
+    width: 34px;
+    height: 34px;
+  }
+
+  .showroom header .edge {
+    white-space: nowrap;
+  }
+
+  .showroom header + section .heading {
+    margin: 20px 0 4px;
+  }
+
   .showroom .heading {
+    gap: 12px;
+  }
+
+  /* The sheet's heading has more after it than a line of a phone holds: its switches go onto lines of their own. */
+  .picker .heading {
     flex-wrap: wrap;
     row-gap: 12px;
   }
 
-  .showroom .heading:has(.edge)::after {
+  .picker .heading:has(.edge)::after {
     flex-basis: 40%;
   }
 
-  .showroom .heading .edge {
+  .picker .heading .edge {
     margin-left: auto;
+  }
+
+  /* The colours, behind one counter that is a slice of each (in its middle, the one shown now): pressed, they come out under it. */
+  .showroom .inks .pie {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+  }
+
+  .showroom .inks .pie::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 99px;
+    background: currentColor;
+    box-shadow: 0 0 0 2px #fff;
+  }
+
+  .showroom .inks .counters {
+    display: none;
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 10px);
+    right: -4px;
+    grid-template-columns: repeat(5, 26px);
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: #0a2228;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  }
+
+  .showroom .inks.open .counters {
+    display: grid;
+  }
+
+  .showroom .inks .counters button {
+    width: 26px;
+    height: 26px;
   }
 
   /* The piles, small enough for all of them to stand in one row of a phone. */
@@ -3468,7 +3568,7 @@ body:has(main.showroom),
   }
 
   .showroom .lay > .mini:first-child {
-    zoom: 0.85;
+    zoom: 0.6;
   }
 
   .showroom .fan {
