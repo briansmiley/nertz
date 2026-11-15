@@ -81,8 +81,8 @@ describe('chat validation', () => {
     expect(cleanChat('a\u0000b\u001fc\u007fd\u2028e')).toBe('a b c d e');
     expect(cleanChat('<b>bold</b>')).toBe('<b>bold</b>'); // plain text: the client renders it as text
     expect((parseClientMsg({ t: 'chat', text: 'y'.repeat(1000) }) as Extract<ClientMsg, { t: 'chat' }>).text).toHaveLength(CHAT_MAX_LENGTH);
-    // The biggest signalling piece, escaped as badly as JSON can, still fits one frame.
-    expect(JSON.stringify({ t: 'signal', to: 5, data: '"'.repeat(800) }).length).toBeLessThan(MAX_MESSAGE_BYTES);
+    // The biggest signalling message, escaped as badly as JSON can, still fits one frame.
+    expect(JSON.stringify({ t: 'signal', to: 5, data: '"'.repeat(SIGNAL_MAX_LENGTH) }).length).toBeLessThan(MAX_MESSAGE_BYTES);
   });
 });
 

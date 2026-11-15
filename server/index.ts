@@ -19,7 +19,7 @@ const MAX_LISTED = 20; // tables on the home page's list: those where something 
 const MAX_BUFFERED_BYTES = 1 << 20; // a client this far behind on snapshots is dropped
 const FLIP_SLACK_MS = 100; // two cards sent STOCK_CARD_MS apart may arrive a little closer together than that
 const RATE_PER_SECOND = 60; // sustained messages per connection; far above what a hand can do
-// The burst has to hold a whole table joining voice at once: to each of five others an offer in several pieces and a
+// The burst has to hold a whole table joining voice at once: to each of five others an offer and a
 // dozen or two candidates, on top of the reports of a card being carried. (At 3 seconds of 40 a table of six could
 // run a connection out of allowance in the middle of setting voice up: it was closed, and a pair was left deaf.)
 const RATE_BURST_SECONDS = 10;

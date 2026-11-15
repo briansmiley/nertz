@@ -10,11 +10,12 @@ export const CHAT_HISTORY = 200;
 export const CHAT_RATE_COUNT = 5;
 export const CHAT_RATE_MS = 5000;
 /**
- * Longest `data` of one signalling message. A WebRTC offer is bigger than one
- * websocket frame may be (MAX_MESSAGE_BYTES), so clients send it in pieces
- * (see client/voice.ts); the server forwards each piece as opaque text.
+ * Longest `data` of one signalling message (an offer, an answer or an ICE
+ * candidate, as JSON text), which the server forwards as it is. An audio offer
+ * is a few KB. Escaped as badly as JSON can (every character doubled), it
+ * still fits one websocket frame (MAX_MESSAGE_BYTES).
  */
-export const SIGNAL_MAX_LENGTH = 1200;
+export const SIGNAL_MAX_LENGTH = 8000;
 
 /** Is `v` a player's id (`PlayerView.id`), as far as its shape goes? */
 export const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
