@@ -1,10 +1,9 @@
 // The end of a round, played on the table: every card that reached the middle
 // is washed on the felt (scattered at all angles, backs up), then sorted into
 // one pile per player, each out in front of its player's hand as this window
-// draws the seating. Up to ~300
-// cards move at once, so they are drawn on one canvas from pre-rendered back
-// sprites instead of being 300 animated elements; the labels beside the piles
-// are ordinary DOM.
+// draws the seating. Up to ~300 cards move at once, so they are drawn on one
+// canvas from pre-rendered back sprites instead of being 300 animated
+// elements; the labels beside the piles are ordinary DOM.
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';

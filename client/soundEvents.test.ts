@@ -79,7 +79,7 @@ describe('sound cues from rendered state', () => {
     expect(s.me({ k: 'hold', cardId: ace })).toEqual([{ k: 'pickup', who: 'me' }]);
     expect(s.me(move(ace, felt(0, 0)))).toEqual([{ k: 'centre', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
-    // The next card up the pile is one step up the scale.
+    // The next card up the pile: the same firm sound.
     const two = workTop(s.game, 0, 1);
     s.me({ k: 'hold', cardId: two });
     expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me' }]);

@@ -585,7 +585,7 @@ directly, so there is no server build step).
 table must reach the *same* process, because that process's event loop is what orders their moves. Load is tiny: a snapshot
 is a few kilobytes and a busy table is a few messages a second.
 
-### What runs: one Fly.io machine
+### What runs: one Fly.io machine per app
 
 - Two apps, each one `shared-cpu-1x` machine serving the built client and the websocket from the same origin: `nertz` and
   `nertz-staging`. The `Dockerfile` and `fly.toml` are their whole configuration: port 8080, health check on `/healthz`,
