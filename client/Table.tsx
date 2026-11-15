@@ -424,7 +424,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   useEffect(() => {
     const chat = document.querySelector('.chat');
     if (!chat || typeof ResizeObserver === 'undefined') return;
-    const measure = () => setBesideChat(chat.classList.contains('open') ? 74 : Math.max(74, Math.round(chat.getBoundingClientRect().right) + 8));
+    const measure = () => setBesideChat(Math.max(74, Math.round(chat.getBoundingClientRect().right) + 8));
     const seen = new ResizeObserver(measure);
     seen.observe(chat);
     measure();
