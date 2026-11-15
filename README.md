@@ -726,6 +726,9 @@ The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
   if the team has none of that name), with the screenshot in its description.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
+- `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
+  issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
+  ask for it). Without it, or if Claude does not answer within ten seconds, a report is titled by its first line.
 
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
