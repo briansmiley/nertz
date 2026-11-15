@@ -7,7 +7,8 @@
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { endVote, seatedPeople } from '../shared/engine';
-import type { TableSettings } from '../shared/settings';
+import { MAX_PLAYERS, MIN_PLAYERS, type TableSettings } from '../shared/settings';
+import { hasSeat } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
@@ -463,6 +464,26 @@ export function Corner({ room }: { room?: RoomView | null }) {
  * The table's house rules, in the lobby and behind the score sheet's gear. One row per option
  * of `TableSettings` that the host is offered.
  */
+/** How many may sit at the table: a number between a minus and a plus. Never below how many are seated, nor above the most a table seats. */
+function Seats({ room, mine }: { room: RoomView; mine: boolean }) {
+  const n = room.settings.seats;
+  const least = Math.max(MIN_PLAYERS, room.players.filter(hasSeat).length);
+  return (
+    <div className="stepper">
+      <span id="seats-label">Seats</span>
+      <span role="group" aria-labelledby="seats-label">
+        <button type="button" aria-label="Fewer seats" disabled={!mine || n <= least} onClick={() => setTableSettings({ seats: n - 1 })}>
+          −
+        </button>
+        <output aria-live="polite">{n}</output>
+        <button type="button" aria-label="More seats" disabled={!mine || n >= MAX_PLAYERS} onClick={() => setTableSettings({ seats: n + 1 })}>
+          +
+        </button>
+      </span>
+    </div>
+  );
+}
+
 export function TableRules({ room }: { room: RoomView }) {
   const host = room.players.find((p) => p.isHost);
   const mine = host?.id === room.me;
@@ -476,6 +497,7 @@ export function TableRules({ room }: { room: RoomView }) {
           Move without dragging <Info>Tap or click a card, then where it goes.</Info>
         </span>
       </label>
+      <Seats room={room} mine={mine} />
     </fieldset>
   );
 }

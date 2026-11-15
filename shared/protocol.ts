@@ -1,6 +1,6 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
 import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isPlayerId } from './chat';
-import { parseSettings, type TableSettings } from './settings';
+import { MAX_PLAYERS, MIN_PLAYERS, parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, PlayerView, RoomView } from './types';
 
@@ -241,13 +241,12 @@ export const DRAG_BURST = 12;
 /** The largest frame a client may send. Each message is bounded field by field in `parseClientMsg`; this is room for a voice offer in one message. */
 export const MAX_MESSAGE_BYTES = 16_384;
 export const MAX_NAME_LENGTH = 20;
-export const MIN_PLAYERS = 2;
 /** Beyond the seats, this many more may be in the room to watch (and wait for a seat). */
 export const MAX_WATCHERS = 20;
 /** Someone with a seat at the table (not: waiting for one, or just watching). */
 export type SeatedView = PlayerView & { seat: number };
 export const hasSeat = (p: PlayerView): p is SeatedView => p.seat !== null;
-export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
+export { MAX_PLAYERS, MIN_PLAYERS }; // (the bounds of `TableSettings.seats`: MAX_PLAYERS is what a message may name)
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
 export const SLOTS_PER_PLAYER = 4;

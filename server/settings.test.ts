@@ -2,7 +2,7 @@
 // and what the small-table rule does to the deal.
 import { describe, expect, it } from 'vitest';
 import { checkInvariants, deal } from '../shared/engine';
-import { parseClientMsg } from '../shared/protocol';
+import { MAX_PLAYERS, MIN_PLAYERS, parseClientMsg } from '../shared/protocol';
 import { DEFAULT_SETTINGS, parseSettings } from '../shared/settings';
 import { lcg, seats, toPlay } from '../shared/testkit';
 import { FakeConn, roomWith } from './testkit';
@@ -47,6 +47,14 @@ describe('the settings message', () => {
     }
   });
 
+  it('takes a number of seats from two to ten, a whole one', () => {
+    expect(parseSettings({ seats: 4 })).toEqual({ seats: 4 });
+    expect(parseSettings({ seats: MIN_PLAYERS })).toEqual({ seats: 2 });
+    expect(parseSettings({ seats: MAX_PLAYERS })).toEqual({ seats: 10 });
+    expect(parseClientMsg({ t: 'settings', patch: { seats: 6, tapToMove: false } })).toEqual({ t: 'settings', patch: { seats: 6, tapToMove: false } });
+    for (const seats of [1, 0, -3, 11, 4.5, '4', null, NaN, Infinity]) expect(parseSettings({ seats }), String(seats)).toBeNull();
+  });
+
   it('is dropped when malformed', () => {
     const bad: unknown[] = [
       { t: 'settings' },
@@ -67,8 +75,8 @@ describe('table settings in a room', () => {
   it('start out as the defaults (a card moved without dragging) and are in every view', () => {
     const { room, conns } = roomWith(2, { rng: lcg(3) });
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ tapToMove: true });
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true });
+    expect(DEFAULT_SETTINGS).toEqual({ tapToMove: true, seats: MAX_PLAYERS });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true, seats: MAX_PLAYERS });
   });
 
   it('only the host changes them, and everyone is told', () => {
@@ -82,7 +90,7 @@ describe('table settings in a room', () => {
     room.handle(host, { t: 'settings', patch: { tapToMove: false } });
     room.flush();
     expect(room.settings.tapToMove).toBe(false);
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false, seats: MAX_PLAYERS });
   });
 
   it('moving without dragging is the host\'s to turn off and on between rounds', () => {
@@ -92,7 +100,7 @@ describe('table settings in a room', () => {
     expect(room.settings.tapToMove).toBe(true);
     room.handle(host, { t: 'settings', patch: { tapToMove: false } });
     room.flush();
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false, seats: MAX_PLAYERS });
 
     room.handle(host, { t: 'start' });
     room.handle(host, { t: 'settings', patch: { tapToMove: true } }); // a round is on: not now
@@ -105,7 +113,7 @@ describe('table settings in a room', () => {
     expect(room.phase).toBe('results');
     room.handle(host, { t: 'settings', patch: { tapToMove: true } });
     room.flush();
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true, seats: MAX_PLAYERS });
   });
 
   it('a flip is one card off the stock: a client that sends flips on its own gains nothing', () => {
@@ -145,5 +153,72 @@ describe('table settings in a room', () => {
     room.handle(conns[0]!, { t: 'start' });
     expect(room.game!.players).toHaveLength(2);
     for (const p of room.game!.players) expect(p.down).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe('the seats at a table', () => {
+  const sitting = (c: FakeConn) => c.room.players.filter((p) => p.seat !== null).map((p) => p.name);
+
+  it('are the host\'s to set: whoever comes in after the last is seated waits in the queue, and is told the table is full', () => {
+    const { room, conns } = roomWith(2, { rng: lcg(3) });
+    const [host, guest] = conns as [FakeConn, FakeConn];
+    room.handle(guest, { t: 'settings', patch: { seats: 3 } }); // not theirs
+    expect(room.settings.seats).toBe(MAX_PLAYERS);
+    room.handle(host, { t: 'settings', patch: { seats: 3 } });
+    const third = new FakeConn();
+    const fourth = new FakeConn();
+    room.join(third, 'C', 'tok-c', true);
+    room.join(fourth, 'D', 'tok-d', true);
+    room.flush();
+    expect(sitting(host)).toEqual(['P0', 'P1', 'C']);
+    expect(fourth.room).toMatchObject({ seat: null, settings: { seats: 3 } });
+    expect(fourth.room.players.at(-1)).toMatchObject({ name: 'D', queued: true });
+    expect(room.summary()).toMatchObject({ names: ['P0', 'P1', 'C'], seats: 3 });
+    room.handle(host, { t: 'addBot', level: 'medium' }); // no seat for a bot either
+    expect(room.players.some((p) => p.bot)).toBe(false);
+
+    room.handle(host, { t: 'start' });
+    expect(room.game!.players).toHaveLength(3); // the three seated, not the one waiting
+  });
+
+  it('raised, the first in the queue sits down', () => {
+    const { room, conns } = roomWith(2, { rng: lcg(3) });
+    const [host] = conns as [FakeConn];
+    room.handle(host, { t: 'settings', patch: { seats: 2 } });
+    const late = new FakeConn();
+    room.join(late, 'Late', 'tok-late', true);
+    room.flush();
+    expect(late.room.seat).toBeNull();
+    room.handle(host, { t: 'settings', patch: { seats: 3 } });
+    room.flush();
+    expect(late.room.seat).toBe(2);
+  });
+
+  it('lowered past how many are seated, stop there: nobody is stood up', () => {
+    const { room, conns } = roomWith(5, { rng: lcg(3) });
+    const [host] = conns as [FakeConn];
+    room.handle(host, { t: 'settings', patch: { seats: 2 } });
+    room.flush();
+    expect(host.room.settings.seats).toBe(5);
+    expect(sitting(host)).toHaveLength(5);
+    // One leaves: lowered now, the seats stop at four.
+    room.handle(conns[4]!, { t: 'leave' });
+    room.handle(host, { t: 'settings', patch: { seats: 2 } });
+    expect(room.settings.seats).toBe(4);
+  });
+
+  it('stand still while a round is on, and a deal over fills only the seats there are', () => {
+    const { room, conns } = roomWith(2, { rng: lcg(3) });
+    const [host] = conns as [FakeConn];
+    room.handle(host, { t: 'settings', patch: { seats: 2 } });
+    room.handle(host, { t: 'start' });
+    room.handle(host, { t: 'settings', patch: { seats: 6 } });
+    expect(room.settings.seats).toBe(2);
+    const late = new FakeConn();
+    room.join(late, 'Late', 'tok-late', true);
+    room.handle(host, { t: 'redeal' });
+    expect(room.game!.players).toHaveLength(2);
+    room.flush();
+    expect(late.room.seat).toBeNull();
   });
 });

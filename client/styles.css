@@ -2338,6 +2338,47 @@ label.check {
   color: var(--ink-soft);
 }
 
+/* How many seats: the word, then a minus, the number and a plus, bare ink. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.stepper [role='group'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.stepper output {
+  min-width: 1.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper button {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stepper button:disabled {
+  color: var(--ink-soft);
+  opacity: 0.4;
+  cursor: default;
+}
+
 @media (max-width: 420px) {
   .slip {
     width: calc(100vw - 24px);

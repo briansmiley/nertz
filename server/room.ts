@@ -275,7 +275,7 @@ export class Room {
         if (player !== this.dealer || this.phase !== 'playing' || !this.game) return;
         {
           // Enough to deal to? Those at the table who are here, and those waiting for whom it has a seat. (Counted before anyone is moved: a deal refused changes nothing.)
-          const open = MAX_PLAYERS - this.table.filter((p) => !p.out).length;
+          const open = this.settings.seats - this.table.filter((p) => !p.out).length;
           const waiting = this.players.filter((p) => p.queued !== null && p.conn).length;
           if (this.present + Math.min(open, waiting) < MIN_PLAYERS) return;
         }
@@ -350,7 +350,7 @@ export class Room {
     return {
       code: this.code,
       names: this.table.filter((p) => !p.out).map((p) => p.name), // (whoever is gone holds their seat only for their cards)
-      seats: MAX_PLAYERS,
+      seats: this.settings.seats,
       watching: this.players.filter((p) => !seated(p) && p.conn).length,
       round: this.round,
       playing: this.phase === 'playing',
@@ -368,10 +368,16 @@ export class Room {
     return this.host?.conn ? this.host : (this.table.find((p) => p.conn && !p.bot) ?? this.host);
   }
 
-  /** Table settings belong to whoever may deal, and stand still while a round is on. Anyone else is ignored. */
+  /**
+   * Table settings belong to whoever may deal, and stand still while a round is on. Anyone else is ignored. The seats
+   * are never fewer than are taken: lowered past them, they stop at how many are seated (nobody is stood up);
+   * raised, the queue sits down.
+   */
   private configure(player: Player, patch: Partial<TableSettings>): void {
     if (player !== this.dealer || this.phase === 'playing') return;
     this.settings = { ...this.settings, ...patch };
+    this.settings.seats = Math.max(this.settings.seats, this.table.length);
+    this.fill(); // more seats: the queue has them
     this.changed();
   }
 
@@ -638,10 +644,14 @@ export class Room {
     return !!away;
   }
 
-  /** The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or else the lowest free one; null when the table is full. */
-  private seatFor(p: Player): number | null {
+  /**
+   * The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or
+   * else the lowest free one; null when the table is full (as many seated as it has seats). A bot, new, has no last round.
+   */
+  private seatFor(p?: Player): number | null {
+    if (this.table.length >= this.settings.seats) return null;
     const free = (seat: number) => !this.players.some((q) => q.seat === seat);
-    const own = this.lastRound?.scores.find((l) => l.id === p.id)?.seat;
+    const own = p && this.lastRound?.scores.find((l) => l.id === p.id)?.seat;
     if (own !== undefined && free(own)) return own;
     for (let seat = 0; seat < MAX_PLAYERS; seat++) if (free(seat)) return seat;
     return null;
@@ -718,8 +728,8 @@ export class Room {
 
   private addBot(by: Player, level: BotLevel): void {
     if (by !== this.dealer || this.phase === 'playing') return;
-    const seat = Array.from({ length: MAX_PLAYERS }, (_, i) => i).find((i) => !this.players.some((p) => p.seat === i));
-    if (seat === undefined) return;
+    const seat = this.seatFor();
+    if (seat === null) return;
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
