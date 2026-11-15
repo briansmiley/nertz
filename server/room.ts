@@ -434,7 +434,7 @@ export class Room {
     this.played = 0;
     this.playingSince = Date.now();
     // Play is open: the bots start looking at their cards now, like everyone else.
-    for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p, freshMemory());
+    for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p, true);
     this.settle();
     this.changed();
   }
@@ -782,11 +782,12 @@ export class Room {
   /**
    * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times.
    * In the middle of dealing a group (`dealing`), the next card instead follows at the same quick step for everyone.
+   * `fresh`: a new round, which the bot starts with nothing remembered and nothing in hand.
    */
-  private wake(player: Player, memory?: BotMemory, dealing = false, spent = 0): void {
+  private wake(player: Player, fresh = false, dealing = false, spent = 0): void {
     const bot = player.bot!;
-    if (memory) {
-      bot.memory = memory;
+    if (fresh) {
+      bot.memory = freshMemory();
       bot.pending = null;
     }
     if (bot.timer) clearTimeout(bot.timer);
@@ -838,7 +839,7 @@ export class Room {
     const bot = player.bot!;
     if (this.phase !== 'playing' || !this.game) return;
     bot.pending = chooseIntent(viewFor(this.game, at(player)), at(player), bot.memory, this.rng, this.botNow(bot).observance);
-    this.wake(player, undefined, midGroup && bot.pending?.intent.k === 'flip', spent);
+    this.wake(player, false, midGroup && bot.pending?.intent.k === 'flip', spent);
   }
 
   /**

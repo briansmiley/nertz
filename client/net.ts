@@ -7,7 +7,7 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
-import { choiceAt, getPrefs, watchPrefs } from './prefs';
+import { getPrefs, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
@@ -132,10 +132,9 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 
 // A change of deck in the settings is passed on to the table.
 let toldDeck: string | null = null;
-/** Tells the table my cards' faces and backs (the backs chosen for this table, if any were: `choiceAt`), if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
+/** Tells the table my cards' faces and backs, if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
 function tell(): void {
-  const { deck, night, bare } = getPrefs();
-  const { back, random } = choiceAt(state.room?.code ?? session?.room);
+  const { deck, night, bare, back, random } = getPrefs();
   const now = `${deck} ${back} ${night} ${bare} ${random}`;
   if (now !== toldDeck && post({ t: 'deck', deck, back, night, bare, lot: random })) toldDeck = now;
 }
@@ -240,7 +239,6 @@ function connect(): void {
       }
       sync = onSnapshot(sync, msg);
       set({ status: 'online', room: predict(sync), error: null });
-      tell(); // (a table just opened has its code only now, and a choice of backs made at a table goes by it)
     } else if (msg.t === 'error') {
       set({ error: msg.message });
     } else if (msg.t === 'sniper') {
@@ -305,8 +303,9 @@ export const kick = (id: number): void => void post({ t: 'kick', id });
 /** Whoever deals: the table is the person `id`'s from now on. */
 export const passHost = (id: number): void => void post({ t: 'host', id });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
-/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
+/** Whoever deals, at any point of a round: the round dealt over, unscored, to everyone who is here now. */
 export const redeal = (): void => void post({ t: 'redeal' });
+/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
 export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });

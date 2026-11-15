@@ -51,7 +51,7 @@ describe('signalling validation', () => {
       { t: 'create', name: 'x'.repeat(201), token }, { t: 'create', name: 'Ann', token: 'a'.repeat(65) },
       { t: 'join', room: big, name: 'Ann', token },
       { t: 'botName', seat: 0, name: 'x'.repeat(201) }, { t: 'botBack', seat: 0, lot: big }, { t: 'deck', deck: big },
-      { t: 'settings', patch: { stockDeal: big } },
+      { t: 'settings', patch: { tapToMove: big } },
       { t: 'intent', seq: 0, intent: { k: 'hold', cardId: 'c'.repeat(65) } },
       { t: 'intent', seq: 0, intent: { k: 'move', cardId: 'c'.repeat(65), count: 1, to: { k: 'work', i: 0 } } },
       { t: 'drag', id: 'c'.repeat(65), w: 0, h: [0, 0], p: [0, 0] },

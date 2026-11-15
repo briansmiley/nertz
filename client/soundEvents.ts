@@ -24,12 +24,10 @@ export type Cue =
   | { k: 'work'; who: Who }
   /** One card off the stock, face-down onto the waste. */
   | { k: 'stock'; who: Who }
-  /** A group dealt onto the waste turned face-up. */
-  | { k: 'flip'; who: Who }
   /** The waste went back under the stock. */
   | { k: 'recycle'; who: Who }
-  /** A card landed in the middle; `rank` is 1 (Ace) to 12 (Queen). */
-  | { k: 'centre'; who: Who; rank: number }
+  /** A card other than a King landed in the middle. */
+  | { k: 'centre'; who: Who }
   /** A King completed a centre pile. */
   | { k: 'king'; who: Who }
   /** A finished pile went to the tray. */
@@ -110,8 +108,6 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
-  /** Cards that came off each seat's stock onto its waste in this step. */
-  const dealt = new Map<number, number>();
   for (const [id, to] of after) {
     const from = before.get(id);
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
@@ -119,9 +115,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     if (to.pile === 'slot') {
       if (from.seat < 0) continue;
       const pile = b.game.slots[to.i]!;
-      const rank = pile.cards.find((c) => c.id === id)!.rank;
-      if (rank === 13) add({ k: 'king', who: who(from.seat) }, id);
-      else add({ k: 'centre', who: who(from.seat), rank }, id);
+      if (pile.cards.find((c) => c.id === id)!.rank === 13) add({ k: 'king', who: who(from.seat) }, id);
+      else add({ k: 'centre', who: who(from.seat) }, id);
     } else if (to.pile === 'tray') {
       if (from.pile === 'slot') add({ k: 'clear', who: who(b.game.tray[to.i]!.at(-1)!.owner) }, `${to.i}`);
     } else if (from.pile === 'slot' || (from.pile === 'work' && to.pile !== 'work')) {
@@ -133,16 +128,12 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
     } else if (to.pile === 'waste' && from.pile === 'stock') {
       add({ k: 'stock', who: who(to.seat) }, id); // once per card
-      dealt.set(to.seat, (dealt.get(to.seat) ?? 0) + 1);
     } else if (to.pile === 'stock' && from.pile === 'waste') {
       add({ k: 'recycle', who: who(to.seat) });
     }
   }
 
   for (const p of b.game.players) {
-    // Fewer cards lie face-down on the waste than were there plus those just dealt: a group was completed and turned up.
-    const n = dealt.get(p.seat);
-    if (n && p.dealt < (a.game.players.find((q) => q.seat === p.seat)?.dealt ?? 0) + n) add({ k: 'flip', who: who(p.seat) });
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;
     if (p.holding !== null && p.holding !== was) add({ k: 'pickup', who: who(p.seat) });
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });

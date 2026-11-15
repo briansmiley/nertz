@@ -4,10 +4,11 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
-import { BackPicker, YourBacks } from './BackPicker';
-import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
+import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
+import { deckOf, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat, signed } from './Chat';
+import { useDismiss } from './dismiss';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
@@ -142,8 +143,7 @@ function AddBot({ room }: { room: RoomView }) {
   );
 }
 
-/** A small × beside a bot's name, for whoever deals. */
-/** For whoever deals: send a bot away, or (`person`) a person: they are put out of the table, as if they had left. */
+/** A small × beside a name, for whoever deals: a bot is sent away; a person is put out of the table, as if they had left. */
 function Unseat({ who }: { who: PlayerView }) {
   return (
     <button type="button" className="unseat" aria-label={`Remove ${who.name}`} title={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>
@@ -181,19 +181,7 @@ function BotName({ name, seat }: { name: string; seat: number }) {
 function Colour({ room, seat }: { room: RoomView; seat: number }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setOpen(false);
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  useDismiss(root, open, () => setOpen(false));
   /** Yours (ticked), and every colour nobody has. */
   const free = BACKS.map((c, i) => ({ c, i })).filter(({ i }) => i === seat || !room.players.some((p) => p.seat === i));
   return (
@@ -220,19 +208,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];
   const [step, setStep] = useState<'ask' | 'pick' | null>(null);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!step) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setStep(null);
-    };
-    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setStep(null);
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [step]);
+  useDismiss(root, !!step, () => setStep(null));
   const up = () => (takeSeat(false, mine ? undefined : who.id), setStep(null));
   return (
     <span className="pop-at" ref={root}>
@@ -472,8 +448,6 @@ function Lobby({ room }: { room: RoomView }) {
   const link = `${location.origin}/?room=${room.code}`;
   const me = room.players.find((p) => p.id === room.me);
   const prefs = usePrefs();
-  /** My backs at this table: chosen here, or my usual ones. */
-  const chosen = choiceAt(room.code, prefs);
   /** Whose backs are being chosen (the seat), if the sheet of backs is open: your own, or a bot's. */
   const [picking, setPicking] = useState<number | null>(null);
   const picked = room.players.filter(hasSeat).find((p) => p.seat === picking && (p.id === room.me || (me?.isHost && p.bot)));
@@ -528,8 +502,8 @@ function Lobby({ room }: { room: RoomView }) {
             <li key={p.id} className={`${p.connected ? '' : 'away'}${p.id === room.me ? ' you' : ''}`}>
               {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
               {p.id === room.me || (me?.isHost && p.bot) ? (
-                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (chosen.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs at this table') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
-                  <Mini seat={p.seat} back={p.id === room.me ? (chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)) : p.back} />
+                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (prefs.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
+                  <Mini seat={p.seat} back={p.id === room.me ? (prefs.random ? 'any' : backNamed(prefs.back, prefs.bare)) : p.back} />
                 </button>
               ) : (
                 <Mini seat={p.seat} back={p.back} />
@@ -553,18 +527,7 @@ function Lobby({ room }: { room: RoomView }) {
         <Watching room={room} />
         {picked &&
           (picked.id === room.me ? (
-            <BackPicker
-              faces
-              title="Deck style"
-              colour={backColour(picked.seat)}
-              bare={prefs.bare}
-              back={chosen.back}
-              random={chosen.random}
-              onPick={(back) => (setPrefs({ back, random: null }), setPicking(null))}
-              onRandom={(random) => setPrefs({ random })}
-              onBare={(bare) => setPrefs({ bare })}
-              onClose={() => setPicking(null)}
-            />
+            <YourBackPicker colour={backColour(picked.seat)} onClose={() => setPicking(null)} />
           ) : (
             <BackPicker
               title={`${picked.name}'s card backs`}
@@ -577,12 +540,12 @@ function Lobby({ room }: { room: RoomView }) {
               onClose={() => setPicking(null)}
             />
           ))}
-        {/* Your backs at this table: the card, and a button to change it. */}
+        {/* Your backs: the card, and a button to change it. */}
         {me && hasSeat(me) && (
           <div className="yourback">
             {/* One button: the card, and tucked under its bottom edge a small yellow tag saying what pressing it does. */}
             <button type="button" className="change" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
-              <Mini seat={me.seat} back={chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)} />
+              <Mini seat={me.seat} back={prefs.random ? 'any' : backNamed(prefs.back, prefs.bare)} />
               <span>Change</span>
             </button>
             {/* Your colour is your seat. Until the first deal it can be changed for any that nobody has: a dot of it, and behind the dot the ones still free. */}

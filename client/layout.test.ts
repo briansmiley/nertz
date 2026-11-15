@@ -865,7 +865,7 @@ describe('a group dealt off the stock', () => {
     }
     g = flip(g);
     // The whole group is held a beat, all three off the stock, before it lands.
-    const beat = computeLayout(1280, 720, g, 0, 'live', null, true, new Map([[0, 3]]));
+    const beat = computeLayout(1280, 720, g, 0, 'live', null, new Map([[0, 3]]));
     const whole = three.map((id) => at(beat, id)!);
     expect(whole.every((c) => c.pile === 'stock' && !c.up && c.y < beat.me!.stock.y)).toBe(true);
     expect(new Set(whole.map((c) => `${c.x},${c.y}`)).size).toBe(3);
@@ -889,7 +889,7 @@ describe('a group dealt off the stock', () => {
       for (let k = 1; k <= 3; k++) {
         g = flip(g);
         // While it is counted off (the cards that come up under the ones held travel at the level they lie at), and held whole for its beat.
-        const L = computeLayout(W, H, g, 0, 'live', null, true, k === 3 ? new Map([[0, 3]]) : undefined);
+        const L = computeLayout(W, H, g, 0, 'live', null, k === 3 ? new Map([[0, 3]]) : undefined);
         const middle = L.cards.filter((c) => c.pile === 'slot');
         const held = L.cards.filter((c) => c.mine && c.pile === 'stock' && c.y < L.me!.stock.y);
         expect(middle.map((c) => c.card.id)).toEqual(['club1', 'club2']);
@@ -906,13 +906,6 @@ describe('a group dealt off the stock', () => {
     const L = computeLayout(1280, 720, g, 0);
     const bottom = at(L, g.players[0]!.stock[0]!.id)!;
     expect(L.me!.stockPad).toMatchObject({ x: bottom.x, y: bottom.y, w: L.me!.stock.w, h: L.me!.stock.h });
-  });
-
-  it('is dealt card by card onto the waste on a table that carries each card there', () => {
-    const g = flip(inPlay(seats(2), lcg(7)));
-    const L = computeLayout(1280, 720, g, 0, 'live', null, false);
-    const c = at(L, g.players[0]!.waste.at(-1)!.id)!;
-    expect(c.pile === 'waste' && !c.up).toBe(true);
   });
 });
 

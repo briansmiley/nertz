@@ -15,8 +15,8 @@ import { getPrefs, loudness, watchPrefs } from './prefs';
  * STUN only: enough when at least one side of a pair can be reached directly,
  * which covers most home networks. Two players who are both behind strict
  * (symmetric) NATs or firewalls, as on some company, campus and mobile
- * networks, will not hear each other without a relay. A TURN server goes
- * here: { urls: 'turn:host:3478', username, credential }.
+ * networks, will not hear each other without a relay: a TURN server is given
+ * to the game's server (its `ICE_SERVERS`, server/chat.ts), not put here.
  */
 export const ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
 /** And whatever the game's server knows of besides (a TURN relay, if it was given one): it says so with the chat's state. */
@@ -33,7 +33,7 @@ export interface VoiceState {
   status: 'off' | 'asking' | 'on';
   muted: boolean;
   error: string | null;
-  /** Seats making sound right now (this one included). */
+  /** Players (by id) making sound right now (this one included). */
   speaking: readonly number[];
   /** How the connection to each other player in voice (by id) stands: being set up, up, or not to be had (no path between the two networks). */
   links: Readonly<Record<number, Link>>;

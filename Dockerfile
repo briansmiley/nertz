@@ -1,4 +1,4 @@
-# Proposed production image (see README "Hosting plan"). Not deployed anywhere.
+# The production image, deployed to Fly.io by .github/workflows/deploy.yml (see README "Hosting").
 FROM node:24-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

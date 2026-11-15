@@ -123,17 +123,10 @@ const scan = (n: number): readonly Pt[] => SCANS[seatsOf(n) - 2]!;
 export const roomAt = (p: Pt, placed: readonly Pt[], n: number): boolean => onTable(p, n) && !placed.some((q) => clash(p, q, n));
 
 /**
- * Some place where a new pile may go (the nearest to `near` of a fixed set of
- * candidates; by default the nearest to the middle), or null when none of them
- * is clear: the table is full. Deterministic.
+ * Some place where a new pile may go (the nearest to the middle of a fixed set
+ * of candidates), or null when none of them is clear: the table is full.
+ * Deterministic.
  */
-export function openPlace(placed: readonly Pt[], n: number, near?: Pt): Pt | null {
-  if (!near) return scan(n).find((p) => roomAt(p, placed, n)) ?? null;
-  let best: Pt | null = null;
-  let bestD = Infinity;
-  for (const p of scan(n)) {
-    const d = Math.hypot(p.x - near.x, p.y - near.y);
-    if (d < bestD && roomAt(p, placed, n)) [best, bestD] = [p, d];
-  }
-  return best;
+export function openPlace(placed: readonly Pt[], n: number): Pt | null {
+  return scan(n).find((p) => roomAt(p, placed, n)) ?? null;
 }

@@ -1,6 +1,7 @@
-// Personal settings: sound levels and reduced motion. They belong to this
-// browser, not to the table, and are remembered in localStorage when there is
-// one (without it they last as long as the page).
+// Personal settings: sound, reduced motion, your cards' faces and backs, hotkeys
+// and how the chat is shown. They belong to this browser, not to the table, and
+// are remembered in localStorage when there is one (without it they last as
+// long as the page).
 import { useSyncExternalStore } from 'react';
 import { deckNamed, isBack, isDeck, isLot, type Back, type Deck } from '../shared/protocol';
 
@@ -164,39 +165,8 @@ function apply(): void {
 
 export const getPrefs = (): Prefs => prefs;
 
-// (A choice of backs made at a table, from the card beside your name in its lobby, was once for that table only. It
-// is now your own choice like any other, kept for every table; what follows only honours one that an open window
-// still remembers from before.)
-export interface Choice {
-  back: Back;
-  random: string | null;
-}
-const HERE = 'nertz.here';
-let here: ({ room: string } & Choice) | null = null;
-try {
-  const v = JSON.parse(sessionStorage.getItem(HERE) ?? 'null') as ({ room: string } & Choice) | null;
-  if (v && typeof v.room === 'string' && isBack(v.back) && (v.random === null || isLot(v.random))) here = v;
-} catch {
-  // no storage: a reload goes back to your own choice
-}
-function keep(): void {
-  try {
-    if (here) sessionStorage.setItem(HERE, JSON.stringify(here));
-    else sessionStorage.removeItem(HERE);
-  } catch {
-    // no storage
-  }
-}
-
-/** The backs you have at the table `room`: the choice made there if there is one, else your own. */
-export const choiceAt = (room: string | null | undefined, p: Pick<Prefs, 'back' | 'random'> = prefs): Choice => (here && here.room === room ? { back: here.back, random: here.random } : { back: p.back, random: p.random });
-
 export function setPrefs(patch: Partial<Prefs>): void {
   prefs = cleanPrefs({ ...prefs, ...patch });
-  if ('back' in patch || 'random' in patch) {
-    here = null; // your own choice, made anew, stands everywhere: also at the table you are at
-    keep();
-  }
   try {
     localStorage.setItem(KEY, JSON.stringify(prefs));
   } catch {
@@ -222,12 +192,7 @@ apply();
 if (typeof window !== 'undefined')
   window.addEventListener('storage', (e) => {
     if (e.key !== KEY) return;
-    const was = prefs;
     prefs = load();
-    if (prefs.back !== was.back || prefs.random !== was.random) {
-      here = null; // as in `setPrefs`: your own choice, made anew, stands also at the table you are at
-      keep();
-    }
     apply();
     for (const l of listeners) l();
   });

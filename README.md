@@ -4,8 +4,7 @@ Real-time multiplayer [Nertz](https://en.wikipedia.org/wiki/Nertz) for 2 to 6 fr
 solitaire at the same time and races to play onto shared piles in the middle. One person starts a table, sends the link, and
 everyone else joins from it. No accounts, no database: one small Node process holds every table in memory.
 
-Status: runs locally. **Nothing has been deployed and no cloud resources exist.** The `Dockerfile` and `fly.toml` in this repo
-are a proposal (see [Hosting plan](#hosting-plan)) and have never been run against a real service.
+Deployed to Fly.io from this repo on every push to `staging` and to `main`: see [Hosting](#hosting).
 
 ## Run the two-window demo
 
@@ -174,8 +173,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   waste back over into the stock.
 - **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
   one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
-  gains nothing. (The old "drag each card" rule still exists as the table setting `stockDeal: 'drag'`, but is no longer
-  offered in the lobby.)
+  gains nothing.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, the server (which knows every
   card) checks whether anybody can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
   waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
@@ -394,11 +392,10 @@ storage they last until the page closes.
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
 whoever may deal and only between rounds, so a round keeps the rules it was dealt under. An option the server does not
 know is dropped (an older client asking for one changes nothing). `shared/settings.ts` holds the one object and its
-validation. Two options today, both only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
+validation. One option today, only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
 default: a tap or a click takes a card up and the next puts it down, on every screen alike; off, every card is
-dragged), the one listed under "Table rules"; and, not offered in the lobby, how cards are dealt off the stock
-(`stockDeal`: `'click'`, the default, or `'drag'`; see the rules). The server cannot hold anyone to `tapToMove`: a card
-taken up by a tap and one picked up to be dragged are the same `hold` and `move`.
+dragged), listed under "Table rules". The server cannot hold anyone to `tapToMove`: a card taken up by a tap and one
+picked up to be dragged are the same `hold` and `move`.
 
 ## How concurrency works
 
@@ -582,38 +579,30 @@ client/   Vite + React
 Dependencies at runtime: `ws`, `react`, `react-dom`, `motion` (card animation) and `tsx` (runs the TypeScript server
 directly, so there is no server build step).
 
-## Hosting plan
-
-Nothing here has been deployed. This is the plan I would follow.
+## Hosting
 
 **What the game needs.** One long-lived process that holds websockets open and keeps every table in memory. All players of a
 table must reach the *same* process, because that process's event loop is what orders their moves. Load is tiny: a snapshot
 is a few kilobytes and a busy table is a few messages a second.
 
-### Recommended start: one Fly.io machine
+### What runs: one Fly.io machine per app
 
-- One always-on `shared-cpu-1x` machine in one region near the players, serving the built client and the websocket from the
-  same origin. Expect a few dollars a month; check Fly's current pricing.
-- Auto-stop off and exactly one machine. `fly launch` likes to create two machines for availability; that would split tables
-  across processes, so scale to one (`fly scale count 1`). Auto-stop must stay off because a stopped machine forgets every
-  table.
-- The included `Dockerfile` and `fly.toml` match this: port 8080, health check on `/healthz`, connection-based concurrency,
-  no auto-stop.
+- Two apps, each one `shared-cpu-1x` machine serving the built client and the websocket from the same origin: `nertz` and
+  `nertz-staging`. The `Dockerfile` and `fly.toml` are their whole configuration: port 8080, health check on `/healthz`,
+  connection-based concurrency.
+- `.github/workflows/deploy.yml` deploys them: a push to `staging` runs the checks and deploys staging; a push to `main`
+  runs the checks and then waits until `/healthz` says nobody is connected before it deploys. Exactly one machine each
+  (`--ha=false`): two would split tables across processes.
+- An idle machine is suspended, memory kept (`auto_stop_machines = "suspend"`), and resumed on the next request. Fly only
+  suspends a machine with no open connections, and every player at a table holds a websocket, so a game in progress keeps
+  it up.
 - **What a deploy or restart does to live games:** the process is replaced, so every table and score is gone. Clients notice
   the dropped socket, reconnect with backoff and try to rejoin their table code, which no longer exists, so they are told
-  there is no such table and someone has to start a new one. For a game among friends, deploying when nobody is playing is enough. If that ever stops being
-  acceptable, the fix is to write each room's state to a volume or Redis on change and reload it on boot; `GameState` is
-  plain JSON, so that is a small change.
+  there is no such table and someone has to start a new one. Hence `main` deploys only when nobody is connected. If that
+  ever stops being enough, the fix is to write each room's state to a volume or Redis on change and reload it on boot;
+  `GameState` is plain JSON, so that is a small change.
 - Outgrowing one machine (unlikely) means routing by table code, for example with Fly's `fly-replay` header, so that a table
   always lands on the machine that owns it.
-
-First deploy would look like this (not run):
-
-```sh
-fly launch --no-deploy     # pick a unique app name and region; keep the fly.toml in this repo
-fly deploy
-fly scale count 1
-```
 
 ### Railway or Render
 

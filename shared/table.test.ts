@@ -215,11 +215,9 @@ describe('where piles may go', () => {
     }
   });
 
-  it('openPlace finds the clear place nearest to where it is asked, or says the table is full', () => {
+  it('openPlace finds the clear place nearest to the middle, or says the table is full', () => {
     const n = 4;
     expect(openPlace([], n)).toEqual({ x: 0, y: 0 });
-    const near = openPlace([], n, { x: 1.4, y: -0.3 })!;
-    expect(Math.hypot(near.x - 1.4, near.y + 0.3)).toBeLessThan(0.05);
     const taken = [{ x: 0, y: 0 }];
     const next = openPlace(taken, n)!;
     expect(clash(next, taken[0]!, n)).toBe(false);
@@ -227,7 +225,6 @@ describe('where piles may go', () => {
     const full: Pt[] = [];
     for (let at = openPlace(full, n); at; at = openPlace(full, n)) full.push(at);
     expect(openPlace(full, n)).toBeNull();
-    expect(openPlace(full, n, { x: 0.2, y: 0.2 })).toBeNull();
     expect(roomAt({ x: 0.2, y: 0.2 }, full, n)).toBe(false);
   });
 
