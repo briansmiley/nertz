@@ -67,6 +67,8 @@ export interface FeedbackOptions {
   anthropic?: string;
   /** For tests. */
   fetch?: typeof fetch;
+  /** For tests: told when a report has been delivered (or failed to be), after the sender was answered. */
+  onDelivered?: (id: string) => void;
 }
 
 /** A report's name, everywhere it goes: Claude's title and priority, or its own first line and no priority. */
@@ -232,6 +234,16 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
     if (!res.ok) throw new Error(`Discord answered ${res.status}`);
   };
 
+  const deliver = async (id: string, at: string, report: Report): Promise<void> => {
+    // Named while Linear is readied; Linear before the other two, so that they can point at the issue. If it fails, they still get the report.
+    const heading = head(id, report);
+    const issue = linear ? await toLinear(id, report, heading).catch((e: unknown) => void console.error('feedback', id, e)) : undefined;
+    const named = await heading;
+    const done = await Promise.allSettled([...(dir ? [toDisk(id, at, report, named, issue ?? undefined)] : []), ...(webhook ? [toDiscord(id, report, named, issue ?? undefined)] : [])]);
+    for (const d of done) if (d.status === 'rejected') console.error('feedback', id, d.reason);
+    if (!issue && !done.some((d) => d.status === 'fulfilled')) console.error('feedback', id, 'delivered nowhere; the report was', JSON.stringify({ ...report, image: undefined }));
+  };
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const answer = (status: number, message?: string): void => {
       res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -260,14 +272,9 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
     const report = parseReport(Buffer.concat(chunks).toString('utf8'));
     if (!report) return answer(400, 'That report could not be read.');
 
+    // Received is all the sender hears; naming and delivering it are this server's business, and a failure is logged.
     const id = randomUUID().slice(0, 8);
-    // Named while Linear is readied; Linear before the other two, so that they can point at the issue. If it fails, they still get the report.
-    const heading = head(id, report);
-    const issue = linear ? await toLinear(id, report, heading).catch((e: unknown) => void console.error('feedback', id, e)) : undefined;
-    const named = await heading;
-    const done = await Promise.allSettled([...(dir ? [toDisk(id, new Date(now).toISOString(), report, named, issue ?? undefined)] : []), ...(webhook ? [toDiscord(id, report, named, issue ?? undefined)] : [])]);
-    for (const d of done) if (d.status === 'rejected') console.error('feedback', id, d.reason);
-    // Kept somewhere is enough: the sender need not hear that one of the places failed.
-    return issue || done.some((d) => d.status === 'fulfilled') ? answer(200) : answer(502, 'The report could not be delivered. Try again later.');
+    answer(200);
+    void deliver(id, new Date(now).toISOString(), report).finally(() => options.onDelivered?.(id));
   };
 }

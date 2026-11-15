@@ -7,11 +7,19 @@ import { startServer, type NertzServer } from './index';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 let server: NertzServer | undefined;
+/** Reports delivered so far, for a test to wait on: the sender is answered before delivery. */
+let delivered = 0;
+const onDelivered = (): void => void delivered++;
+const settled = async (n: number): Promise<void> => {
+  for (let i = 0; i < 200 && delivered < n; i++) await new Promise((r) => setTimeout(r, 5));
+  expect(delivered).toBe(n);
+};
 let dir: string | undefined;
 afterEach(async () => {
   await server?.close();
   if (dir) rmSync(dir, { recursive: true, force: true });
   server = dir = undefined;
+  delivered = 0;
 });
 
 describe('feedback', () => {
@@ -28,11 +36,12 @@ describe('feedback', () => {
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
     const sent: FormData[] = [];
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir, webhook: 'https://discord.invalid/hook', anthropic: '', fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body as FormData), new Response(null, { status: 204 }))) as typeof fetch } });
+    server = await startServer({ port: 0, feedback: { dir, webhook: 'https://discord.invalid/hook', anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body as FormData), new Response(null, { status: 204 }))) as typeof fetch } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
     const res = await send({ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD', image: PNG });
     expect(res.status).toBe(200);
+    await settled(1);
     const line = JSON.parse(readFileSync(join(dir, 'feedback.jsonl'), 'utf8').trim()) as Record<string, string>;
     expect(line).toMatchObject({ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD' });
     expect(readdirSync(dir)).toContain(line.image);
@@ -45,6 +54,7 @@ describe('feedback', () => {
     expect((await real(`http://localhost:${server.port}/feedback`)).status).toBe(405);
     for (let i = 0; i < 3; i++) await send({ kind: 'idea', text: 'more' });
     expect((await send({ kind: 'idea', text: 'more' })).status).toBe(429);
+    await settled(4); // (the three that got through, delivered after they were answered)
   });
 
   it('files a Linear issue too: [FEEDBACK] in the title, the Bug or Feature label (made if the team has none), the screenshot uploaded', async () => {
@@ -59,10 +69,11 @@ describe('feedback', () => {
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, anthropic: '', fetch: fake } });
+    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, anthropic: '', onDelivered, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
     expect((await send({ kind: 'idea', text: 'a ready button\nwould be nice', name: 'Sam', image: PNG })).status).toBe(200);
+    await settled(1);
     const issue = calls.find((c) => (c.body as { query?: string })?.query?.includes('issueCreate'))!.body as { variables: { input: { title: string; description: string; labelIds: string[]; teamId: string } } };
     expect(issue.variables.input).toMatchObject({ teamId: 'team1', title: '[FEEDBACK] a ready button', labelIds: ['feat1'] });
     // Priority, assignee and status as the server was told; a project nobody has is left out, and the issue is filed all the same.
@@ -79,6 +90,7 @@ describe('feedback', () => {
     // The team and its labels are looked up once: a second report (a bug) uses the workspace's label, and asks only to file and to tell.
     const before = calls.length;
     expect((await send({ kind: 'bug', text: 'it broke' })).status).toBe(200);
+    await settled(2);
     expect(calls.length).toBe(before + 2);
     expect((calls.find((c, i) => i >= before && c.url.includes('linear.app'))!.body as typeof issue).variables.input.labelIds).toEqual(['bug1']);
   });
@@ -100,12 +112,13 @@ describe('feedback', () => {
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 3 }, anthropic: 'sk-ant-test', fetch: fake } });
+    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 3 }, anthropic: 'sk-ant-test', onDelivered, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
     const filed = () => (calls.filter((c) => (c.body as { query?: string })?.query?.includes('issueCreate')).at(-1)!.body as { variables: { input: { title: string; priority: number; description: string } } }).variables.input;
     const told = () => (JSON.parse((calls.filter((c) => c.url === 'https://discord.invalid/hook').at(-1)!.body as FormData).get('payload_json') as string) as { embeds: { title: string; description: string }[] }).embeds[0]!;
 
     expect((await send({ kind: 'bug', text: 'so i was playing and then the ace i tried to put down just would not go anywhere??', context: 'table, 1280x800' })).status).toBe(200);
+    await settled(1);
     const asked = calls.find((c) => c.url.startsWith('https://api.anthropic.com/'))!.body as { model: string; messages: { content: string }[]; output_config: { format: { type: string } } };
     expect(asked.model).toBe('claude-haiku-5-5');
     expect(asked.output_config.format.type).toBe('json_schema');
@@ -117,6 +130,7 @@ describe('feedback', () => {
 
     claudeAnswers = 'broken';
     expect((await send({ kind: 'idea', text: 'a ready button\nplease' })).status).toBe(200);
+    await settled(2);
     expect(filed()).toMatchObject({ title: '[FEEDBACK] a ready button', priority: 3 });
     expect(told().title).toBe('💡 a ready button · NRZ-8');
   });
