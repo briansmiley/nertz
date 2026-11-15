@@ -1,20 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { DEAL_MS } from '../shared/protocol';
-import { DEAL, dealWait } from './layout';
+import { dealTimes } from './layout';
 import { Voices } from './voices';
 
 /** The longest flick: the longest recording (0.26 s) at the slowest rate a deal plays it (0.9). */
 const FLICK = 0.261 / 0.9;
 
-/** When each flick of a full deal starts, as dealBurst schedules them, in seconds from now. */
-const dealStarts = (work: number) =>
-  Array.from({ length: work + 13 }, (_, i) => ((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
-
 describe('Voices', () => {
   it('admits every flick of a full deal, though all are scheduled at once', () => {
     for (const work of [10, 7]) {
       const cap = new Voices(18);
-      const starts = dealStarts(work);
+      const starts = dealTimes(work);
       expect(starts.every((s) => cap.take(0, s, s + FLICK))).toBe(true);
       expect(Math.max(...starts.map((s) => cap.sounding(s)))).toBeLessThanOrEqual(6);
     }

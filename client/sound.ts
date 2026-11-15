@@ -10,8 +10,7 @@
 import { useEffect, useRef } from 'react';
 import type { RoomView } from '../shared/types';
 import { TIMING } from './Finale';
-import { DEAL, dealWait, type Stage } from './layout';
-import { DEAL_MS } from '../shared/protocol';
+import { dealTimes, type Stage } from './layout';
 import { getPrefs, loudness, watchPrefs } from './prefs';
 import { graceTicking, soundCues, type Cue, type Frame, type Who } from './soundEvents';
 import { Voices, type Voice } from './voices';
@@ -244,7 +243,7 @@ export function deal(delay = 0): void {
 
 /** The deal at the start of a round: a flick as each card of your layout lands, on the animation's own schedule. */
 export function dealBurst(work = 10, nertz = 13): void {
-  for (let i = 0; i < work + nertz; i++) deal(((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
+  dealTimes(work, nertz).forEach((t) => deal(t));
 }
 
 export function pickup(who: Who = 'me'): void {
