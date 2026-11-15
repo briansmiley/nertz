@@ -18,8 +18,8 @@ import { backNamed, DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '.
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
-import { Finale, sortAt, sortMs, TIMING } from './Finale';
-import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, onCanvas, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
+import { Finale, sortAt, sortMs, TIMING, washedAt } from './Finale';
+import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, onCanvas, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
@@ -234,7 +234,7 @@ const CardView = memo(function CardView(p: CardProps) {
 /**
  * Walks the table through the end-of-round sequence once the round is scored (see `stageOf`). `skip` jumps to the sheet.
  */
-function useStage(results: boolean, round: number, trayPiles: number, players: number): [Stage, () => void] {
+function useStage(results: boolean, round: number, trayPiles: number, players: number, clear: boolean): [Stage, () => void] {
   const [step, setStep] = useState(() => stepAtMount(results, round));
   const stage = stageOf(results, round, step, calm());
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -248,7 +248,9 @@ function useStage(results: boolean, round: number, trayPiles: number, players: n
       ['spread', TIMING.flip],
       ['out', TIMING.spread],
       ['wash', trayPiles ? TIMING.out : 0],
-      ['sheet', sortAt(trayPiles) - TIMING.spread - (trayPiles ? TIMING.out : 0) + sortMs(players) + TIMING.hold],
+      ['sort', washedAt(trayPiles) - TIMING.spread - (trayPiles ? TIMING.out : 0)],
+      // (On a phone the table is cleared before the sorting starts: `clear`.)
+      ['sheet', sortAt(trayPiles, clear) - washedAt(trayPiles) + sortMs(players) + TIMING.hold],
     ];
     timers.current = steps.map(([next, ms]) => setTimeout(() => setStep({ round, stage: next }), (at += ms)));
     return stop;
@@ -354,7 +356,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // Whatever decks are at the table are fetched before their cards are turned up.
   const decks = room.players.map((p) => p.deck ?? '').join();
   useEffect(() => room.players.forEach((p) => p.deck && warm(p.deck)), [decks]);
-  const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length);
+  /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
+  const clears = isTall(W, H) || isLow(W, H);
+  const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
   // A click meant for a card must not throw the end of the round away: only Escape skips it, and only on your own screen.
   const playingOut = ending(stage);
   useEffect(() => {
@@ -367,7 +371,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [playingOut]);
   const stageWas = useRef(stage);
   useEffect(() => {
-    stageSound(stageWas.current, stage, sortAt(game.tray.length)); // the riffle of the wash, the flourish of the score sheet
+    stageSound(stageWas.current, stage, sortAt(game.tray.length, clears)); // the riffle of the wash, the flourish of the score sheet
     stageWas.current = stage;
   }, [stage]);
   /** Your work pile that is being looked at (fanned out in full): the mouse rested on it, or it was tapped. */
@@ -1033,6 +1037,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const cardClass = (c: Placed): string => {
     let cls = dealing && calm() ? 'card dealt' : 'card';
+    if (c.pile !== 'slot' && c.pile !== 'tray') cls += ' hand';
     if (c.pile === 'slot' && game.slots[c.at]?.cards.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
     if (aloft.has(c.card.id)) cls += ' aloft';
     if (c.mine && !frozen && !must.blocked) {
@@ -1060,13 +1065,15 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     h: callerPile.h,
   };
   const finale = onCanvas(stage, 'slot');
+  /** A phone, upright or on its side: the table is cleared for the end of a round (`Layout.cleared`). */
+  const phone = L.phone;
   /** An Ace is in hand. */
   const placing = held?.k === 'card' && held.ace;
 
   return (
     <>
     <div
-      className={`table${L.tall ? ' tall' : L.low ? ' short' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
+      className={`table${L.tall ? ' tall' : L.low ? ' short' : ''}${L.cleared ? ' cleared' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
       aria-hidden={paused || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -1275,8 +1282,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
-        <button type="button" className="skip" onClick={skip}>
-          Skip to the scores <small>Esc</small>
+        // (On a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the sound and settings buttons on its side.)
+        <button type="button" className={`skip${phone ? ' aside' : ''}`} style={L.tall ? { left: besideChat } : phone ? { left: Math.max(12, pad.l) + 136 } : undefined} onClick={skip}>
+          {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>
         </button>
       )}
     </div>

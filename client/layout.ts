@@ -26,10 +26,12 @@ export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'slot' | 'tray';
  *
  * In full: the centre piles turn face-down where they lie ('flip'); they are spread out over the felt ('spread': from
  * here on they are drawn on the finale's canvas); the finished piles come out of the tray onto the spread cards, as
- * loose, tilted stacks ('out'); those are spread out too and everything is sorted ('wash'); the scores ('sheet').
+ * loose, tilted stacks ('out'); those are spread out too ('wash'); everything is sorted into a pile per player ('sort'); the scores ('sheet').
  */
-export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sheet';
-const STAGES: readonly Stage[] = ['live', 'flip', 'spread', 'out', 'wash', 'sheet'];
+export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sort' | 'sheet';
+const STAGES: readonly Stage[] = ['live', 'flip', 'spread', 'out', 'wash', 'sort', 'sheet'];
+/** The wash lies spread out and the piles are about to be gathered ('sort'), or have been ('sheet'). On a phone that is when the table is cleared. */
+export const sorting = (stage: Stage): boolean => STAGES.indexOf(stage) >= STAGES.indexOf('sort');
 
 /**
  * Whether the middle's cards are the finale's canvas's to draw at `stage`, and no longer this layer's: the centre
@@ -148,6 +150,15 @@ export interface Layout {
   bar: number;
   /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
   low: boolean;
+  /** A phone, upright or on its side. At the end of a round its table is cleared for the sorted piles. */
+  phone: boolean;
+  /**
+   * The end of a round on a phone, once the middle's cards have been washed on the felt: the table is cleared. The
+   * hands and the felt are not shown, and the sorted piles have the whole window (Finale.tsx).
+   */
+  cleared: boolean;
+  /** What the screen keeps for itself at its sides (a notch). */
+  keep: Insets;
 }
 
 const RATIO = CARD_H / CARD_W;
@@ -694,7 +705,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
           workRoom: tall ? oh * TALL.room : H - 8 - ownTop - oh,
           rows: tall ? { y: rowY, nertzX: edge, stockX: W - edge - 2 * ow - gapT, box: { x: edge, y: ownTop, w: W - 2 * edge, h: H - 10 - ownTop } } : undefined,
           // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
-          workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
+          workRise: onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
           minStrip: oh * 0.21,
           z: OWN_Z,
           mine: true,
@@ -740,7 +751,9 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low };
+  const phone = tall || isLow(W, H);
+  const cleared = phone && sorting(stage);
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, phone, cleared, keep };
 }
 
 // ---------------------------------------------------------------- an Ace in hand

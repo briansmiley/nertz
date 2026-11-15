@@ -3,7 +3,7 @@ import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, v
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
 import { inPlay, lcg, seats, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
-import { frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
+import { blockParts, frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
 import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -472,7 +472,7 @@ describe('table layout', () => {
       };
       // The canvas's clock starts when it is first drawn and is read once a frame, so it runs a little behind the
       // table's stages or ahead of them: a card is on one layer or the other all the same, never on neither or both.
-      const STAGES: Stage[] = ['flip', 'spread', 'out', 'wash', 'sheet'];
+      const STAGES: Stage[] = ['flip', 'spread', 'out', 'wash', 'sort', 'sheet'];
       for (const stage of STAGES) {
         for (const t of [-30, 0, TIMING.spread, trayAt - 30, trayAt, trayAt + 30, 60000]) {
           const { table, canvas } = drawn(stage, t);
@@ -567,6 +567,46 @@ describe('table layout', () => {
           expect(plan.rx + plan.w / 2, where).toBeLessThanOrEqual(d.rx);
           expect(plan.ry + plan.h / 2, where).toBeLessThanOrEqual(d.ry);
           expect(plan.heap.y >= d.cy - d.ry && plan.heap.y + plan.heap.h <= d.cy + d.ry, where).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('on a phone the table is cleared for the end of a round: the piles stand round the edges of the window, each with its label, touching nothing: 2 to 10 players, upright and on its side', () => {
+    const PHONES: [number, number, number][] = [[393, 660, 0], [375, 550, 0], [360, 640, 0], [430, 740, 0], [852, 321, 59], [734, 321, 0], [667, 331, 0], [568, 280, 0], [932, 380, 59]];
+    for (const [W, H, notch] of PHONES) {
+      for (let n = 2; n <= 10; n++) {
+        const game = played(inPlay(seats(n), lcg(n)));
+        for (const you of [0, n - 1]) {
+          const where = `${n} players at ${W}x${H}, seat ${you}`;
+          const keep = { l: notch, r: notch, b: 0 };
+          expect(computeLayout(W, H, game, you, 'flip', null, undefined, keep).cleared, where).toBe(false);
+          expect(computeLayout(W, H, game, you, 'wash', null, undefined, keep).cleared, where).toBe(false); // the wash is on the felt, among the hands
+          const L = computeLayout(W, H, game, you, 'sort', null, undefined, keep);
+          expect(L.cleared, where).toBe(true);
+          const plan = planFinale(L, game);
+          expect(plan.piles.map((p) => p.seat), where).toEqual(game.players.map((p) => p.seat));
+          expect(plan.label.k, where).toBeGreaterThan(n > 8 ? 0.5 : 0.7);
+          // What a pile and its label cover: the block drawn behind the two.
+          const blocks = plan.piles.map((p) => blockParts(p));
+          for (const [i, parts] of blocks.entries()) {
+            const at = `${where}, pile of seat ${plan.piles[i]!.seat}`;
+            for (const r of parts) expect(r.x >= notch - 0.01 && r.y >= (L.tall ? L.bar : 0) - 0.01 && r.x + r.w <= W - notch + 0.01 && r.y + r.h <= H, `${at}: off the window`).toBe(true);
+            for (const other of blocks.slice(i + 1)) for (const a of parts) for (const b of other) expect(overlap(a, b), `${at}: over another`).toBe(false);
+            // The wash, spread out, is clear of them all.
+            const [ox, oy] = [plan.heap.x + plan.heap.w / 2, plan.heap.y + plan.heap.h / 2];
+            const span = Math.hypot(plan.w, plan.h) / 2; // (the heap's box allows for cards lying upright; one turned reaches this far from its middle)
+            const [ax, ay] = [plan.heap.w / 2 - plan.w / 2 + span, plan.heap.h / 2 - plan.h / 2 + span];
+            for (const r of parts) expect(Math.hypot(Math.max(r.x - ox, 0, ox - r.x - r.w) / ax, Math.max(r.y - oy, 0, oy - r.y - r.h) / ay), `${at}: under the wash`).toBeGreaterThanOrEqual(1);
+          }
+          // Yours is at the bottom, in the middle; everyone else in the order of the seats, clockwise from there.
+          const mid = (p: Rect & { label: Rect }) => ({ x: (Math.min(p.x, p.label.x) + Math.max(p.x + p.w, p.label.x + p.label.w)) / 2, y: p.y + p.h / 2 });
+          const ring = plan.piles.map((_, i) => mid(plan.piles[(you + i) % n]!));
+          expect(Math.abs(ring[0]!.x - W / 2), where).toBeLessThan(4);
+          for (const m of ring.slice(1)) expect(m.y, where).toBeLessThan(ring[0]!.y + 1);
+          const turn = ring.map((m) => Math.atan2(-(m.x - W / 2), m.y - plan.cy)); // 0 straight down, growing clockwise (to your left first)
+          const angles = turn.slice(1).map((a) => (a + 2 * Math.PI) % (2 * Math.PI));
+          for (let i = 1; i < angles.length; i++) expect(angles[i]!, `${where}: seat order`).toBeGreaterThan(angles[i - 1]! - 1e-6);
         }
       }
     }

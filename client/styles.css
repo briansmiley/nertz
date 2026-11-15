@@ -966,6 +966,106 @@ button {
   opacity: 0.8;
 }
 
+/* The same label on a cleared table (a phone), in fewer words and a narrower box (LABEL_SHORT in Finale.tsx). */
+.heap {
+  transform-origin: 0 0;
+}
+
+.heap.short {
+  grid-template-columns: minmax(0, 1fr) auto; /* the score at the far end of the box: pile, lines, score fill it */
+  justify-content: stretch;
+  column-gap: 6px;
+  padding-right: 3px;
+}
+
+.heap.short.end {
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 0 0 0 3px;
+}
+
+.heap.short .net {
+  padding: 3px 7px 4px;
+  font-size: 24px;
+}
+
+/* On a cleared table nobody's hand is left to say who is where: every place is set out, with its name, as the table
+   clears, before any pile is gathered. The lines come as its cards do. */
+.heap.set,
+.heap-block.set {
+  opacity: 1;
+  animation: heap-set 0.5s 0.5s both; /* once the hands have gone */
+}
+
+@keyframes heap-set {
+  from {
+    opacity: 0;
+  }
+}
+
+.heap.set .got {
+  transition: opacity 0.25s;
+}
+
+.heap.set:not(.on) .got {
+  opacity: 0;
+}
+
+/* Held upright the label is under its pile (LABEL_TILE): the pile in a top corner of the box, the score beside it,
+   name and lines below. */
+.heap.short.tile,
+.heap.short.tile.end {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 60px 19px 20px 20px;
+  padding: 0 5px;
+}
+
+.heap.tile .who,
+.heap.tile .line,
+.heap.tile.end .line {
+  grid-column: 1;
+}
+
+.heap.tile .net,
+.heap.tile.end .net {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.heap.tile.end .net {
+  justify-self: start;
+}
+
+/* The end of a round on a phone: the table is cleared for it. Hands, names and felt go; the cards of the middle and
+   the sorted piles have the window. */
+.table > .felt,
+.table > .slot,
+.table > div > .slot,
+.table > div > .tag,
+.table .count,
+.table > .mine,
+.table > .vacant,
+.table > .shout {
+  transition: opacity 0.45s;
+}
+
+.table.cleared > .felt,
+.table.cleared > .slot,
+.table.cleared > div > .slot,
+.table.cleared > div > .tag,
+.table.cleared .count,
+.table.cleared > .mine,
+.table.cleared > .vacant,
+.table.cleared > .shout,
+.table.cleared > .gotnertz {
+  opacity: 0;
+}
+
+.table.cleared > .card.hand {
+  opacity: 0;
+  transition: opacity 0.45s;
+}
+
 
 .skip {
   position: absolute;
@@ -2685,6 +2785,10 @@ label.check {
     min-height: 36px;
     padding: 4px 14px 5px;
   }
+}
+
+.skip.aside {
+  translate: none;
 }
 
 .table.tall .skip {
