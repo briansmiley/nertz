@@ -3306,14 +3306,8 @@ body:has(main.showroom),
   animation: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .showroom .dealt .lay {
-    animation: none;
-  }
-
-  .showroom .stack .mini {
-    transition: none;
-  }
+.calm .showroom .stack .mini {
+  transition: none;
 }
 
 .showroom .lay {
