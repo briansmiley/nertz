@@ -22,6 +22,7 @@ import { Finale, sortAt, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, onCanvas, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
+import { ending, stageOf, stepAtMount } from './stage';
 import { onDrag, onSniper, pause, post } from './net';
 import { canResume } from './Settings';
 import { calm, choiceAt, deckOf, usePrefs } from './prefs';
@@ -231,22 +232,17 @@ const CardView = memo(function CardView(p: CardProps) {
 // ---------------------------------------------------------------- end of round
 
 /**
- * Walks the table through the end-of-round sequence once the round is scored.
- * A window that was not watching the round (a reload, a latecomer) and anyone
- * who prefers reduced motion go straight to the sheet. `skip` jumps there.
+ * Walks the table through the end-of-round sequence once the round is scored (see `stageOf`). `skip` jumps to the sheet.
  */
-function useStage(results: boolean, trayPiles: number, players: number): [Stage, () => void] {
-  const watched = useRef(!results);
+function useStage(results: boolean, round: number, trayPiles: number, players: number): [Stage, () => void] {
+  const [step, setStep] = useState(() => stepAtMount(results, round));
+  const stage = stageOf(results, round, step, calm());
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const [stage, setStage] = useState<Stage>(results ? 'sheet' : 'live');
   const stop = () => timers.current.splice(0).forEach(clearTimeout);
   useEffect(() => {
-    if (!results) {
-      watched.current = true;
-      return setStage('live');
-    }
-    if (!watched.current || calm()) return setStage('sheet');
-    setStage('flip');
+    if (!results || step?.round === round) return;
+    setStep({ round, stage }); // the first step, as it was drawn: reduced motion switched on now does not cut it short
+    if (stage === 'sheet') return;
     let at = 0;
     const steps: [Stage, number][] = [
       ['spread', TIMING.flip],
@@ -254,14 +250,14 @@ function useStage(results: boolean, trayPiles: number, players: number): [Stage,
       ['wash', trayPiles ? TIMING.out : 0],
       ['sheet', sortAt(trayPiles) - TIMING.spread - (trayPiles ? TIMING.out : 0) + sortMs(players) + TIMING.hold],
     ];
-    timers.current = steps.map(([next, ms]) => setTimeout(() => setStage(next), (at += ms)));
+    timers.current = steps.map(([next, ms]) => setTimeout(() => setStep({ round, stage: next }), (at += ms)));
     return stop;
-  }, [results]); // the tray cannot change once the round is scored, so `trayPiles` is not a dependency
+  }, [results, round]); // the tray cannot change once the round is scored, so `trayPiles` is not a dependency
   return [
     stage,
     () => {
       stop();
-      setStage('sheet');
+      setStep({ round, stage: 'sheet' });
     },
   ];
 }
@@ -360,17 +356,17 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // Whatever decks are at the table are fetched before their cards are turned up.
   const decks = room.players.map((p) => p.deck ?? '').join();
   useEffect(() => room.players.forEach((p) => p.deck && warm(p.deck)), [decks]);
-  const [stage, skip] = useStage(results, game.tray.length, game.players.length);
+  const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length);
   // A click meant for a card must not throw the end of the round away: only Escape skips it, and only on your own screen.
-  const ending = results && stage !== 'sheet';
+  const playingOut = ending(stage);
   useEffect(() => {
-    if (!ending) return;
+    if (!playingOut) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code === 'Escape') skip();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ending]);
+  }, [playingOut]);
   const stageWas = useRef(stage);
   useEffect(() => {
     stageSound(stageWas.current, stage, sortAt(game.tray.length)); // the riffle of the wash, the flourish of the score sheet
@@ -856,7 +852,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     setSniper({ by: top.owner, n: (sniper?.n ?? 0) + 1 });
   };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
+    if (playingOut) return; // the end of a round plays out; only Escape skips it
     const el = (e.target as Element).closest('[data-id],[data-stock]');
     // What was tapped (or clicked) is in your hand, and this tap says where it goes: for a card a pile that takes it
     // (the nearest, if the finger is a little off), or for an Ace that very spot of the felt; for a finished pile the
@@ -1296,7 +1292,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
-      {results && stage !== 'sheet' && (
+      {playingOut && (
         <button type="button" className="skip" onClick={skip}>
           Skip to the scores <small>Esc</small>
         </button>
