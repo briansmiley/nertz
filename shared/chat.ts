@@ -51,13 +51,13 @@ export type ChatLine = ChatEvent & {
   at: number;
 };
 
-/** The host's two switches. Both default to on. */
+/** The host's four switches. All default to on. */
 export interface SocialSettings {
   text: boolean;
   voice: boolean;
-  /** May those watching a full table (no seat) take part in the text chat, and in voice? Left out: they may. */
-  watchText?: boolean;
-  watchVoice?: boolean;
+  /** May those watching a full table (no seat) take part in the text chat, and in voice? */
+  watchText: boolean;
+  watchVoice: boolean;
 }
 
 export interface VoiceMember {

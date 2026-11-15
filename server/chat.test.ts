@@ -142,12 +142,12 @@ describe('the host switches', () => {
   it('start on, are told to everyone who sits down, and only the host can flip them', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
-    expect(b.social).toEqual({ t: 'social', text: true, voice: true, inVoice: [] });
+    expect(b.social).toEqual({ t: 'social', text: true, voice: true, watchText: true, watchVoice: true, inVoice: [] });
     send(room, b, { t: 'social', text: false, voice: false }); // not the host
     expect(room.social.text && room.social.voice).toBe(true);
     expect(a.of('social')).toHaveLength(1);
     send(room, a, { t: 'social', voice: false });
-    for (const conn of [a, b]) expect(conn.social).toEqual({ t: 'social', text: true, voice: false, inVoice: [] });
+    for (const conn of [a, b]) expect(conn.social).toEqual({ t: 'social', text: true, voice: false, watchText: true, watchVoice: true, inVoice: [] });
     send(room, a, { t: 'social', text: false });
     for (const conn of [a, b]) expect(conn.social).toMatchObject({ text: false, voice: false });
     // They can be flipped mid-round too: they are not game rules.

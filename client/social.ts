@@ -1,4 +1,4 @@
-// Chat and voice state for the table we are at: the chat lines, the host's two
+// Chat and voice state for the table we are at: the chat lines, the host's four
 // switches and who is in voice, fed by the server's chat messages (never by
 // snapshots); and what is open under the chat bar. It is what drives voice.ts.
 import { useSyncExternalStore } from 'react';
@@ -41,10 +41,10 @@ onSocial((msg) => {
     set({ lines: msg.history ? msg.lines : [...state.lines, ...msg.lines], unread: state.open === 'chat' ? 0 : state.unread + news, passing });
   } else if (msg.t === 'social') {
     setIce(msg.ice);
-    set({ text: msg.text, voice: msg.voice, watchText: msg.watchText !== false, watchVoice: msg.watchVoice !== false, inVoice: msg.inVoice });
+    set({ text: msg.text, voice: msg.voice, watchText: msg.watchText, watchVoice: msg.watchVoice, inVoice: msg.inVoice });
     // (Voice switched off for those watching, and we are one of them: out, like when it is switched off for all.)
     const me = current().room;
-    const shut = msg.watchVoice === false && !!me && me.seat === null;
+    const shut = !msg.watchVoice && !!me && me.seat === null;
     if (msg.voice && !shut) sync(msg.inVoice);
     else outOfVoice(false); // the host switched voice off: the microphone is released at once
   } else {
