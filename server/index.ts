@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { TableSummary } from '../shared/types';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { Room, type Conn } from './room';
@@ -25,8 +25,6 @@ const RATE_PER_SECOND = 60; // sustained messages per connection; far above what
 const RATE_BURST_SECONDS = 10;
 /** Close code (policy violation) for a connection that floods the server. */
 export const CLOSE_FLOOD = 1008;
-/** Close code sent to a socket whose seat was taken over by a newer connection with the same token. */
-export const CLOSE_REPLACED = 4000;
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -160,7 +158,8 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       if (ws.bufferedAmount > MAX_BUFFERED_BYTES) return ws.terminate();
       ws.send(JSON.stringify(msg));
     };
-    const conn: Conn = { send, close: () => ws.close(CLOSE_REPLACED, 'Replaced by a newer connection') };
+    const over = (reason: string): void => ws.close(CLOSE_OVER, reason);
+    const conn: Conn = { send, close: over };
     /** The socket closed: the seat is kept for a reconnect. */
     const detach = (): void => {
       if (!room) return;
@@ -189,19 +188,19 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       if (allowance < 0) return ws.close(CLOSE_FLOOD, 'Too many messages'); // the client reconnects and resumes its seat
       try {
         const msg = isBinary ? null : parseClientMsg(data.toString());
-        if (!msg) return send({ t: 'error', message: 'Malformed message' });
+        if (!msg) return room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
         if (msg.t === 'create' || msg.t === 'join') {
           if (!(msg.t === 'join' && room?.code === msg.room)) moveOn(); // a repeated join to the same table just re-seats
           let target: Room | undefined;
           if (msg.t === 'join') {
             target = rooms.get(msg.room);
-            if (!target) return send({ t: 'error', message: `There is no table ${msg.room}. Check the code, or start a new table.` });
+            if (!target) return over(`There is no table ${msg.room}. Check the code, or start a new table.`);
           } else {
-            if (rooms.size >= MAX_ROOMS) return send({ t: 'error', message: 'The server is full. Try again later.' });
+            if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
             target = new Room(freshCode(), { flipMs });
           }
           const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create'); // (whoever opens a table sits down at it; whoever comes to one watches until they ask for a seat)
-          if (refusal) return send({ t: 'error', message: refusal });
+          if (refusal) return over(refusal);
           rooms.set(target.code, target);
           idleSince.delete(target);
           room = target;

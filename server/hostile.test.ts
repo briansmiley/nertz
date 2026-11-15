@@ -9,9 +9,9 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { checkInvariants, finishDeal, isHidden, legalDrops, grab, openPlay, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
 import type { AnyCard, Card, GameState, Intent, PileRef, Suit } from '../shared/types';
-import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
+import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 
 type StateMsg = Extract<ServerMsg, { t: 'state' }>;
@@ -466,7 +466,7 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBe(ace));
     // A second socket with the same token (a duplicated tab): the newest wins, and the card is not in its hand.
     const a2 = await open(a.code, 'P0', a.token);
-    await vi.waitFor(() => expect(a.closeCode).toBe(CLOSE_REPLACED));
+    await vi.waitFor(() => expect(a.closeCode).toBe(CLOSE_OVER));
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBeNull());
     expect(me(a2.game, a.seat).holding).toBeNull();
     expect(me(a2.game, a.seat).work[0]!.at(-1)!.id).toBe(ace);

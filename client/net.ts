@@ -11,7 +11,7 @@ import { choiceAt, getPrefs, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import type { Back, ClientMsg, ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, isRoomCode, type Back, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
@@ -75,13 +75,15 @@ export interface NetState {
   error: string | null;
 }
 
-/** Server close code: this seat was taken over by a newer connection with the same token. */
-const CLOSE_REPLACED = 4000;
 const TOKEN_KEY = 'nertz.token';
+const SEAT_KEY = 'nertz.seat';
 
 let state: NetState = { status: 'idle', room: null, error: null };
 const listeners = new Set<() => void>();
-/** `room` is null until the server has told us the code of the table we asked it to open. */
+/**
+ * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
+ * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
+ */
 let session: { room: string | null; name: string } | null = null;
 let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
@@ -146,9 +148,43 @@ export function post(msg: ClientMsg): boolean {
   return true;
 }
 
+/** The table named in the address, if any: the link someone was sent, or the table this window is at. */
+export function roomInUrl(): string {
+  const code = (new URLSearchParams(location.search).get('room') ?? '').trim().toUpperCase();
+  return isRoomCode(code) ? code : '';
+}
+
+/**
+ * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
+ * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone.
+ */
+function keep(seat: { room: string; name: string } | null): void {
+  try {
+    if (seat) sessionStorage.setItem(SEAT_KEY, JSON.stringify(seat));
+    else sessionStorage.removeItem(SEAT_KEY);
+  } catch {
+    // storage unavailable: a reload just lands at home
+  }
+  if (typeof history !== 'undefined') history.replaceState(null, '', seat ? `/?room=${seat.room}` : '/');
+}
+
+/** On page load: if this window was at the table in the address, it sits back down. */
+export function resume(): void {
+  let seat: { room?: unknown; name?: unknown } | null;
+  try {
+    seat = JSON.parse(sessionStorage.getItem(SEAT_KEY) ?? 'null') as typeof seat;
+  } catch {
+    return; // storage unavailable (or not ours): home
+  }
+  const room = roomInUrl();
+  if (room && seat?.room === room && typeof seat.name === 'string') join(room, seat.name);
+}
+
+/** The one way out of a session: leaving, sent away, replaced, refused. */
 function stop(error: string | null): void {
   clearTimeout(retry);
   session = null;
+  keep(null);
   const old = socket;
   socket = null;
   old?.close();
@@ -198,16 +234,15 @@ function connect(): void {
     }
     if (msg.t === 'state') {
       attempts = 0;
-      if (session) session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
+      if (session && !state.room) {
+        session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
+        keep({ room: session.room, name: session.name });
+      }
       sync = onSnapshot(sync, msg);
       set({ status: 'online', room: predict(sync), error: null });
       tell(); // (a table just opened has its code only now, and a choice of backs made at a table goes by it)
     } else if (msg.t === 'error') {
-      // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
-      if (sync.server) set({ error: msg.message });
-      else stop(msg.message);
-    } else if (msg.t === 'removed') {
-      stop('You were removed from the table by whoever deals.');
+      set({ error: msg.message });
     } else if (msg.t === 'sniper') {
       for (const fn of sniperListeners) fn(msg.of);
     } else if (msg.t === 'drag') {
@@ -219,7 +254,7 @@ function connect(): void {
   ws.onclose = (e) => {
     if (socket !== ws) return;
     socket = null;
-    if (e.code === CLOSE_REPLACED) return stop('This seat was opened in another tab.');
+    if (e.code === CLOSE_OVER) return stop(e.reason);
     // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
     sync = { ...sync, pending: [] };
     const room = sync.server ?? state.room;
@@ -229,10 +264,10 @@ function connect(): void {
 }
 
 function open(room: string | null, name: string): void {
-  stop(null);
+  if (session) stop(null);
   session = { room, name };
   attempts = 0;
-  set({ status: 'connecting' });
+  set({ status: 'connecting', error: null });
   connect();
 }
 

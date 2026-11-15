@@ -192,14 +192,20 @@ export type ClientMsg =
 export type ServerMsg =
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
   | { t: 'state'; rev: number; ack: number; room: RoomView }
+  /** A complaint about something this connection sent. It changes nothing: the connection goes on. */
   | { t: 'error'; message: string }
-  /** Whoever deals has sent you away from the table: the connection is closed next, and is not to be made again. */
-  | { t: 'removed' }
   /** To you alone: you have just beaten the player in seat `of` to a pile in the middle with the very card they were about to put there. */
   | { t: 'sniper'; of: number }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
   | SocialServerMsg;
+
+/**
+ * The close code of a connection the server is done with for good: refused a table, its seat opened in another tab, or
+ * sent away by whoever deals. The close reason is what to tell the player (at most 123 bytes). The window goes home and
+ * does not come back by itself; any other close is a dropped line, and the window reconnects.
+ */
+export const CLOSE_OVER = 4000;
 
 /**
  * Where a held card (the one named by the sender's `hold`) is, in two frames
