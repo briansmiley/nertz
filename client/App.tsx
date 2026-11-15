@@ -12,6 +12,7 @@ import { useDismiss } from './dismiss';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
+import { Spread } from './Spread';
 import { Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the form. What makes a reload sit back down is
@@ -377,13 +378,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   return (
     <main className="home">
       <div className="hero">
-        <div className="spread" aria-hidden="true">
-          {/* (Six, as the fan was drawn: the table seats ten now, the picture does not have to.) */}
-          {BACKS.slice(0, 6).map((_, seat) => (
-            <Mini key={seat} seat={seat} style={{ '--i': seat } as CSSProperties} />
-          ))}
-          <Mini suit="S" rank={1} style={{ '--i': 6 } as CSSProperties} />
-        </div>
+        <Spread />
         <h1>Nertz!</h1>
       </div>
 

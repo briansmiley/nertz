@@ -141,6 +141,11 @@ export function backGroups(): { name: string; backs: Back[] }[] {
   return [...BACK_GROUPS.map((g) => ({ name: g.name, backs: [...g.backs] })), ...(rest.length ? [{ name: 'Other', backs: rest }] : [])];
 }
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
+/** A back drawn by chance from all of them, never `had`: what a card turned over shows (the hand on the home page). `roll` is in [0, 1). */
+export function anotherBack(had: Back, roll: number = Math.random()): Back {
+  const others = (Object.keys(CARD_BACKS) as Back[]).filter((b) => b !== had);
+  return others[Math.min(others.length - 1, Math.floor(roll * others.length))]!;
+}
 
 export type ClientMsg =
   /** Open a new table, and sit down at it; the server picks the code and answers with the first snapshot (`room.code`). */
