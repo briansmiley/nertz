@@ -11,7 +11,7 @@ import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, wo
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
-import { Client, FakeConn, opening, roomWith, startRound, type StateMsg } from './testkit';
+import { Client, FakeConn, opening, roomWith, send, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
@@ -87,30 +87,66 @@ describe('Room', () => {
     sendIntent(room, b, 0, move(aceB, felt(0, 0))); // an Ace beaten to a place is no snipe: it has others
     sendIntent(room, a, 1, move(twoA, slot(0)));
     sendIntent(room, b, 1, move(twoB, slot(0))); // too late: a's two is on it
-    room.handle(b, { t: 'sniped', slot: 0 }); // their window says so too: counted once
-    room.handle(a, { t: 'sniped', slot: 0 }); // not theirs to complain of
+    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: aceA }); // and their window had refused it too: counted once
+    room.handle(a, { t: 'tried', card: twoA, slot: 0, seen: aceA }); // (theirs is on the pile)
+    expect(send(room, b, { t: 'sniped', slot: 0 })).toBe(true); // a window from before: taken, and nothing comes of it
     sendIntent(room, a, 2, { k: 'nertz' });
     expect(room.phase).toBe('results');
     expect(room.lastRound!.snipes).toEqual([{ by: 0, of: 1, n: 1 }]);
+    expect(b.of('error')).toEqual([]);
   });
 
-  it('tells the table of a snipe: the sniper alone that it was theirs, and everyone a line where the chat is, once', () => {
+  it('tells everyone in the room of a snipe, once: the one who did it, the one it was done to, and whoever watches', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
-    // A third, who only watches what is sent: every message, not only snapshots.
-    const got: ServerMsg[] = [];
-    room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc');
+    const c = new FakeConn();
+    room.join(c, 'Cy', 'tok-cccc'); // only watching
+    room.handle(a, { t: 'start' });
+    room.game = rigged([0, 1], [0]);
+    const [aceA, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
+    sendIntent(room, a, 0, move(aceA, felt(0, 0)));
+    sendIntent(room, b, 0, hold(twoB)); // b takes their two up while the Ace is the top
+    sendIntent(room, a, 1, move(twoA, slot(0)));
+    // b's window sees a's two arrive, and refuses b's own drop there; it tells the server what it tried.
+    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: aceA });
+    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: aceA }); // said again: still one
+    for (const conn of [a, b, c]) {
+      expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0 }]);
+      expect(conn.lines.filter((l) => l.k === 'sniped')).toMatchObject([{ k: 'sniped', by: { who: 0, name: 'P0' }, of: { who: 1, name: 'P1' } }]);
+    }
+  });
+
+  it('a card let go where it never had a race to lose is no snipe', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'start' });
+    room.game = rigged([0, 1], [0]);
+    const [aceA, twoA, twoB, aceHB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1), workTop(room.game, 1, 2)];
+    sendIntent(room, a, 0, move(aceA, felt(0, 0)));
+    sendIntent(room, a, 1, move(twoA, slot(0)));
+    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: twoA }); // a's two lay there already when b took theirs up
+    room.handle(b, { t: 'tried', card: aceHB, slot: 0, seen: aceA }); // a card that never went there
+    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: 'no such card' });
+    room.handle(b, { t: 'tried', card: twoB, slot: 1, seen: aceA }); // no pile there
+    expect([...a.of('snipe'), ...b.of('snipe')]).toEqual([]);
+    sendIntent(room, a, 2, { k: 'nertz' });
+    expect(room.lastRound!.snipes).toBeUndefined();
+  });
+
+  it('with text chat switched off a snipe still flashes for everyone, and there is no line of it where the chat is', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'social', text: false });
     room.handle(a, { t: 'start' });
     room.game = rigged([0, 1], [0]);
     const [aceA, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, a, 1, move(twoA, slot(0)));
     sendIntent(room, b, 0, move(twoB, slot(0))); // too late
-    room.handle(b, { t: 'sniped', slot: 0 }); // said again by their window: still one line
-    const lines = got.flatMap((m) => (m.t === 'chat' && !m.history ? m.lines : [])).filter((l) => l.k === 'sniped'); // (not the round's own notice that it started)
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({ k: 'sniped', by: { who: 0, name: 'P0' }, of: { who: 1, name: 'P1' } });
-    expect(got.some((m) => m.t === 'sniper')).toBe(false); // (that one is for the sniper only)
+    for (const conn of [a, b]) {
+      expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0 }]);
+      expect(conn.lines.filter((l) => l.k === 'sniped')).toEqual([]);
+    }
   });
 
   it('tells the table where the chat is of a round started, of how it went with the score sheet\'s numbers, and of the table started over', () => {
@@ -148,11 +184,11 @@ describe('Room', () => {
     const late: ServerMsg[] = [];
     room.join({ send: (m) => void late.push(wire(m)), close: () => {} }, 'Di', 'tok-dddd');
     expect(told(late, true)).toEqual(lines);
-    // With text chat switched off they are still told (as a snipe is), but not kept.
+    // With text chat switched off there is nowhere to read them: neither told nor kept.
     room.handle(a, { t: 'social', text: false });
     room.handle(a, { t: 'start' });
     opening(room, a);
-    expect(told(got).at(-1)).toEqual({ k: 'started', round: 1 });
+    expect(told(got)).toEqual(lines);
     const later: ServerMsg[] = [];
     room.join({ send: (m) => void later.push(wire(m)), close: () => {} }, 'Ed', 'tok-eeee');
     expect(told(later, true)).toEqual(lines);

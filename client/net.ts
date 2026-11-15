@@ -111,11 +111,12 @@ function token(): string {
   }
 }
 
-/** You beat someone to a pile (the server says so, to you alone): told to the table (client/Table.tsx). Returns the way to stop listening. */
-const sniperListeners = new Set<(of: number) => void>();
-export const onSniper = (fn: (of: number) => void): (() => void) => {
-  sniperListeners.add(fn);
-  return () => void sniperListeners.delete(fn);
+/** Somebody sniped somebody (the server says so, to everyone): told to the table (client/Table.tsx). Returns the way to stop listening. */
+type SnipeMsg = Extract<ServerMsg, { t: 'snipe' }>;
+const snipeListeners = new Set<(msg: SnipeMsg) => void>();
+export const onSnipe = (fn: (msg: SnipeMsg) => void): (() => void) => {
+  snipeListeners.add(fn);
+  return () => void snipeListeners.delete(fn);
 };
 
 /** Chat and voice messages go to whoever asked for them (client/social.ts); this store only knows the game. */
@@ -241,8 +242,8 @@ function connect(): void {
       set({ status: 'online', room: predict(sync), error: null });
     } else if (msg.t === 'error') {
       set({ error: msg.message });
-    } else if (msg.t === 'sniper') {
-      for (const fn of sniperListeners) fn(msg.of);
+    } else if (msg.t === 'snipe') {
+      for (const fn of snipeListeners) fn(msg);
     } else if (msg.t === 'drag') {
       for (const fn of dragListeners) fn(msg);
     } else {

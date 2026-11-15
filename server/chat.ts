@@ -110,24 +110,21 @@ export class Social {
     this.recent.set(member, recent);
     if (recent.length >= CHAT_RATE_COUNT) return;
     recent.push(now);
-    this.post(members, { k: 'said', by: { who: member.id, name: member.name }, text }, true);
+    this.post(members, { k: 'said', by: { who: member.id, name: member.name }, text });
   }
 
   /**
    * The table's own notice (a snipe, a round dealt or over, the table started over), for everyone to read where the
-   * chat is. While text chat is switched off there is nowhere to read it, and it is not kept; it is still sent, since
-   * the table also sounds and flashes a snipe.
+   * chat is. While text chat is switched off there is nowhere to read it: it is neither sent nor kept.
    */
   tell(members: readonly Member[], event: Exclude<ChatEvent, { k: 'said' }>): void {
-    this.post(members, event, this.text);
+    if (this.text) this.post(members, event);
   }
 
-  private post(members: readonly Member[], event: ChatEvent, keep: boolean): void {
+  private post(members: readonly Member[], event: ChatEvent): void {
     const line: ChatLine = { ...event, id: this.nextId++, at: Date.now() };
-    if (keep) {
-      this.lines.push(line);
-      if (this.lines.length > CHAT_HISTORY) this.lines.shift();
-    }
+    this.lines.push(line);
+    if (this.lines.length > CHAT_HISTORY) this.lines.shift();
     for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
   }
 

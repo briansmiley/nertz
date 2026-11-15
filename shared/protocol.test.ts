@@ -25,6 +25,9 @@ describe('parseClientMsg', () => {
     for (const intent of [{ k: 'move', cardId: 'c1', count: 1, to: { k: 'slot', i: 23 } }, { k: 'hold', cardId: 'c1' }, { k: 'release' }, { k: 'clear', slot: 0 }, { k: 'nertz' }]) {
       expect(parseClientMsg({ t: 'intent', seq: 1, intent: { ...intent, extra: true } })).toEqual({ t: 'intent', seq: 1, intent });
     }
+    expect(parseClientMsg({ t: 'tried', card: 'c1', slot: 3, seen: 'c2', by: 0 })).toEqual({ t: 'tried', card: 'c1', slot: 3, seen: 'c2' }); // (who did it is the server's to say)
+    expect(parseClientMsg({ t: 'tried', card: 'c1', slot: 0, seen: null })).toEqual({ t: 'tried', card: 'c1', slot: 0, seen: null });
+    expect(parseClientMsg({ t: 'sniped', slot: 2 })).toEqual({ t: 'sniped' }); // a window from before the server judged snipes: taken, and ignored
   });
 
   it('caps the name length', () => {
@@ -49,6 +52,7 @@ describe('parseClientMsg', () => {
       { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'foundation', id: 'f' } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'newFoundation' } } },
       { t: 'intent', seq: 1, intent: { k: 'hold' } }, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: 'x'.repeat(65) } },
       { t: 'intent', seq: 1, intent: { k: 'clear' } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: 40 } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: -1 } },
+      { t: 'tried', slot: 0, seen: null }, { t: 'tried', card: 'c', slot: 40, seen: null }, { t: 'tried', card: 'c', slot: 0 }, { t: 'tried', card: 'c', slot: 0, seen: 7 },
       { t: 'create' }, { t: 'create', name: 'A' }, { t: 'create', name: '  ', token: TOKEN }, { t: 'create', name: 'A', token: 'short' }, { t: 'create', name: 7, token: TOKEN },
       `{"t":"start","pad":"${'x'.repeat(MAX_MESSAGE_BYTES)}"}`,
     ];

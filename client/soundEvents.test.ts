@@ -7,7 +7,7 @@ import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
 import { freshSync, onSend, onSnapshot, predict, type Sync } from './net';
-import { beatenTo, graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
+import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
 /** Two players whose work piles are single face-up cards: A-spades, 2-spades, A-hearts and a black 5 on which nothing fits yet; on the waste, a red 4 that fits on the 5. */
 const rigged = (emptyNertz: number[] = []): GameState => rig(inPlay([0, 1], lcg(7)), { work: ['S1', 'S2', 'H1', 'C5'], waste: ['D4'], emptyNertz });
@@ -104,17 +104,13 @@ describe('sound cues from rendered state', () => {
     expect(mine).toBe(workTop(s.game, 0, 0));
   });
 
-  it('holding a card when someone else takes the pile it could have gone on makes no sound of its own; letting it go there is being beaten to it', () => {
+  it('holding a card when someone else takes the pile it could have gone on makes no sound of its own', () => {
     const s = session(rigged());
     s.them(move(workTop(s.game, 1, 0), felt(0, 0))); // their ace in the middle
-    const two = workTop(s.game, 0, 1);
-    s.me({ k: 'hold', cardId: two });
+    s.me({ k: 'hold', cardId: workTop(s.game, 0, 1) });
     s.confirm();
-    expect(beatenTo(s.frame.room!.game!, 0, two, 0)).toBe(false); // the pile would still take it
     const sniped = s.them(move(workTop(s.game, 1, 1), slot(0)));
     expect(sniped).toEqual([{ k: 'centre', who: 'other' }]); // it may have somewhere else to go
-    expect(beatenTo(s.frame.room!.game!, 0, two, 0)).toBe(true); // their two lies where ours was going
-    expect(beatenTo(s.frame.room!.game!, 0, two, 1)).toBe(false); // not over any other place
   });
 
   it('a card picked up and put down nowhere gets the same quiet tap', () => {

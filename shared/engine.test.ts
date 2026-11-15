@@ -24,6 +24,7 @@ import {
   resolveStuck,
   scoreRound,
   seatedPeople,
+  snipedBy,
   startCountdown,
   viewFor,
   type Result,
@@ -1030,6 +1031,41 @@ describe('a refused drop', () => {
     rejected(applyIntent(s, 0, move('0:SA', felt(0, 0), 2))); // "two cards", but it is the top one
     rejected(applyIntent(s, 0, move('0:D9', work(2), 2))); // the nertz pile only ever gives one
     expect(canDrop(s, 0, '0:H2', work(1))).toBe(true); // canDrop and legalDrops speak of what lies there now
+  });
+});
+
+describe('a snipe', () => {
+  // Seat 1 put its 2 of spades on seat 0's Ace, and then its 3; and its 2s of clubs and diamonds on its own Aces.
+  // Seat 0 has a 2 and a 3 of spades and a 2 of clubs of its own showing, a 2 of diamonds under a run, and an Ace of
+  // hearts beaten to the felt by seat 1's.
+  const s = table([{ nertz: 'S3', waste: 'HA', work: ['S2', 'D2 CA', 'C2', []] }, { work: ['D9', [], [], []] }], {
+    slots: [[c('SA'), c('S2', 1), c('S3', 1)], [c('CA', 1), c('C2', 1)], cs('HA', 1), [c('DA', 1), c('D2', 1)]],
+  });
+
+  it('is the very card one was about to put down, put there first by someone else since one took it up', () => {
+    expect(snipedBy(s, 0, '0:S3', 0, null)).toEqual({ by: 1, card: '1:S3' }); // a move refused on arrival: it was sent, so the pile was waiting for it
+    expect(snipedBy(s, 0, '0:S3', 0, '1:S2')).toEqual({ by: 1, card: '1:S3' }); // a drop the window refused: it saw the 2 on top
+    expect(snipedBy(s, 0, '0:S3', 0, '0:SA')).toEqual({ by: 1, card: '1:S3' }); // taken up before the 2 came, even
+    expect(snipedBy(s, 0, '0:C2', 1, '1:CA')).toEqual({ by: 1, card: '1:C2' });
+  });
+
+  it('is not a pile whose top was that card already, nor a card that never went there', () => {
+    expect(snipedBy(s, 0, '0:S3', 0, '1:S3')).toBeNull(); // there all along: a card with nowhere to go
+    expect(snipedBy(s, 0, '0:S2', 0, '0:SA')).toBeNull(); // the 2 was never what that pile waited for
+    expect(snipedBy(s, 0, '0:S3', 1, '1:CA')).toBeNull();
+    expect(snipedBy(s, 0, '0:S3', 4, null)).toBeNull(); // no pile there
+  });
+
+  it('believes no top that was not on that very pile, and judges only a card of its own that could be taken up alone', () => {
+    expect(snipedBy(s, 0, '0:S3', 0, '1:CA')).toBeNull(); // on another pile
+    expect(snipedBy(s, 0, '0:S3', 0, 'nonsense')).toBeNull();
+    expect(snipedBy(s, 0, '0:D2', 3, null)).toBeNull(); // under a run
+    expect(snipedBy(s, 0, '1:S3', 0, null)).toBeNull(); // not theirs
+    expect(snipedBy(s, 1, '1:D9', 0, null)).toBeNull();
+  });
+
+  it('is never an Ace: one beaten to a place has others to go to', () => {
+    expect(snipedBy(s, 0, '0:HA', 2, null)).toBeNull();
   });
 });
 
