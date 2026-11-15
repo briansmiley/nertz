@@ -1570,7 +1570,7 @@ button {
 .picker {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 48000; /* over the score sheet, the chat and your settings (it is opened from them), under the connection banner */
   display: grid;
   place-items: center;
   padding: 16px;
