@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { checkInvariants, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, inGrace, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
 import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
 import { felt, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
 import type { AnyCard, GameState, Intent, PileRef } from '../shared/types';
@@ -23,12 +23,13 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 function leaks(g: GameState): string[] {
   const out: string[] = [];
   const faceUp = (c: AnyCard) => !isHidden(c);
+  const shut = g.status.at === 'dealing' || g.status.at === 'ready' || g.status.at === 'countdown';
   for (const p of g.players) {
-    const at = `${g.stage} seat ${p.seat}`;
+    const at = `${g.status.at} seat ${p.seat}`;
     p.stock.forEach((c) => faceUp(c) && out.push(`${at}: stock card with a face`));
-    p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || g.stage !== 'play') && out.push(`${at}: nertz card ${i} with a face`));
-    p.work.forEach((w, k) => w.forEach((c, i) => faceUp(c) && (i < p.down[k]! || g.stage === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
-    p.waste.forEach((c, i) => faceUp(c) && (i >= p.waste.length - p.dealt || g.stage !== 'play') && out.push(`${at}: waste card ${i} with a face`));
+    p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && out.push(`${at}: nertz card ${i} with a face`));
+    p.work.forEach((w, k) => w.forEach((c, i) => faceUp(c) && (i < p.down[k]! || g.status.at === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
+    p.waste.forEach((c, i) => faceUp(c) && (i >= p.waste.length - p.dealt || shut) && out.push(`${at}: waste card ${i} with a face`));
   }
   return out;
 }
@@ -240,8 +241,8 @@ describe('a hostile client over real sockets', () => {
       await vi.waitFor(() => expect(p.last.ack).toBe(p.seq - 1));
       await p.synced();
     };
-    const closed = async (stage: GameState['stage'], shown: number) => {
-      await vi.waitFor(() => players.forEach((p) => expect(p.game.stage).toBe(stage)), { timeout: DEAL_MS + 1000 });
+    const closed = async (stage: GameState['status']['at'], shown: number) => {
+      await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe(stage)), { timeout: DEAL_MS + 1000 });
       const state = room.game;
       for (const p of players) await everything(p);
       expect(room.game).toBe(state); // not one of them changed anything
@@ -265,13 +266,13 @@ describe('a hostile client over real sockets', () => {
     expect(a.last.room.startMs).toBeNull();
     b.send({ t: 'go' });
     await b.synced();
-    expect(room.game!.stage).toBe('ready');
+    expect(room.game!.status.at).toBe('ready');
     a.send({ t: 'go' });
     await closed('countdown', 3 * 4);
     expect(players[2]!.last.room.startMs).toBeGreaterThan(0);
     expect(players[2]!.last.room.startMs).toBeLessThanOrEqual(START_MS);
     // The word: every nertz top turns over, for everyone, and now the same messages count.
-    await vi.waitFor(() => players.forEach((p) => expect(p.game.stage).toBe('play')), { timeout: START_MS + 1000 });
+    await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe('play')), { timeout: START_MS + 1000 });
     for (const p of players) expect(faceUp(p)).toBe(3 * 5);
     await a.did({ k: 'flip' });
     expect(me(room.game!, a.seat).waste).toHaveLength(1);
@@ -307,7 +308,7 @@ describe('a hostile client over real sockets', () => {
     const waiting = room.game!;
     expect(waiting.slots[3]!.cards).toHaveLength(13);
     expect(me(waiting, a.seat)).toMatchObject({ holding: null, stuck: false, waste: [], work: [{ length: 1 }, { length: 1 }, { length: 1 }, []] });
-    expect(waiting.nertzCalledBy).toBeNull();
+    expect(calledBy(waiting)).toBeNull();
     expect(piles(waiting)).toHaveLength(1);
     expect(b.drags).toEqual([]);
     // A new socket is held to it just the same.
@@ -423,7 +424,7 @@ describe('four bots and a swarm at one table', () => {
       if ((args[0] as { bot?: unknown }).bot) count.bots++;
       const bad = checkInvariants(room.game!);
       if (bad) problems.push(`after ${JSON.stringify(args[2])}: ${bad}`);
-      if (room.game!.grace.length > 0) count.graces++;
+      if (inGrace(room.game!).length > 0) count.graces++;
     };
     const seqs = [0, 0];
     for (let round = 0; round < 3; round++) {
@@ -432,14 +433,14 @@ describe('four bots and a swarm at one table', () => {
       vi.advanceTimersByTime(1); // (the first snapshot of the round)
       // The swarm does not wait for the cards, the dealer or the count: it fires all the way through the opening.
       for (const [stage, ms] of [['dealing', DEAL_MS], ['ready', 1], ['countdown', START_MS]] as const) {
-        expect(room.game!.stage).toBe(stage);
+        expect(room.game!.status.at).toBe(stage);
         const state = room.game;
         for (let n = 0; n < 60; n++) taps.forEach((t, i) => room.handle(t, { t: 'intent', seq: seqs[i]!++, intent: swarmIntent(t.last!.room.game!, i, rnd) }));
         expect(room.game).toBe(state);
         if (stage === 'ready') room.handle(taps[0]!, { t: 'go' });
         vi.advanceTimersByTime(ms);
       }
-      expect(room.game!.stage).toBe('play');
+      expect(room.game!.status.at).toBe('play');
       for (let step = 0; step < 6000 && room.phase === 'playing'; step++) {
         // A burst from each swarm client on the view it last got, then a little time for the bots and the snapshots.
         taps.forEach((t, i) => {

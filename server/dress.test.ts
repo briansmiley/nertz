@@ -137,7 +137,7 @@ describe('coming back', () => {
     expect(room.game).toBe(first);
     send(room, a, { t: 'redeal' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
-    expect(room.game!.stage).toBe('dealing');
+    expect(room.game!.status.at).toBe('dealing');
     expect([room.round, room.phase, room.lastRound]).toEqual([1, 'playing', null]);
   });
 });

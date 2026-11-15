@@ -148,7 +148,7 @@ export type ClientMsg =
   /** Come into (or reconnect to) an existing table: to watch, until you ask for a seat (`sit`). An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
-  /** Dealer only, once the cards are dealt and the table is waiting (`game.stage` is `ready`): count "1, 2, 3, Nertz!" and open play. */
+  /** Dealer only, once the cards are dealt and the table is waiting (`game.status` is `ready`): count "1, 2, 3, Nertz!" and open play. */
   | { t: 'go' }
   /** Once the cards are dealt, before Start: I am ready (or, off, not after all). Shown to everyone; the dealer still says when. */
   | { t: 'ready'; on: boolean }

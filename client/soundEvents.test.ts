@@ -2,7 +2,7 @@
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them (net.ts).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, finishDeal, refused, startCountdown } from '../shared/engine';
+import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
@@ -274,11 +274,11 @@ describe('sound cues from rendered state', () => {
     if (!state.ok) throw new Error(state.reason);
     state = applyIntent(state.state, 1, { k: 'nertz' });
     if (!state.ok) throw new Error(state.reason);
-    expect(state.state.grace).toEqual([0]);
+    expect(inGrace(state.state)).toEqual([0]);
     expect(graceTicking(roomOf(state.state, 0))).toBe(true);
     expect(graceTicking(roomOf(state.state, 1))).toBe(false); // the caller just waits
     expect(graceTicking(roomOf(g, 0))).toBe(false);
-    expect(graceTicking({ ...roomOf(state.state, 0), phase: 'results' })).toBe(false);
+    expect(graceTicking(roomOf(expireGrace(state.state), 0, { phase: 'results' }))).toBe(false);
     expect(graceTicking(null)).toBe(false);
   });
 });

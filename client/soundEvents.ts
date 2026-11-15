@@ -10,6 +10,7 @@
 //   that is the 'home' cue;
 // - nothing is compared across a reconnect, a reload or a change of table, so
 //   whatever happened meanwhile is not replayed.
+import { calledBy, hasOpened, inGrace } from '../shared/engine';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { GameState, RoomView } from '../shared/types';
 
@@ -102,8 +103,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const add = (cue: Cue, key = '') => cues.set(`${cue.k}:${'who' in cue ? cue.who : ''}:${key}`, cue);
 
   // The opening: the count starts once (its ticks are scheduled from the duration the snapshot carried), play opens once.
-  if (b.game.stage === 'countdown' && a.game.stage !== 'countdown') add({ k: 'count', at: startBeats(b.startMs ?? START_MS) });
-  if (b.game.stage === 'play' && a.game.stage !== 'play') add({ k: 'open' });
+  if (b.game.status.at === 'countdown' && a.game.status.at !== 'countdown') add({ k: 'count', at: startBeats(b.startMs ?? START_MS) });
+  if (hasOpened(b.game) && !hasOpened(a.game)) add({ k: 'open' });
 
   const before = places(a.game);
   const after = places(b.game);
@@ -139,9 +140,10 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });
   }
 
-  if (a.game.nertzCalledBy === null && b.game.nertzCalledBy !== null) add({ k: 'nertz', ...(b.players.find((p) => p.seat === b.game!.nertzCalledBy)?.bot ? { bot: true } : {}) });
+  const caller = calledBy(b.game);
+  if (calledBy(a.game) === null && caller !== null) add({ k: 'nertz', ...(b.players.find((p) => p.seat === caller)?.bot ? { bot: true } : {}) });
   return [...cues.values()];
 }
 
 /** The grace countdown ticks only for someone who still has a card to put down. */
-export const graceTicking = (room: RoomView | null): boolean => room?.phase === 'playing' && room.seat !== null && !!room.game?.grace.includes(room.seat);
+export const graceTicking = (room: RoomView | null): boolean => !!room?.game && room.seat !== null && inGrace(room.game).includes(room.seat);

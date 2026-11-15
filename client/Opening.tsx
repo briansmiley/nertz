@@ -1,4 +1,4 @@
-// The opening of a round, after the deal (GameState.stage): the dealer's Start
+// The opening of a round, after the deal (GameState.status): the dealer's Start
 // button while the table waits, "1, 2, 3" while the server counts, and the word
 // as play opens. It decides nothing: the button sends `go`, the numbers are
 // read off `startMs`, and the word appears when the snapshot that opens play does.
@@ -29,7 +29,7 @@ function useBeat(startMs: number | null): number {
 
 /** `at` is the middle of the table (the centre of the felt), in the table's own coordinates. */
 export function Opening({ room, at }: { room: RoomView; at: { x: number; y: number } }) {
-  const stage = room.phase === 'playing' ? room.game?.stage : undefined;
+  const stage = room.game?.status.at;
   const dealer = room.players.find((p) => p.isHost);
   const mine = stage === 'ready' && dealer?.id === room.me;
   /** Who was dealt in, and which of them have said they are ready. */

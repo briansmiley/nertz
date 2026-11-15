@@ -31,7 +31,7 @@ export function nag(): void {
 /** Is the player we are rendering held up by a finished pile of their own right now? */
 function blocked(): boolean {
   const room = current().room;
-  return !!room?.game && room.phase === 'playing' && room.game.stage === 'play' && room.seat !== null && mustClear(room.game, room.seat);
+  return !!room?.game && room.seat !== null && mustClear(room.game, room.seat);
 }
 
 /** `send` from net.ts, which refuses whatever the engine refuses; if the reason is clear-first, the player is told. */
@@ -54,7 +54,7 @@ export interface ClearFirst {
 
 /** What the table needs to know about clear-first for the round on screen. */
 export function useClearFirst(game: GameState, you: number): ClearFirst {
-  const slot = game.stage === 'play' && mustClear(game, you) ? game.slots.findIndex((pile) => completedBy(pile) === you) : -1;
+  const slot = mustClear(game, you) ? game.slots.findIndex((pile) => completedBy(pile) === you) : -1;
   const waiting = slot >= 0;
   const [tries, setTries] = useState(0);
   const [shown, setShown] = useState(false);

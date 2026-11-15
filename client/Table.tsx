@@ -13,7 +13,7 @@
 import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, inGrace, isHidden, isLive } from '../shared/engine';
 import { backNamed, DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
@@ -566,7 +566,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   });
 
   const mine = game.players.find((p) => p.seat === you);
-  const called = game.nertzCalledBy !== null;
+  const caller = calledBy(game);
+  const called = caller !== null;
   // Development aid: Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
   const [replay, setReplay] = useState(0);
   const [replaying, setReplaying] = useState(false);
@@ -588,10 +589,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = setTimeout(() => setReplaying(false), DEAL_MS);
     return () => clearTimeout(t);
   }, [replay, replaying]);
-  const dealing = game.stage === 'dealing' || replaying;
-  /** Nothing can be started: the cards are still being dealt, play has not opened, or Nertz has been called. (A card already in hand may still land during grace.) */
+  const dealing = game.status.at === 'dealing' || replaying;
+  /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over). (A card already in hand may still land during grace.) */
   const paused = !!room.paused && !results;
-  const frozen = dealing || game.stage !== 'play' || called || results || paused;
+  const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
   useEffect(() => {
     if (stage !== 'live' || frozen) setPeek(null);
@@ -619,7 +620,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     }
     return plan;
   }, [dealing, dealMs, game.players, L, you]);
-  const inGrace = called && !results && game.grace.length > 0;
+  const grace = inGrace(game);
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
   /** My own faces. */
   const own = deckOf(prefs);
@@ -1040,7 +1041,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
   // The NERTZ! stamp comes down on the place the caller's nertz pile stood (now empty), not across their whole hand:
   // large enough to read at any seat, and kept inside the window.
-  const callerPile = called ? (game.nertzCalledBy === you ? me?.nertz : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.nertz) : undefined;
+  const callerPile = called ? (caller === you ? me?.nertz : L.opponents.find((o) => o.seat === caller)?.nertz) : undefined;
   const stampSize = callerPile ? Math.max(22, Math.min(callerPile.w * 0.78, 60)) : 0;
   const callerBox = callerPile && {
     x: clamp(callerPile.x + callerPile.w / 2 - stampSize * 2, 4, Math.max(4, W - stampSize * 4 - 4)),
@@ -1231,7 +1232,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
       {called && stage !== 'sheet' && (
         <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
-          <span>{game.nertzCalledBy === you ? 'You' : name(game.nertzCalledBy!)} got Nertz!</span>
+          <span>{caller === you ? 'You' : name(caller)} got Nertz!</span>
         </div>
       )}
       {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
@@ -1254,12 +1255,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         </div>
       )}
 
-      {inGrace && room.graceMs !== null && (
+      {grace.length > 0 && room.graceMs !== null && (
         <Countdown
           ms={room.graceMs}
           top={countdownTop(L, W)}
-          text={game.grace.includes(you) ? 'Put it down!' : name(game.grace[0]!) + (game.grace.length > 1 ? ` +${game.grace.length - 1}` : '')}
-          label={game.grace.includes(you) ? 'Put your card down' : `Waiting for ${game.grace.map(name).join(' and ')} to put a card down`}
+          text={grace.includes(you) ? 'Put it down!' : name(grace[0]!) + (grace.length > 1 ? ` +${grace.length - 1}` : '')}
+          label={grace.includes(you) ? 'Put your card down' : `Waiting for ${grace.map(name).join(' and ')} to put a card down`}
         />
       )}
 

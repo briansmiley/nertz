@@ -161,7 +161,7 @@ describe('card positions while dragging', () => {
     room.handle(a, { t: 'go' });
     room.handle(a, { t: 'intent', seq: 3, intent: { k: 'hold', cardId: card } });
     room.handle(a, at(card));
-    expect(room.game!.stage).toBe('countdown');
+    expect(room.game!.status.at).toBe('countdown');
     expect(b.drags).toEqual([]);
     vi.advanceTimersByTime(START_MS);
     // B goes out and calls; A was not holding anything, so the round is over at once.

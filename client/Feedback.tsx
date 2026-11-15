@@ -82,7 +82,7 @@ export function Feedback({ room }: { room?: RoomView | null }) {
     if (!text.trim() || state.k === 'sending') return;
     setState({ k: 'sending' });
     const me = room?.players.find((p) => p.id === room.me);
-    const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.stage ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
+    const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.status.at ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
     const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${navigator.userAgent}`;
     try {
       const res = await fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name, room: room?.code, context, image }) });

@@ -445,17 +445,25 @@ connection. So the server never believes in a held card that went home. (A stock
 not a hold: it is face-down and cannot be played, so nothing is sent until it lands, and then only `{ k: 'flip' }`.) `PlayerState.holding` is part of every view, and
 the client's replay applies the same rule. All the rules of grace live in the pure engine:
 
-- `nertz` sets `nertzCalledBy` and fills `GameState.grace` with the seats that are holding a card with at least one legal
-  destination. Everyone else's hold is dropped and all their intents are rejected from then on.
-- A seat in `grace` may send exactly one more intent: a `move` of its held card, or a `release`. Either removes it from
-  `grace`, the move even when it is refused; any other seat whose held card now has nowhere to go is removed with it.
-- `isOver(state)` is "Nertz was called and `grace` is empty". `expireGrace(state)` empties it.
+- `nertz` takes the round's status to `grace` (with who called), and the hold of everyone whose card has no legal
+  destination is dropped. Who is in grace is not kept anywhere: it is exactly the seats still holding a card
+  (`inGrace`). All of everyone else's intents are rejected from then on.
+- A seat in grace may send exactly one more intent: a `move` of its held card, or a `release`. Either empties its hand
+  and so takes it out of grace, the move even when it is refused; any other seat whose held card now has nowhere to go
+  is taken out with it.
+- When nobody is left in grace the status is `over`, by that Nertz. `expireGrace(state)` takes it there at once.
 
 The server owns only the clock: when a call leaves someone in grace it starts one 4-second timer, and on expiry applies
 `expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to `results`. Snapshots carry
 `graceMs`, the milliseconds left when the snapshot was sent (a duration to count down locally, not a timestamp), or `null`.
 
-**The opening is a small state machine, and it is the same for everyone.** `GameState.stage` goes `dealing` → `ready` →
+**One status.** How far a round has got is one field, `GameState.status`: `dealing`, `ready`, `countdown`, `play`,
+`grace` (who called) or `over` (how it ended: a Nertz by a seat, a jam, or a vote). The reducer switches on it once, and
+every round ends through the same step, which empties every hand. What others ask of it has one name each in the
+engine: `isLive` (the room, the bots, pause, the vote to end the round, the table), `hasOpened` (the nertz tops are
+shown), `isOver`, `calledBy`, `inGrace`. The round's result (`RoundResult.end`) is the very value the status ended on.
+
+**The opening is a small state machine, and it is the same for everyone.** `GameState.status` goes `dealing` → `ready` →
 `countdown` → `play`, one pure function per step (`finishDeal`, `startCountdown`, `openPlay`; each returns the same object
 when it is not its turn). Only `play` accepts intents: before it `applyIntent` refuses every intent from every seat (the
 sender's `ack` still advances), so a client predicts nothing either. `viewFor` redacts by stage: while `dealing` every
@@ -478,12 +486,12 @@ arrives late (a reload or reconnect mid-deal) puts the cards already dealt in pl
 later snapshots, reconnects, the end of the round and coming back from the score sheet never replay it. Disconnecting during the deal changes nothing: the deal ends on time.
 
 **Clear-first is a rule of the reducer.** `mustClear(state, seat)` is "some centre pile was completed by this seat and
-Nertz has not been called". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
+the round is live". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
 pile to the tray is a single intent; it never used `hold`). The client's replay applies the same rule, so after a
 predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the nudge and the notice.
 
 **The final table.** During `results` the snapshot still holds the finished round (`game`: piles and their places, tray, hands) next to
-`lastRound` (who called, and per player the name, the cards played, the nertz cards left and the running total), so the
+`lastRound` (how it ended, and per player the name, the cards played, the nertz cards left and the running total), so the
 client can play the end-of-round sequence and draw the score sheet from it, even if a player has left since.
 
 **One card per `flip`.** `{ k: 'flip' }` moves the top stock card onto the waste and counts it in `PlayerState.dealt`
@@ -547,7 +555,7 @@ by ear), and not in Safari or Firefox or across real networks.
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
   table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
