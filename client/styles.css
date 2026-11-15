@@ -132,20 +132,12 @@ button {
 }
 
 /* A back that is a one-colour pattern: one picture of it, white on nothing, laid over the player's colour. Its own frame is the card's edge. */
-.back.tint,
-.back.pic {
+.back.tint {
   border: 0;
   background-size: 100% 100%;
   box-shadow:
     0 0 0 0.6px rgba(20, 30, 40, 0.5),
     0 1.5px 2.5px rgba(0, 0, 0, 0.32);
-}
-
-/* A back that is a picture with colours of its own: its edge, where other cards are white, is the player's colour,
-   so whose card it is still shows. */
-.back.pic {
-  border: 4.5px solid var(--back);
-  background-color: var(--card);
 }
 
 /* A one-colour picture lies inside the card's usual white edge (none of them has a frame of its own in its file): not when its owner has their backs without one. */

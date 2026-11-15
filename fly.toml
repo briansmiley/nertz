@@ -1,5 +1,5 @@
-# Proposed Fly.io config (see README "Hosting plan"). Nothing has been deployed with it.
-# Replace `app` with a name of your own; pick the region nearest the players.
+# Fly.io config for both apps (see README "Hosting"): `nertz`, and `nertz-staging`, which
+# .github/workflows/deploy.yml names with --app.
 app = "nertz"
 primary_region = "sjc"
 

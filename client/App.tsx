@@ -143,8 +143,7 @@ function AddBot({ room }: { room: RoomView }) {
   );
 }
 
-/** A small × beside a bot's name, for whoever deals. */
-/** For whoever deals: send a bot away, or (`person`) a person: they are put out of the table, as if they had left. */
+/** A small × beside a name, for whoever deals: a bot is sent away; a person is put out of the table, as if they had left. */
 function Unseat({ who }: { who: PlayerView }) {
   return (
     <button type="button" className="unseat" aria-label={`Remove ${who.name}`} title={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>

@@ -1,6 +1,7 @@
-// Personal settings: sound levels and reduced motion. They belong to this
-// browser, not to the table, and are remembered in localStorage when there is
-// one (without it they last as long as the page).
+// Personal settings: sound, reduced motion, your cards' faces and backs, hotkeys
+// and how the chat is shown. They belong to this browser, not to the table, and
+// are remembered in localStorage when there is one (without it they last as
+// long as the page).
 import { useSyncExternalStore } from 'react';
 import { deckNamed, isBack, isDeck, isLot, type Back, type Deck } from '../shared/protocol';
 

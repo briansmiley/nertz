@@ -255,7 +255,6 @@ function DealAgain({ room }: { room: RoomView }) {
   );
 }
 
-/** The corner controls. Rendered once, by App, over whatever screen is up. */
 /**
  * On a phone, how to be rid of the browser's bars. Where the browser can take the whole screen when asked (Android),
  * a button does it. An iPhone cannot be asked: there the game has to be put on the home screen and opened from it.
@@ -309,6 +308,7 @@ function Clock({ clock }: { clock: NonNullable<RoomView['clock']> }) {
   );
 }
 
+/** The corner controls. Rendered once, by App, over whatever screen is up. */
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
   const social = useSocial();

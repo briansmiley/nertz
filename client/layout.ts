@@ -148,8 +148,6 @@ export interface Layout {
   bar: number;
   /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
   low: boolean;
-  /** The seats of those who sit at the table but are not in the round: their hands (yours, or among `opponents`) are places with no cards. */
-  empty: number[];
 }
 
 const RATIO = CARD_H / CARD_W;
@@ -742,7 +740,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, empty };
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low };
 }
 
 // ---------------------------------------------------------------- an Ace in hand

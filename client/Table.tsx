@@ -700,7 +700,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     });
     return out;
   };
-  const targets = useMemo(() => (held ? targetsFor(held) : []), [held, L, game, you]); // for the outlines; drops ask again
+  const targets = useMemo(() => (held && held.k !== 'card' ? targetsFor(held) : []), [held, L, game, you]); // for the outlines; drops ask again
 
   /**
    * The one target the hand is over: the drop area under the pointer, and
@@ -786,7 +786,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (centre) report(d, centre, targets.filter((t) => typeof t.to === 'object' && t.to.k === 'slot'));
     const pile = d.tapped ? undefined : dropTarget(targets, pointOf(d, centre), centre, reachOf(d));
     const felt = pile || d.tapped ? undefined : feltUnder(d, centre);
-    setHot(pile?.key ?? (felt?.ok ? felt.key : null));
+    if (d.held.k !== 'card') setHot(pile?.key ?? null); // (no pile is outlined for a card)
     const el = preview.current;
     if (el) {
       el.hidden = !felt;
@@ -1200,10 +1200,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
       {/* Where a card in hand may go is for the player to see for themselves: no pile is outlined for it, nor when it is
           over one. (Only the tray, for a finished pile: that says nothing.) */}
-      {held?.k !== 'card' &&
-        targets.map((t) => (
-          <div key={t.key} className={`ring${t.key === hot ? ' hot' : ''}`} style={box(t.rect)} />
-        ))}
+      {targets.map((t) => (
+        <div key={t.key} className={`ring${t.key === hot ? ' hot' : ''}`} style={box(t.rect)} />
+      ))}
       {/* An Ace is in hand that may go anywhere there is room: what is not room. Around every pile, the gap the rules
           keep (shared/table.ts `clash`); the edge of the felt is the other limit, and is drawn up while this lasts. */}
       {placing && L.slots.map((slot, i) => slot && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}

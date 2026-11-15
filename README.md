@@ -4,8 +4,7 @@ Real-time multiplayer [Nertz](https://en.wikipedia.org/wiki/Nertz) for 2 to 6 fr
 solitaire at the same time and races to play onto shared piles in the middle. One person starts a table, sends the link, and
 everyone else joins from it. No accounts, no database: one small Node process holds every table in memory.
 
-Status: runs locally. **Nothing has been deployed and no cloud resources exist.** The `Dockerfile` and `fly.toml` in this repo
-are a proposal (see [Hosting plan](#hosting-plan)) and have never been run against a real service.
+Deployed to Fly.io from this repo on every push to `staging` and to `main`: see [Hosting](#hosting).
 
 ## Run the two-window demo
 
@@ -580,38 +579,30 @@ client/   Vite + React
 Dependencies at runtime: `ws`, `react`, `react-dom`, `motion` (card animation) and `tsx` (runs the TypeScript server
 directly, so there is no server build step).
 
-## Hosting plan
-
-Nothing here has been deployed. This is the plan I would follow.
+## Hosting
 
 **What the game needs.** One long-lived process that holds websockets open and keeps every table in memory. All players of a
 table must reach the *same* process, because that process's event loop is what orders their moves. Load is tiny: a snapshot
 is a few kilobytes and a busy table is a few messages a second.
 
-### Recommended start: one Fly.io machine
+### What runs: one Fly.io machine
 
-- One always-on `shared-cpu-1x` machine in one region near the players, serving the built client and the websocket from the
-  same origin. Expect a few dollars a month; check Fly's current pricing.
-- Auto-stop off and exactly one machine. `fly launch` likes to create two machines for availability; that would split tables
-  across processes, so scale to one (`fly scale count 1`). Auto-stop must stay off because a stopped machine forgets every
-  table.
-- The included `Dockerfile` and `fly.toml` match this: port 8080, health check on `/healthz`, connection-based concurrency,
-  no auto-stop.
+- Two apps, each one `shared-cpu-1x` machine serving the built client and the websocket from the same origin: `nertz` and
+  `nertz-staging`. The `Dockerfile` and `fly.toml` are their whole configuration: port 8080, health check on `/healthz`,
+  connection-based concurrency.
+- `.github/workflows/deploy.yml` deploys them: a push to `staging` runs the checks and deploys staging; a push to `main`
+  runs the checks and then waits until `/healthz` says nobody is connected before it deploys. Exactly one machine each
+  (`--ha=false`): two would split tables across processes.
+- An idle machine is suspended, memory kept (`auto_stop_machines = "suspend"`), and resumed on the next request. Fly only
+  suspends a machine with no open connections, and every player at a table holds a websocket, so a game in progress keeps
+  it up.
 - **What a deploy or restart does to live games:** the process is replaced, so every table and score is gone. Clients notice
   the dropped socket, reconnect with backoff and try to rejoin their table code, which no longer exists, so they are told
-  there is no such table and someone has to start a new one. For a game among friends, deploying when nobody is playing is enough. If that ever stops being
-  acceptable, the fix is to write each room's state to a volume or Redis on change and reload it on boot; `GameState` is
-  plain JSON, so that is a small change.
+  there is no such table and someone has to start a new one. Hence `main` deploys only when nobody is connected. If that
+  ever stops being enough, the fix is to write each room's state to a volume or Redis on change and reload it on boot;
+  `GameState` is plain JSON, so that is a small change.
 - Outgrowing one machine (unlikely) means routing by table code, for example with Fly's `fly-replay` header, so that a table
   always lands on the machine that owns it.
-
-First deploy would look like this (not run):
-
-```sh
-fly launch --no-deploy     # pick a unique app name and region; keep the fly.toml in this repo
-fly deploy
-fly scale count 1
-```
 
 ### Railway or Render
 

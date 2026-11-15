@@ -303,8 +303,9 @@ export const kick = (id: number): void => void post({ t: 'kick', id });
 /** Whoever deals: the table is the person `id`'s from now on. */
 export const passHost = (id: number): void => void post({ t: 'host', id });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
-/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
+/** Whoever deals, at any point of a round: the round dealt over, unscored, to everyone who is here now. */
 export const redeal = (): void => void post({ t: 'redeal' });
+/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
 export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });

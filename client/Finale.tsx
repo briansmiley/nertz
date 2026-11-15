@@ -1,7 +1,7 @@
 // The end of a round, played on the table: every card that reached the middle
-// is washed on the felt (spread and swirled, backs up), then the wash is drawn
-// in to the middle of the felt and sorted into one pile per player, each out
-// in front of its player's hand as this window draws the seating. Up to ~300
+// is washed on the felt (scattered at all angles, backs up), then sorted into
+// one pile per player, each out in front of its player's hand as this window
+// draws the seating. Up to ~300
 // cards move at once, so they are drawn on one canvas from pre-rendered back
 // sprites instead of being 300 animated elements; the labels beside the piles
 // are ordinary DOM.
@@ -39,7 +39,7 @@ const RIM = 5;
 /** How far the solid block behind a pile and its label reaches beyond the two. */
 const BLOCK_PAD = 4;
 const GAP = 6;
-/** How far the cards of the drawn-in wash still stray from the middle line of the felt. */
+/** How far beyond a card's half-height the strip along the middle of the felt reaches that the sorted piles and their labels keep clear of (`Plan.heap`). */
 const CORE_RY = 5;
 /** A sorted pile leans as it grows, so its thickness shows: up by at most this share of its height, and 0.4 of that to the left. */
 const LEAN = 0.16;
@@ -148,8 +148,7 @@ export interface Plan {
   cy: number;
   rx: number;
   ry: number;
-  /** The same once the wash has been drawn in for sorting, and the box that heap then lies within. */
-  core: { rx: number; ry: number };
+  /** The strip along the middle of the felt that the sorted piles and their labels keep clear of. */
   heap: Rect;
 }
 
@@ -159,7 +158,7 @@ const overlap = (a: Rect, b: Rect): number =>
 /**
  * Geometry of the whole sequence. Pure, so a resize mid-way just continues with new numbers.
  *
- * The wash turns on the felt. Each player's pile is then gathered at the edge
+ * The wash lies on the felt. Each player's pile is then gathered at the edge
  * of the felt, out towards that player's chair as this window seats them:
  * yours at the bottom, everyone else's round the table from there. The label goes beside
  * its pile, on whichever side is clear of every hand, the tray, the wash, the
@@ -170,8 +169,8 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const h = L.fs * CARD_H;
   const d = { cx: L.felt.cx, cy: L.felt.cy, rx: feltHw(game.players.length) * L.felt.u, ry: L.felt.u };
   const n = game.players.length;
-  // The drawn-in wash is a low heap along the middle of the felt. What is left of the felt's height above and below
-  // it is what a pile in front of the seats at the top and the bottom can have.
+  // A low strip along the middle of the felt is kept clear. What is left of the felt's height above and below it is
+  // what a pile in front of the seats at the top and the bottom can have.
   const coreHalf = h / 2 + CORE_RY;
   const scale = Math.max(0.45, Math.min(1, (d.ry - RIM - GAP - coreHalf) / h));
   const pw = w * scale;
@@ -321,10 +320,9 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const span = Math.hypot(w, h) / 2 + 8; // a card turned to any angle, plus its shadow
   const area: Rect = { x: Math.floor(d.cx - d.rx - span), y: Math.floor(d.cy - d.ry - span), w: Math.ceil(2 * (d.rx + span)), h: Math.ceil(2 * (d.ry + span)) };
   // The wash keeps to the felt: an oval well inside its edge, clear of the rounded corners.
-  return { area, sortAt: sortAt(game.tray.length), movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), core, heap };
+  return { area, sortAt: sortAt(game.tray.length), movers: shuffled, piles, w, h, scale, cx: d.cx, cy: d.cy, rx: Math.max(w, d.rx * 0.8 - w / 2), ry: Math.max(h * 0.2, d.ry * 0.88 - h / 2), heap };
 }
 
-/** One card back, drawn once per colour and then stamped for every card of that deck. Matches `.back` in styles.css. */
 // The pictures of the backs in use, fetched once each.
 const pictures = new Map<string, HTMLImageElement>();
 function pictureOf(src: string, loaded: () => void): HTMLImageElement | null {
@@ -339,10 +337,8 @@ function pictureOf(src: string, loaded: () => void): HTMLImageElement | null {
   return null;
 }
 
-const plan0 = (game: GameState): number[] => game.players.map((p) => p.seat);
-
-/** One card's back, drawn once: the plain cross-hatch, or the back its owner chose (`art`) once its picture has arrived. */
-function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; picture: boolean; zoom: number; edge: boolean }, bare = false): HTMLCanvasElement {
+/** One card's back, drawn once per player and then stamped for every card of theirs: the plain cross-hatch, or the back its owner chose (`art`) once its picture has arrived. Matches `.back` in styles.css. */
+function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; zoom: number; edge: boolean }, bare = false): HTMLCanvasElement {
   const pad = Math.ceil(w * 0.08);
   const sprite = document.createElement('canvas');
   sprite.width = Math.ceil((w + 2 * pad) * dpr);
@@ -364,9 +360,9 @@ function backSprite(colour: string, w: number, h: number, dpr: number, art?: { i
   c.stroke();
 
   if (art) {
-    // As `.back.tint` and `.back.pic` in the stylesheet: the pattern over the player's colour, or the picture framed in it.
-    // (A small card may show only the middle of a picture; some patterns lie inside a white edge: `backArt`.)
-    const f = art.picture || art.edge ? 5 * u : 0;
+    // As `.back.tint` in the stylesheet: the pattern over the player's colour. (A small card may show only the middle
+    // of a picture; some patterns lie inside a white edge: `backArt`.)
+    const f = art.edge ? 5 * u : 0;
     c.save();
     c.beginPath();
     c.roundRect(0, 0, w, h, 7 * u);
@@ -447,7 +443,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
       resting.push([mv, px, py, mv.tilt, plan.scale]);
       continue;
     }
-    // In the wash: out from its pile to a spot on the felt, which then turns (the inside faster) and breathes.
+    // In the wash: out from its pile to a spot on the felt, where it lies.
     const spread = glideEase(clamp01((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
     const a = mv.angle;
     const r = mv.radius;
@@ -501,7 +497,7 @@ export function Finale({ L, game, scores, name, stage, backs }: Props) {
   const instant = stage === 'sheet';
   // (A back's picture that has not arrived yet: the cards are plain until it has, and then drawn again.)
   const [arrived, setArrived] = useState(0);
-  const chosen = plan0(game).map((seat) => backs?.(seat) ?? '').join();
+  const chosen = game.players.map((p) => backs?.(p.seat) ?? '').join();
   const plan = useMemo(() => planFinale(L, game), [L, game]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const began = useRef(0);
@@ -509,7 +505,7 @@ export function Finale({ L, game, scores, name, stage, backs }: Props) {
   const trayFrom = useRef(Infinity);
   const [landed, setLanded] = useState<number[]>(() => plan.piles.map((p) => (instant ? p.total : 0)));
   const n = plan.piles.length;
-  /** How many piles have been gathered so far; -1 while the wash is still turning. */
+  /** How many piles have been gathered so far; -1 while the cards are still in the wash. */
   const [done, setDone] = useState(instant ? n : -1);
   // The round's lowest score is gathered first and its best last.
   const delta = (seat: number) => scores.find((s) => s.seat === seat)?.delta ?? 0;
@@ -537,7 +533,7 @@ export function Finale({ L, game, scores, name, stage, backs }: Props) {
         plan.piles.map((p) => {
           const art = backArt(backs?.(p.seat), plan.w < MINI_BELOW);
           const img = art && pictureOf(art.src, () => setArrived((a) => a + 1));
-          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k, art && img ? { img, picture: art.picture, zoom: art.zoom, edge: art.edge } : undefined, bareOf(backs?.(p.seat))[1])];
+          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k, art && img ? { img, zoom: art.zoom, edge: art.edge } : undefined, bareOf(backs?.(p.seat))[1])];
         }),
       );
     };
