@@ -2390,25 +2390,6 @@ label.check {
   font: 400 1.05rem/1.2 var(--display);
 }
 
-.chat form {
-  display: flex;
-  gap: 6px;
-}
-
-.chat form input {
-  flex: 1;
-  min-width: 0;
-  padding: 4px 8px 5px;
-  border: 1.5px solid var(--ink-soft);
-  border-radius: 6px;
-  background: var(--card);
-  color: var(--ink);
-}
-
-.chat form input:disabled {
-  background: #e9e1cc;
-}
-
 /* ------------------------------------------------------------ the opening (Opening.tsx) */
 
 /* In the middle of the table once the cards are dealt: the dealer's Start, then "1, 2, 3", then the word. */
