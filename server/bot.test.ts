@@ -317,10 +317,10 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'addBot', level: 'slow' });
     room.flush();
     expect(host.last.room.players).toEqual([
-      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, stuck: false, ending: false },
-      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false },
-      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
-      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
+      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true },
+      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false },
+      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, bot: 'fast', deck: 'modern' },
+      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, bot: 'slow', deck: 'modern' },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot

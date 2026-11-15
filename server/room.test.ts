@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { checkInvariants, finishDeal, grab, isComplete, isHidden, legalDrops, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { checkInvariants, endVote, finishDeal, grab, isComplete, isHidden, legalDrops, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
@@ -684,7 +684,7 @@ describe('Room', () => {
     sendIntent(room, a, 1, { k: 'stuck', on: true });
     sendIntent(room, b, 0, { k: 'stuck', on: true });
     room.flush();
-    expect(c.last.room.players.map((p) => p.stuck)).toEqual([true, true, false]);
+    expect(c.last.room.game!.players.map((p) => p.stuck)).toEqual([true, true, false]);
     expect(room.game!.players[0]!).toMatchObject({ waste: { length: 1 }, dealt: 1 }); // a group left half-dealt
 
     room.disconnect(c); // the only hold-out leaves: the two who remain are both stuck
@@ -694,7 +694,7 @@ describe('Room', () => {
     expect(p0.dealt).toBe(0); // the half-dealt card went back with the rest
     expect(p0.stock).toHaveLength(32); // three players: the small-table deal (on by default)
     expect(p0.stock[0]!.id).toBe(firstTop); // old top card went to the bottom
-    expect(a.last.room.players.map((p) => p.stuck)).toEqual([false, false, false]);
+    expect(a.last.room.game!.players.map((p) => p.stuck)).toEqual([false, false, false]);
     expect(checkInvariants(room.game!)).toBeNull();
   });
 
@@ -705,10 +705,30 @@ describe('Room', () => {
     sendIntent(room, a, 0, { k: 'end', on: true });
     room.flush();
     expect(room.phase).toBe('playing');
-    expect(b.last.room.players.map((p) => p.ending)).toEqual([true, false]);
+    expect(b.last.room.game!.players.map((p) => !!p.ending)).toEqual([true, false]);
     sendIntent(room, b, 0, { k: 'end', on: true });
     room.flush();
     expect(room.phase).toBe('results');
+    expect(room.lastRound).toMatchObject({ calledBy: null, ended: 'vote' });
+  });
+
+  it('counts the end vote as the server does: not someone back after the deal, a bot, or someone watching', () => {
+    const { room, conns } = roomWith(4);
+    const [a, b, c, d] = conns as [FakeConn, FakeConn, FakeConn, FakeConn];
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    standUp(room, d);
+    room.disconnect(c);
+    startRound(room, a);
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 4]);
+    const c2 = new FakeConn();
+    expect(room.join(c2, 'P2', 'tok-0002', true)).toBeNull(); // back, at seat 2, with no cards
+    const slips = () => (room.flush(), [a, b, c2, d].map((x) => endVote(x.last.room.game!, seatedPeople(x.last.room.players))));
+    expect(slips()).toEqual(Array(4).fill({ voters: 2, voted: 0 }));
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    expect(slips()).toEqual(Array(4).fill({ voters: 2, voted: 1 }));
+    expect(room.phase).toBe('playing');
+    sendIntent(room, b, 0, { k: 'end', on: true });
+    room.flush();
     expect(room.lastRound).toMatchObject({ calledBy: null, ended: 'vote' });
   });
 
@@ -843,7 +863,7 @@ describe('Room', () => {
         expect(faces(conn.last)).toBe(false);
         expect(conns.filter((x) => x !== conn).map((x) => x.states.length)).toEqual(others); // only the sender hears of a refusal
       }
-      expect(a.last.room.players.map((p) => p.stuck)).toEqual([false, false, false]);
+      expect(a.last.room.game!.players.map((p) => p.stuck)).toEqual([false, false, false]);
 
       vi.advanceTimersByTime(DEAL_MS - 901);
       expect(room.game).toBe(dealt);

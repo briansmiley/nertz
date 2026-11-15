@@ -107,7 +107,7 @@ export const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = 
   round: 1,
   me: you,
   seat: you,
-  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, stuck: p.stuck, ending: false })),
+  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0 })),
   settings: DEFAULT_SETTINGS,
   game: viewFor(game, you),
   graceMs: null,
