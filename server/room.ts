@@ -315,7 +315,8 @@ export class Room {
       case 'botBack': {
         // Whoever deals dresses the bots: any time, since it changes nothing but how their cards look.
         const bot = this.players.find((p) => p.seat === msg.seat);
-        if (player !== this.dealer || !bot?.bot || !this.dress(bot, rechosen(bot.backs, msg.back, msg.lot))) return;
+        if (player !== this.dealer || !bot?.bot) return;
+        if (!this.dress(bot, rechosen(bot.backs, msg.back, msg.lot))) return;
         return this.changed();
       }
       case 'pause':
