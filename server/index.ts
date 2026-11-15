@@ -199,7 +199,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
           let target: Room | undefined;
           if (msg.t === 'join') {
             target = rooms.get(msg.room);
-            if (!target) return over(`There is no table ${msg.room}. Check the code, or start a new table.`);
+            if (!target) return over(`Table ${msg.room} not found.`);
           } else {
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
             target = new Room(freshCode(), { flipMs });

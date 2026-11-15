@@ -36,7 +36,7 @@ describe('the end of a connection', () => {
   it('a join refused: closed, with why', async () => {
     const lost = await hello('ZZZZ', 'Lost');
     await vi.waitFor(() => expect(lost.end.code).toBe(CLOSE_OVER));
-    expect(lost.end.reason).toMatch(/no table ZZZZ/);
+    expect(lost.end.reason).toMatch(/Table ZZZZ not found/);
     expect(lost.got).toEqual([]);
   });
 

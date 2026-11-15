@@ -109,8 +109,8 @@ describe("this window's session", () => {
     expect(net.roomInUrl()).toBe('ZZZZ');
     net.join('ZZZZ', 'Ada');
     last().open();
-    last().closed(CLOSE_OVER, 'There is no table ZZZZ. Check the code, or start a new table.');
-    expect(net.current()).toMatchObject({ status: 'idle', room: null, error: expect.stringMatching(/no table ZZZZ/) });
+    last().closed(CLOSE_OVER, 'Table ZZZZ not found.');
+    expect(net.current()).toMatchObject({ status: 'idle', room: null, error: expect.stringMatching(/Table ZZZZ not found/) });
     net = await reload();
     expect(sockets()).toBe(1);
     expect(net.current().status).toBe('idle');
