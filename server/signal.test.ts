@@ -159,4 +159,17 @@ describe('the signal budget', () => {
     social.handle(b, members, false, { t: 'signal', to: a.id, data: OFFER });
     expect(got[0]).toEqual([OFFER]);
   });
+
+  it('counts a signal as it is relayed, escaped, so one of control characters or quotes cannot get past the burst', () => {
+    vi.useFakeTimers();
+    for (const ch of ['\u0001', '"']) {
+      const { social, members, got } = table(2);
+      const [a, b] = members as [Member, Member];
+      const data = ch.repeat(SIGNAL_MAX_LENGTH);
+      for (let i = 0; i < 1000; i++) social.handle(a, members, false, { t: 'signal', to: b.id, data });
+      const relayed = got[1]!.reduce((n, d) => n + Buffer.byteLength(JSON.stringify({ t: 'signal', from: a.id, data: d })), 0);
+      expect(got[1]!.length).toBeGreaterThan(0);
+      expect(relayed).toBeLessThanOrEqual(SIGNAL_BURST_BYTES + got[1]!.length * 64); // the envelope's few bytes aside
+    }
+  });
 });

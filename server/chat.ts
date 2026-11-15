@@ -45,9 +45,11 @@ export function roundOver(round: number, result: RoundResult): Extract<ChatEvent
 /**
  * What one sender may relay in signals: a whole table joining voice at once, and no more. To each of the other
  * (MAX_PLAYERS + MAX_WATCHERS - 1 = 29) an offer or answer of about 3.5 KB and up to 16 candidates of about
- * 0.4 KB each, so some 10 KB a pair and 12 KB with room to spare (an ICE restart's second offer, say): 29 * 12 KB =
- * 348 KB of burst. It is refilled over 5 seconds, about 70 KB/s, a seventh of what one connection could send before
- * and far below the 1 MB a receiver may fall behind by (MAX_BUFFERED_BYTES in index.ts).
+ * 0.4 KB each, so some 10 KB a pair and 12 KB with room for their escaping: 29 * 12 KB = 348 KB of burst. It is
+ * refilled over 5 seconds, about 70 KB/s, which is what carries an ICE restart's new offer and candidates later on;
+ * that is a fourteenth of the 1 MB/s or so one connection could send before (60 messages a second of 16 KB), and the
+ * burst is well below the 1 MB a receiver may fall behind by (MAX_BUFFERED_BYTES in index.ts). A signal is charged
+ * as it is relayed, escaped as JSON, since that is what lands in the receiver's buffer.
  */
 export const SIGNAL_BURST_BYTES = (MAX_PLAYERS + MAX_WATCHERS - 1) * 12_000;
 const SIGNAL_REFILL_PER_MS = SIGNAL_BURST_BYTES / 5000;
@@ -124,7 +126,7 @@ export class Social {
     b.bytes = Math.min(SIGNAL_BURST_BYTES, b.bytes + (now - b.at) * SIGNAL_REFILL_PER_MS);
     b.at = now;
     this.signalBudget.set(member, b);
-    const size = Buffer.byteLength(data);
+    const size = Buffer.byteLength(JSON.stringify(data)); // as relayed: a control character is sent as six bytes
     if (size > b.bytes) return false;
     b.bytes -= size;
     return true;
