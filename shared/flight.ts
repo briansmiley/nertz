@@ -41,7 +41,7 @@ function source(state: GameState, seat: number, cardId: string): number | null {
 /** The point of the felt a move to the middle is going to, in table space; null for a move along the row. */
 function target(state: GameState, to: PileRef): { x: number; y: number } | null {
   if (to.k === 'felt') return { x: to.x, y: to.y };
-  if (to.k === 'slot') return state.places[to.i] ?? null;
+  if (to.k === 'slot') return state.slots[to.i]?.at ?? null;
   return null;
 }
 

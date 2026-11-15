@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyIntent, canDrop, checkInvariants, deal as dealRound, DEAL_MS, finishDeal, isHidden, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
-import type { AnyCard, Card, GameState } from '../shared/types';
+import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
 import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -12,22 +12,22 @@ const deal = (seats: readonly number[], rng: () => number): GameState => openPla
 /** The same round with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
 function aced(game: GameState): GameState {
   const n = game.players.length;
-  const slots: Card[][] = [];
+  const aces: Card[] = [];
   const players = game.players.map((p) => {
     const ace = (c: AnyCard) => !isHidden(c) && c.rank === 1;
-    slots.push(...[...p.nertz, ...p.work.flat(), ...p.waste, ...p.stock].filter(ace).map((c) => [c as Card]));
+    aces.push(...([...p.nertz, ...p.work.flat(), ...p.waste, ...p.stock].filter(ace) as Card[]));
     // (Whatever lay where an Ace was gets a card off the stock in its place.)
     const stock = p.stock.filter((c) => !ace(c));
     const swap = (c: AnyCard) => (ace(c) ? stock.pop()! : c);
     return { ...p, nertz: p.nertz.map(swap), work: p.work.map((w) => w.map(swap)), waste: p.waste.map(swap), stock };
   });
   const placed: Spot[] = [];
-  const places = slots.map(() => {
+  const slots = aces.map((c): CentrePile => {
     const at = openPlace(placed, n)!;
     placed.push({ ...at, r: tiltAt(at) });
-    return placed.at(-1)!;
+    return { cards: [c], at: placed.at(-1)! };
   });
-  return { ...game, players, slots, places };
+  return { ...game, players, slots };
 }
 
 function rng(seed: number) {
@@ -76,8 +76,7 @@ function played(game: GameState): GameState {
   return {
     ...game,
     tray,
-    slots: game.slots.map((s, i) => (i === 1 ? hearts : s)),
-    places: game.places.map((at, i) => (i === 1 ? { x: 0, y: 0, r: 0 } : at)),
+    slots: game.slots.map((s, i) => (i === 1 ? { cards: [hearts[0]!, ...hearts.slice(1)], at: { x: 0, y: 0, r: 0 } } : s)),
     players: game.players.map((p) => {
       const rest = hand(p).filter((c) => !out(c));
       return { ...p, nertz: rest.slice(0, 3), work: [[rest[3]!], [rest[4]!], [rest[5]!], [rest[6]!]], down: [0, 0, 0, 0], stock: rest.slice(7) };
@@ -171,11 +170,11 @@ describe('table layout', () => {
           L.slots.forEach((r, i) => {
             const c = { x: r!.x + r!.w / 2, y: r!.y + r!.h / 2 };
             // Each pile is drawn at its place in table space: so far across and so far down the felt, not turned.
-            expect((c.x - L.felt.cx) / L.felt.u).toBeCloseTo(game.places[i]!.x, 6);
-            expect((c.y - L.felt.cy) / L.felt.u).toBeCloseTo(game.places[i]!.y, 6);
+            expect((c.x - L.felt.cx) / L.felt.u).toBeCloseTo(game.slots[i]!.at.x, 6);
+            expect((c.y - L.felt.cy) / L.felt.u).toBeCloseTo(game.slots[i]!.at.y, 6);
             const p = toTable(L.felt, c.x, c.y);
-            expect(p.x).toBeCloseTo(game.places[i]!.x, 6);
-            expect(p.y).toBeCloseTo(game.places[i]!.y, 6);
+            expect(p.x).toBeCloseTo(game.slots[i]!.at.x, 6);
+            expect(p.y).toBeCloseTo(game.slots[i]!.at.y, 6);
           });
           // You are at the bottom: your hand lies straight below the felt.
           expect(L.me!.seat).toBe(you);
@@ -280,7 +279,7 @@ describe('table layout', () => {
   it('draws a pile exactly where it was put down and nothing where there is none', () => {
     const game = deal(seats(4), rng(4));
     const ace = (owner: number): Card => ({ id: `ace${owner}`, owner, suit: 'S', rank: 1 });
-    const placed: GameState = { ...game, slots: game.slots.map((s, i) => (i === 2 ? [ace(0)] : s)), places: game.places.map((at, i) => (i === 2 ? { x: 1.25, y: -0.4, r: 1.5 } : at)) };
+    const placed: GameState = { ...game, slots: game.slots.map((s, i) => (i === 2 ? { cards: [ace(0)], at: { x: 1.25, y: -0.4, r: 1.5 } } : s)) };
     const L = computeLayout(1280, 720, placed, 1);
     expect(L.slots.map((r) => r !== null)).toEqual(seats(16).map((i) => i === 2));
     const r = L.slots[2]!;
@@ -323,7 +322,7 @@ describe('table layout', () => {
           if (roomAt(q, at, n)) at.push(q);
         }
         expect(at.length).toBeGreaterThanOrEqual(2 * n);
-        game = { ...game, slots: game.slots.map((s, i) => (at[i] ? [ace(i)] : s)), places: game.places.map((_, i) => (at[i] ? { ...at[i]!, r: tiltAt(at[i]!) } : null)) };
+        game = { ...game, slots: game.slots.map((_, i) => (at[i] ? { cards: [ace(i)], at: { ...at[i]!, r: tiltAt(at[i]!) } } : null)) };
         // Seat 0 has an Ace on top of a work pile.
         const mine: Card = { id: 'mine', owner: 0, suit: 'H', rank: 1 };
         game = { ...game, players: game.players.map((p, i) => (i === 0 ? { ...p, work: [[...p.work[0]!, mine], ...p.work.slice(1)] } : p)) };
@@ -476,8 +475,8 @@ describe('table layout', () => {
       const base = played(deal(seats(n), rng(11)));
       // Besides the piles in the tray, one that was finished and not yet cleared when Nertz was called: it lies in the middle.
       const whole = base.players[1]!.stock.slice(0, 13) as Card[];
-      const game: GameState = { ...base, slots: base.slots.map((s, i) => (i === 0 ? whole : s)), places: base.places.map((at, i) => (i === 0 ? { x: 0.6, y: 0, r: 0 } : at)), players: base.players.map((p, i) => (i === 1 ? { ...p, stock: p.stock.slice(13) } : p)) };
-      const middle = [...game.slots.flat(), ...game.tray.flat()].map((c) => c.id).sort();
+      const game: GameState = { ...base, slots: base.slots.map((s, i): CentrePile | null => (i === 0 ? { cards: [whole[0]!, ...whole.slice(1)], at: { x: 0.6, y: 0, r: 0 } } : s)), players: base.players.map((p, i) => (i === 1 ? { ...p, stock: p.stock.slice(13) } : p)) };
+      const middle = [...game.slots.flatMap((s) => s?.cards ?? []), ...game.tray.flat()].map((c) => c.id).sort();
       expect(middle).toHaveLength(13 + 3 + 13 * n);
       const drawn = (stage: Stage, t: number) => {
         const L = computeLayout(1280, 800, game, 0, stage);
@@ -897,8 +896,8 @@ describe('a group dealt off the stock', () => {
       const stock = computeLayout(W, H, start, 0).me!.stock;
       const spot = { x: toTable(computeLayout(W, H, start, 0).felt, stock.x + stock.w / 2, 0).x, y: 1 - cardSize(6).h / 2 - 1e-6, r: 0 };
       expect(roomAt(spot, [], 6)).toBe(true);
-      const pile: Card[] = [1, 2].map((rank) => ({ id: `club${rank}`, owner: 1, suit: 'C', rank }));
-      let g: GameState = { ...start, slots: start.slots.map((s, i) => (i === 0 ? pile : s)), places: start.places.map((at, i) => (i === 0 ? spot : at)) };
+      const club = (rank: number): Card => ({ id: `club${rank}`, owner: 1, suit: 'C', rank });
+      let g: GameState = { ...start, slots: start.slots.map((s, i) => (i === 0 ? { cards: [club(1), club(2)], at: spot } : s)) };
       for (let k = 1; k <= 3; k++) {
         g = flip(g);
         // While it is counted off (the cards that come up under the ones held travel at the level they lie at), and held whole for its beat.

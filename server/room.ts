@@ -448,7 +448,7 @@ export class Room {
    */
   private sniped(victim: Player, slot: number): void {
     if (this.phase !== 'playing' || !this.game) return;
-    const top = this.game.slots[slot]?.at(-1);
+    const top = this.game.slots[slot]?.cards.at(-1);
     const hand = this.game.players.find((g) => g.seat === victim.seat);
     if (!top || !hand || !seated(victim) || top.owner === victim.seat || top.rank === 1) return; // (an Ace beaten to a place has others to go to)
     const showing = [hand.nertz.at(-1), hand.waste.at(-1), ...hand.work.map((pile) => pile.at(-1))];

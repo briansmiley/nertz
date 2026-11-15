@@ -4,7 +4,7 @@ import { DEAL_MS, START_MS } from '../shared/protocol';
 import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, resolveStuck, startCountdown, SUITS, viewFor, type Rng } from '../shared/engine';
 import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
 import { openPlace, type Spot } from '../shared/table';
-import type { Card, GameState, Intent, PlayerState, Suit } from '../shared/types';
+import type { Card, CentrePile, GameState, Intent, PlayerState, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
@@ -54,15 +54,15 @@ function table(mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'
     const stock = SUITS.flatMap((s) => Array.from({ length: 13 }, (_, r) => card(seat, `${s}${r + 1}`))).filter((c) => !used.has(c.id));
     return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, dealt: 0, stuck: h.stuck ?? false, holding: null };
   };
-  const slots = Array.from({ length: 8 }, (_, i): Card[] => middle[i] ?? []);
   const placed: Spot[] = [];
-  const places = slots.map((pile): Spot | null => {
-    if (pile.length === 0) return null;
+  const slots = Array.from({ length: 8 }, (_, i): CentrePile | null => {
+    const [ace, ...rest] = middle[i] ?? [];
+    if (!ace) return null;
     const at = { ...openPlace(placed, 2)!, r: 0 };
     placed.push(at);
-    return at;
+    return { cards: [ace, ...rest], at };
   });
-  const state: GameState = { players: [player(0, mine), player(1, theirs)], slots, places, tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
+  const state: GameState = { players: [player(0, mine), player(1, theirs)], slots, tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }
@@ -401,7 +401,7 @@ describe('Room with bots', () => {
     expect(room.game!.stage).toBe('ready');
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(10 * 60_000);
-    expect(room.game).toMatchObject({ stage: 'ready', slots: [[], [], [], [], [], [], [], []] });
+    expect(room.game).toMatchObject({ stage: 'ready', slots: [null, null, null, null, null, null, null, null] });
     expect(room.game!.players.every((p) => p.waste.length === 0 && p.nertz.length === 13)).toBe(true);
     // ...nor during "1, 2, 3": only the start timer runs. It wakes on NERTZ!, like everyone.
     room.handle(host, { t: 'go' });

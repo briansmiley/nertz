@@ -60,6 +60,21 @@ export interface PlayerState {
   holding: string | null;
 }
 
+/**
+ * A pile in the middle: its cards, Ace up to King in one suit (never none: the
+ * Ace starts it), and where it lies. A pile of 13 is complete: it takes nothing
+ * more and stays until the player who placed its King (that King's `owner`)
+ * clears it.
+ */
+export interface CentrePile {
+  cards: [Card, ...Card[]];
+  /**
+   * In table space (the same for every player, and drawn at the same place of
+   * the felt on every screen): the very point its Ace was put down.
+   */
+  at: Spot;
+}
+
 /** One round. The server holds it with every card known; clients get it via `viewFor`. */
 export interface GameState {
   players: PlayerState[];
@@ -72,19 +87,12 @@ export interface GameState {
    */
   stage: RoundStage;
   /**
-   * The shared middle: 4 x players slots. Each entry is one centre pile, Ace
-   * up to King in one suit; an empty array is an empty slot. A pile of 13 is
-   * complete: it takes nothing more and stays in its slot until the player
-   * who placed its King (that King's `owner`) clears it.
+   * The shared middle: 4 x players slots, each holding one centre pile or
+   * nothing (null). A pile takes the first empty slot when its Ace is put
+   * down and keeps it until it is cleared: the slot's index is how everyone
+   * names the pile meanwhile.
    */
-  slots: Card[][];
-  /**
-   * Where each slot's pile lies on the table, in table space (the same for
-   * every player, and drawn at the same place of the felt on every screen). A
-   * slot has a place only while it holds a pile: the place is set by the Ace
-   * that starts it and given up when the finished pile is cleared.
-   */
-  places: (Spot | null)[];
+  slots: (CentrePile | null)[];
   /** Completed piles cleared off the table, oldest first. Each has 13 cards, King on top. Still scores. */
   tray: Card[][];
   /** Seat that called "Nertz!", or null while the round is in full swing. */

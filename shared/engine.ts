@@ -5,8 +5,8 @@
 // Pile convention: the TOP of every pile is the LAST array element.
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 import { faceDown } from './settings';
-import { openPlace, roomAt, tiltAt, type Pt, type Spot } from './table';
-import type { AnyCard, Card, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
+import { openPlace, roomAt, tiltAt, type Pt } from './table';
+import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
@@ -31,8 +31,8 @@ export const isHidden = (c: AnyCard): c is HiddenCard => 'hidden' in c;
 export const isRed = (suit: Suit): boolean => suit === 'H' || suit === 'D';
 /** A centre pile that has its King: nothing more goes on it. */
 export const isComplete = (pile: readonly Card[]): boolean => pile.length === KING;
-/** The seat that placed the King of a complete centre pile (the only one who may clear it), else null. */
-export const completedBy = (pile: readonly Card[]): number | null => (isComplete(pile) ? pile[KING - 1]!.owner : null);
+/** The seat that placed the King of a complete centre pile (the only one who may clear it), else null. (Null too for a slot with no pile in it.) */
+export const completedBy = (pile: CentrePile | null | undefined): number | null => (pile && isComplete(pile.cards) ? pile.cards[KING - 1]!.owner : null);
 /**
  * Clear-first: `seat` put a King on a centre pile and has not carried the pile to the tray yet. Until they do,
  * `applyIntent` refuses everything else from them. (While the round is on: once Nertz is called nothing can be cleared.)
@@ -49,7 +49,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * Deals a fresh round: one shuffled 52-card deck per seat, with opaque random
  * card ids. Per seat: 13 in the nertz pile, work piles of 1, 2, 3 and 4 cards
  * (0 to 3 face-down under one face-up), and the other 29 as stock. The middle
- * gets 4 empty slots per seat, none with a place yet. The round starts out in
+ * gets 4 empty slots per seat. The round starts out in
  * stage `dealing`: closed to every intent and fully redacted until
  * `finishDeal`; see `openPlay`.
  *
@@ -82,8 +82,8 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
     const work = down.map((n) => deck.splice(0, n + 1));
     return { seat, nertz, work, down, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
-  const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, (): Card[] => []);
-  return { players, stage: 'dealing', slots, places: slots.map(() => null), tray: [], nertzCalledBy: null, grace: [] };
+  const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
+  return { players, stage: 'dealing', slots, tray: [], nertzCalledBy: null, grace: [] };
 }
 
 // ---------------------------------------------------------------- legality
@@ -94,12 +94,11 @@ function stacksOn(card: Card, onto: AnyCard | undefined): boolean {
   return !isHidden(onto) && card.rank === onto.rank - 1 && isRed(card.suit) !== isRed(onto.suit);
 }
 
-/** Does this centre pile take `card`? An Ace needs the slot empty; anything else needs the same suit one rank below on top. */
-const slotAccepts = (pile: readonly Card[], card: Card): boolean =>
-  pile.length === card.rank - 1 && (pile.length === 0 || pile[0]!.suit === card.suit);
+/** Does this centre pile take `card`? It needs the same suit one rank below on top (so never an Ace: that starts a pile of its own). */
+const slotAccepts = ({ cards }: CentrePile, card: Card): boolean => cards.length === card.rank - 1 && cards[0].suit === card.suit;
 
-/** The places of the piles lying in the middle right now. */
-const piled = (state: GameState): Pt[] => state.places.filter((at, i): at is Spot => at !== null && state.slots[i]!.length > 0);
+/** The places of the piles lying in these slots. */
+const piled = (slots: GameState['slots']): Pt[] => slots.flatMap((pile) => (pile ? [pile.at] : []));
 
 /**
  * May a new pile be started at `at` (table space)? There must be a slot left
@@ -108,7 +107,7 @@ const piled = (state: GameState): Pt[] => state.places.filter((at, i): at is Spo
  * sees on their screen.
  */
 export const feltFree = (state: GameState, at: Pt): boolean =>
-  state.slots.some((s) => s.length === 0) && roomAt(at, piled(state), state.players.length);
+  state.slots.includes(null) && roomAt(at, piled(state.slots), state.players.length);
 
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
@@ -149,8 +148,8 @@ function planMove(state: GameState, seat: number, cardId: string, to: PileRef, c
   }
   if (to.k === 'slot') {
     const pile = state.slots[to.i];
-    if (!pile) return 'No such slot';
-    if (pile.length === 0) return 'No pile there';
+    if (pile === undefined) return 'No such slot';
+    if (pile === null) return 'No pile there';
     return slotAccepts(pile, card) ? g : 'Does not fit there';
   }
   const pile = me.work[to.i];
@@ -176,8 +175,8 @@ export function legalDrops(state: GameState, seat: number, cardId: string): Pile
     ...state.slots.map((_, i): PileRef => ({ k: 'slot', i })),
   ];
   const drops = targets.filter((to) => typeof planMove(state, seat, cardId, to) !== 'string');
-  if (state.slots.some((s) => s.length === 0) && grab(state, seat, cardId)?.cards[0]?.rank === 1) {
-    const at = openPlace(piled(state), state.players.length);
+  if (state.slots.includes(null) && grab(state, seat, cardId)?.cards[0]?.rank === 1) {
+    const at = openPlace(piled(state.slots), state.players.length);
     if (at && typeof planMove(state, seat, cardId, { k: 'felt', ...at }) !== 'string') drops.push({ k: 'felt', ...at });
   }
   return drops;
@@ -260,10 +259,9 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
       me.stuck = false;
       next = {
         ...state,
-        slots: state.slots.map((s, i) => (i === intent.slot ? [] : s)),
         // The felt it lay on is anybody's again.
-        places: state.places.map((at, i) => (i === intent.slot ? null : at)),
-        tray: [...state.tray, pile],
+        slots: state.slots.map((s, i) => (i === intent.slot ? null : s)),
+        tray: [...state.tray, pile.cards],
       };
       break;
     }
@@ -284,12 +282,12 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
       me.holding = null;
       const to = intent.to;
       if (to.k === 'work') me.work[to.i]!.push(...cards);
-      else if (to.k === 'slot') next = { ...state, slots: state.slots.map((s, i) => (i === to.i ? [...s, cards[0]!] : s)) };
+      else if (to.k === 'slot') next = { ...state, slots: state.slots.map((s, i): CentrePile | null => (s && i === to.i ? { ...s, cards: [...s.cards, cards[0]!] } : s)) };
       else {
         // A new pile, in the first slot nobody is using, at the very place the Ace was put down.
-        const slot = state.slots.findIndex((s) => s.length === 0);
-        const place: Spot = { x: to.x, y: to.y, r: tiltAt(to) };
-        next = { ...state, slots: state.slots.map((s, i) => (i === slot ? [cards[0]!] : s)), places: state.places.map((at, i) => (i === slot ? place : at)) };
+        const slot = state.slots.indexOf(null);
+        const pile: CentrePile = { cards: [cards[0]!], at: { x: to.x, y: to.y, r: tiltAt(to) } };
+        next = { ...state, slots: state.slots.map((s, i) => (i === slot ? pile : s)) };
       }
       break;
     }
@@ -501,7 +499,7 @@ export function viewFor(state: GameState, _seat: number): GameState {
 
 /** Strictly: +1 per own card in the middle (centre slots and tray), -2 per card left in the nertz pile. */
 export function scoreRound(state: GameState): RoundScore[] {
-  const middle = [...state.slots, ...state.tray].flat();
+  const middle = [...state.slots.map((pile) => pile?.cards ?? []), ...state.tray].flat();
   return state.players.map((p) => {
     const played = middle.filter((c) => c.owner === p.seat).length;
     const nertzLeft = p.nertz.length;
@@ -561,14 +559,10 @@ export function checkInvariants(state: GameState): string | null {
     if (p.holding !== null && !grab(state, p.seat, p.holding)) return `${at}: holding a card they cannot pick up`;
   }
   if (state.slots.length !== SLOTS_PER_PLAYER * state.players.length) return 'wrong number of centre slots';
-  if (state.places.length !== state.slots.length) return 'wrong number of places';
-  const n = state.players.length;
-  for (const [i, at] of state.places.entries()) {
-    const used = state.slots[i]!.length > 0;
-    if (used !== (at !== null)) return `slot ${i}: ${at ? 'a place without a pile' : 'a pile without a place'}`;
-    if (at && !roomAt(at, state.places.filter((other, j): other is Spot => j < i && other !== null), n)) return `slot ${i}: off the table or overlapping another pile`;
+  for (const [i, pile] of state.slots.entries()) {
+    if (pile && !roomAt(pile.at, piled(state.slots.slice(0, i)), state.players.length)) return `slot ${i}: off the table or overlapping another pile`;
   }
-  const middle: [string, Card[]][] = [...state.slots.map((s, i): [string, Card[]] => [`slot ${i}`, s]), ...state.tray.map((s, i): [string, Card[]] => [`tray ${i}`, s])];
+  const middle: [string, Card[]][] = [...state.slots.map((s, i): [string, Card[]] => [`slot ${i}`, s?.cards ?? []]), ...state.tray.map((s, i): [string, Card[]] => [`tray ${i}`, s])];
   for (const [name, pile] of middle) {
     if (pile.length > KING) return `${name}: too many cards`;
     for (const [j, c] of pile.entries()) {

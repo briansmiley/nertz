@@ -27,7 +27,7 @@ import {
   type Result,
   type Rng,
 } from './engine';
-import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, Suit } from './types';
+import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
 
@@ -75,21 +75,24 @@ function pile(topFace: string, owner = 0): Card[] {
   const n = RANKS.indexOf(topFace.slice(1)) + 1;
   return RANKS.slice(0, n).map((r) => c(topFace[0] + r, owner));
 }
+/** `cards` (at least one) as a pile lying at a point of the table, squared up. */
+const lying = ([ace, ...rest]: Card[], x = 0, y = 0): CentrePile => ({ cards: [ace!, ...rest], at: { x, y, r: 0 } });
+/** Every card lying in the centre slots. */
+const inSlots = (s: GameState): Card[] => s.slots.flatMap((p) => p?.cards ?? []);
 
 /**
  * A round with the given centre piles in slots 0, 1, ... (each wherever there is room, the middle first) and the rest
  * of the 4-per-player slots empty.
  */
 const game = (players: PlayerState[], piles: Card[][] = [], extra: Partial<GameState> = {}): GameState => {
-  const slots = Array.from({ length: 4 * players.length }, (_, i) => piles[i] ?? []);
   const placed: Spot[] = [];
-  const places = slots.map((s): Spot | null => {
-    if (s.length === 0) return null;
-    const at = { ...openPlace(placed, players.length)!, r: 0 };
-    placed.push(at);
-    return at;
+  const slots = Array.from({ length: 4 * players.length }, (_, i): CentrePile | null => {
+    if (!piles[i]?.length) return null;
+    const at = openPlace(placed, players.length)!;
+    placed.push({ ...at, r: 0 });
+    return lying(piles[i], at.x, at.y);
   });
-  return { players, stage: 'play', slots, places, tray: [], nertzCalledBy: null, grace: [], ...extra };
+  return { players, stage: 'play', slots, tray: [], nertzCalledBy: null, grace: [], ...extra };
 };
 /** `count` is the number of cards lifted: 1 unless a run is being moved. */
 const move = (cardId: string, to: PileRef, count = 1): Intent => ({ k: 'move', cardId, count, to });
@@ -97,7 +100,7 @@ const work = (i: number): PileRef => ({ k: 'work', i });
 const felt = (x: number, y: number): Extract<PileRef, { k: 'felt' }> => ({ k: 'felt', x, y });
 /** A round with the given piles at the given points, everything else bare felt. */
 const freeGame = (players: PlayerState[], piles: [Card[], number, number][] = [], extra: Partial<GameState> = {}): GameState =>
-  game(players, piles.map(([pile]) => pile), { places: Array.from({ length: 4 * players.length }, (_, i) => (piles[i] ? { x: piles[i][1], y: piles[i][2], r: 0 } : null)), ...extra });
+  game(players, [], { slots: Array.from({ length: 4 * players.length }, (_, i) => (piles[i] ? lying(...piles[i]) : null)), ...extra });
 const slot = (i: number): PileRef => ({ k: 'slot', i });
 const hold = (cardId: string): Intent => ({ k: 'hold', cardId });
 const RELEASE: Intent = { k: 'release' };
@@ -129,7 +132,7 @@ function deepFreeze<T>(v: T): T {
 
 const allCards = (s: GameState): AnyCard[] => [
   ...s.players.flatMap((p) => [...p.nertz, ...p.stock, ...p.waste, ...p.work.flat()]),
-  ...s.slots.flat(),
+  ...inSlots(s),
   ...s.tray.flat(),
 ];
 
@@ -272,7 +275,7 @@ describe('deal', () => {
       const faces = new Set([...p.nertz, ...p.stock, ...p.work.flat()].map((x) => (isHidden(x) ? '?' : `${x.suit}${x.rank}`)));
       expect(faces.size).toBe(52);
     }
-    expect(state.slots).toEqual(Array.from({ length: 12 }, () => [])); // 4 slots per player
+    expect(state.slots).toEqual(Array.from({ length: 12 }, () => null)); // 4 slots per player
     expect(deal([4, 9], mulberry32(1)).slots).toHaveLength(8);
     expect(state.tray).toEqual([]);
     expect(state.nertzCalledBy).toBeNull();
@@ -451,7 +454,7 @@ describe('centre slots', () => {
     const s = game([player(0, { nertz: cs('S5 HA') }), player(1)]);
     expect(s.slots).toHaveLength(8);
     const next = ok(applyIntent(s, 0, move('0:HA', felt(0, 0))));
-    expect(next.slots.map((p) => ids(p))).toEqual([['0:HA'], [], [], [], [], [], [], []]);
+    expect(next.slots.map((p) => p && ids(p.cards))).toEqual([['0:HA'], null, null, null, null, null, null, null]);
     expect(ids(next.players[0]!.nertz)).toEqual(['0:S5']);
     rejected(applyIntent(s, 1, move('0:HA', felt(0, 0)))); // not seat 1's card
     rejected(applyIntent(s, 0, move('0:HA', slot(8)))); // 2 players: slots 0..7 only
@@ -474,7 +477,7 @@ describe('centre slots', () => {
       [pile('SA', 1), pile('HA', 1)],
     );
     let next = run(s, [0, move('0:H2', slot(1))], [0, move('0:H3', slot(1))], [0, move('0:H4', slot(1))]);
-    expect(ids(next.slots[1]!)).toEqual(['1:HA', '0:H2', '0:H3', '0:H4']);
+    expect(ids(next.slots[1]!.cards)).toEqual(['1:HA', '0:H2', '0:H3', '0:H4']);
     rejected(applyIntent(next, 1, move('1:H2', slot(1)))); // too late
     rejected(applyIntent(s, 0, move('0:H3', slot(1)))); // skips a rank
     rejected(applyIntent(s, 0, move('0:H2', slot(0)))); // wrong suit
@@ -500,12 +503,12 @@ describe('centre slots', () => {
       expect(lost).toEqual({ ok: false, reason: 'Does not fit there' });
       expect(canDrop(afterFirst, 1, '1:H2', slot(0))).toBe(false);
       expect(ids(afterFirst.players[1]!.nertz)).toEqual(['1:S9', '1:H2']); // still where it came from
-      expect(afterFirst.slots.map((p) => ids(p)).slice(0, 2)).toEqual([['0:HA', '0:H2'], ['1:HA']]); // the other ace was not touched
+      expect(afterFirst.slots.slice(0, 2).map((p) => ids(p!.cards))).toEqual([['0:HA', '0:H2'], ['1:HA']]); // the other ace was not touched
       // The same card is fine on the pile it actually fits, when aimed there.
       const inMiddle = (g: GameState, seat: number, id: string) => legalDrops(g, seat, id).filter((to) => to.k === 'slot');
       expect(inMiddle(afterFirst, 1, '1:H2')).toEqual([slot(1)]);
       const retry = ok(applyIntent(afterFirst, 1, move('1:H2', slot(1))));
-      expect(ids(retry.slots[1]!)).toEqual(['1:HA', '1:H2']);
+      expect(ids(retry.slots[1]!.cards)).toEqual(['1:HA', '1:H2']);
       expect(inMiddle(retry, 2, '2:H2')).toEqual([]);
     });
 
@@ -514,12 +517,12 @@ describe('centre slots', () => {
       const afterFirst = ok(applyIntent(s, 0, move('0:HA', felt(0, 0))));
       rejected(applyIntent(afterFirst, 1, move('1:SA', felt(0, 0)))); // there is room elsewhere, but it was not aimed there
       expect(ids(afterFirst.players[1]!.nertz)).toEqual(['1:S9', '1:SA']);
-      expect(afterFirst.slots.filter((p) => p.length > 0)).toHaveLength(1);
+      expect(afterFirst.slots.filter((p) => p !== null)).toHaveLength(1);
       const retry = ok(applyIntent(afterFirst, 1, move('1:SA', felt(1, 0))));
-      expect(ids(retry.slots[1]!)).toEqual(['1:SA']);
+      expect(ids(retry.slots[1]!.cards)).toEqual(['1:SA']);
       // Same suit, different piles: two piles of one suit can coexist.
       const twin = game([player(0, { nertz: cs('HA') }), player(1, { nertz: cs('HA', 1) })]);
-      expect(run(twin, [0, move('0:HA', felt(-1, 0))], [1, move('1:HA', felt(1, 0))]).slots.slice(0, 2).map((p) => ids(p))).toEqual([['0:HA'], ['1:HA']]);
+      expect(run(twin, [0, move('0:HA', felt(-1, 0))], [1, move('1:HA', felt(1, 0))]).slots.slice(0, 2).map((p) => ids(p!.cards))).toEqual([['0:HA'], ['1:HA']]);
     });
   });
 });
@@ -531,10 +534,10 @@ describe('completed piles', () => {
   const done = ok(applyIntent(s, 0, move('0:SK', slot(0))));
 
   it('a king completes a pile, which stays in its slot and takes nothing more', () => {
-    expect(isComplete(s.slots[0]!)).toBe(false);
+    expect(isComplete(s.slots[0]!.cards)).toBe(false);
     expect(completedBy(s.slots[0]!)).toBeNull();
-    expect(isComplete(done.slots[0]!)).toBe(true);
-    expect(done.slots[0]).toHaveLength(13);
+    expect(isComplete(done.slots[0]!.cards)).toBe(true);
+    expect(done.slots[0]!.cards).toHaveLength(13);
     expect(completedBy(done.slots[0]!)).toBe(0); // the seat that placed the King
     rejected(applyIntent(done, 1, move('1:SK', slot(0))));
     rejected(applyIntent(done, 1, move('1:DA', felt(0, 0)))); // the felt is not free yet
@@ -548,13 +551,13 @@ describe('completed piles', () => {
     rejected(applyIntent(s, 1, { k: 'clear', slot: 0 })); // not complete
     rejected(applyIntent(s, 0, { k: 'clear', slot: 0 }));
     const cleared = ok(applyIntent(done, 0, { k: 'clear', slot: 0 }));
-    expect(cleared.slots[0]).toEqual([]);
+    expect(cleared.slots[0]).toBeNull();
     expect(cleared.slots).toHaveLength(8);
-    expect(cleared.tray).toEqual([done.slots[0]]);
+    expect(cleared.tray).toEqual([done.slots[0]!.cards]);
     expect(cleared.tray[0]!.at(-1)).toEqual(c('SK'));
     rejected(applyIntent(cleared, 0, { k: 'clear', slot: 0 })); // nothing there any more
     const reused = ok(applyIntent(cleared, 1, move('1:DA', felt(0, 0))));
-    expect(ids(reused.slots[0]!)).toEqual(['1:DA']);
+    expect(ids(reused.slots[0]!.cards)).toEqual(['1:DA']);
     expect(reused.tray).toHaveLength(1);
   });
 
@@ -641,7 +644,7 @@ describe('clear first: a finished pile must go to the tray before its player doe
     expect(isOver(called)).toBe(true);
     expect(mustClear(called, 0)).toBe(false); // nothing is asked of anyone any more
     expect(applyIntent(called, 0, { k: 'clear', slot: 2 })).toEqual({ ok: false, reason: 'The round is over' });
-    expect(called.slots[2]).toHaveLength(13);
+    expect(called.slots[2]!.cards).toHaveLength(13);
     const cleared = run(out, [0, { k: 'clear', slot: 2 }], [1, NERTZ]);
     expect(scoreRound(called)).toEqual(scoreRound(cleared));
     expect(scoreRound(called)).toEqual([
@@ -665,8 +668,7 @@ describe('clear first: a finished pile must go to the tray before its player doe
     const rest = cards.filter((x) => x.suit !== 'S');
     const waiting = (holding: string | null): GameState => ({
       ...full,
-      slots: full.slots.map((_, i) => (i === 0 ? spades : [])),
-      places: full.places.map((_, i) => (i === 0 ? { x: 0, y: 0, r: 0 } : null)),
+      slots: full.slots.map((_, i) => (i === 0 ? lying(spades) : null)),
       players: full.players.map((p) => (p.seat === 0 ? { ...p, nertz: [], work: [[], [], [], []], down: [0, 0, 0, 0], stock: rest.slice(1), waste: rest.slice(0, 1), holding } : p)),
     });
     expect(checkInvariants(waiting(null))).toBeNull();
@@ -1110,7 +1112,7 @@ describe('held-card grace after a Nertz call', () => {
     expect(canDrop(called, 1, '1:H2', slot(0))).toBe(true);
     const over = ok(applyIntent(called, 1, move('1:H2', slot(0))));
     expect([over.grace, isOver(over), holding(over)]).toEqual([[], true, [null, null, null, null]]);
-    expect(ids(over.slots[0]!)).toEqual(['0:HA', '1:H2']);
+    expect(ids(over.slots[0]!.cards)).toEqual(['0:HA', '1:H2']);
     expect(scoreRound(over).map((x) => x.delta)).toEqual([1, 1 - 2, -2, -2]); // the grace move scored and shortened the nertz pile
     rejected(applyIntent(over, 1, move('1:C5', work(0))));
   });
@@ -1165,7 +1167,7 @@ describe('held-card grace after a Nertz call', () => {
     const called = run(s, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
     expect(called.grace).toEqual([1, 3]);
     const taken = ok(applyIntent(called, 3, move('3:H2', slot(0))));
-    expect(ids(taken.slots[0]!)).toEqual(['0:HA', '3:H2']);
+    expect(ids(taken.slots[0]!.cards)).toEqual(['0:HA', '3:H2']);
     expect([taken.grace, holding(taken), isOver(taken)]).toEqual([[], [null, null, null, null], true]);
     expect(ids(taken.players[1]!.nertz)).toEqual(['1:C5', '1:H2']); // seat 1's card went back where it came from
     rejected(applyIntent(taken, 1, move('1:H2', slot(0))));
@@ -1317,14 +1319,13 @@ describe('checkInvariants', () => {
     const p = good.players[0]!;
     const card = p.work[0]![0] as Card;
     const without = withPlayer0(() => ({ work: [[], ...p.work.slice(1)] }));
-    const at0 = good.places.map((at, i) => (i === 0 ? { x: 0, y: 0, r: 0 } : at));
-    const inSlot = { ...without, slots: [[card], ...good.slots.slice(1)], places: at0 };
+    const inSlot = { ...without, slots: [lying([card]), ...good.slots.slice(1)] };
     if (card.rank === 1) expect(checkInvariants(inSlot)).toBeNull();
     else expect(checkInvariants(inSlot)).toMatch(/ace-up/);
     expect(checkInvariants({ ...good, slots: good.slots.slice(1) })).toMatch(/centre slots/);
     const ace = [...p.nertz, ...p.stock].find((x) => (x as Card).rank === 1) as Card;
     const moved = withPlayer0((q) => ({ nertz: q.nertz.filter((x) => x !== ace), stock: q.stock.filter((x) => x !== ace) }));
-    expect(checkInvariants({ ...moved, slots: [[ace], ...good.slots.slice(1)], places: at0 })).toBeNull();
+    expect(checkInvariants({ ...moved, slots: [lying([ace]), ...good.slots.slice(1)] })).toBeNull();
     expect(checkInvariants({ ...moved, tray: [[ace]] })).toMatch(/tray/);
   });
   it('catches inconsistent grace', () => {
@@ -1413,10 +1414,10 @@ describe('starting a pile on the felt', () => {
   const aces = { work: [cs('SA'), cs('HA'), cs('DA'), cs('C5')] };
   const theirAces = { work: [cs('SA', 1), cs('HA', 1), cs('DA', 1), cs('C5', 1)] };
 
-  it('the table is dealt with no places at all', () => {
+  it('the table is dealt with no piles at all', () => {
     for (const n of [2, 3, 4, 5, 6]) {
       const dealt = dealRound(Array.from({ length: n }, (_, i) => i), mulberry32(n));
-      expect(dealt.places).toEqual(Array.from({ length: 4 * n }, () => null));
+      expect(dealt.slots).toEqual(Array.from({ length: 4 * n }, () => null));
       expect(checkInvariants(dealt)).toBeNull();
     }
   });
@@ -1424,17 +1425,17 @@ describe('starting a pile on the felt', () => {
   it('an Ace starts a pile at the very point it is put down, in the first unused slot', () => {
     const s = freeGame(two(aces, theirAces));
     const next = ok(applyIntent(s, 0, move('0:SA', felt(0.2, -0.3))));
-    expect(ids(next.slots[0]!)).toEqual(['0:SA']);
-    expect(next.places[0]).toMatchObject({ x: 0.2, y: -0.3 });
-    expect(Math.abs(next.places[0]!.r)).toBeLessThanOrEqual(2.5);
-    expect(next.places.slice(1).every((at) => at === null)).toBe(true);
+    expect(ids(next.slots[0]!.cards)).toEqual(['0:SA']);
+    expect(next.slots[0]!.at).toMatchObject({ x: 0.2, y: -0.3 });
+    expect(Math.abs(next.slots[0]!.at.r)).toBeLessThanOrEqual(2.5);
+    expect(next.slots.slice(1).every((p) => p === null)).toBe(true);
     // The next one takes the next slot, wherever it is put; the place is in every player's view.
     const then = ok(applyIntent(next, 1, move('1:HA', felt(-0.4, 0.2))));
-    expect(ids(then.slots[1]!)).toEqual(['1:HA']);
-    expect(viewFor(then, 0).places.slice(0, 2)).toEqual(then.places.slice(0, 2));
+    expect(ids(then.slots[1]!.cards)).toEqual(['1:HA']);
+    expect(viewFor(then, 0).slots.slice(0, 2).map((p) => p!.at)).toEqual(then.slots.slice(0, 2).map((p) => p!.at));
     // Coordinates arrive rounded to a thousandth of the table, however they were sent.
     const fine = ok(applyIntent(s, 0, move('0:SA', felt(0.20004, -0.29996))));
-    expect(fine.places[0]).toMatchObject({ x: 0.2, y: -0.3 });
+    expect(fine.slots[0]!.at).toMatchObject({ x: 0.2, y: -0.3 });
   });
 
   it('every other card goes on the exact pile', () => {
@@ -1443,8 +1444,8 @@ describe('starting a pile on the felt', () => {
     rejected(applyIntent(s, 0, move('0:S2', felt(-0.5, 0)))); // and a two starts nothing
     rejected(applyIntent(s, 0, move('0:H2', slot(0))));
     const next = ok(applyIntent(s, 0, move('0:S2', slot(0))));
-    expect(ids(next.slots[0]!)).toEqual(['1:SA', '0:S2']);
-    expect(next.places).toEqual(s.places); // the pile stays where it is
+    expect(ids(next.slots[0]!.cards)).toEqual(['1:SA', '0:S2']);
+    expect(next.slots.map((p) => p?.at)).toEqual(s.slots.map((p) => p?.at)); // the pile stays where it is
     expect(legalDrops(s, 0, '0:S2')).toEqual([slot(0)]);
   });
 
@@ -1466,7 +1467,7 @@ describe('starting a pile on the felt', () => {
     expect(canDrop(waiting, 0, '0:SA', felt(-0.5, 0))).toBe(false);
     ok(applyIntent(waiting, 1, move('1:SA', felt(-0.5, 0)))); // nobody else is held up
     const cleared = ok(applyIntent(waiting, 0, { k: 'clear', slot: 0 }));
-    expect(cleared.places[0]).toBeNull(); // the felt it lay on is anybody's again
+    expect(cleared.slots[0]).toBeNull(); // the felt it lay on is anybody's again
     ok(applyIntent(cleared, 0, move('0:SA', felt(0.5, 0))));
     wellFormed(cleared);
   });
@@ -1506,7 +1507,7 @@ describe('starting a pile on the felt', () => {
       rejected(applyIntent(s, 0, move('0:SA', felt(-(w + gap * 0.5), h + gap * 0.5)))); // corner to corner, too close both ways
       // The gap away, to either side, above or below: there is room. One pile keeps off no more than that.
       const beside = ok(applyIntent(s, 0, move('0:SA', felt(w + gap + 0.002, 0))));
-      expect(ids(beside.slots[1]!)).toEqual(['0:SA']);
+      expect(ids(beside.slots[1]!.cards)).toEqual(['0:SA']);
       wellFormed(beside);
       ok(applyIntent(s, 0, move('0:SA', felt(-(w + gap + 0.002), h * 0.5))));
       ok(applyIntent(s, 0, move('0:SA', felt(w * 0.5, h + gap + 0.002)))); // overlapping columns, but one above the other
@@ -1531,11 +1532,11 @@ describe('starting a pile on the felt', () => {
     const after = refused(held, 1, late);
     expect(after.players[1]!.holding).toBeNull(); // the drop is over: the card is back in its pile
     expect(ids(after.players[1]!.work[1]!)).toEqual(['1:HA']);
-    expect(after.slots.filter((pile) => pile.length > 0)).toHaveLength(1);
-    expect(after.places).toEqual(first.places);
+    expect(after.slots.filter((pile) => pile !== null)).toHaveLength(1);
+    expect(after.slots.map((pile) => pile?.at)).toEqual(first.slots.map((pile) => pile?.at));
     // The same Ace a little further off is fine, whoever was first.
     const both = ok(applyIntent(held, 1, move('1:HA', felt(-0.5, 0))));
-    expect(both.slots.filter((pile) => pile.length > 0)).toHaveLength(2);
+    expect(both.slots.filter((pile) => pile !== null)).toHaveLength(2);
   });
 
   it('holds at most four piles per player: with every slot in use there is no room, however much felt is bare', () => {
@@ -1551,8 +1552,7 @@ describe('starting a pile on the felt', () => {
       expect(to, `pile ${n + 1}`).toBeDefined();
       s = ok(applyIntent(s, seat, move(cardId, to)));
     }
-    expect(s.slots.every((pile) => pile.length === 1)).toBe(true);
-    expect(s.places.every((at) => at !== null)).toBe(true);
+    expect(s.slots.every((pile) => pile?.cards.length === 1)).toBe(true);
     for (const at of [{ x: 0.9, y: 0 }, { x: -0.9, y: 0 }, { x: 0, y: 0 }]) expect(feltFree(s, at)).toBe(false);
   });
 
@@ -1567,11 +1567,11 @@ describe('starting a pile on the felt', () => {
     rejected(applyIntent(s, 0, move('0:HA', felt(-1.5, 0)))); // bare felt, but the round has its eight piles
     expect(feltFree(s, { x: -1.5, y: 0 })).toBe(false);
     const cleared = ok(applyIntent(s, 0, { k: 'clear', slot: 0 }));
-    expect(cleared.places[0]).toBeNull(); // the felt it lay on is free again
+    expect(cleared.slots[0]).toBeNull(); // the felt it lay on is free again
     expect(cleared.tray).toEqual([king]);
     const again = ok(applyIntent(cleared, 0, move('0:HA', felt(0, 0))));
-    expect(ids(again.slots[0]!)).toEqual(['0:HA']);
-    expect(again.places[0]).toMatchObject({ x: 0, y: 0 });
+    expect(ids(again.slots[0]!.cards)).toEqual(['0:HA']);
+    expect(again.slots[0]!.at).toMatchObject({ x: 0, y: 0 });
   });
 
   it('held-card grace: an Ace in hand still has somewhere to go while there is room, and its one move may be to the felt', () => {
@@ -1584,22 +1584,18 @@ describe('starting a pile on the felt', () => {
     expect(scoreRound(landed).find((x) => x.seat === 0)!.played).toBe(1);
   });
 
-  it('checkInvariants catches a pile without a place, a place without a pile, and piles on top of each other', () => {
+  it('checkInvariants catches piles on top of each other, and one off the table', () => {
     // A real deal, with an Ace out of each player's stock started as a pile.
     const dealt = deal([0, 1], mulberry32(5));
     const ace = dealt.players.map((p) => (p.stock as Card[]).find((x) => x.rank === 1)!);
     const s: GameState = {
       ...dealt,
       players: dealt.players.map((p, i) => ({ ...p, stock: p.stock.filter((x) => x !== ace[i]) })),
-      slots: dealt.slots.map((_, i) => (i < 2 ? [ace[i]!] : [])),
-      places: dealt.places.map((_, i) => (i < 2 ? { x: i * 0.5, y: 0, r: 0 } : null)),
+      slots: dealt.slots.map((_, i) => (i < 2 ? lying([ace[i]!], i * 0.5, 0) : null)),
     };
     expect(checkInvariants(s)).toBeNull();
-    expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 0 ? null : at)) })).toMatch(/slot 0/);
-    expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 5 ? { x: -0.5, y: 0, r: 0 } : at)) })).toMatch(/slot 5/);
-    expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 1 ? { x: 0.05, y: 0, r: 0 } : at)) })).toMatch(/overlapping/);
-    expect(checkInvariants({ ...s, places: s.places.map((at, i) => (i === 1 ? { x: TABLE.hw - 0.05, y: 0, r: 0 } : at)) })).toMatch(/off the table/);
-    expect(checkInvariants({ ...s, places: s.places.slice(1) })).toMatch(/places/);
+    expect(checkInvariants({ ...s, slots: s.slots.map((p, i) => (i === 1 ? lying([ace[1]!], 0.05, 0) : p)) })).toMatch(/overlapping/);
+    expect(checkInvariants({ ...s, slots: s.slots.map((p, i) => (i === 1 ? lying([ace[1]!], TABLE.hw - 0.05, 0) : p)) })).toMatch(/off the table/);
   });
 });
 
@@ -1632,7 +1628,7 @@ function randomIntent(s: GameState, seat: number, rng: Rng): Intent {
   if (roll < 0.34) return NERTZ;
   if (roll < 0.38) return RELEASE;
   if (roll < 0.42) {
-    const full = s.slots.flatMap((pile, i) => (isComplete(pile) ? [i] : []));
+    const full = s.slots.flatMap((pile, i) => (pile && isComplete(pile.cards) ? [i] : []));
     return { k: 'clear', slot: full.length && rng() < 0.9 ? pick(full) : Math.floor(rng() * 24) };
   }
   if (roll < 0.6) {
@@ -1687,12 +1683,12 @@ describe('random play keeps every invariant', () => {
           if (intent.k === 'move' && intent.to.k === 'felt') {
             // A pile was started on bare felt: exactly there, in a slot that was empty, clear of every pile that was lying.
             seen.started++;
-            const i = state.slots.findIndex((pile, j) => pile.length === 1 && before.slots[j]!.length === 0);
-            const place = state.places[i]!;
+            const i = state.slots.findIndex((pile, j) => pile?.cards.length === 1 && before.slots[j] === null);
+            const place = state.slots[i]!.at;
             expect(place.x).toBeCloseTo(intent.to.x, 3); // (to the thousandth of the table it is kept at)
             expect(place.y).toBeCloseTo(intent.to.y, 3);
             expect(onTable(place, seatCount)).toBe(true);
-            for (const at of before.places) if (at) expect(clash(at, place, seatCount)).toBe(false);
+            for (const pile of before.slots) if (pile) expect(clash(pile.at, place, seatCount)).toBe(false);
           }
           if (before.nertzCalledBy === null && state.grace.length > 0) seen.graces++;
           if (before.nertzCalledBy !== null) {
@@ -1705,9 +1701,8 @@ describe('random play keeps every invariant', () => {
           if (intent.k === 'clear') {
             seen.cleared++;
             expect(completedBy(before.slots[intent.slot]!)).toBe(seat);
-            expect(state.tray.at(-1)).toEqual(before.slots[intent.slot]);
-            expect(state.slots[intent.slot]).toEqual([]);
-            expect(state.places[intent.slot]).toBeNull(); // the felt is anybody's again
+            expect(state.tray.at(-1)).toEqual(before.slots[intent.slot]!.cards);
+            expect(state.slots[intent.slot]).toBeNull(); // the felt is anybody's again
           }
           const downs = (g: GameState) => g.players.reduce((n, p) => n + p.down.reduce((a, b) => a + b, 0), 0);
           if (downs(state) < downs(before)) seen.reveals++;
@@ -1717,14 +1712,14 @@ describe('random play keeps every invariant', () => {
         if (isOver(state)) {
           expect(checkInvariants(state)).toBeNull();
           expect(state.players.every((p) => p.holding === null)).toBe(true);
-          expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe([...state.slots, ...state.tray].flat().length);
+          expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + state.tray.flat().length);
           for (const intent of [{ k: 'flip' }, RELEASE, NERTZ] as Intent[]) rejected(applyIntent(state, seat, intent));
-          seen.centre += state.slots.flat().length + state.tray.flat().length;
+          seen.centre += inSlots(state).length + state.tray.flat().length;
           seen.rounds++;
           state = fresh();
         }
       }
-      seen.centre += state.slots.flat().length;
+      seen.centre += inSlots(state).length;
       expect(seen.accepted).toBeGreaterThan(1500);
       expect(seen.centre + seen.rotations).toBeGreaterThan(0);
       if (seatCount > 2) expect(seen.reveals).toBeGreaterThan(0); // (two players have no face-down cards to turn up)
@@ -1757,13 +1752,13 @@ describe('random play keeps every invariant', () => {
       if (!r.ok) continue;
       if (intent.k === 'clear') (cleared++, freed.add(intent.slot));
       // An Ace takes the first slot nobody is using.
-      const into = intent.k === 'move' && intent.to.k === 'felt' ? state.slots.findIndex((pile) => pile.length === 0) : -1;
-      if (freed.has(into) && r.state.slots[into]!.length === 1) reused++;
+      const into = intent.k === 'move' && intent.to.k === 'felt' ? state.slots.indexOf(null) : -1;
+      if (freed.has(into) && r.state.slots[into]?.cards.length === 1) reused++;
       state = resolveStuck(r.state, seats);
       expect(checkInvariants(state)).toBeNull();
     }
     expect(state.tray.length).toBe(cleared);
-    expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe(state.slots.flat().length + 13 * cleared);
+    expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + 13 * cleared);
     expect(cleared).toBeGreaterThanOrEqual(3);
     expect(reused).toBeGreaterThan(0); // an Ace went into a slot a finished pile had been cleared from
   });
@@ -1819,7 +1814,7 @@ describe('greedy bots can finish a round', () => {
       expect(caller.nertzLeft).toBe(0);
       expect(caller.delta).toBe(caller.played);
       for (const x of scores) expect(x.delta).toBe(x.played - 2 * x.nertzLeft);
-      expect(scores.reduce((n, x) => n + x.played, 0)).toBe([...state.slots, ...state.tray].flat().length);
+      expect(scores.reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + state.tray.flat().length);
     }
     expect(finished).toBeGreaterThanOrEqual(6);
   }, 30_000);
@@ -1838,7 +1833,6 @@ function expectPredictionMatches(predicted: GameState, truth: GameState) {
   expect(predicted.nertzCalledBy).toBe(truth.nertzCalledBy);
   expect(predicted.grace).toEqual(truth.grace);
   expect(predicted.slots).toEqual(truth.slots);
-  expect(predicted.places).toEqual(truth.places);
   expect(predicted.tray).toEqual(truth.tray);
   expect(predicted.players).toHaveLength(truth.players.length);
   for (const [i, real] of truth.players.entries()) {
@@ -1932,14 +1926,14 @@ describe('client prediction on a redacted view agrees with the server', () => {
     const pending = move('1:H2', slot(0));
     // seat 1 predicts its own move locally
     const predicted = ok(applyIntent(viewFor(s, 1), 1, pending));
-    expect(predicted.slots[0]).toHaveLength(2);
+    expect(predicted.slots[0]!.cards).toHaveLength(2);
     // but the server processed seat 0 first; seat 1's intent is rejected there...
     const server = ok(applyIntent(s, 0, move('0:H2', slot(0))));
     rejected(applyIntent(server, 1, pending));
     // ...and replaying it over the new snapshot fails the same way, so the card just goes home (not to the other ace)
     rejected(applyIntent(viewFor(server, 1), 1, pending));
     expect(ids(viewFor(server, 1).players[1]!.nertz)).toEqual(['1:D9', '1:H2']);
-    expect(viewFor(server, 1).slots[1]).toHaveLength(1);
+    expect(viewFor(server, 1).slots[1]!.cards).toHaveLength(1);
   });
 });
 

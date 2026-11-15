@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, feltFree, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, START_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, type DragAt, type ServerMsg } from '../shared/protocol';
 import { cardSize, openPlace, TABLE, type Spot } from '../shared/table';
-import type { Card, GameState, Intent, PileRef } from '../shared/types';
+import type { Card, CentrePile, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
 import { Room, type Conn } from './room';
 
@@ -74,11 +74,11 @@ const at = (id: string, w = 0.5): { t: 'drag' } & DragAt => ({ t: 'drag', id, w,
 afterEach(() => void vi.useRealTimers());
 
 describe('the middle', () => {
-  it('is dealt bare: no slot has a place until an Ace starts its pile there', () => {
+  it('is dealt bare: no slot has a pile until an Ace starts one there', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     start(room, conns[0]!);
-    expect(room.game!.places).toEqual(Array.from({ length: 8 }, () => null));
+    expect(room.game!.slots).toEqual(Array.from({ length: 8 }, () => null));
     room.close();
   });
 
@@ -95,18 +95,18 @@ describe('the middle', () => {
     room.handle(a, { t: 'intent', seq: 2, intent: move(aceA, felt(0.22, 0.12)) });
     room.flush();
     const game = room.game!;
-    expect(game.slots.map((s) => s.map((x) => x.id))[0]).toEqual([aceB]);
-    expect(game.slots.filter((s) => s.length > 0)).toHaveLength(1);
-    expect(game.places[0]).toMatchObject({ x: 0.2, y: 0.1 });
+    expect(game.slots[0]!.cards.map((x) => x.id)).toEqual([aceB]);
+    expect(game.slots.filter((s) => s !== null)).toHaveLength(1);
+    expect(game.slots[0]!.at).toMatchObject({ x: 0.2, y: 0.1 });
     expect(game.players[0]!.waste.map((x) => x.id)).toEqual([aceA]); // back where it came from
     expect(game.players[0]!.holding).toBeNull(); // and out of the hand
     expect(a.states.at(-1)!.ack).toBe(2); // the refusal is an answer too
     // Everyone is shown the one pile, at the same point of the table.
-    for (const conn of [a, b, c]) expect(conn.room.game!.places[0]).toMatchObject({ x: 0.2, y: 0.1 });
+    for (const conn of [a, b, c]) expect(conn.room.game!.slots[0]!.at).toMatchObject({ x: 0.2, y: 0.1 });
     // A is free to put it somewhere else, and C beside that.
     room.handle(a, { t: 'intent', seq: 3, intent: move(aceA, felt(-0.5, 0)) });
     room.handle(c, { t: 'intent', seq: 1, intent: move(aceC, felt(1.6, -0.6)) });
-    expect(room.game!.slots.filter((s) => s.length > 0)).toHaveLength(3);
+    expect(room.game!.slots.filter((s) => s !== null)).toHaveLength(3);
     expect(checkInvariants(room.game!)).toBeNull();
     room.close();
   });
@@ -308,8 +308,8 @@ describe('bots starting piles', () => {
     const taken: Spot[] = [];
     for (let i = 0; i < 6; i++) taken.push({ ...openPlace(taken, 2)!, r: 0 });
     expect(taken).toHaveLength(6);
-    const pile = (i: number): Card[] => [{ id: `pile${i}`, owner: 1, suit: 'D', rank: 1 }];
-    const crowded = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 6 ? pile(i) : s)), places: view.places.map((p, i) => (i < 6 ? taken[i]! : p)) }, 0);
+    const pile = (i: number, at: Spot): CentrePile => ({ cards: [{ id: `pile${i}`, owner: 1, suit: 'D', rank: 1 }], at });
+    const crowded = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 6 ? pile(i, taken[i]!) : s)) }, 0);
     for (let seed = 1; seed <= 10; seed++) {
       const intent = chooseIntent(crowded, 0, freshMemory(), seeded(seed))!.intent;
       expect(intent).toMatchObject({ k: 'move', cardId: ace });
@@ -318,10 +318,10 @@ describe('bots starting piles', () => {
     // A table so full that a glance or two finds nothing: it still finds the one place there is.
     const packed: Spot[] = [...taken];
     for (let at = openPlace(packed, 2); at && packed.length < 7; at = openPlace(packed, 2)) packed.push({ ...at, r: 0 });
-    const seven = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 7 ? pile(i) : s)), places: view.places.map((p, i) => (i < 7 ? packed[i]! : p)) }, 0);
+    const seven = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 7 ? pile(i, packed[i]!) : s)) }, 0);
     expect(chooseIntent(seven, 0, freshMemory(), () => 0.999)!.intent).toMatchObject({ k: 'move', cardId: ace, to: { k: 'felt' } }); // (every glance lands off in a corner)
     // All eight slots in use: the Ace has nowhere to go, so the bot does something else (here: flips).
-    const full = { ...crowded, slots: crowded.slots.map((s, i) => (s.length ? s : pile(i))), places: crowded.places.map((p, i) => p ?? { x: -2 + 0.01 * i, y: 0, r: 0 }) };
+    const full = { ...crowded, slots: crowded.slots.map((s, i) => s ?? pile(i, { x: -2 + 0.01 * i, y: 0, r: 0 })) };
     expect(chooseIntent(full, 0, freshMemory(), seeded(1))!.intent).toEqual({ k: 'flip' });
   });
 
@@ -347,7 +347,7 @@ describe('bots starting piles', () => {
           const game = room.game!;
           const problem = checkInvariants(game);
           if (problem) throw new Error(`${players} players, seed ${seed}: ${problem}`);
-          most = Math.max(most, game.slots.filter((s) => s.length > 0).length);
+          most = Math.max(most, game.slots.filter((s) => s !== null).length);
         }
         aces += most;
         expect(most).toBeGreaterThan(players); // piles were started
