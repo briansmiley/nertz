@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
-import { BackPicker, YourBacks } from './BackPicker';
-import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
+import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
+import { deckOf, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat, signed } from './Chat';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
@@ -472,8 +472,6 @@ function Lobby({ room }: { room: RoomView }) {
   const link = `${location.origin}/?room=${room.code}`;
   const me = room.players.find((p) => p.id === room.me);
   const prefs = usePrefs();
-  /** My backs at this table: chosen here, or my usual ones. */
-  const chosen = choiceAt(room.code, prefs);
   /** Whose backs are being chosen (the seat), if the sheet of backs is open: your own, or a bot's. */
   const [picking, setPicking] = useState<number | null>(null);
   const picked = room.players.filter(hasSeat).find((p) => p.seat === picking && (p.id === room.me || (me?.isHost && p.bot)));
@@ -528,8 +526,8 @@ function Lobby({ room }: { room: RoomView }) {
             <li key={p.id} className={`${p.connected ? '' : 'away'}${p.id === room.me ? ' you' : ''}`}>
               {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
               {p.id === room.me || (me?.isHost && p.bot) ? (
-                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (chosen.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs at this table') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
-                  <Mini seat={p.seat} back={p.id === room.me ? (chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)) : p.back} />
+                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (prefs.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
+                  <Mini seat={p.seat} back={p.id === room.me ? (prefs.random ? 'any' : backNamed(prefs.back, prefs.bare)) : p.back} />
                 </button>
               ) : (
                 <Mini seat={p.seat} back={p.back} />
@@ -553,18 +551,7 @@ function Lobby({ room }: { room: RoomView }) {
         <Watching room={room} />
         {picked &&
           (picked.id === room.me ? (
-            <BackPicker
-              faces
-              title="Deck style"
-              colour={backColour(picked.seat)}
-              bare={prefs.bare}
-              back={chosen.back}
-              random={chosen.random}
-              onPick={(back) => (setPrefs({ back, random: null }), setPicking(null))}
-              onRandom={(random) => setPrefs({ random })}
-              onBare={(bare) => setPrefs({ bare })}
-              onClose={() => setPicking(null)}
-            />
+            <YourBackPicker colour={backColour(picked.seat)} onClose={() => setPicking(null)} />
           ) : (
             <BackPicker
               title={`${picked.name}'s card backs`}
@@ -577,12 +564,12 @@ function Lobby({ room }: { room: RoomView }) {
               onClose={() => setPicking(null)}
             />
           ))}
-        {/* Your backs at this table: the card, and a button to change it. */}
+        {/* Your backs: the card, and a button to change it. */}
         {me && hasSeat(me) && (
           <div className="yourback">
             {/* One button: the card, and tucked under its bottom edge a small yellow tag saying what pressing it does. */}
             <button type="button" className="change" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
-              <Mini seat={me.seat} back={chosen.random ? 'any' : backNamed(chosen.back, prefs.bare)} />
+              <Mini seat={me.seat} back={prefs.random ? 'any' : backNamed(prefs.back, prefs.bare)} />
               <span>Change</span>
             </button>
             {/* Your colour is your seat. Until the first deal it can be changed for any that nobody has: a dot of it, and behind the dot the ones still free. */}

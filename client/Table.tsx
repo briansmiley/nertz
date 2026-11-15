@@ -24,7 +24,7 @@ import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, onSniper, pause, post } from './net';
 import { canResume } from './Settings';
-import { calm, choiceAt, deckOf, usePrefs } from './prefs';
+import { calm, deckOf, usePrefs } from './prefs';
 import { useSocial } from './social';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
 import { beatenTo } from './soundEvents';
@@ -629,11 +629,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [dealing, dealMs, game.players, L, you]);
   const inGrace = called && !results && game.grace.length > 0;
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
-  /** My own backs, as they are named for drawing: my choice at this table, shown at once; or, if they are by lot, the one the table drew for me (it comes with the deal). */
-  const chosen = choiceAt(room.code, prefs);
   /** My own faces. */
   const own = deckOf(prefs);
-  const myBack = chosen.random ? info(you)?.back : backNamed(chosen.back, prefs.bare);
+  /** My own backs, as they are named for drawing: my choice, shown at once; or, if they are by lot, the one the table drew for me (it comes with the deal). */
+  const myBack = prefs.random ? info(you)?.back : backNamed(prefs.back, prefs.bare);
   /** This seat's line of the round just scored. The finished table goes by it: whoever played the round may have left since. */
   const line = (seat: number) => (results ? room.lastRound?.scores.find((s) => s.seat === seat) : undefined);
   /**

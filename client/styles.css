@@ -3807,7 +3807,7 @@ body:has(main.showroom) {
   margin: 0;
 }
 
-/* The lobby: your backs at this table, between the names and the rules. The card and a button: no box. */
+/* The lobby: your backs, between the names and the rules. The card and a button: no box. */
 .yourback {
   display: flex;
   align-items: center;
