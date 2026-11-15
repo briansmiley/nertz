@@ -437,16 +437,20 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const untap = useRef<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [hot, setHot] = useState<string | null>(null);
-  /** The last snipe the server told of: who beat whom to a pile (and a count, so that the same names flash again). */
+  /** The last snipe the server told of that you were in, and the last between two others: who beat whom to a pile (and a count, so that the same names flash again). Kept apart so that one does not put out the other. */
   const [snipe, setSnipe] = useState<{ by: number; of: number; n: number } | null>(null);
-  useEffect(() => setSnipe(null), [room.round]);
+  const [aside, setAside] = useState<{ by: number; of: number; n: number } | null>(null);
+  useEffect(() => {
+    setSnipe(null);
+    setAside(null);
+  }, [room.round]);
   useEffect(
     () =>
       onSnipe(({ by, of }) => {
         if (by === you) snipeSound('me');
         else if (of === you) beaten();
         else snipeSound('other');
-        setSnipe((s) => ({ by, of, n: (s?.n ?? 0) + 1 }));
+        (by === you || of === you ? setSnipe : setAside)((s) => ({ by, of, n: (s?.n ?? 0) + 1 }));
       }),
     [you],
   );
@@ -1246,16 +1250,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         </div>
       )}
       {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
-      {snipe && !called && (snipe.by === you || snipe.of === you) && (
+      {snipe && !called && (
         <div key={`sniped${snipe.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
           <span style={{ color: backColour(snipe.by === you ? snipe.of : snipe.by) }}>{snipe.by === you ? `You sniped ${name(snipe.of)}!` : `Sniped by ${name(snipe.by)}!`}</span>
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies. */}
-      {snipe && !called && snipe.by !== you && snipe.of !== you && (
-        <div key={`aside${snipe.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
+      {aside && !called && (
+        <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           <span>
-            <b style={{ color: backColour(snipe.by) }}>{name(snipe.by)}</b> sniped <b style={{ color: backColour(snipe.of) }}>{name(snipe.of)}</b>
+            <b style={{ color: backColour(aside.by) }}>{name(aside.by)}</b> sniped <b style={{ color: backColour(aside.of) }}>{name(aside.of)}</b>
           </span>
         </div>
       )}
