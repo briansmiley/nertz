@@ -4620,3 +4620,56 @@ button.code.copy small {
   color: #fff;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
 }
+
+/* ------------------------------------------------------------ the host, by their name (Host.tsx) */
+
+svg.host {
+  flex: none;
+  width: 1.1em;
+  height: 1.17em;
+  margin-left: 0.35em;
+  vertical-align: -0.2em;
+  overflow: visible;
+}
+
+/* The dealer button: a white puck with a D, its edge showing under it. */
+svg.host.button circle {
+  fill: var(--card);
+  stroke: var(--ink);
+  stroke-width: 1.1;
+}
+
+svg.host.button .edge {
+  fill: #d9d2bf;
+}
+
+svg.host.button text {
+  font: 800 9.5px/1 var(--ui);
+  fill: var(--ink);
+}
+
+/* The deck they deal from: three cards squared up, each outlined in the colour of the words. */
+svg.host.deck rect {
+  fill: var(--card);
+  stroke: currentColor;
+  stroke-width: 1.3;
+}
+
+/* The name itself, underlined in marigold. */
+.host-ink {
+  text-decoration: underline var(--marigold);
+  text-decoration-thickness: 0.16em;
+  text-underline-offset: 0.2em;
+  text-decoration-skip-ink: none;
+}
+
+/* Over a hand the name is clipped to its box: room under it for the line. */
+.tag .name.host-ink {
+  padding-bottom: 0.3em;
+  margin-bottom: -0.3em;
+}
+
+/* In the lobby the gap of the line already stands between name and mark. */
+.seats .name + svg.host {
+  margin-left: -0.35rem;
+}
