@@ -16,6 +16,7 @@ import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import type { Named } from '../shared/chat';
 import { roundOver, Social } from './chat';
+import { guard } from './guard';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -339,7 +340,7 @@ export class Room {
     for (const p of this.players) {
       if (!p.dirty) continue;
       p.dirty = false;
-      p.conn?.send({ t: 'state', rev: this.rev, ack: p.ack, room: this.view(p) });
+      guard(`table ${this.code}`, () => p.conn?.send({ t: 'state', rev: this.rev, ack: p.ack, room: this.view(p) })); // (one snapshot that fails costs nobody else theirs)
     }
   }
 
@@ -403,8 +404,7 @@ export class Room {
     // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
     this.stopTimers();
     this.dealEndsAt = Date.now() + DEAL_MS;
-    this.dealTimer = setTimeout(() => this.dealt(), DEAL_MS);
-    this.dealTimer.unref?.();
+    this.dealTimer = this.later(DEAL_MS, () => this.dealt());
     this.changed();
   }
 
@@ -421,8 +421,7 @@ export class Room {
     if (player !== this.dealer || this.phase !== 'playing' || this.game?.stage !== 'ready') return;
     this.game = startCountdown(this.game);
     this.startEndsAt = Date.now() + START_MS;
-    this.startTimer = setTimeout(() => this.opened(), START_MS);
-    this.startTimer.unref?.();
+    this.startTimer = this.later(START_MS, () => this.opened());
     this.changed();
   }
 
@@ -458,6 +457,13 @@ export class Room {
     const by = this.players.find((p) => p.seat === top.owner);
     by?.conn?.send({ t: 'sniper', of: victim.seat });
     if (by) this.social.tell(this.players, { k: 'sniped', by: named(by), of: named(victim) }); // and everyone reads of it where the chat is
+  }
+
+  /** Every timer the room sets: `fn` runs in `ms`, guarded (see server/guard.ts), and the timer never holds the process open. */
+  private later(ms: number, fn: () => void): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => guard(`table ${this.code}`, fn), ms);
+    timer.unref?.();
+    return timer;
   }
 
   private stopTimers(): void {
@@ -517,8 +523,7 @@ export class Room {
     if (!this.game.ended && !isOver(this.game)) {
       if (this.graceTimer) return;
       this.graceEndsAt = Date.now() + GRACE_MS;
-      this.graceTimer = setTimeout(() => this.graceExpired(), GRACE_MS);
-      this.graceTimer.unref?.();
+      this.graceTimer = this.later(GRACE_MS, () => this.graceExpired());
       return;
     }
     if (this.graceTimer) clearTimeout(this.graceTimer);
@@ -793,8 +798,7 @@ export class Room {
     const k = bot.pending?.intent.k;
     const react = BOT_REACT_MS * (0.75 + 0.5 * this.rng());
     const reflex = k === 'clear' ? react + FLIGHT_MS.centre : k === 'nertz' ? react : null;
-    bot.timer = setTimeout(() => this.look(player), dealing ? DEAL_STEP_MS : (reflex ?? Math.max(FLIGHT_STEP_MS, think - spent)));
-    bot.timer.unref?.();
+    bot.timer = this.later(dealing ? DEAL_STEP_MS : (reflex ?? Math.max(FLIGHT_STEP_MS, think - spent)), () => this.look(player));
   }
 
   /**
@@ -868,8 +872,7 @@ export class Room {
       if (frame) {
         const msg: ServerMsg = { t: 'drag', seat: at(player), ...frame };
         for (const p of this.players) p.conn?.send(msg);
-        bot.timer = setTimeout(step, FLIGHT_STEP_MS);
-        bot.timer.unref?.();
+        bot.timer = this.later(FLIGHT_STEP_MS, step);
         return;
       }
       bot.pending = null;
@@ -901,8 +904,7 @@ export class Room {
     const bot = player.bot!;
     bot.pending = chooseIntent(viewFor(this.game!, at(player)), at(player), bot.memory, this.rng, this.botNow(bot).observance);
     if (bot.timer) clearTimeout(bot.timer);
-    bot.timer = setTimeout(() => this.look(player), RETHINK_MS * (0.6 + 0.8 * this.rng()));
-    bot.timer.unref?.();
+    bot.timer = this.later(RETHINK_MS * (0.6 + 0.8 * this.rng()), () => this.look(player));
   }
 
   private stopBots(): void {
