@@ -10,6 +10,7 @@ import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
 import { pause, redeal, send, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
+import { useDismiss } from './dismiss';
 import { Feedback } from './Feedback';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
@@ -93,19 +94,7 @@ export function Door() {
 export function Pop({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setOpen(false);
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  useDismiss(root, open, () => setOpen(false));
   return (
     <span className="pop-at" ref={root}>
       <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen(!open)}>
@@ -352,28 +341,18 @@ export function Corner({ room }: { room?: RoomView | null }) {
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
-  // The sound key mutes from anywhere (except while typing a name), P pauses or carries on; Escape puts the slip away.
+  // The sound key mutes from anywhere (except while typing a name), P pauses or carries on.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       if (hotkeyPressed(e, prefs.soundKey)) setPrefs({ muted: !prefs.muted });
       else if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
-      else if (e.code === 'Escape') setOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [prefs.muted, prefs.soundKey, pausable, resumable]);
 
-  // A press anywhere else closes the slip (and still does whatever it was meant to do).
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      // (The sheet of cards opened from here is put straight into the page, outside this corner: a press in it is not a press elsewhere. Closing the slip would take the sheet with it.)
-      if (!root.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.picker')) setOpen(false);
-    };
-    window.addEventListener('pointerdown', onDown, true);
-    return () => window.removeEventListener('pointerdown', onDown, true);
-  }, [open]);
+  useDismiss(root, open, () => setOpen(false));
 
   const sound = prefs.muted ? 'Sound is off' : 'Sound is on';
   const soundKey = hotkeyName(prefs.soundKey);

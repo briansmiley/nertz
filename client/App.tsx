@@ -8,6 +8,7 @@ import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { deckOf, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat, signed } from './Chat';
+import { useDismiss } from './dismiss';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
@@ -181,19 +182,7 @@ function BotName({ name, seat }: { name: string; seat: number }) {
 function Colour({ room, seat }: { room: RoomView; seat: number }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setOpen(false);
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  useDismiss(root, open, () => setOpen(false));
   /** Yours (ticked), and every colour nobody has. */
   const free = BACKS.map((c, i) => ({ c, i })).filter(({ i }) => i === seat || !room.players.some((p) => p.seat === i));
   return (
@@ -220,19 +209,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];
   const [step, setStep] = useState<'ask' | 'pick' | null>(null);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!step) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setStep(null);
-    };
-    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setStep(null);
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [step]);
+  useDismiss(root, !!step, () => setStep(null));
   const up = () => (takeSeat(false, mine ? undefined : who.id), setStep(null));
   return (
     <span className="pop-at" ref={root}>
