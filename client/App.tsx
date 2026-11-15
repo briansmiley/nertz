@@ -7,7 +7,7 @@ import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBacks } from './BackPicker';
 import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
-import { Chat } from './Chat';
+import { Chat, signed } from './Chat';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
@@ -702,7 +702,6 @@ function Results({ room }: { room: RoomView }) {
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
   const caller = rows.find((s) => s.seat === round?.calledBy);
-  const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
   /** Whose line of the round this is, if they are still in the room: a line goes by who played it, not by who has its seat now. */
   const of = (s: { id: number }) => room.players.find((p) => p.id === s.id);

@@ -1,7 +1,8 @@
 // The social side of one table: text chat, the host's two switches, who is in
 // voice, and the relay for WebRTC signalling. Like the room it does no IO, and
 // none of it is part of the game: nothing here ever goes into a snapshot.
-import { CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, type ChatLine, type IceServer, type SocialClientMsg, type SocialServerMsg } from '../shared/chat';
+import { CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, type ChatEvent, type ChatLine, type IceServer, type Scored, type SocialClientMsg, type SocialServerMsg } from '../shared/chat';
+import type { RoundLine, RoundResult } from '../shared/types';
 import type { Conn } from './room';
 
 /** As much of someone in the room as chat needs. One without a connection (away, or a bot) is simply never sent anything; one without a seat is watching. */
@@ -27,6 +28,18 @@ function iceFromEnv(): IceServer[] | undefined {
   }
 }
 const ICE = iceFromEnv();
+
+/**
+ * The notice that round `round` is over, from its score sheet and with its numbers. Whoever scored most is picked
+ * among the lines the sheet shows (not one sent away since, `gone`); whoever called is named whatever became of them.
+ */
+export function roundOver(round: number, result: RoundResult): Extract<ChatEvent, { k: 'over' }> {
+  const scored = (l: RoundLine): Scored => ({ who: l.id, name: l.name, points: l.delta });
+  const shown = result.scores.filter((l) => !l.gone);
+  const most = Math.max(...shown.map((l) => l.delta));
+  const caller = result.scores.find((l) => l.seat === result.calledBy);
+  return { k: 'over', round, end: caller ? scored(caller) : result.ended!, best: shown.filter((l) => l.delta === most).map(scored) };
+}
 
 export class Social {
   /** The host's switches. To merge into a generic table-settings object, keep these two booleans there instead. */
@@ -97,20 +110,21 @@ export class Social {
     this.recent.set(member, recent);
     if (recent.length >= CHAT_RATE_COUNT) return;
     recent.push(now);
-    const line: ChatLine = { id: this.nextId++, who: member.id, name: member.name, text, at: now };
-    this.lines.push(line);
-    if (this.lines.length > CHAT_HISTORY) this.lines.shift();
-    for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
+    this.post(members, { k: 'said', by: { who: member.id, name: member.name }, text }, true);
   }
 
   /**
-   * The table's own notice, for everyone to read where the chat is: `by` beat `of` to a pile. While text chat is
-   * switched off there is nowhere to read it, and it is not kept; it is still sent, since the table also sounds and
-   * flashes it.
+   * The table's own notice (a snipe, a round dealt or over, the table started over), for everyone to read where the
+   * chat is. While text chat is switched off there is nowhere to read it, and it is not kept; it is still sent, since
+   * the table also sounds and flashes a snipe.
    */
-  sniped(members: readonly Member[], by: Member, of: Member): void {
-    const line: ChatLine = { id: this.nextId++, who: by.id, name: by.name, text: '', at: Date.now(), sniped: { who: of.id, name: of.name } };
-    if (this.text) {
+  tell(members: readonly Member[], event: Exclude<ChatEvent, { k: 'said' }>): void {
+    this.post(members, event, this.text);
+  }
+
+  private post(members: readonly Member[], event: ChatEvent, keep: boolean): void {
+    const line: ChatLine = { ...event, id: this.nextId++, at: Date.now() };
+    if (keep) {
       this.lines.push(line);
       if (this.lines.length > CHAT_HISTORY) this.lines.shift();
     }
