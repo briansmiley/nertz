@@ -212,6 +212,33 @@ async function renew(): Promise<void> {
 }
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void renew());
 
+const social = (msg: SocialServerMsg): void => {
+  for (const fn of socialListeners) fn(msg);
+};
+
+/** What each message from the server does, by its type: one that is in `ServerMsg` and not here does not compile. */
+const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => void } = {
+  state: (msg) => {
+    attempts = 0;
+    if (session && !state.room) {
+      session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
+      keep({ room: session.room, name: session.name });
+    }
+    sync = onSnapshot(sync, msg);
+    set({ status: 'online', room: predict(sync), error: null });
+  },
+  error: (msg) => set({ error: msg.message }),
+  snipe: (msg) => {
+    for (const fn of snipeListeners) fn(msg);
+  },
+  drag: (msg) => {
+    for (const fn of dragListeners) fn(msg);
+  },
+  chat: social,
+  social,
+  signal: social,
+};
+
 function connect(): void {
   if (!session) return;
   const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
@@ -232,23 +259,7 @@ function connect(): void {
     } catch {
       return;
     }
-    if (msg.t === 'state') {
-      attempts = 0;
-      if (session && !state.room) {
-        session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
-        keep({ room: session.room, name: session.name });
-      }
-      sync = onSnapshot(sync, msg);
-      set({ status: 'online', room: predict(sync), error: null });
-    } else if (msg.t === 'error') {
-      set({ error: msg.message });
-    } else if (msg.t === 'snipe') {
-      for (const fn of snipeListeners) fn(msg);
-    } else if (msg.t === 'drag') {
-      for (const fn of dragListeners) fn(msg);
-    } else {
-      for (const fn of socialListeners) fn(msg);
-    }
+    if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
   };
   ws.onclose = (e) => {
     if (socket !== ws) return;
