@@ -812,8 +812,8 @@ describe('a half-dealt group, the stuck rotation and the Nertz call', () => {
 describe('stuck', () => {
   const base = table([
     { stock: 'S5 S4', waste: 'SA S2 S3', nertz: 'H6', work: ['S7', [], [], []] },
-    { stock: 'D9' },
-    { waste: 'C2 C3' },
+    { stock: 'D9', work: ['S9'], rest: 0 }, // a one-card stock: nothing to rotate
+    { waste: 'C2 C3', work: ['S9'], rest: 0 }, // no stock, only a waste
   ]);
   const stuck = (s: GameState, seat: number, on = true) => ok(applyIntent(s, seat, { k: 'stuck', on }));
 
@@ -837,10 +837,10 @@ describe('stuck', () => {
     const r = resolveStuck(a, [0, 1]); // seat 2 is disconnected and not stuck
     expect(r.players.map((p) => p.stuck)).toEqual([false, false, false]);
     expect(r.players.every((p) => p.waste.length === 0)).toBe(true);
-    // seat 0: original order was (top first) SA S2 S3 S4 S5; the top goes to the bottom
+    // seat 0: original order was (top first) SA S2 S3 S4 S5, then the rest of the deck; the top goes to the bottom
     expect(ids(r.players[0]!.stock)).toEqual(['0:SA', ...under(base, 0, 2), '0:S5', '0:S4', '0:S3', '0:S2']);
-    expect(ids(r.players[1]!.stock)).toEqual(['1:D9', ...under(base, 1, 1)]);
-    expect(ids(r.players[2]!.stock)).toEqual(['2:C2', ...under(base, 2, 0), '2:C3']);
+    expect(ids(r.players[1]!.stock)).toEqual(['1:D9']);
+    expect(ids(r.players[2]!.stock)).toEqual(['2:C2', '2:C3']);
     expect(r.players[0]!.nertz).toEqual(base.players[0]!.nertz);
     // the next group now shows different cards than the first one did
     expect(ids(flips(r, 0, 3).players[0]!.waste)).toEqual(['0:S2', '0:S3', '0:S4']);

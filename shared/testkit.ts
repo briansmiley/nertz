@@ -105,7 +105,7 @@ export const cards = (faces: string | readonly string[] = [], owner = 0): Card[]
 /** A pile for the middle: `owner`'s Ace of the suit of `top`, up to `top`. */
 export const pile = (top: string, owner = 0): Card[] => Array.from({ length: card(top).rank }, (_, r) => card(`${top[0]}${r + 1}`, owner));
 
-/** One seat at a table built by hand: each pile named bottom first. The rest of the seat's deck lies in `rest`. */
+/** One seat at a table built by hand: each pile named bottom first. The cards not named go where `rest` says (under the stock by default). */
 export interface Hand {
   nertz?: string | readonly string[];
   work?: readonly (string | readonly string[])[];
@@ -125,6 +125,7 @@ export type Laid = readonly Card[] | { cards: readonly Card[]; x: number; y: num
  */
 export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra }: { slots?: readonly Laid[]; tray?: readonly Card[][] } & Partial<Omit<GameState, 'players' | 'slots' | 'tray'>> = {}): GameState {
   const n = hands.length;
+  if (slots.length > 4 * n) throw new Error(`table: ${slots.length} slots for ${n} seats (at most ${4 * n})`);
   const placed: Spot[] = [];
   const laid = Array.from({ length: 4 * n }, (_, i): CentrePile | null => {
     const s = slots[i] ?? null;
