@@ -16,8 +16,7 @@ export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object
 
 /**
  * The backs there are to choose from (drawn by `backOf` in client/cards/Face.tsx; where each is from: CREDITS.md). The
- * plain cross-hatch; patterns drawn in code; patterns of one colour, each a single picture printed in the player's own colour; and pictures
- * with colours of their own, framed in the player's colour.
+ * plain cross-hatch; patterns drawn in code; and patterns of one colour, each a single picture printed in the player's own colour.
  */
 export const CARD_BACKS = {
   plain: 'Plain',

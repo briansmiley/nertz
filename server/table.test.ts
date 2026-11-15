@@ -103,7 +103,7 @@ describe('card positions while dragging', () => {
     expect(room.game!.players[0]!.holding).toBe(held);
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'flip' } });
     room.flush();
-    expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/); // (the table rule `stockDeal: 'click'` is in there, and is not a position)
+    expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/);
     room.close();
   });
 

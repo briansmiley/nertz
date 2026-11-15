@@ -5,13 +5,6 @@
 
 export interface TableSettings {
   /**
-   * How a card is dealt off the stock. Either way it is one card per action
-   * (the same `flip` intent, enforced by the engine); this only chooses the
-   * gesture: 'drag' each card from the stock onto the waste, or 'click' the
-   * stock (or press Space) once per card.
-   */
-  stockDeal: StockDeal;
-  /**
    * Whether a card can be moved without dragging it: a tap or a click takes it
    * up, and the next one says where it goes. The same on every screen; off, a
    * card has to be dragged by mouse and finger alike. Dragging always works. A
@@ -21,9 +14,7 @@ export interface TableSettings {
   tapToMove: boolean;
 }
 
-export type StockDeal = 'drag' | 'click';
-
-export const DEFAULT_SETTINGS: TableSettings = { stockDeal: 'click', tapToMove: true };
+export const DEFAULT_SETTINGS: TableSettings = { tapToMove: true };
 
 /**
  * How many face-down cards lie under the face-up one in each of the four work piles, by how many are dealt into the
@@ -41,10 +32,6 @@ export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const v = raw as Record<string, unknown>;
   const patch: Partial<TableSettings> = {};
-  if ('stockDeal' in v) {
-    if (v.stockDeal !== 'drag' && v.stockDeal !== 'click') return null;
-    patch.stockDeal = v.stockDeal;
-  }
   if ('tapToMove' in v) {
     if (typeof v.tapToMove !== 'boolean') return null;
     patch.tapToMove = v.tapToMove;

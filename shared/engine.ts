@@ -6,7 +6,7 @@
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
-import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
+import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundScore, Suit } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
@@ -478,14 +478,26 @@ export function resolveStuck(state: GameState, activeSeats: Iterable<number>): G
 }
 
 /**
- * If every seat in `people` (the connected players who are not bots: a bot goes along with it) has voted to end the
- * round, it ends there, to be scored as it stands (`ended: 'vote'`). Same state object otherwise.
+ * The vote to end the round: how many have a say, and how many of them have voted. Those with a say are the seats in
+ * `people` (the connected players who are not bots: a bot goes along with it) that were dealt into this round.
+ */
+export function endVote(state: GameState, people: Iterable<number>): { voters: number; voted: number } {
+  const here = new Set(people);
+  const voters = state.players.filter((p) => here.has(p.seat));
+  return { voters: voters.length, voted: voters.filter((p) => p.ending).length };
+}
+
+/** The `people` of `endVote` as a room view lists them: those with a seat who are here and are not bots. */
+export const seatedPeople = (players: readonly PlayerView[]): number[] => players.flatMap((p) => (p.seat !== null && p.connected && !p.bot ? [p.seat] : []));
+
+/**
+ * If everyone with a say in the `endVote` has voted to end the round, it ends there, to be scored as it stands
+ * (`ended: 'vote'`). Same state object otherwise.
  */
 export function resolveEndVote(state: GameState, people: Iterable<number>): GameState {
   if (state.nertzCalledBy !== null || state.ended || state.stage !== 'play') return state;
-  const voters = new Set(people);
-  const them = state.players.filter((p) => voters.has(p.seat));
-  if (them.length === 0 || !them.every((p) => p.ending)) return state;
+  const { voters, voted } = endVote(state, people);
+  if (voters === 0 || voted < voters) return state;
   return { ...state, ended: 'vote' };
 }
 

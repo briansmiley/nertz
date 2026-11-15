@@ -1,10 +1,11 @@
-// What the tests build their tables from: seeded generators, a round in play, a rigged hand, a pile in the middle, the
-// intents, and a room as one window sees it. For tests only: imported by *.test.ts files and server/testkit.ts.
+// What the tests build their tables from: seeded generators, a round in play, a rigged hand, a pile in the middle, a
+// whole table built by hand, the intents, and a room as one window sees it. For tests only: imported by *.test.ts files
+// and server/testkit.ts.
 import { expect } from 'vitest';
-import { deal, finishDeal, isHidden, openPlay, startCountdown, viewFor, type Rng } from './engine';
+import { checkInvariants, deal, finishDeal, isHidden, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
 import { DEFAULT_SETTINGS } from './settings';
-import type { Spot } from './table';
-import type { AnyCard, Card, GameState, Intent, PileRef, RoomView, Suit } from './types';
+import { openPlace, type Spot } from './table';
+import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, RoomView, Suit } from './types';
 
 // ---------------------------------------------------------------- seeded generators
 // Three, because the tests' seeds were picked against each: a seed found for one is just another seed for the others.
@@ -83,6 +84,76 @@ export function withPile(g: GameState, i: number, owner: number, suit: Suit, upT
   };
 }
 
+// ---------------------------------------------------------------- tables built by hand
+
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+/**
+ * A card of `owner`'s deck by suit and rank, the rank by number or by name: 'H5', 'SA' or 'S1', 'DK' or 'D13'. Its id
+ * names it as it is called, after its owner: '0:H5', '0:SA', '0:DK'.
+ */
+export function card(face: string, owner = 0): Card {
+  const suit = face[0] as Suit;
+  const name = face.slice(1);
+  const rank = RANKS.includes(name) ? RANKS.indexOf(name) + 1 : Number(name);
+  if (!SUITS.includes(suit) || !Number.isInteger(rank) || rank < 1 || rank > 13) throw new Error(`no card ${face}`);
+  return { id: `${owner}:${suit}${RANKS[rank - 1]}`, owner, suit, rank };
+}
+/** Cards by face, bottom first: 'C9 H6', or ['C9', 'H6']. */
+export const cards = (faces: string | readonly string[] = [], owner = 0): Card[] =>
+  (typeof faces === 'string' ? faces.split(' ').filter(Boolean) : faces).map((f) => card(f, owner));
+/** A pile for the middle: `owner`'s Ace of the suit of `top`, up to `top`. */
+export const pile = (top: string, owner = 0): Card[] => Array.from({ length: card(top).rank }, (_, r) => card(`${top[0]}${r + 1}`, owner));
+
+/** One seat at a table built by hand: each pile named bottom first. The cards not named go where `rest` says (under the stock by default). */
+export interface Hand {
+  nertz?: string | readonly string[];
+  work?: readonly (string | readonly string[])[];
+  down?: readonly number[];
+  stock?: string | readonly string[];
+  waste?: string | readonly string[];
+  stuck?: boolean;
+  /** Where the cards not named lie: under the stock (the default), or face-down under work pile `i` (one with cards named in it). */
+  rest?: 'stock' | number;
+}
+/** A pile in the middle: the cards, wherever there is room (the middle first), or lying at a given point. */
+export type Laid = readonly Card[] | { cards: readonly Card[]; x: number; y: number } | null;
+
+/**
+ * A whole round in play, seat `i` holding `hands[i]`: the piles each hand names, `slots` and `tray` in the middle, and
+ * every card of every deck somewhere, so it passes `checkInvariants` (it fails here if it does not).
+ */
+export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra }: { slots?: readonly Laid[]; tray?: readonly Card[][] } & Partial<Omit<GameState, 'players' | 'slots' | 'tray'>> = {}): GameState {
+  const n = hands.length;
+  if (slots.length > 4 * n) throw new Error(`table: ${slots.length} slots for ${n} seats (at most ${4 * n})`);
+  const placed: Spot[] = [];
+  const laid = Array.from({ length: 4 * n }, (_, i): CentrePile | null => {
+    const s = slots[i] ?? null;
+    const [ace, ...more] = s === null ? [] : 'cards' in s ? s.cards : s;
+    if (!ace) return null;
+    const at = s !== null && 'x' in s ? { x: s.x, y: s.y, r: 0 } : { ...openPlace(placed, n)!, r: 0 };
+    placed.push(at);
+    return { cards: [ace, ...more], at };
+  });
+  const middle = new Set([...laid.flatMap((p) => p?.cards ?? []), ...tray.flat()].map((c) => c.id));
+  const players = hands.map((h, seat): PlayerState => {
+    const p = { nertz: cards(h.nertz, seat), work: [0, 1, 2, 3].map((i) => cards(h.work?.[i], seat)), stock: cards(h.stock, seat), waste: cards(h.waste, seat) };
+    const named = new Set([...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste].map((c) => c.id));
+    const left = SUITS.flatMap((s) => pile(`${s}13`, seat)).filter((c) => !named.has(c.id) && !middle.has(c.id));
+    const down = [0, 1, 2, 3].map((i) => h.down?.[i] ?? 0);
+    const under = h.rest ?? 'stock';
+    if (under === 'stock') p.stock.unshift(...left);
+    else {
+      p.work[under]!.unshift(...left);
+      down[under] = down[under]! + left.length;
+    }
+    return { seat, ...p, down, dealt: 0, stuck: h.stuck ?? false, holding: null };
+  });
+  const state: GameState = { players, stage: 'play', slots: laid, tray: tray.map((t) => [...t]), nertzCalledBy: null, grace: [], ...extra };
+  expect(checkInvariants(state)).toBeNull();
+  return state;
+}
+
 /** The top card of `seat`'s work pile `i`. */
 export const workTop = (g: GameState, seat: number, i: number) => g.players.find((p) => p.seat === seat)!.work[i]!.at(-1)!.id;
 
@@ -107,7 +178,7 @@ export const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = 
   round: 1,
   me: you,
   seat: you,
-  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, stuck: p.stuck, ending: false })),
+  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0 })),
   settings: DEFAULT_SETTINGS,
   game: viewFor(game, you),
   graceMs: null,

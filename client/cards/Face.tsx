@@ -17,32 +17,27 @@ export const CARD_H = 126;
 export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#272b35', '#d4428e', '#0f8a9c', '#d2601a', '#7a5c40'] as const;
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
 
-/** The backs that are pictures with colours of their own (the rest, but the plain one, are one-colour patterns printed in the player's colour). */
-const PICTURES = new Set<string>([]); // (none now: every back is one colour. The three there were are kept in art/colour-backs: see its README.)
-
-/**
- * How much larger a picture back is shown on a small card (another player's pile), so that only its middle shows:
- * a fine pattern needs more, and one that is a single figure (the two circles of the Rider back) is shown whole (1).
- */
 /**
  * Which issue of the picture files this is: put after their addresses, so that a browser that has an older picture
  * of the same name fetches the new one. Count it up whenever a file in public/cards/backs is changed.
  */
 const ART = 2;
+/**
+ * How much larger a picture back is shown on a small card (another player's pile), so that only its middle shows:
+ * a fine pattern needs more, and one that is a single figure (the two circles of the Rider back) is shown whole (1).
+ */
 const SMALL: Record<string, number> = { 'carpet-tint': 1.8, waterlily: 1.2, lilypads: 1.2, maple: 1.2, 'dandelion-1': 1.1, daisy: 1.2, tulip: 1.2, poppies: 1.2, sequoia: 1.25, fronds: 1.15, oak: 1.3, thistle: 1.2, lily: 1.2, rose: 1.25, iris: 1.15, sunflower: 1.15, acanthus: 1.7, fern: 1.5, ginkgo: 1, 'ginkgo-ring': 1.4, 'ginkgo-scatter': 2, piatnik: 1.5, atlas: 1.4, bicycle: 1, lion: 1, ornate: 1.8, rosette: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, 'tarot-star-tint': 2, 'tarot-eye-tint': 1.9 };
 
 /**
- * The picture a back is made of (none for the plain one): whether it has colours of its own or is printed in the
- * player's, how many times larger than the card it is shown (`zoom`: more than 1 on a small card), and whether it
- * lies inside a white edge.
+ * The picture a back is made of (none for the plain one), printed in the player's colour: how many times larger than
+ * the card it is shown (`zoom`: more than 1 on a small card), and whether it lies inside a white edge.
  */
-export function backArt(named: string | undefined, small = false): { src: string; picture: boolean; zoom: number; edge: boolean } | null {
+export function backArt(named: string | undefined, small = false): { src: string; zoom: number; edge: boolean } | null {
   const [back, bare] = bareOf(named);
   if (back === 'plain') return null;
-  if (isDrawn(back)) return { src: drawnBack(back, small, bare).slice(5, -2), picture: false, zoom: 1, edge: false };
-  const picture = PICTURES.has(back);
+  if (isDrawn(back)) return { src: drawnBack(back, small, bare).slice(5, -2), zoom: 1, edge: false };
   const zoom = small ? (SMALL[back] ?? 1.8) : 1;
-  return { src: `/cards/backs/${back}.${picture ? 'jpg' : 'png'}?v=${ART}`, picture, zoom, edge: !picture && !bare };
+  return { src: `/cards/backs/${back}.png?v=${ART}`, zoom, edge: !bare };
 }
 
 /** A back as it is named for drawing, taken apart: which back, and whether it is the one without its white edge (`:bare` after its name). */
@@ -58,7 +53,7 @@ export function backOf(colour: string, back: string | undefined, small = false):
   const art = backArt(back, small);
   if (!art) return { className: `back${bareOf(back)[1] ? ' bare' : ''}`, style: vars };
   return {
-    className: `back ${art.picture ? 'pic' : 'tint'}${art.edge ? ' edged' : ''}`,
+    className: `back tint${art.edge ? ' edged' : ''}`,
     style: { ...vars, backgroundImage: `url("${art.src}")`, ...(art.zoom > 1 ? { backgroundSize: `${art.zoom * 100}% ${art.zoom * 100}%`, backgroundPosition: 'center' } : {}) },
   };
 }

@@ -77,27 +77,27 @@ describe('sound cues from rendered state', () => {
     const s = session(rigged());
     const ace = workTop(s.game, 0, 0);
     expect(s.me({ k: 'hold', cardId: ace })).toEqual([{ k: 'pickup', who: 'me' }]);
-    expect(s.me(move(ace, felt(0, 0)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    expect(s.me(move(ace, felt(0, 0)))).toEqual([{ k: 'centre', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
-    // The next card up the pile is one step up the scale.
+    // The next card up the pile: the same firm sound.
     const two = workTop(s.game, 0, 1);
     s.me({ k: 'hold', cardId: two });
-    expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me', rank: 2 }]);
+    expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
   });
 
   it('a predicted move the server refuses (we lost the race) gets its own disappointed sound when the card comes back, once', () => {
     const s = session(rigged());
     const mine = workTop(s.game, 0, 0);
-    expect(s.them(move(workTop(s.game, 1, 0), felt(0, 0)))).toEqual([{ k: 'centre', who: 'other', rank: 1 }]);
+    expect(s.them(move(workTop(s.game, 1, 0), felt(0, 0)))).toEqual([{ k: 'centre', who: 'other' }]);
     // Both go for the 2 of spades on that ace. Theirs arrives first; mine is already on its way.
     s.me({ k: 'hold', cardId: workTop(s.game, 0, 1) });
     const two = workTop(s.game, 0, 1);
-    expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me', rank: 2 }]);
+    expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me' }]);
     // Their snapshot: the pile already holds their 2, so my prediction no longer applies and my card is back.
     const lost = s.them(move(workTop(s.game, 1, 1), slot(0)));
     expect(lost).toContainEqual({ k: 'lost' });
-    expect(lost).toContainEqual({ k: 'centre', who: 'other', rank: 2 });
+    expect(lost).toContainEqual({ k: 'centre', who: 'other' });
     expect(lost).toHaveLength(2);
     expect(s.confirm()).toEqual([]); // the refusal itself changes nothing more
     expect(s.game.players[0]!.work[1]!.at(-1)!.id).toBe(two);
@@ -110,7 +110,7 @@ describe('sound cues from rendered state', () => {
     s.me({ k: 'hold', cardId: workTop(s.game, 0, 1) });
     s.confirm();
     const sniped = s.them(move(workTop(s.game, 1, 1), slot(0)));
-    expect(sniped).toEqual([{ k: 'centre', who: 'other', rank: 2 }]); // it may have somewhere else to go
+    expect(sniped).toEqual([{ k: 'centre', who: 'other' }]); // it may have somewhere else to go
   });
 
   it('a card picked up and put down nowhere gets the same quiet tap', () => {
@@ -120,17 +120,16 @@ describe('sound cues from rendered state', () => {
     expect(s.confirm()).toEqual([]);
   });
 
-  it('work-pile drops, one flick per card off the stock, the group turning up and the waste going back, for me and (marked as such) for the others', () => {
+  it('work-pile drops, one flick per card off the stock and the waste going back, for me and (marked as such) for the others', () => {
     const s = session(rigged());
     const four = s.game.players[0]!.waste.at(-1)!.id;
     s.me({ k: 'hold', cardId: four });
     expect(s.me(move(four, work(3)))).toEqual([{ k: 'work', who: 'me' }]);
-    // Three cards, three flicks; the third also turns the group up. All of it at the moment it is predicted:
-    // the confirmation, which brings the faces, is silent.
+    // Three cards, three flicks, each at the moment it is predicted: the confirmation, which brings the faces, is silent.
     expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
     expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }, { k: 'flip', who: 'me' }]);
+    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
     expect(s.frame.room!.game!.players[0]).toMatchObject({ dealt: 0 });
 
@@ -138,19 +137,19 @@ describe('sound cues from rendered state', () => {
     expect(s.them(move(s.game.players[1]!.waste.at(-1)!.id, work(3)))).toEqual([{ k: 'work', who: 'other' }]);
     expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
     expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }, { k: 'flip', who: 'other' }]);
-    // Four of their cards in one snapshot (a slow connection): a flick each, and the group that was completed turns up once.
+    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
+    // Four of their cards in one snapshot (a slow connection): a flick each.
     for (let i = 0; i < 3; i++) s.act(1, { k: 'flip' });
-    expect(s.them({ k: 'flip' })).toEqual([...Array<Cue>(4).fill({ k: 'stock', who: 'other' }), { k: 'flip', who: 'other' }]);
+    expect(s.them({ k: 'flip' })).toEqual(Array<Cue>(4).fill({ k: 'stock', who: 'other' }));
     expect(s.game.players[1]!.dealt).toBe(1);
     // A run of two cards moved together is one drop, not two.
     const run = s.game.players[0]!.work[3]![0]!.id;
     s.me({ k: 'hold', cardId: run });
     expect(s.game.players[0]!.work[3]).toHaveLength(2);
-    // Deal until the stock is gone (its last card turns the group up, however short), then once more: the waste goes back under.
+    // Deal until the stock is gone, then once more: the waste goes back under.
     let cues: Cue[] = [];
     for (let i = 0; i < 60 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) cues = s.me({ k: 'flip' });
-    expect(cues).toEqual([{ k: 'stock', who: 'me' }, { k: 'flip', who: 'me' }]);
+    expect(cues).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.me({ k: 'flip' })).toEqual([{ k: 'recycle', who: 'me' }]);
   });
 
@@ -289,7 +288,7 @@ describe('an Ace on the felt', () => {
     const s = session(rigged());
     const ace = workTop(s.game, 0, 0);
     expect(s.me({ k: 'hold', cardId: ace })).toEqual([{ k: 'pickup', who: 'me' }]);
-    expect(s.me(move(ace, felt(0.1, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    expect(s.me(move(ace, felt(0.1, 0.3)))).toEqual([{ k: 'centre', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
   });
 
@@ -299,9 +298,9 @@ describe('an Ace on the felt', () => {
     const theirs = workTop(s.game, 1, 2);
     // Their Ace reaches the server first and takes slot 0; mine, predicted into slot 0, ends up in slot 1 at the same place.
     s.act(1, move(theirs, felt(-0.5, -0.3)));
-    expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me' }]);
     expect(s.frame.room!.game!.slots[0]!.cards.map((c) => c.id)).toEqual([mine]);
-    expect(s.confirm()).toEqual([{ k: 'centre', who: 'other', rank: 1 }]); // their card arriving, and nothing for mine
+    expect(s.confirm()).toEqual([{ k: 'centre', who: 'other' }]); // their card arriving, and nothing for mine
     expect(s.frame.room!.game!.slots.slice(0, 2).map((p) => p!.cards[0].id)).toEqual([theirs, mine]);
     expect(s.frame.room!.game!.slots[1]!.at).toMatchObject({ x: 0.4, y: 0.3 });
   });
@@ -312,11 +311,11 @@ describe('an Ace on the felt', () => {
     const theirs = workTop(s.game, 1, 2);
     s.act(1, move(theirs, felt(0.42, 0.28)));
     s.me({ k: 'hold', cardId: mine });
-    expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
+    expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me' }]);
     const cues = s.confirm();
     expect(cues).not.toContainEqual({ k: 'lost' });
     expect(cues).toContainEqual({ k: 'home', who: 'me' });
-    expect(cues).toContainEqual({ k: 'centre', who: 'other', rank: 1 });
+    expect(cues).toContainEqual({ k: 'centre', who: 'other' });
     expect(workTop(s.frame.room!.game!, 0, 0)).toBe(mine);
   });
 });

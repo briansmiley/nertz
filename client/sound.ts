@@ -223,13 +223,6 @@ const TICK = [[1, 1], [2.4, 0.35]] as const;
 /** A dull, low voice: little but the note itself. */
 const DULL = [[1, 1], [2, 0.12]] as const;
 
-/**
- * One note per rank, Ace low to King high: a major pentatonic scale over two
- * and a half octaves (E4 .. A6), so any piles being built at once ring together.
- */
-const STEPS = [4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33]; // semitones above C4
-export const rankHz = (rank: number): number => 261.63 * 2 ** (STEPS[Math.max(1, Math.min(13, rank)) - 1]! / 12);
-
 const FLICKS = ['flick-1', 'flick-2', 'flick-3'];
 const PLACES = ['place-1', 'place-2', 'place-3'];
 const TAPS = ['tap-1', 'tap-2'];
@@ -242,8 +235,8 @@ export function deal(delay = 0): void {
 }
 
 /** The deal at the start of a round: a flick as each card of your layout lands, on the animation's own schedule. */
-export function dealBurst(work = 10, nertz = 13): void {
-  dealTimes(work, nertz).forEach((t) => deal(t));
+export function dealBurst(work: number): void {
+  dealTimes(work).forEach((t) => deal(t));
 }
 
 export function pickup(who: Who = 'me'): void {
@@ -275,7 +268,7 @@ export function recycle(who: Who = 'me'): void {
 }
 
 /** A card to the middle: the same firm card sound whatever its rank. */
-export function centre(_rank: number, who: Who = 'me'): void {
+export function centre(who: Who = 'me'): void {
   hit('place-2', { gain: 0.58, rate: rand(0.97, 1.03), who });
 }
 
@@ -395,7 +388,7 @@ function hush(): void {
 }
 
 /** The wash: a riffle while the cards swirl, then quick flicks as they sort into their piles. */
-export function wash(sortIn = 2000): void {
+export function wash(sortIn: number): void {
   hush();
   finale.push(hit('shuffle', { gain: 0.5 }));
   const flicks = 16;
@@ -412,7 +405,7 @@ export function flourish(): void {
 }
 
 /** The end-of-round sequence moved on (Table.tsx calls this as its stage changes). */
-export function stage(from: Stage, to: Stage, sortIn = 2000): void {
+export function stage(from: Stage, to: Stage, sortIn: number): void {
   if (from === to) return;
   if (to === 'spread') wash(sortIn);
   else if (to === 'sheet') flourish();
@@ -429,12 +422,10 @@ function play(cue: Cue): void {
       return workDrop(cue.who);
     case 'stock':
       return stockCard(cue.who);
-    case 'flip':
-      return; // the group turning up makes no noise of its own: each of its cards has already flicked
     case 'recycle':
       return recycle(cue.who);
     case 'centre':
-      return centre(cue.rank, cue.who);
+      return centre(cue.who);
     case 'king':
       return king(cue.who);
     case 'clear':

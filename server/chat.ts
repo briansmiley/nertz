@@ -42,7 +42,7 @@ export function roundOver(round: number, result: RoundResult): Extract<ChatEvent
 }
 
 export class Social {
-  /** The host's switches. To merge into a generic table-settings object, keep these two booleans there instead. */
+  /** The host's switches. To merge into a generic table-settings object, keep these four booleans there instead. */
   text = true;
   voice = true;
   /** And whether those watching (no seat) may take part in each. */

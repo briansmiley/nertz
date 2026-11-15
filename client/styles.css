@@ -132,20 +132,12 @@ button {
 }
 
 /* A back that is a one-colour pattern: one picture of it, white on nothing, laid over the player's colour. Its own frame is the card's edge. */
-.back.tint,
-.back.pic {
+.back.tint {
   border: 0;
   background-size: 100% 100%;
   box-shadow:
     0 0 0 0.6px rgba(20, 30, 40, 0.5),
     0 1.5px 2.5px rgba(0, 0, 0, 0.32);
-}
-
-/* A back that is a picture with colours of its own: its edge, where other cards are white, is the player's colour,
-   so whose card it is still shows. */
-.back.pic {
-  border: 4.5px solid var(--back);
-  background-color: var(--card);
 }
 
 /* A one-colour picture lies inside the card's usual white edge (none of them has a frame of its own in its file): not when its owner has their backs without one. */
@@ -1489,7 +1481,7 @@ button {
   box-sizing: border-box;
   width: min(680px, 100%);
   max-height: min(86vh, 760px);
-  overflow-y: auto;
+  overflow: hidden auto; /* (not sideways: the last pile's fan runs a few pixels past the edge on a phone) */
   padding: 16px 18px 20px;
   border-radius: 14px;
   background: #123a41;
@@ -2252,9 +2244,9 @@ label.check {
   }
 }
 
-/* ------------------------------------------------------------ chat panel (Chat.tsx) */
+/* ------------------------------------------------------------ chat (Chat.tsx) */
 
-/* Docked bottom-left on every screen of a table, above the score sheet and under the connection banner. */
+/* Top-left on every screen of a table, above the score sheet and under the connection banner. */
 .chat {
   position: fixed;
   z-index: 45000;
@@ -2264,7 +2256,7 @@ label.check {
   line-height: 1.35;
 }
 
-/* With a card in hand the panel is out of the way: it takes no pointer and the card shows through. */
+/* With a card in hand the chat is out of the way: it takes no pointer and the card shows through. */
 .chat.aside {
   pointer-events: none;
   opacity: 0.35;
@@ -2387,19 +2379,6 @@ label.check {
   box-shadow: 0 0 0 2px var(--felt-dark);
 }
 
-.chat.open {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: calc(100vw - 20px); /* the width is set by Chat.tsx */
-  max-height: min(430px, calc(100vh - 20px));
-  padding: 10px 12px;
-  border-radius: 6px;
-  color: var(--ink);
-  background: var(--paper);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
-}
-
 .chat header {
   display: flex;
   align-items: center;
@@ -2409,118 +2388,6 @@ label.check {
 .chat h3 {
   margin: 0;
   font: 400 1.05rem/1.2 var(--display);
-}
-
-.chat-note {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 13px;
-}
-
-.chat .voice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.chat .voice ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.chat .voice li {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 8px 2px 6px;
-  border: 1.5px solid var(--rule);
-  border-radius: 99px;
-  font-size: 13px;
-}
-
-.chat .voice li.speaking {
-  border-color: #1c9468;
-  box-shadow: 0 0 0 2px rgba(28, 148, 104, 0.3);
-}
-
-.chat .voice li i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-
-.chat .voice li small.bad {
-  color: #b3261e;
-}
-
-.chat .voice li small {
-  color: var(--ink-soft);
-}
-
-.chat .lines {
-  flex: 1;
-  min-height: 90px;
-  margin: 0;
-  padding: 6px 8px;
-  overflow-y: auto;
-  list-style: none;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  background: var(--card);
-  overflow-wrap: anywhere;
-  user-select: text;
-}
-
-.chat form {
-  display: flex;
-  gap: 6px;
-}
-
-.chat form input {
-  flex: 1;
-  min-width: 0;
-  padding: 4px 8px 5px;
-  border: 1.5px solid var(--ink-soft);
-  border-radius: 6px;
-  background: var(--card);
-  color: var(--ink);
-}
-
-.chat form input:disabled {
-  background: #e9e1cc;
-}
-
-.chat .switches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
-  margin: 0;
-  padding: 4px 8px 6px;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.chat .switches legend {
-  padding: 0 4px;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-
-.chat .switches label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.chat .switches:disabled label {
-  color: var(--ink-soft);
 }
 
 /* ------------------------------------------------------------ the opening (Opening.tsx) */
@@ -3135,11 +3002,16 @@ body:has(main.showroom),
   transform: translateX(10px);
 }
 
-/* The colour the backs are shown in: six counters. */
+/* The colour the backs are shown in: a counter of each. (And one of all of them, which a phone shows in their place.) */
 .showroom .inks {
+  position: relative;
   display: flex;
   gap: 8px;
   order: 2;
+}
+
+.showroom .inks .counters {
+  display: contents;
 }
 
 .showroom .inks button {
@@ -3156,6 +3028,10 @@ body:has(main.showroom),
   box-shadow:
     0 0 0 3px var(--marigold),
     0 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+.showroom .inks .pie {
+  display: none;
 }
 
 /* The backs lie in a loose spread, as if dealt out: no boxes. Yours is lifted, with a counter on it. */
@@ -3306,14 +3182,8 @@ body:has(main.showroom),
   animation: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .showroom .dealt .lay {
-    animation: none;
-  }
-
-  .showroom .stack .mini {
-    transition: none;
-  }
+.calm .showroom .stack .mini {
+  transition: none;
 }
 
 .showroom .lay {
@@ -3506,24 +3376,115 @@ body:has(main.showroom),
 }
 
 @media (max-width: 720px) {
+  /* On a phone the spread is four across, close together: the cards smaller than they are in your own hand there, their small renditions about the size of another player's. */
   .showroom .dealt {
-    justify-content: center;
-    gap: 26px 18px;
-    padding: 16px 4px 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 4px 0;
+    padding: 10px 4px 8px;
   }
 
-  /* The backs' heading has a switch and six counters after it: on a phone they go onto a line of their own. */
+  .showroom .lay {
+    width: auto;
+    gap: 6px;
+    padding: 8px 2px 6px;
+  }
+
+  /* (Placed from the middle of its card, not from the edge of a column whose width depends on the phone.) */
+  .showroom .lay .mini.small {
+    left: 50%;
+    right: auto;
+    top: 0;
+    zoom: 1;
+    transform-origin: 0 0;
+    transform: translate(12px, 40px) rotate(8deg) scale(0.26);
+  }
+
+  .showroom .lay em {
+    font-size: 12px;
+  }
+
+  /* The page's title on one line, and the backs close under it. */
+  .showroom h1 {
+    font-size: clamp(1rem, 8vw - 8px, 1.6rem);
+    white-space: nowrap;
+  }
+
+  .showroom header {
+    gap: 10px;
+    margin-bottom: 0;
+  }
+
+  .showroom .back-to {
+    width: 34px;
+    height: 34px;
+  }
+
+  .showroom header .edge {
+    white-space: nowrap;
+  }
+
+  .showroom header + section .heading {
+    margin: 20px 0 4px;
+  }
+
   .showroom .heading {
+    gap: 12px;
+  }
+
+  /* The sheet's heading has more after it than a line of a phone holds: its switches go onto lines of their own. */
+  .picker .heading {
     flex-wrap: wrap;
     row-gap: 12px;
   }
 
-  .showroom .heading:has(.edge)::after {
+  .picker .heading:has(.edge)::after {
     flex-basis: 40%;
   }
 
-  .showroom .heading .edge {
+  .picker .heading .edge {
     margin-left: auto;
+  }
+
+  /* The colours, behind one counter that is a slice of each (in its middle, the one shown now): pressed, they come out under it. */
+  .showroom .inks .pie {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+  }
+
+  .showroom .inks .pie::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 99px;
+    background: currentColor;
+    box-shadow: 0 0 0 2px #fff;
+  }
+
+  .showroom .inks .counters {
+    display: none;
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 10px);
+    right: -4px;
+    grid-template-columns: repeat(5, 26px);
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: #0a2228;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  }
+
+  .showroom .inks.open .counters {
+    display: grid;
+  }
+
+  .showroom .inks .counters button {
+    width: 26px;
+    height: 26px;
   }
 
   /* The piles, small enough for all of them to stand in one row of a phone. */
@@ -3555,7 +3516,7 @@ body:has(main.showroom),
   }
 
   .showroom .lay > .mini:first-child {
-    zoom: 0.85;
+    zoom: 0.6;
   }
 
   .showroom .fan {
@@ -3576,63 +3537,6 @@ body:has(main.showroom),
 /* (The cloth's pool of light stays put while the long page scrolls: no seam where the first screen ends.) */
 body:has(main.showroom) {
   background-attachment: fixed;
-}
-
-/* The lobby: your colour, six counters; the ones others have are faint and cannot be pressed. */
-.colours {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
-  color: var(--ink-soft);
-}
-
-.colours span {
-  margin-right: 4px;
-}
-
-.colours button {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  border-radius: 99px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
-}
-
-.colours button.on {
-  box-shadow:
-    0 0 0 2.5px var(--ink),
-    0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-.colours button:disabled {
-  opacity: 0.25;
-  cursor: default;
-}
-
-/* Light or dark cards: a two-way switch at the end of the "Faces" line. */
-.showroom .modes {
-  display: flex;
-  order: 2;
-  border: 1.5px solid rgba(241, 234, 216, 0.4);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.showroom .modes button {
-  padding: 5px 12px;
-  border: 0;
-  font: 600 13px/1.2 var(--ui);
-  color: var(--chalk-dim);
-  background: none;
-  cursor: pointer;
-}
-
-.showroom .modes button.on {
-  color: var(--ink);
-  background: var(--marigold);
 }
 
 /* While one deck's 52 cards are laid out, the other decks are faint: it is plain whose cards those are. */
@@ -3807,7 +3711,7 @@ body:has(main.showroom) {
   margin: 0;
 }
 
-/* The lobby: your backs at this table, between the names and the rules. The card and a button: no box. */
+/* The lobby: your backs, between the names and the rules. The card and a button: no box. */
 .yourback {
   display: flex;
   align-items: center;
@@ -4044,7 +3948,7 @@ body:has(main.showroom) {
 
 }
 
-/* In the bar: the headset (opens the panel) and the microphone (mutes you) are buttons. */
+/* In the bar: the headset (opens the voice slip) and the microphone (mutes you) are buttons. */
 .chat-bar button.mic {
   cursor: pointer;
   border-color: rgba(241, 234, 216, 0.4);
@@ -4062,21 +3966,6 @@ body:has(main.showroom) {
   color: var(--ink);
   background: var(--marigold);
   border-color: var(--marigold);
-}
-
-.chat .voice .mute-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  font-size: 13px;
-  color: var(--ink-soft);
-}
-
-.chat .voice .mute-key button {
-  min-width: 2.2em;
-  padding: 1px 8px 2px;
-  font: 700 13px/1.4 var(--num);
 }
 
 /* Under the chat's buttons, on the cloth: the line to type in and what is being said. No panel. */
@@ -4176,25 +4065,6 @@ body:has(main.showroom) {
 
 .voice-slip li small.bad {
   color: #b3261e;
-}
-
-.voice-slip .row {
-  display: flex;
-  gap: 6px;
-}
-
-.voice-slip .mute-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--ink-soft);
-}
-
-.voice-slip .mute-key button {
-  min-width: 2.2em;
-  padding: 1px 8px 2px;
-  font: 700 13px/1.4 var(--num);
 }
 
 /* The attached screenshot, with a small bin on its corner to take it off again. */
