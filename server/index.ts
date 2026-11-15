@@ -158,7 +158,12 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       if (ws.bufferedAmount > MAX_BUFFERED_BYTES) return ws.terminate();
       ws.send(JSON.stringify(msg));
     };
-    const over = (reason: string): void => ws.close(CLOSE_OVER, reason);
+    /** ws.close throws on a reason over 123 bytes, so the reason is cut to fit (whole characters only). */
+    const over = (reason: string): void => {
+      let fit = reason;
+      while (Buffer.byteLength(fit) > 123) fit = [...fit].slice(0, -1).join('');
+      ws.close(CLOSE_OVER, fit);
+    };
     const conn: Conn = { send, close: over };
     /** The socket closed: the seat is kept for a reconnect. */
     const detach = (): void => {
