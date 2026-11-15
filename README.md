@@ -174,8 +174,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   waste back over into the stock.
 - **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
   one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
-  gains nothing. (The old "drag each card" rule still exists as the table setting `stockDeal: 'drag'`, but is no longer
-  offered in the lobby.)
+  gains nothing.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, the server (which knows every
   card) checks whether anybody can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
   waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
@@ -394,11 +393,10 @@ storage they last until the page closes.
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
 whoever may deal and only between rounds, so a round keeps the rules it was dealt under. An option the server does not
 know is dropped (an older client asking for one changes nothing). `shared/settings.ts` holds the one object and its
-validation. Two options today, both only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
+validation. One option today, only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
 default: a tap or a click takes a card up and the next puts it down, on every screen alike; off, every card is
-dragged), the one listed under "Table rules"; and, not offered in the lobby, how cards are dealt off the stock
-(`stockDeal`: `'click'`, the default, or `'drag'`; see the rules). The server cannot hold anyone to `tapToMove`: a card
-taken up by a tap and one picked up to be dragged are the same `hold` and `move`.
+dragged), listed under "Table rules". The server cannot hold anyone to `tapToMove`: a card taken up by a tap and one
+picked up to be dragged are the same `hold` and `move`.
 
 ## How concurrency works
 

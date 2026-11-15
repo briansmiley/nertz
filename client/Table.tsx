@@ -293,7 +293,7 @@ function Countdown({ ms, text, label, top }: { ms: number; text: string; label: 
 /** Somewhere the thing in hand may be put down. `hit` is where it has to be released. */
 interface Target {
   key: string;
-  to: PileRef | 'tray' | 'waste';
+  to: PileRef | 'tray';
   rect: Rect & { rot?: number };
   hit: Rect;
 }
@@ -310,12 +310,10 @@ interface Flight {
 }
 
 /**
- * What is in hand: one of your cards (with any run on top of it), a finished centre pile on its way to the tray, or
- * the top card of your stock on its way to the waste. `ace`: it is an Ace, which may start a pile wherever there is
- * room. The stock card is face-down and nobody's business: the server is not told it is held (no `hold`), so it can
- * never count for the grace window; only its landing is sent.
+ * What is in hand: one of your cards (with any run on top of it), or a finished centre pile on its way to the tray.
+ * `ace`: it is an Ace, which may start a pile wherever there is room.
  */
-type Held = { k: 'card'; id: string; ace: boolean } | { k: 'pile'; slot: number } | { k: 'stock' };
+type Held = { k: 'card'; id: string; ace: boolean } | { k: 'pile'; slot: number };
 
 interface Drag {
   pointer: number;
@@ -380,7 +378,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [peek, setPeek] = useState<number | null>(null);
   const peekWait = useRef<{ i: number; t: number } | null>(null);
   useEffect(() => () => void (peekWait.current && clearTimeout(peekWait.current.t)), []);
-  const packet = room.settings.stockDeal !== 'drag';
   // A group that has just been completed is drawn held over the stock for a beat before it turns over onto the waste
   // (one, two, three... and over). Worked out while rendering, from one game state to the next, so the cards never
   // start for the waste first.
@@ -395,7 +392,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         const q = was?.players.find((o) => o.seat === p.seat);
         const grown = q ? p.waste.length - q.waste.length : 0;
         // Cards came off the stock and none is left face-down: the group is whole.
-        if (packet && stage === 'live' && !calm() && q && grown > 0 && p.dealt === 0 && q.stock.length - p.stock.length === grown) {
+        if (stage === 'live' && !calm() && q && grown > 0 && p.dealt === 0 && q.stock.length - p.stock.length === grown) {
           turning.holds.set(p.seat, { n: q.dealt + grown, waste: p.waste.length, until: now + STOCK_TURN_MS });
         } else if (turning.holds.get(p.seat)?.waste !== p.waste.length || p.dealt > 0) turning.holds.delete(p.seat);
       }
@@ -407,7 +404,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, packet, stage, turned, turning]);
+  }, [game, stage, turned, turning]);
   useEffect(() => {
     if (!groupHeld.size) return;
     const until = Math.max(...[...turning.holds.values()].map((h) => h.until));
@@ -419,7 +416,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
   const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, packet, groupHeld, pad, sitting), [W, H, game, you, stage, peek, packet, groupHeld, pad, sitting]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting), [W, H, game, you, stage, peek, groupHeld, pad, sitting]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   // Upright, "I'm stuck" stands in the bar at the top, right after the chat's button: after all of it, which is wider
   // when you are in voice (the microphone and its mute button stand there too), so that it is never under them.
@@ -658,8 +655,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** Finished piles waiting for you to carry them to the tray. */
   const toClear = (slot: number) => !frozen && completedBy(game.slots[slot]) === you;
 
-  /** The table rule for dealing off the stock: drag each card to the waste, or click the stock once per card. */
-  const dragDeal = room.settings.stockDeal === 'drag';
   /** The table rule for moving a card without dragging it: tap (or click) it, then where it goes. */
   const tapToMove = room.settings.tapToMove;
 
@@ -675,14 +670,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const dealGroup = useCallback(() => {
     if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow();
   }, [dealNow]);
-  const midGroup = !frozen && !dragDeal && (mine?.dealt ?? 0) > 0 && (mine?.stock.length ?? 0) > 0;
+  const midGroup = !frozen && (mine?.dealt ?? 0) > 0 && (mine?.stock.length ?? 0) > 0;
   useEffect(() => {
     if (!midGroup) return;
     const t = setTimeout(dealNow, Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
     return () => clearTimeout(t);
   }, [midGroup, mine?.dealt, mine?.stock.length, dealNow]);
   useEffect(() => {
-    if (frozen || dragDeal) return;
+    if (frozen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return;
       e.preventDefault();
@@ -690,18 +685,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [frozen, dragDeal, dealGroup]);
+  }, [frozen, dealGroup]);
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
   /** Exactly the piles that would take what is in hand right now. */
   const targetsFor = (h: Held): Target[] => {
     if (h.k === 'pile') return [{ key: 'tray', to: 'tray', rect: trayOpen, hit: L.trayHit }];
-    if (h.k === 'stock') {
-      // No precision needed: on the waste or anywhere near it, as long as the card has clearly left the stock.
-      const w = L.me?.waste;
-      return w ? [{ key: 'waste', to: 'waste', rect: w, hit: { x: w.x - w.w * 0.1, y: w.y - w.h * 0.75, w: w.w * 2.2, h: w.h * 2.5 } }] : [];
-    }
     const out: Target[] = [];
     L.me?.work.forEach((rect, i) => {
       if (canDrop(game, you, h.id, { k: 'work', i })) out.push({ key: `w${i}`, to: { k: 'work', i }, rect, hit: L.me!.workHit[i]! });
@@ -825,12 +815,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   useEffect(() => {
     const d = drag.current;
     if (!d?.active) return;
-    const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : d.held.k === 'pile' ? !toClear(d.held.slot) : frozen || mine?.stock.at(-1)?.id !== d.lead;
+    const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : !toClear(d.held.slot);
     if (gone) letGo(d);
   });
   // Escape puts what was tapped (or clicked) back, as a tap anywhere else would.
   useEffect(() => {
-    if (!held || held.k === 'stock') return;
+    if (!held) return;
     const onKey = (e: KeyboardEvent) => {
       const d = drag.current;
       if (e.code !== 'Escape' || !d?.tapped) return;
@@ -870,7 +860,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         letGo(sel);
         return void (untap.current = sel.lead);
       }
-      if (sel.held.k !== 'card') return;
       const felt = feltUnder(sel, at);
       const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
       const moved = !!t && typeof t.to === 'object' && send({ k: 'move', cardId: sel.held.id, count: sel.ids.length, to: t.to });
@@ -890,11 +879,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (must.blocked && (!id || placed?.mine)) return nag();
     let pick: Pick<Drag, 'held' | 'ids' | 'lead'> | null = null;
     if (!id || (placed?.mine && placed.pile === 'stock')) {
-      // The stock. Empty: a click turns the waste back over. Otherwise one card per action: a click deals it, or
-      // (the table rule) it has to be carried to the waste.
-      const card = mine?.stock.at(-1)?.id;
-      if (!card || !dragDeal) return void dealGroup();
-      pick = { held: { k: 'stock' }, ids: [card], lead: card };
+      // The stock: a click deals a group off it, or (empty) turns the waste back over.
+      return void dealGroup();
     } else if (placed?.pile === 'slot' && toClear(placed.at)) {
       const ids = L.cards.filter((c) => c.pile === 'slot' && c.at === placed.at).map((c) => c.card.id);
       pick = { held: { k: 'pile', slot: placed.at }, ids, lead: ids[ids.length - 1]! };
@@ -1029,9 +1015,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = targetUnder(d);
     if (d.held.k === 'pile') {
       if (t) send({ k: 'clear', slot: d.held.slot });
-    } else if (d.held.k === 'stock') {
-      if (t) send({ k: 'flip' });
-    } else if (!t || t.to === 'tray' || t.to === 'waste' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
+    } else if (!t || t.to === 'tray' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
       // Let go over a pile in the middle that will not take it because someone else's same card is there, put there
       // since this one was picked up: beaten to it. (The same card lying there all along is no race lost, only a
       // card that has nowhere to go: it goes home with the plain sound.)
@@ -1057,7 +1041,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (c.pile === 'slot' && game.slots[c.at]?.cards.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
     if (aloft.has(c.card.id)) cls += ' aloft';
     if (c.mine && !frozen && !must.blocked) {
-      if (c.pile === 'stock') cls += dragDeal ? ' grab' : ' tap';
+      if (c.pile === 'stock') cls += ' tap';
       else if (c.up) cls += ' grab';
     }
     return cls;
@@ -1216,7 +1200,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       )}
 
       {/* Where a card in hand may go is for the player to see for themselves: no pile is outlined for it, nor when it is
-          over one. (Only the waste, for a card carried off the stock, and the tray, for a finished pile: those say nothing.) */}
+          over one. (Only the tray, for a finished pile: that says nothing.) */}
       {held?.k !== 'card' &&
         targets.map((t) => (
           <div key={t.key} className={`ring${t.key === hot ? ' hot' : ''}`} style={box(t.rect)} />
