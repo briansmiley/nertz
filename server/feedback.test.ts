@@ -54,7 +54,7 @@ describe('feedback', () => {
     expect((await real(`http://localhost:${server.port}/feedback`)).status).toBe(405);
     for (let i = 0; i < 8; i++) await send({ kind: 'idea', text: 'more' });
     expect((await send({ kind: 'idea', text: 'more' })).status).toBe(429);
-    await settled(4); // (the three that got through, delivered after they were answered)
+    await settled(9); // (the eight that got through, delivered after they were answered)
   });
 
   it('files a Linear issue too: [FEEDBACK] in the title, the Bug or Feature label (made if the team has none), the screenshot uploaded', async () => {
