@@ -1,20 +1,10 @@
 // What a player's cards look like, and the seat they sit in, as the table keeps them: the back drawn by lot stays
 // drawn, a message that says nothing of lots changes none, and what goes by seat (chat, voice) follows a change of seat.
-import { describe, expect, it } from 'vitest';
-import type { SocialServerMsg } from '../shared/chat';
-import { parseClientMsg, type ServerMsg } from '../shared/protocol';
-import { Room, type Conn } from './room';
-
-class FakeConn implements Conn {
-  sent: SocialServerMsg[] = [];
-  send(msg: ServerMsg): void {
-    if (msg.t !== 'state' && msg.t !== 'error') this.sent.push(JSON.parse(JSON.stringify(msg)) as SocialServerMsg);
-  }
-  close(): void {}
-  last<T extends SocialServerMsg['t']>(t: T): Extract<SocialServerMsg, { t: T }> {
-    return this.sent.filter((m): m is Extract<SocialServerMsg, { t: T }> => m.t === t).at(-1)!;
-  }
-}
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEAL_MS, parseClientMsg } from '../shared/protocol';
+import { lehmer } from '../shared/testkit';
+import type { Room } from './room';
+import { FakeConn, roomWith as seated, send } from './testkit';
 
 interface Kept {
   seat: number;
@@ -24,22 +14,12 @@ interface Kept {
 }
 
 function roomWith(n: number): { room: Room; conns: FakeConn[]; kept: (i: number) => Kept } {
-  let x = 7;
-  const room = new Room('TEST', { rng: () => ((x = (x * 16807) % 2147483647) - 1) / 2147483646, schedule: () => {} });
-  const conns = Array.from({ length: n }, (_, i) => {
-    const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
-    return conn;
-  });
+  const { room, conns } = seated(n, { rng: lehmer(7) });
   const kept = (i: number): Kept => (room as unknown as { players: (Kept & { name: string })[] }).players.find((p) => p.name === `P${i}`)!;
   return { room, conns, kept };
 }
 
-function send(room: Room, conn: Conn, raw: unknown): void {
-  const msg = parseClientMsg(JSON.stringify(raw));
-  if (!msg || msg.t === 'join' || msg.t === 'create') throw new Error(`refused: ${JSON.stringify(raw)}`);
-  room.handle(conn, msg);
-}
+afterEach(() => void vi.useRealTimers());
 
 describe('a back by lot', () => {
   it('stays as drawn when the player says the rest again (a reconnect, or another setting changed)', () => {
@@ -78,13 +58,13 @@ describe('a change of seat', () => {
     send(room, b, { t: 'chat', text: 'from b' });
     send(room, a, { t: 'voice', on: true, muted: false });
     send(room, b, { t: 'voice', on: true, muted: false });
-    const chats = a.sent.filter((m) => m.t === 'chat').length;
+    const chats = a.of('chat').length;
     send(room, b, { t: 'seat', seat: 4 });
     expect(kept(1).seat).toBe(4);
-    expect(a.sent.filter((m) => m.t === 'chat')).toHaveLength(chats); // (nothing to send again: a line goes by who said it, and its colour by the seat they have)
-    for (const conn of [a, b]) expect(conn.last('social').inVoice).toEqual([{ id: 0, muted: false }, { id: 1, muted: false }]); // prettier-ignore
+    expect(a.of('chat')).toHaveLength(chats); // (nothing to send again: a line goes by who said it, and its colour by the seat they have)
+    for (const conn of [a, b]) expect(conn.social.inVoice).toEqual([{ id: 0, muted: false }, { id: 1, muted: false }]); // prettier-ignore
     send(room, a, { t: 'signal', to: 1, data: '.x' });
-    expect(b.last('signal')).toEqual({ t: 'signal', from: 0, data: '.x' });
+    expect(b.of('signal').at(-1)).toEqual({ t: 'signal', from: 0, data: '.x' });
   });
 });
 
@@ -107,6 +87,7 @@ describe("a bot's name", () => {
 
 describe('sitting down after the deal', () => {
   it('before the dealer says Start is in time to be dealt in; after it, only to watch', () => {
+    vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     const [a] = conns as [FakeConn, FakeConn];
     const seats = () => room.game!.players.map((p) => p.seat);
@@ -117,10 +98,10 @@ describe('sitting down after the deal', () => {
     expect(seats()).toEqual([0, 1, 2]); // the round is dealt again, with them in it
     expect(room.game).not.toBe(dealtTo);
     expect(room.round).toBe(1); // and is the same round
-    (room as unknown as { dealt(): void }).dealt(); // the cards are down: the table waits for Start
+    vi.advanceTimersByTime(DEAL_MS); // the cards are down: the table waits for Start
     expect(room.join(new FakeConn(), 'Later', 'tok-later', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2, 3]);
-    (room as unknown as { dealt(): void }).dealt(); // (dealt over again: down once more)
+    vi.advanceTimersByTime(DEAL_MS); // (dealt over again: down once more)
     send(room, a, { t: 'go' });
     expect(room.join(new FakeConn(), 'Latest', 'tok-latest', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2, 3]); // "1, 2, 3" has been said: they watch this one
@@ -144,10 +125,11 @@ describe('coming back', () => {
   });
 
   it('whoever deals can deal the round over: unscored, the same round, with everyone who is here now', () => {
+    vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     send(room, a, { t: 'start' });
-    (room as unknown as { dealt(): void }).dealt();
+    vi.advanceTimersByTime(DEAL_MS);
     send(room, a, { t: 'go' });
     expect(room.join(new FakeConn(), 'Late', 'tok-late', true)).toBeNull(); // too late: watching
     const first = room.game;
@@ -172,7 +154,7 @@ describe('sent away', () => {
     expect(seats()).toEqual([0, 1, 2]);
     send(room, a, { t: 'kick', id: 2 });
     expect(seats()).toEqual([0, 1]);
-    expect(c.sent.at(-1)).toEqual({ t: 'removed' });
+    expect(c.msgs.at(-1)).toEqual({ t: 'removed' });
     expect(closed).toEqual([c]);
     room.disconnect(b); // someone who is away can be sent away too
     send(room, a, { t: 'kick', id: 1 });

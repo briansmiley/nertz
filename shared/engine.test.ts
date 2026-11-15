@@ -27,25 +27,10 @@ import {
   type Result,
   type Rng,
 } from './engine';
+import { felt, hold, inPlay, move, seeded, slot, work } from './testkit';
 import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
-
-/** Walks a round through its opening to `play`: the deal over, the dealer's Start pressed, the count done. */
-const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
-/** A round in play. (The deal and the opening have their own tests.) */
-const deal = (seats: readonly number[], rng: () => number): GameState => toPlay(dealRound(seats, rng));
-
-function mulberry32(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
@@ -94,15 +79,9 @@ const game = (players: PlayerState[], piles: Card[][] = [], extra: Partial<GameS
   });
   return { players, stage: 'play', slots, tray: [], nertzCalledBy: null, grace: [], ...extra };
 };
-/** `count` is the number of cards lifted: 1 unless a run is being moved. */
-const move = (cardId: string, to: PileRef, count = 1): Intent => ({ k: 'move', cardId, count, to });
-const work = (i: number): PileRef => ({ k: 'work', i });
-const felt = (x: number, y: number): Extract<PileRef, { k: 'felt' }> => ({ k: 'felt', x, y });
 /** A round with the given piles at the given points, everything else bare felt. */
 const freeGame = (players: PlayerState[], piles: [Card[], number, number][] = [], extra: Partial<GameState> = {}): GameState =>
   game(players, [], { slots: Array.from({ length: 4 * players.length }, (_, i) => (piles[i] ? lying(...piles[i]) : null)), ...extra });
-const slot = (i: number): PileRef => ({ k: 'slot', i });
-const hold = (cardId: string): Intent => ({ k: 'hold', cardId });
 const RELEASE: Intent = { k: 'release' };
 const NERTZ: Intent = { k: 'nertz' };
 const ids = (pile: AnyCard[]) => pile.map((x) => x.id);
@@ -139,7 +118,7 @@ const allCards = (s: GameState): AnyCard[] => [
 // ---------------------------------------------------------------- the deal as a phase
 
 describe('dealing', () => {
-  const fresh = deepFreeze(dealRound([0, 1, 2], mulberry32(21)));
+  const fresh = deepFreeze(dealRound([0, 1, 2], seeded(21)));
   const everyIntent = (s: GameState, seat: number): Intent[] => {
     const p = s.players.find((q) => q.seat === seat)!;
     const tops = [p.nertz.at(-1)!, ...p.work.map((w) => w.at(-1)!)];
@@ -259,7 +238,7 @@ describe('dealing', () => {
 // ---------------------------------------------------------------- deal
 
 describe('deal', () => {
-  const state = deal([0, 1, 2], mulberry32(1));
+  const state = inPlay([0, 1, 2], seeded(1));
 
   it('gives every seat 13 nertz, work piles (at three players) with 0, 0, 1 and 2 cards face-down under one face-up, 32 stock and an empty waste', () => {
     expect(state.players.map((p) => p.seat)).toEqual([0, 1, 2]);
@@ -276,7 +255,7 @@ describe('deal', () => {
       expect(faces.size).toBe(52);
     }
     expect(state.slots).toEqual(Array.from({ length: 12 }, () => null)); // 4 slots per player
-    expect(deal([4, 9], mulberry32(1)).slots).toHaveLength(8);
+    expect(inPlay([4, 9], seeded(1)).slots).toHaveLength(8);
     expect(state.tray).toEqual([]);
     expect(state.nertzCalledBy).toBeNull();
     expect(state.grace).toEqual([]);
@@ -295,15 +274,15 @@ describe('deal', () => {
   });
 
   it('is deterministic for a given rng and different across seeds and seats', () => {
-    expect(deal([0, 1], mulberry32(7))).toEqual(deal([0, 1], mulberry32(7)));
-    expect(deal([0, 1], mulberry32(7))).not.toEqual(deal([0, 1], mulberry32(8)));
-    const [a, b] = deal([0, 1], mulberry32(7)).players;
+    expect(inPlay([0, 1], seeded(7))).toEqual(inPlay([0, 1], seeded(7)));
+    expect(inPlay([0, 1], seeded(7))).not.toEqual(inPlay([0, 1], seeded(8)));
+    const [a, b] = inPlay([0, 1], seeded(7)).players;
     expect(a!.nertz.map((x) => (x as Card).rank)).not.toEqual(b!.nertz.map((x) => (x as Card).rank));
   });
 
   it('survives a degenerate rng', () => {
-    expect(checkInvariants(deal([0, 1], () => 0.999999999))).toBeNull();
-    expect(checkInvariants(deal([3, 5], () => 1))).toBeNull();
+    expect(checkInvariants(inPlay([0, 1], () => 0.999999999))).toBeNull();
+    expect(checkInvariants(inPlay([3, 5], () => 1))).toBeNull();
   });
 });
 
@@ -662,7 +641,7 @@ describe('clear first: a finished pile must go to the tray before its player doe
     expect(grace.grace).toEqual([0]);
     expect(isOver(ok(applyIntent(grace, 0, move('0:SK', slot(2)))))).toBe(true);
     // checkInvariants knows it too. A whole table: seat 0's spades are a finished pile, the rest of its deck is stock and one waste card.
-    const full = deal([0, 1], mulberry32(5));
+    const full = inPlay([0, 1], seeded(5));
     const cards = full.players[0]!.nertz.concat(full.players[0]!.work.flat(), full.players[0]!.stock) as Card[];
     const spades = cards.filter((x) => x.suit === 'S').sort((x, y) => x.rank - y.rank);
     const rest = cards.filter((x) => x.suit !== 'S');
@@ -774,7 +753,7 @@ describe('dealing off the stock and recycling', () => {
     for (const bad of [3, -1, 1.5, NaN]) expect(checkInvariants(withDealt(mid, bad))).toMatch(/half-dealt/);
     expect(checkInvariants(withDealt(flips(s, 0, 1), 2))).toMatch(/half-dealt/); // more than lie on the waste
     expect(checkInvariants(withDealt(flips(s, 0, 7), 1))).toMatch(/empty stock/);
-    const fresh = dealRound([0, 1], mulberry32(5));
+    const fresh = dealRound([0, 1], seeded(5));
     expect(checkInvariants(fresh)).toBeNull();
     const early = { ...fresh, players: fresh.players.map((p, i) => (i === 0 ? { ...p, waste: p.stock.slice(-1), stock: p.stock.slice(0, -1), dealt: 1 } : p)) };
     expect(checkInvariants(early)).toMatch(/before the round was open/);
@@ -1002,7 +981,7 @@ describe('holding a card', () => {
     expect(viewFor(a, 1).players.map((p) => p.holding)).toEqual(['0:H6', '1:H8']);
     expect(a.players[0]!.stuck).toBe(true);
     expect(ok(applyIntent(a, 0, hold('0:S4'))).players.map((p) => p.holding)).toEqual(['0:S4', '1:H8']);
-    expect(checkInvariants({ ...deal([0, 1], mulberry32(1)), players: deal([0, 1], mulberry32(1)).players.map((p) => ({ ...p, holding: p.stock[0]!.id })) })).toMatch(/holding/);
+    expect(checkInvariants({ ...inPlay([0, 1], seeded(1)), players: inPlay([0, 1], seeded(1)).players.map((p) => ({ ...p, holding: p.stock[0]!.id })) })).toMatch(/holding/);
   });
 
   it('ends with a release (refused when nothing is held) or with any move', () => {
@@ -1220,7 +1199,7 @@ describe('held-card grace after a Nertz call', () => {
 // ---------------------------------------------------------------- views
 
 describe('viewFor', () => {
-  const full = deal([0, 1], mulberry32(3));
+  const full = inPlay([0, 1], seeded(3));
   const flipped = flips(full, 0, 3);
   const view = viewFor(flipped, 0);
 
@@ -1254,7 +1233,7 @@ describe('viewFor', () => {
   it('is idempotent, passes the invariant check, and does not mutate its input', () => {
     expect(viewFor(view, 1)).toEqual(view);
     expect(checkInvariants(view)).toBeNull();
-    const frozen = deepFreeze(deal([0, 1], mulberry32(4)));
+    const frozen = deepFreeze(inPlay([0, 1], seeded(4)));
     expect(() => viewFor(frozen, 0)).not.toThrow();
   });
 
@@ -1290,7 +1269,7 @@ describe('viewFor', () => {
 // ---------------------------------------------------------------- invariants
 
 describe('checkInvariants', () => {
-  const good = deal([0, 1], mulberry32(5));
+  const good = inPlay([0, 1], seeded(5));
   const withPlayer0 = (patch: (p: PlayerState) => Partial<PlayerState>): GameState => ({
     ...good,
     players: good.players.map((p, i) => (i === 0 ? { ...p, ...patch(p) } : p)),
@@ -1341,7 +1320,7 @@ describe('checkInvariants', () => {
 // ---------------------------------------------------------------- garbage
 
 describe('robustness', () => {
-  const state = deepFreeze(deal([0, 1], mulberry32(11)));
+  const state = deepFreeze(inPlay([0, 1], seeded(11)));
   const someId = state.players[0]!.nertz.at(-1)!.id;
   const garbage: unknown[] = [
     undefined, null, 0, 1, -1, NaN, Infinity, '', 'flip', true, [], [1, 2], {}, () => 1, Symbol('x'), 10n,
@@ -1389,7 +1368,7 @@ describe('robustness', () => {
   });
 
   it('survives randomly generated junk', () => {
-    const rng = mulberry32(99);
+    const rng = seeded(99);
     const atoms: unknown[] = [null, undefined, 0, 1, 3, -1, 1.5, NaN, '', 'k', 'move', 'flip', 'work', 'slot', 'hold', 'release', 'clear', 'nertz', someId, true, false, [], {}];
     const keys = ['k', 'cardId', 'to', 'i', 'slot', 'on', 'x'];
     const junk = (depth: number): unknown => {
@@ -1416,7 +1395,7 @@ describe('starting a pile on the felt', () => {
 
   it('the table is dealt with no piles at all', () => {
     for (const n of [2, 3, 4, 5, 6]) {
-      const dealt = dealRound(Array.from({ length: n }, (_, i) => i), mulberry32(n));
+      const dealt = dealRound(Array.from({ length: n }, (_, i) => i), seeded(n));
       expect(dealt.slots).toEqual(Array.from({ length: 4 * n }, () => null));
       expect(checkInvariants(dealt)).toBeNull();
     }
@@ -1586,7 +1565,7 @@ describe('starting a pile on the felt', () => {
 
   it('checkInvariants catches piles on top of each other, and one off the table', () => {
     // A real deal, with an Ace out of each player's stock started as a pile.
-    const dealt = deal([0, 1], mulberry32(5));
+    const dealt = inPlay([0, 1], seeded(5));
     const ace = dealt.players.map((p) => (p.stock as Card[]).find((x) => x.rank === 1)!);
     const s: GameState = {
       ...dealt,
@@ -1650,7 +1629,7 @@ function randomIntent(s: GameState, seat: number, rng: Rng): Intent {
 
 /** A deal with only `n` cards in each nertz pile (the rest go under the stock), so that Nertz calls actually happen in random play. */
 function shortDeal(seats: readonly number[], rng: Rng, n = 2): GameState {
-  const g = deal(seats, rng);
+  const g = inPlay(seats, rng);
   return { ...g, players: g.players.map((p) => ({ ...p, nertz: p.nertz.slice(-n), stock: [...p.nertz.slice(0, -n), ...p.stock] })) };
 }
 
@@ -1661,9 +1640,9 @@ describe('random play keeps every invariant', () => {
   // Re-picked at four seats when the felt stopped being turned for each seat: 41, 42, 47 and 49 do, 43 no longer.)
   for (const [seed, seatCount, short] of [[1, 2, false], [2, 3, false], [41, 4, true], [14, 6, true], [5, 2, true]] as const) {
     it(`seed ${seed}, ${seatCount} seats, 4000 intents${short ? ', short nertz piles' : ''}`, () => {
-      const rng = mulberry32(seed);
+      const rng = seeded(seed);
       const seats = Array.from({ length: seatCount }, (_, i) => i * 2); // non-contiguous seats on purpose
-      const fresh = () => deepFreeze(short ? shortDeal(seats, rng) : deal(seats, rng));
+      const fresh = () => deepFreeze(short ? shortDeal(seats, rng) : inPlay(seats, rng));
       let state = fresh();
       const seen = { accepted: 0, rotations: 0, rounds: 0, graces: 0, graceMoves: 0, cleared: 0, centre: 0, reveals: 0, started: 0 };
       for (let step = 0; step < 4000; step++) {
@@ -1733,9 +1712,9 @@ describe('random play keeps every invariant', () => {
 
   it('long games reach kings, clears and slot reuse without breaking anything', () => {
     // Greedy play to the middle by four seats, never calling Nertz, clearing finished piles as they appear.
-    const rng = mulberry32(77);
+    const rng = seeded(77);
     const seats = [0, 1, 2, 3];
-    let state = deal(seats, rng);
+    let state = inPlay(seats, rng);
     let cleared = 0;
     let reused = 0;
     const freed = new Set<number>();
@@ -1792,9 +1771,9 @@ describe('greedy bots can finish a round', () => {
   it('plays whole rounds to a nertz call with consistent scores', () => {
     let finished = 0;
     for (let seed = 1; seed <= 12; seed++) {
-      const rng = mulberry32(seed * 101);
+      const rng = seeded(seed * 101);
       const seats = [0, 1, 2, 3];
-      let state = deal(seats, rng);
+      let state = inPlay(seats, rng);
       const idle = new Map(seats.map((s) => [s, 0]));
       for (let step = 0; step < 20_000 && state.nertzCalledBy === null && !state.ended; step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
@@ -1863,7 +1842,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
     // (Seeds re-picked when stock dealing went to one card per intent: a grace window is rarer per 3000 intents now,
     // about one seed in five meets one. These four meet at least one.)
     for (const seed of [26, 41, 50, 51]) {
-      const rng = mulberry32(seed);
+      const rng = seeded(seed);
       const seats = [0, 1, 2];
       let state = shortDeal(seats, rng);
       for (let step = 0; step < 3000; step++) {
@@ -1890,9 +1869,9 @@ describe('client prediction on a redacted view agrees with the server', () => {
 
   it('chains of unacknowledged intents: whatever the client accepts, the server accepts identically', () => {
     for (const seed of [31, 32, 33]) {
-      const rng = mulberry32(seed);
+      const rng = seeded(seed);
       const seats = [0, 1];
-      let state = deal(seats, rng);
+      let state = inPlay(seats, rng);
       let diverged = 0;
       for (let round = 0; round < 600; round++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
@@ -1915,7 +1894,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
             break;
           }
         }
-        if (state.nertzCalledBy !== null) state = deal(seats, rng);
+        if (state.nertzCalledBy !== null) state = inPlay(seats, rng);
       }
       expect(diverged).toBeLessThan(200);
     }

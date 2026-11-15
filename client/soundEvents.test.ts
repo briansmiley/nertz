@@ -2,55 +2,15 @@
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them (net.ts).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, finishDeal, openPlay, refused, startCountdown, viewFor } from '../shared/engine';
+import { applyIntent, deal as dealRound, finishDeal, refused, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
-
-/** A round in play: dealt, and the deal over. */
-import { DEFAULT_SETTINGS } from '../shared/settings';
-const deal: typeof dealRound = (...a) => openPlay(startCountdown(finishDeal(dealRound(...a))));
-import type { Card, GameState, Intent, PileRef, RoomView, Suit } from '../shared/types';
+import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, withPile, work, workTop } from '../shared/testkit';
+import type { Card, GameState, Intent, RoomView } from '../shared/types';
 import { freshSync, onSend, onSnapshot, predict, type Sync } from './net';
 import { beatenTo, graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 2 ** 32;
-  };
-}
-
-/** Two players whose work piles are single face-up cards: A-spades, 2-spades, A-hearts and a black 5 on which nothing fits yet. */
-function rigged(emptyNertz: number[] = []): GameState {
-  const g = deal([0, 1], rng(7));
-  return {
-    ...g,
-    players: g.players.map((p) => {
-      const cards = [...p.nertz, ...p.work.flat(), ...p.stock] as Card[];
-      const take = (suit: Suit, rank: number) => cards.splice(cards.findIndex((c) => c.suit === suit && c.rank === rank), 1)[0]!;
-      const work = [[take('S', 1)], [take('S', 2)], [take('H', 1)], [take('C', 5)]];
-      const waste = [take('D', 4)]; // fits on the black 5
-      const nertz = emptyNertz.includes(p.seat) ? [] : cards.splice(0, 13);
-      return { ...p, work, down: [0, 0, 0, 0], nertz, stock: cards, waste };
-    }),
-  };
-}
-
-const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = {}): RoomView => ({
-  code: 'ABCD',
-  phase: 'playing',
-  round: 1,
-  me: you,
-  seat: you,
-  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, stuck: p.stuck, ending: false })),
-  settings: DEFAULT_SETTINGS,
-  game: viewFor(game, you),
-  graceMs: null,
-  dealMs: null,
-  startMs: null,
-  clock: null, paused: null,
-  lastRound: null,
-  ...extra,
-});
+/** Two players whose work piles are single face-up cards: A-spades, 2-spades, A-hearts and a black 5 on which nothing fits yet; on the waste, a red 4 that fits on the 5. */
+const rigged = (emptyNertz: number[] = []): GameState => rig(inPlay([0, 1], lcg(7)), { work: ['S1', 'S2', 'H1', 'C5'], waste: ['D4'], emptyNertz });
 
 /** One client (seat 0) and the server it talks to. Every step returns the cues for the change in what is rendered. */
 function session(start: GameState) {
@@ -112,21 +72,15 @@ function session(start: GameState) {
   };
 }
 
-const move = (cardId: string, to: PileRef, count = 1): Intent => ({ k: 'move', cardId, count, to });
-const slot = (i: number): PileRef => ({ k: 'slot', i });
-const work = (i: number): PileRef => ({ k: 'work', i });
-const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
-const top = (g: GameState, seat: number, pile: number) => g.players[seat]!.work[pile]!.at(-1)!.id;
-
 describe('sound cues from rendered state', () => {
   it('my own move sounds when it is predicted, and not again when the server confirms it', () => {
     const s = session(rigged());
-    const ace = top(s.game, 0, 0);
+    const ace = workTop(s.game, 0, 0);
     expect(s.me({ k: 'hold', cardId: ace })).toEqual([{ k: 'pickup', who: 'me' }]);
     expect(s.me(move(ace, felt(0, 0)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
     expect(s.confirm()).toEqual([]);
     // The next card up the pile is one step up the scale.
-    const two = top(s.game, 0, 1);
+    const two = workTop(s.game, 0, 1);
     s.me({ k: 'hold', cardId: two });
     expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me', rank: 2 }]);
     expect(s.confirm()).toEqual([]);
@@ -134,30 +88,30 @@ describe('sound cues from rendered state', () => {
 
   it('a predicted move the server refuses (we lost the race) gets its own disappointed sound when the card comes back, once', () => {
     const s = session(rigged());
-    const mine = top(s.game, 0, 0);
-    expect(s.them(move(top(s.game, 1, 0), felt(0, 0)))).toEqual([{ k: 'centre', who: 'other', rank: 1 }]);
+    const mine = workTop(s.game, 0, 0);
+    expect(s.them(move(workTop(s.game, 1, 0), felt(0, 0)))).toEqual([{ k: 'centre', who: 'other', rank: 1 }]);
     // Both go for the 2 of spades on that ace. Theirs arrives first; mine is already on its way.
-    s.me({ k: 'hold', cardId: top(s.game, 0, 1) });
-    const two = top(s.game, 0, 1);
+    s.me({ k: 'hold', cardId: workTop(s.game, 0, 1) });
+    const two = workTop(s.game, 0, 1);
     expect(s.me(move(two, slot(0)))).toEqual([{ k: 'centre', who: 'me', rank: 2 }]);
     // Their snapshot: the pile already holds their 2, so my prediction no longer applies and my card is back.
-    const lost = s.them(move(top(s.game, 1, 1), slot(0)));
+    const lost = s.them(move(workTop(s.game, 1, 1), slot(0)));
     expect(lost).toContainEqual({ k: 'lost' });
     expect(lost).toContainEqual({ k: 'centre', who: 'other', rank: 2 });
     expect(lost).toHaveLength(2);
     expect(s.confirm()).toEqual([]); // the refusal itself changes nothing more
     expect(s.game.players[0]!.work[1]!.at(-1)!.id).toBe(two);
-    expect(mine).toBe(top(s.game, 0, 0));
+    expect(mine).toBe(workTop(s.game, 0, 0));
   });
 
   it('holding a card when someone else takes the pile it could have gone on makes no sound of its own; letting it go there is being beaten to it', () => {
     const s = session(rigged());
-    s.them(move(top(s.game, 1, 0), felt(0, 0))); // their ace in the middle
-    const two = top(s.game, 0, 1);
+    s.them(move(workTop(s.game, 1, 0), felt(0, 0))); // their ace in the middle
+    const two = workTop(s.game, 0, 1);
     s.me({ k: 'hold', cardId: two });
     s.confirm();
     expect(beatenTo(s.frame.room!.game!, 0, two, 0)).toBe(false); // the pile would still take it
-    const sniped = s.them(move(top(s.game, 1, 1), slot(0)));
+    const sniped = s.them(move(workTop(s.game, 1, 1), slot(0)));
     expect(sniped).toEqual([{ k: 'centre', who: 'other', rank: 2 }]); // it may have somewhere else to go
     expect(beatenTo(s.frame.room!.game!, 0, two, 0)).toBe(true); // their two lies where ours was going
     expect(beatenTo(s.frame.room!.game!, 0, two, 1)).toBe(false); // not over any other place
@@ -165,7 +119,7 @@ describe('sound cues from rendered state', () => {
 
   it('a card picked up and put down nowhere gets the same quiet tap', () => {
     const s = session(rigged());
-    expect(s.me({ k: 'hold', cardId: top(s.game, 0, 3) })).toEqual([{ k: 'pickup', who: 'me' }]);
+    expect(s.me({ k: 'hold', cardId: workTop(s.game, 0, 3) })).toEqual([{ k: 'pickup', who: 'me' }]);
     expect(s.me({ k: 'release' })).toEqual([{ k: 'home', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
   });
@@ -205,21 +159,14 @@ describe('sound cues from rendered state', () => {
   });
 
   it('a King gets the chime instead of a ding, and clearing the pile the slide', () => {
-    const g = rigged();
-    const spades = (seat: number) => {
-      const p = g.players[seat]!;
-      return ([...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste] as Card[]).filter((c) => c.suit === 'S').sort((a, b) => a.rank - b.rank);
-    };
     // Seat 0's spades up to the Queen are already in slot 2, and its King lies on a work pile.
-    const mine = spades(0);
-    const kingCard = mine[12]!;
+    const g = withPile(rigged(), 2, 0, 'S', 12);
+    const kingCard = ([...g.players[0]!.nertz, ...g.players[0]!.stock, ...g.players[0]!.waste] as Card[]).find((c) => c.suit === 'S')!;
     const start: GameState = {
       ...g,
-      slots: g.slots.map((s, i) => (i === 2 ? { cards: [mine[0]!, ...mine.slice(1, 12)], at: { x: 0, y: 0, r: 0 } } : s)),
       players: g.players.map((p) => {
         if (p.seat !== 0) return p;
-        const gone = new Set(mine.map((c) => c.id));
-        const keep = (pile: readonly (typeof p.stock)[number][]) => pile.filter((c) => !gone.has(c.id));
+        const keep = (pile: readonly (typeof p.stock)[number][]) => pile.filter((c) => c.id !== kingCard.id);
         return { ...p, nertz: keep(p.nertz), stock: keep(p.stock), waste: keep(p.waste), work: [[kingCard], [], p.work[2]!, p.work[3]!] };
       }),
     };
@@ -241,7 +188,7 @@ describe('sound cues from rendered state', () => {
 
   it('a card the Nertz call takes out of my hand goes home with a tap, alongside the call', () => {
     const s = session(rigged([1]));
-    s.me({ k: 'hold', cardId: top(s.game, 0, 3) }); // the 5: nowhere to go, so no grace for it
+    s.me({ k: 'hold', cardId: workTop(s.game, 0, 3) }); // the 5: nowhere to go, so no grace for it
     s.confirm();
     const cues = s.them({ k: 'nertz' });
     expect(cues).toContainEqual({ k: 'nertz' });
@@ -250,13 +197,13 @@ describe('sound cues from rendered state', () => {
 
   it('nothing is replayed across a reconnect, however much happened meanwhile', () => {
     const s = session(rigged());
-    const ace = top(s.game, 0, 0);
+    const ace = workTop(s.game, 0, 0);
     s.me({ k: 'hold', cardId: ace });
     s.me(move(ace, felt(0, 0))); // predicted, never reaches the server
     const [dropped, back] = s.reconnect(() => {
-      s.act(1, move(top(s.game, 1, 0), felt(0.5, 0)));
+      s.act(1, move(workTop(s.game, 1, 0), felt(0.5, 0)));
       s.act(1, { k: 'flip' });
-      s.act(1, move(top(s.game, 1, 1), slot(0)));
+      s.act(1, move(workTop(s.game, 1, 1), slot(0)));
     });
     expect(dropped).toEqual([]); // my lost prediction snapping back is not a refusal
     expect(back).toEqual([]);
@@ -279,13 +226,13 @@ describe('sound cues from rendered state', () => {
     const first = roomOf(game, 0);
     expect(soundCues({ room: lobby, online: true }, { room: first, online: true })).toEqual([{ k: 'deal', work: 4 }]); // (the rigged hand: four single cards)
     const sheet: RoomView = { ...first, phase: 'results' };
-    const second = roomOf(deal([0, 1], rng(8)), 0, { round: 2 });
+    const second = roomOf(inPlay([0, 1], lcg(8)), 0, { round: 2 });
     expect(soundCues({ room: sheet, online: true }, { room: second, online: true })).toEqual([{ k: 'deal', work: 4 }]); // two players: no face-down cards
     // The flicks follow the cards that really leave the deck: 4 to the work piles at two players, 7 at three, 10 from four up
     // (then the 13 of the nertz pile). Someone sitting the round out hears the first hand's.
-    const small = roomOf(dealRound([0, 1, 2], rng(9)), 0, { round: 3 });
+    const small = roomOf(dealRound([0, 1, 2], lcg(9)), 0, { round: 3 });
     expect(soundCues({ room: sheet, online: true }, { room: small, online: true })).toEqual([{ k: 'deal', work: 7 }]);
-    const four = roomOf(dealRound([0, 1, 2, 3], rng(9)), 2, { round: 3 });
+    const four = roomOf(dealRound([0, 1, 2, 3], lcg(9)), 2, { round: 3 });
     expect(soundCues({ room: sheet, online: true }, { room: four, online: true })).toEqual([{ k: 'deal', work: 10 }]);
     expect(soundCues({ room: sheet, online: true }, { room: { ...small, me: 5, seat: 5 }, online: true })).toEqual([{ k: 'deal', work: 7 }]);
     // The round being scored is not a deal, and the scored table makes no card sounds.
@@ -294,8 +241,8 @@ describe('sound cues from rendered state', () => {
   });
 
   it('the opening: silence while the table waits, a tick per number when the dealer starts, one bright hit as play opens', () => {
-    const dealt = dealRound([0, 1], rng(7));
-    const stages = { dealing: dealt, ready: finishDeal(dealt), countdown: startCountdown(finishDeal(dealt)), play: openPlay(startCountdown(finishDeal(dealt))) };
+    const dealt = dealRound([0, 1], lcg(7));
+    const stages = { dealing: dealt, ready: finishDeal(dealt), countdown: startCountdown(finishDeal(dealt)), play: toPlay(dealt) };
     const frame = (stage: keyof typeof stages, extra: Partial<RoomView> = {}): Frame => ({ room: roomOf(stages[stage], 0, extra), online: true });
     const beat = START_BEAT_MS / 1000;
     expect(soundCues(frame('dealing', { dealMs: 5 }), frame('ready'))).toEqual([]);
@@ -327,7 +274,7 @@ describe('sound cues from rendered state', () => {
 
   it('the grace countdown ticks only for a player still holding a card', () => {
     const g = rigged([1]);
-    const held = top(g, 0, 0); // an ace: it has somewhere to go, so seat 0 is given grace
+    const held = workTop(g, 0, 0); // an ace: it has somewhere to go, so seat 0 is given grace
     let state = applyIntent(g, 0, { k: 'hold', cardId: held });
     if (!state.ok) throw new Error(state.reason);
     state = applyIntent(state.state, 1, { k: 'nertz' });
@@ -344,7 +291,7 @@ describe('sound cues from rendered state', () => {
 describe('an Ace on the felt', () => {
   it('an Ace put down on the felt sounds like any card to the middle, once', () => {
     const s = session(rigged());
-    const ace = top(s.game, 0, 0);
+    const ace = workTop(s.game, 0, 0);
     expect(s.me({ k: 'hold', cardId: ace })).toEqual([{ k: 'pickup', who: 'me' }]);
     expect(s.me(move(ace, felt(0.1, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
     expect(s.confirm()).toEqual([]);
@@ -352,8 +299,8 @@ describe('an Ace on the felt', () => {
 
   it('is silent when the server files my pile under another slot than I predicted: it has not moved', () => {
     const s = session(rigged());
-    const mine = top(s.game, 0, 0);
-    const theirs = top(s.game, 1, 2);
+    const mine = workTop(s.game, 0, 0);
+    const theirs = workTop(s.game, 1, 2);
     // Their Ace reaches the server first and takes slot 0; mine, predicted into slot 0, ends up in slot 1 at the same place.
     s.act(1, move(theirs, felt(-0.5, -0.3)));
     expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
@@ -365,8 +312,8 @@ describe('an Ace on the felt', () => {
 
   it('an Ace that lost the race for its patch of felt just goes home: it has other places to go, so no disappointed sound', () => {
     const s = session(rigged());
-    const mine = top(s.game, 0, 0);
-    const theirs = top(s.game, 1, 2);
+    const mine = workTop(s.game, 0, 0);
+    const theirs = workTop(s.game, 1, 2);
     s.act(1, move(theirs, felt(0.42, 0.28)));
     s.me({ k: 'hold', cardId: mine });
     expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
@@ -374,6 +321,6 @@ describe('an Ace on the felt', () => {
     expect(cues).not.toContainEqual({ k: 'lost' });
     expect(cues).toContainEqual({ k: 'home', who: 'me' });
     expect(cues).toContainEqual({ k: 'centre', who: 'other', rank: 1 });
-    expect(top(s.frame.room!.game!, 0, 0)).toBe(mine);
+    expect(workTop(s.frame.room!.game!, 0, 0)).toBe(mine);
   });
 });
