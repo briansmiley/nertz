@@ -1,4 +1,4 @@
-# Typecheck and tests on the merge of a pull request into staging or main. It advises: the plan has no branch
+# Typecheck, tests and the client build on the merge of a pull request into staging or main. It advises: the plan has no branch
 # protection, so it cannot block a merge, and it is not re-run when the base moves. Before merging the second of
 # two overlapping PRs, re-run this or merge the base into the branch.
 name: Check
@@ -27,3 +27,4 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npx vitest run --testTimeout=180000
+      - run: npm run build
