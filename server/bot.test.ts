@@ -1,9 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { applyIntent, checkInvariants, CLEAR_FIRST, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, MAX_PLAYERS, parseClientMsg, START_MS } from '../shared/protocol';
-import { openPlace, type Spot } from '../shared/table';
-import { inPlay, seeded, slot, work } from '../shared/testkit';
-import type { Card, CentrePile, GameState, Intent, PlayerState, Suit } from '../shared/types';
+import { card, inPlay, pile, seeded, slot, table as wholeTable, work, type Hand } from '../shared/testkit';
+import type { GameState, Intent, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
 import type { Room } from './room';
@@ -11,17 +10,8 @@ import { Client, FakeConn, opening, roomWith } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
-/** Card ids in these tables are readable: `${owner}${suit}${rank}`, e.g. '0H12'. */
-const id = (owner: number, face: string) => `${owner}${face}`;
-const card = (owner: number, face: string): Card => ({ id: id(owner, face), owner, suit: face[0] as Suit, rank: Number(face.slice(1)) });
+const id = (owner: number, face: string) => card(face, owner).id;
 
-interface Hand {
-  nertz?: string[];
-  work?: string[][];
-  down?: number[];
-  waste?: string[];
-  stuck?: boolean;
-}
 /** A centre pile: Ace up to `upTo` in `suit`, all from `owner`'s deck. */
 interface Centre {
   owner: number;
@@ -29,32 +19,9 @@ interface Centre {
   upTo: number;
 }
 
-/**
- * A complete, well-formed two-seat table with seat 0's (and optionally seat
- * 1's) piles as given; every card not mentioned is in its owner's stock.
- */
-function table(mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'] }): GameState {
-  const middle = centre.map((c) => Array.from({ length: c.upTo }, (_, r) => card(c.owner, `${c.suit}${r + 1}`)));
-  const used = new Set(middle.flat().map((c) => c.id));
-  const player = (seat: number, h: Hand): PlayerState => {
-    const pile = (faces: string[] = []) => faces.map((f) => card(seat, f));
-    const p = { nertz: pile(h.nertz), work: [0, 1, 2, 3].map((i) => pile(h.work?.[i])), waste: pile(h.waste) };
-    for (const c of [...p.nertz, ...p.work.flat(), ...p.waste]) used.add(c.id);
-    const stock = SUITS.flatMap((s) => Array.from({ length: 13 }, (_, r) => card(seat, `${s}${r + 1}`))).filter((c) => !used.has(c.id));
-    return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, dealt: 0, stuck: h.stuck ?? false, holding: null };
-  };
-  const placed: Spot[] = [];
-  const slots = Array.from({ length: 8 }, (_, i): CentrePile | null => {
-    const [ace, ...rest] = middle[i] ?? [];
-    if (!ace) return null;
-    const at = { ...openPlace(placed, 2)!, r: 0 };
-    placed.push(at);
-    return { cards: [ace, ...rest], at };
-  });
-  const state: GameState = { players: [player(0, mine), player(1, theirs)], slots, tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
-  expect(checkInvariants(state)).toBeNull();
-  return state;
-}
+/** A two-seat table with seat 0's (and optionally seat 1's) piles as given. */
+const table = (mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'] }): GameState =>
+  wholeTable([mine, theirs], { slots: centre.map((c) => pile(`${c.suit}${c.upTo}`, c.owner)) });
 
 /** Four work piles that take only Queens and can go nowhere but onto a Queen in the middle. */
 const DEAD = [['S13'], ['C13'], ['H13'], ['D13']];
