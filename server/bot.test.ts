@@ -1,26 +1,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import WebSocket from 'ws';
-import { DEAL_MS, START_MS } from '../shared/protocol';
-import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, resolveStuck, startCountdown, SUITS, viewFor, type Rng } from '../shared/engine';
-import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { applyIntent, checkInvariants, CLEAR_FIRST, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, MAX_PLAYERS, parseClientMsg, START_MS } from '../shared/protocol';
 import { openPlace, type Spot } from '../shared/table';
+import { inPlay, seeded, slot, work } from '../shared/testkit';
 import type { Card, CentrePile, GameState, Intent, PlayerState, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
-import { Room, type Conn } from './room';
+import type { Room } from './room';
+import { Client, FakeConn, opening, roomWith } from './testkit';
 
 // ---------------------------------------------------------------- helpers
-
-function seeded(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /** Card ids in these tables are readable: `${owner}${suit}${rank}`, e.g. '0H12'. */
 const id = (owner: number, face: string) => `${owner}${face}`;
@@ -73,17 +62,6 @@ const always: Rng = () => 0; // notices everything (unless observance is 0), pic
 const look = (state: GameState, memory: BotMemory = freshMemory(), observance = 1, rng: Rng = always) =>
   chooseIntent(viewFor(state, 0), 0, memory, rng, observance);
 const move = (face: string, to: Intent & { k: 'move' } extends { to: infer T } ? T : never, count = 1): Intent => ({ k: 'move', cardId: id(0, face), count, to });
-const work = (i: number) => ({ k: 'work', i }) as const;
-const slot = (i: number) => ({ k: 'slot', i }) as const;
-
-/** Walks a round through its opening to `play`. */
-const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
-/** Sits through the deal, presses the dealer's Start and sits through "1, 2, 3": play is open and the bots wake. (Fake timers.) */
-function opening(room: Room, dealer: Conn): void {
-  vi.advanceTimersByTime(DEAL_MS);
-  room.handle(dealer, { t: 'go' });
-  vi.advanceTimersByTime(START_MS);
-}
 
 // ---------------------------------------------------------------- chooseIntent
 
@@ -237,7 +215,7 @@ describe('chooseIntent', () => {
 
   it('observance 0 only ever flips (and says stuck), but for an Ace; observance 1 always takes the best move', () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const state = toPlay(deal([0, 1], seeded(seed)));
+      const state = inPlay([0, 1], seeded(seed));
       const rng = seeded(seed + 100);
       // (The one thing it cannot miss is an Ace showing: that goes out to the middle.)
       const blind = look(state, freshMemory(), 0, rng)!.intent;
@@ -278,7 +256,7 @@ describe('chooseIntent', () => {
     for (let seed = 1; seed <= 30; seed++) {
       const seats = Array.from({ length: 2 + (seed % 3) }, (_, i) => i);
       const rng = seeded(seed);
-      let state = toPlay(deal(seats, rng));
+      let state = inPlay(seats, rng);
       const observance = [1, 0.9, 0.75, 0.6][seed % 4]!;
       const memory = new Map(seats.map((s) => [s, freshMemory()]));
       const sinceFlip = new Map(seats.map((s) => [s, 0]));
@@ -307,19 +285,8 @@ describe('chooseIntent', () => {
 
 // ---------------------------------------------------------------- Room
 
-class FakeConn implements Conn {
-  sent: Extract<ServerMsg, { t: 'state' }>[] = [];
-  send(msg: ServerMsg): void {
-    if (msg.t === 'state') this.sent.push(JSON.parse(JSON.stringify(msg)) as typeof msg);
-  }
-  close(): void {}
-  get last() {
-    return this.sent.at(-1)!;
-  }
-}
-
 function hosted(seed = 1): { room: Room; host: FakeConn } {
-  const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
+  const { room } = roomWith(0, { rng: seeded(seed) });
   const host = new FakeConn();
   expect(room.join(host, 'Ann', 'tok-host', true)).toBeNull();
   return { room, host };
@@ -597,44 +564,33 @@ describe('bots on the real server', () => {
   });
   afterAll(() => server.close());
 
-  const connect = async (name: string) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
-    const states: Extract<ServerMsg, { t: 'state' }>[] = [];
-    ws.on('message', (data) => {
-      const msg = JSON.parse(String(data)) as ServerMsg;
-      if (msg.t === 'state') states.push(msg);
-    });
-    await new Promise((done) => ws.once('open', done));
-    ws.send(JSON.stringify({ t: 'create', name, token: `token-${name}-${Math.random().toString(36).slice(2)}` }));
-    await vi.waitFor(() => expect(states.length).toBeGreaterThan(0));
-    return { ws, states, last: () => states.at(-1)!.room, send: (msg: unknown) => ws.send(JSON.stringify(msg)) };
-  };
+  const connect = (name: string) => Client.open(server.port, null, name);
 
   it('a lobby of only bots is forgotten at once, and a game of only bots is swept like any abandoned table', { timeout: 60_000 }, async () => {
     const a = await connect('Ann');
-    const code = a.last().code;
+    const code = a.last.room.code;
     a.send({ t: 'addBot', level: 'fast' });
     a.send({ t: 'addBot', level: 'warp' }); // malformed: answered with an error, seats nothing
-    await vi.waitFor(() => expect(a.last().players.map((p) => p.name)).toEqual(['Ann', 'Bot Ada']));
+    await vi.waitFor(() => expect(a.last.room.players.map((p) => p.name)).toEqual(['Ann', 'Bot Ada']));
     a.send({ t: 'leave' });
     await vi.waitFor(() => expect(server.rooms.has(code)).toBe(false));
     a.ws.close();
 
     const b = await connect('Bob');
-    const room = server.rooms.get(b.last().code)!;
+    const room = server.rooms.get(b.last.room.code)!;
     b.send({ t: 'addBot', level: 'fast' });
     b.send({ t: 'start' });
-    await vi.waitFor(() => expect(b.last().phase).toBe('playing'));
-    expect(b.last().players).toMatchObject([{ name: 'Bob' }, { name: 'Bot Ada', bot: 'fast', connected: true }]);
+    await vi.waitFor(() => expect(b.last.room.phase).toBe('playing'));
+    expect(b.last.room.players).toMatchObject([{ name: 'Bob' }, { name: 'Bot Ada', bot: 'fast', connected: true }]);
     // The bot waits for Bob like anyone: cards dealt, nothing happens until he presses Start and the count is done.
     const dealt = JSON.stringify(room.game!.players[1]);
-    await vi.waitFor(() => expect(b.last().game!.stage).toBe('ready'), { timeout: 5000 });
+    await vi.waitFor(() => expect(b.last.room.game!.stage).toBe('ready'), { timeout: 5000 });
     await new Promise((done) => setTimeout(done, 1200)); // (a fast bot would have looked twice by now)
     expect(JSON.stringify(room.game!.players[1])).toBe(dealt);
     b.send({ t: 'go' });
-    await vi.waitFor(() => expect(b.last()).toMatchObject({ game: { stage: 'countdown' } }));
-    expect(b.last().startMs).toBeGreaterThan(START_MS - 500);
-    await vi.waitFor(() => expect(b.last()).toMatchObject({ startMs: null, game: { stage: 'play' } }), { timeout: 4000 });
+    await vi.waitFor(() => expect(b.last.room).toMatchObject({ game: { stage: 'countdown' } }));
+    expect(b.last.room.startMs).toBeGreaterThan(START_MS - 500);
+    await vi.waitFor(() => expect(b.last.room).toMatchObject({ startMs: null, game: { stage: 'play' } }), { timeout: 4000 });
     // Then the bot plays by itself.
     await vi.waitFor(() => expect(JSON.stringify(room.game!.players[1])).not.toBe(dealt), { timeout: 25_000 });
     b.ws.close();
