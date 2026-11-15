@@ -7,11 +7,9 @@ import { deckNamed, isBack, isDeck, isLot, type Back, type Deck } from '../share
 export { backGroups, CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 
 export interface Prefs {
+  /** The game's sounds off. Voice chat is not muted by it: only by its own level, or by `levels.master`. */
   muted: boolean;
-  /** Everything, 0..1. */
-  volume: number;
-  /** Other players' cards relative to your own, 0..1. */
-  others: number;
+  levels: Levels;
   /** Reduced motion: true or false overrides the system setting; null follows it. */
   calm: boolean | null;
   /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so. */
@@ -31,31 +29,92 @@ export interface Prefs {
    * or from one kind (the name of a group in `BACK_GROUPS`). Null: always `back`.
    */
   random: string | null;
-  /** The key that mutes and unmutes your microphone while you are in voice (a KeyboardEvent `code`); null: none. */
+  /** The key that mutes and unmutes the sound (a KeyboardEvent `code`); null: none. */
+  soundKey: string | null;
+  /** The key that mutes and unmutes your microphone while you are in voice, likewise. */
   voiceKey: string | null;
 }
+
+/** How loud things are, each 0..1. Every channel plays at `master` times its own. */
+export interface Levels {
+  /** Everything, voice chat included. */
+  master: number;
+  /** The game's sounds at your end of the table: your cards, and those of the whole table (the count, the call of Nertz, a bot's spoken "Nertz"). */
+  mine: number;
+  /** Other players' cards. */
+  others: number;
+  /** Other players' voices, in voice chat. */
+  voice: number;
+}
+export type Channel = Exclude<keyof Levels, 'master'>;
+export const CHANNELS = ['mine', 'others', 'voice'] as const satisfies readonly Channel[];
+
+/** A channel's gain as it plays: squared, so that a slider feels even. Muted, the game's channels are silent and voice chat is not. */
+export const loudness = (p: Pick<Prefs, 'muted' | 'levels'>, ch: Channel): number => (p.muted && ch !== 'voice' ? 0 : (p.levels.master * p.levels[ch]) ** 2);
 
 /** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
 export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => deckNamed(p.deck, p.night);
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, others: 0.25, calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, voiceKey: 'KeyV' };
+const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
+
+/**
+ * The levels from when there was one volume, for the game's sounds only (`volume`: voice chat was always at full), and
+ * other players' cards as a share of it (`others`): everything just as loud as it was. Unset, as they were by default.
+ */
+function fromOne(volume?: unknown, others?: unknown): Levels {
+  const mine = unit(volume, 0.8);
+  return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
+}
+
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, soundKey: 'KeyM', voiceKey: 'KeyV' };
 const KEY = 'nertz.prefs';
-/** Keys the game already uses: not to be had for the microphone. */
-export const TAKEN_KEYS = ['KeyM', 'KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
+
+/** The keys you choose for yourself, in the order they are listed. */
+export const HOTKEYS = ['soundKey', 'voiceKey'] as const;
+export type Hotkey = (typeof HOTKEYS)[number];
+/** Keys the game already uses: not to be had for a hotkey. */
+export const TAKEN_KEYS = ['KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
+/**
+ * May `code` be the key for `which`? A plain key (no modifier, nor Backspace or Delete, which choose none) that the
+ * game does not use and that is not already another of your hotkeys.
+ */
+export const keyFree = (p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): boolean =>
+  /^[A-Za-z0-9]{1,20}$/.test(code) && !/^(Shift|Control|Alt|Meta|OS)|^(Backspace|Delete)$/.test(code) && !TAKEN_KEYS.includes(code) && HOTKEYS.every((k) => k === which || p[k] !== code);
+/**
+ * `which` given the key `code`, as a change to your preferences: it takes the key, and a hotkey of yours that had it
+ * is left with none. Null if it is no key for a hotkey at all (a modifier, or one the game uses).
+ */
+export function takeKey(p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): Partial<Pick<Prefs, Hotkey>> | null {
+  if (!keyFree({ soundKey: null, voiceKey: null }, which, code)) return null;
+  const patch: Partial<Pick<Prefs, Hotkey>> = { [which]: code };
+  for (const k of HOTKEYS) if (k !== which && p[k] === code) patch[k] = null;
+  return patch;
+}
+/**
+ * Is this key press the hotkey `code`? Pressed bare (no Shift, Ctrl, Alt or Cmd, not held down), and not while typing
+ * in a text field or choosing a hotkey. (A slider or a checkbox that has the focus does not swallow it.)
+ */
+export const hotkeyPressed = (e: KeyboardEvent, code: string | null): boolean =>
+  !!code && e.code === code && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !(e.target as Element | null)?.closest?.('input:not([type=range]):not([type=checkbox]),textarea,[data-keying]');
 /** A phone or tablet: no keyboard to speak of, so no key is offered or named. */
 export const touchOnly = (): boolean => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
 /** A key as it is shown: "V" for KeyV, "7" for Digit7, otherwise its own name. */
 export const keyName = (code: string): string => code.replace(/^(Key|Digit)/, '');
+/** A hotkey as a button's tooltip names it: not on a phone, nor when there is none. */
+export const hotkeyName = (code: string | null): string | null => (code && !touchOnly() ? keyName(code) : null);
 
-const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
+function cleanLevels(v: Record<string, unknown>): Levels {
+  const was = fromOne(v.volume, v.others);
+  const l = typeof v.levels === 'object' && v.levels !== null ? (v.levels as Record<string, unknown>) : {};
+  return { master: unit(l.master, was.master), mine: unit(l.mine, was.mine), others: unit(l.others, was.others), voice: unit(l.voice, was.voice) };
+}
 
 /** Whatever was stored, made into valid preferences: unknown or damaged fields fall back to the defaults. */
 export function cleanPrefs(raw: unknown): Prefs {
   const v = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   return {
     muted: typeof v.muted === 'boolean' ? v.muted : DEFAULT_PREFS.muted,
-    volume: unit(v.volume, DEFAULT_PREFS.volume),
-    others: unit(v.others, DEFAULT_PREFS.others),
+    levels: cleanLevels(v),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
     night: typeof v.night === 'boolean' ? v.night : v.deck === 'night', // ("night" was once a deck of its own)
@@ -64,8 +123,23 @@ export function cleanPrefs(raw: unknown): Prefs {
     botVoice: v.botVoice !== false,
     chatOver: v.chatOver !== false,
     random: isLot(v.random) ? v.random : null,
-    voiceKey: v.voiceKey === null ? null : typeof v.voiceKey === 'string' && /^[A-Za-z0-9]{1,20}$/.test(v.voiceKey) && !TAKEN_KEYS.includes(v.voiceKey) ? v.voiceKey : DEFAULT_PREFS.voiceKey,
+    ...cleanKeys(v),
   };
+}
+
+/** Each hotkey as stored, if it may be that key (null stays none); otherwise its default, or none if another has that. */
+function cleanKeys(v: Record<string, unknown>): Pick<Prefs, Hotkey> {
+  const keys: Pick<Prefs, Hotkey> = { soundKey: null, voiceKey: null };
+  for (const k of HOTKEYS) {
+    const code = v[k];
+    if (code === null) continue;
+    if (typeof code === 'string' && keyFree(keys, k, code)) keys[k] = code;
+    else {
+      const d = DEFAULT_PREFS[k];
+      if (d && keyFree(keys, k, d)) keys[k] = d;
+    }
+  }
+  return keys;
 }
 
 function load(): Prefs {
@@ -131,6 +205,8 @@ export function setPrefs(patch: Partial<Prefs>): void {
   apply();
   for (const l of listeners) l();
 }
+
+export const setLevel = (which: keyof Levels, to: number): void => setPrefs({ levels: { ...prefs.levels, [which]: to } });
 
 /** Calls `l` after every change. Returns the way to stop. */
 export const watchPrefs = (l: () => void): (() => void) => {

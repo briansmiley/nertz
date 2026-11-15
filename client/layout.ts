@@ -29,6 +29,14 @@ export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'slot' | 'tray';
  * loose, tilted stacks ('out'); those are spread out too and everything is sorted ('wash'); the scores ('sheet').
  */
 export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sheet';
+const STAGES: readonly Stage[] = ['live', 'flip', 'spread', 'out', 'wash', 'sheet'];
+
+/**
+ * Whether the middle's cards are the finale's canvas's to draw at `stage`, and no longer this layer's: the centre
+ * piles from when they are spread out, the finished piles of the tray a step later, when they are. Both layers ask
+ * here and nowhere else (not a clock of their own), so at every stage a card is drawn by exactly one of the two.
+ */
+export const onCanvas = (stage: Stage, pile: 'slot' | 'tray'): boolean => STAGES.indexOf(stage) >= STAGES.indexOf(pile === 'slot' ? 'spread' : 'wash');
 
 export interface Placed {
   card: AnyCard;
@@ -708,7 +716,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // (`stackOffset`), so each pile is a stack you can see the size of. Once the wash starts they are drawn on the
   // finale's canvas instead.
   // The centre piles are drawn here until they are spread out; the tray's until they are, a step later.
-  if (stage === 'live' || stage === 'flip') {
+  if (!onCanvas(stage, 'slot')) {
     game.slots.forEach((pile, i) => {
       const r = slots[i];
       if (!pile || !r) return;
@@ -722,7 +730,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       });
     });
   }
-  if (stage !== 'wash' && stage !== 'sheet') {
+  if (!onCanvas(stage, 'tray')) {
     game.tray.forEach((pile, k) => {
       const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * tw, y: tray.y + pad + k * trayStep, w: tw, h: th };
       // A finished pile is turned face-down as it is put aside: it is out of the game, and solid like any other card.

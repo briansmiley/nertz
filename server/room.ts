@@ -14,7 +14,8 @@ import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSu
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
-import { Social } from './chat';
+import type { Named } from '../shared/chat';
+import { roundOver, Social } from './chat';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -82,6 +83,8 @@ type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
 /** The seat to ask the engine about for `p`: theirs, or one that no hand has. */
 const at = (p: Player): number => p.seat ?? -1;
+/** `p` as a line of the chat names them. */
+const named = (p: Player): Named => ({ who: p.id, name: p.name });
 
 /** What a bot has for a connection: it counts as connected and is told nothing (it looks for itself, on its timer). */
 const BOT_CONN: Conn = { send: () => {}, close: () => {} };
@@ -133,6 +136,8 @@ export class Room {
   private dealEndsAt = 0;
   /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
   private startTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The last round whose start the chat was told of. */
+  private startTold = 0;
   private startEndsAt = 0;
   /** Who paused the round in play, if it is paused. */
   private pausedBy: Player | null = null;
@@ -426,6 +431,8 @@ export class Room {
     this.startTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = openPlay(this.game);
+    // Told once a round, where the chat is: not again if the round is dealt over and started anew.
+    if (this.startTold !== this.round) this.social.tell(this.players, { k: 'started', round: (this.startTold = this.round) });
     this.played = 0;
     this.playingSince = Date.now();
     // Play is open: the bots start looking at their cards now, like everyone else.
@@ -450,7 +457,7 @@ export class Room {
     this.snipes.push({ by: top.owner, of: victim.seat, card: top.id });
     const by = this.players.find((p) => p.seat === top.owner);
     by?.conn?.send({ t: 'sniper', of: victim.seat });
-    if (by) this.social.sniped(this.players, by, victim); // and everyone reads of it where the chat is
+    if (by) this.social.tell(this.players, { k: 'sniped', by: named(by), of: named(victim) }); // and everyone reads of it where the chat is
   }
 
   private stopTimers(): void {
@@ -538,6 +545,7 @@ export class Room {
     this.stopBots();
     this.sendOff();
     this.fill(); // the round is over: whoever waited for a seat sits down, as far as there are seats
+    this.social.tell(this.players, roundOver(this.round, this.lastRound));
   }
 
   /**
@@ -729,10 +737,12 @@ export class Room {
       if (p.lot) p.drew = false; // a table started over draws its lots over
     }
     this.round = 0;
+    this.startTold = 0;
     this.lastRound = null;
     this.game = null;
     this.phase = 'lobby';
     this.fill();
+    this.social.tell(this.players, { k: 'reset', by: named(by) });
     this.changed();
   }
 

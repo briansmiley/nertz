@@ -19,19 +19,36 @@ export const SIGNAL_MAX_LENGTH = 1200;
 /** Is `v` a player's id (`PlayerView.id`), as far as its shape goes? */
 export const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 
-export interface ChatLine {
-  /** Rises by one per message in a room. */
-  id: number;
-  /** Who said it: their `PlayerView.id`. (Its colour is that of the seat they have now, if any.) */
+/** Someone, as a line names them: their `PlayerView.id` (its colour is that of the seat they have now, if any), and their name when it was written, so the line stays right after they leave. */
+export interface Named {
   who: number;
-  /** The sender's name when it was said, so the line stays right after they leave. */
   name: string;
-  text: string;
+}
+
+/** Someone and their points for a round, as the score sheet's Round column has them (`RoundScore.delta`). */
+export type Scored = Named & { points: number };
+
+/** What a line of the chat is: something someone said, or a notice from the table. */
+export type ChatEvent =
+  | { k: 'said'; by: Named; text: string }
+  /** `by` beat `of` to a pile in the middle. */
+  | { k: 'sniped'; by: Named; of: Named }
+  /** Round `round` has started: play is open (once a round: not again when it is dealt over and started anew). */
+  | { k: 'started'; round: number }
+  /**
+   * Round `round` is over: called by `end` (with their points), or ended without a call (`RoundResult.ended`). `best`
+   * scored the most in it and so won it, all of them if it is a tie; the one who called is not always among them.
+   */
+  | { k: 'over'; round: number; end: Scored | 'jam' | 'vote'; best: Scored[] }
+  /** `by` started the table over: every score back to nothing. */
+  | { k: 'reset'; by: Named };
+
+export type ChatLine = ChatEvent & {
+  /** Rises by one per line in a room. */
+  id: number;
   /** Server clock, ms since the epoch. */
   at: number;
-  /** Not something said, but a notice from the table: `who`/`name` beat this player to a pile in the middle (`text` is then empty). */
-  sniped?: { who: number; name: string };
-}
+};
 
 /** The host's two switches. Both default to on. */
 export interface SocialSettings {

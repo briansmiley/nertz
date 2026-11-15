@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CHAT_HISTORY, CHAT_MAX_LENGTH, CHAT_RATE_COUNT, CHAT_RATE_MS, cleanChat, SIGNAL_MAX_LENGTH, type ChatLine, type SocialServerMsg } from '../shared/chat';
 import { MAX_MESSAGE_BYTES, parseClientMsg, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import type { RoundLine } from '../shared/types';
+import { roundOver } from './chat';
 import { Room, type Conn } from './room';
 
 type Of<T extends SocialServerMsg['t']> = Extract<SocialServerMsg, { t: T }>;
@@ -23,6 +25,10 @@ class FakeConn implements Conn {
   /** Every chat line received, in order, history included. */
   get lines(): ChatLine[] {
     return this.of('chat').flatMap((m) => m.lines);
+  }
+  /** What was said among those lines (no notices from the table). */
+  get said(): string[] {
+    return this.lines.flatMap((l) => (l.k === 'said' ? [l.text] : []));
   }
   get social(): Of<'social'> {
     return this.of('social').at(-1)!;
@@ -89,8 +95,8 @@ describe('text chat', () => {
     send(room, a, { t: 'chat', text: 'hi' });
     for (const conn of [a, b, c]) {
       expect(conn.lines.map(({ at: _, ...l }) => l)).toEqual([
-        { id: 1, who: 1, name: 'P1', text: 'hello' },
-        { id: 2, who: 0, name: 'P0', text: 'hi' },
+        { id: 1, k: 'said', by: { who: 1, name: 'P1' }, text: 'hello' },
+        { id: 2, k: 'said', by: { who: 0, name: 'P0' }, text: 'hi' },
       ]);
     }
     expect(other.conns[0]!.lines).toEqual([]);
@@ -112,15 +118,15 @@ describe('text chat', () => {
     const [a, b] = conns as [FakeConn, FakeConn];
     for (let i = 0; i < CHAT_RATE_COUNT + 3; i++) send(room, a, { t: 'chat', text: `a${i}` });
     send(room, b, { t: 'chat', text: 'b is not held back by a' });
-    expect(b.lines.map((l) => l.text)).toEqual([...Array.from({ length: CHAT_RATE_COUNT }, (_, i) => `a${i}`), 'b is not held back by a']);
+    expect(b.said).toEqual([...Array.from({ length: CHAT_RATE_COUNT }, (_, i) => `a${i}`), 'b is not held back by a']);
     // A reconnect does not reset it: the limit is per player.
     const a2 = new FakeConn();
     room.join(a2, 'P0', 'tok-0000', true);
     send(room, a2, { t: 'chat', text: 'still too fast' });
-    expect(b.lines.at(-1)!.text).toBe('b is not held back by a');
+    expect(b.said.at(-1)).toBe('b is not held back by a');
     vi.advanceTimersByTime(CHAT_RATE_MS);
     send(room, a2, { t: 'chat', text: 'later' });
-    expect(b.lines.at(-1)!.text).toBe('later');
+    expect(b.said.at(-1)).toBe('later');
   });
 
   it('keeps the last CHAT_HISTORY lines and hands them to a player who joins or reconnects, once', () => {
@@ -138,7 +144,7 @@ describe('text chat', () => {
     room.join(c, 'P2', 'tok-0002', true);
     expect(c.of('chat')).toHaveLength(1);
     expect(c.of('chat')[0]!.history).toBe(true);
-    expect(c.lines.map((l) => l.text)).toEqual(kept);
+    expect(c.said).toEqual(kept);
     expect(c.lines[0]!.id).toBe(11);
 
     room.disconnect(b); // a reconnect
@@ -157,7 +163,25 @@ describe('text chat', () => {
     const before = conns[1]!.sent.length;
     send(room, conns[0]!, { t: 'chat', text: 'anyone?' });
     expect(conns[1]!.sent.length).toBe(before);
-    expect(conns[2]!.lines.map((l) => l.text)).toEqual(['anyone?']);
+    expect(conns[2]!.said).toEqual(['anyone?']);
+  });
+});
+
+describe('how a round went', () => {
+  const line = (id: number, seat: number, delta: number, gone = false): RoundLine => ({ id, seat, name: `P${id}`, played: delta, nertzLeft: 0, delta, total: delta, rounds: 1, ...(gone ? { gone } : {}) });
+
+  it('names who called, and who scored most in it: all of them on a tie, and not one the score sheet no longer shows', () => {
+    expect(roundOver(4, { calledBy: 1, scores: [line(0, 0, 9), line(1, 1, 5), line(2, 2, 9), line(3, 3, 12, true)] })).toEqual({
+      k: 'over',
+      round: 4,
+      end: { who: 1, name: 'P1', points: 5 },
+      best: [{ who: 0, name: 'P0', points: 9 }, { who: 2, name: 'P2', points: 9 }],
+    }); // prettier-ignore
+  });
+
+  it('says how it ended when nobody called', () => {
+    expect(roundOver(2, { calledBy: null, ended: 'jam', scores: [line(0, 0, -4), line(1, 1, -6)] })).toMatchObject({ end: 'jam', best: [{ who: 0, points: -4 }] });
+    expect(roundOver(2, { calledBy: null, ended: 'vote', scores: [line(0, 0, 1)] }).end).toBe('vote');
   });
 });
 
@@ -196,16 +220,16 @@ describe('the host switches', () => {
     send(room, a, { t: 'social', text: false });
     send(room, b, { t: 'chat', text: 'while off' });
     send(room, a, { t: 'chat', text: 'not even the host' });
-    expect(a.lines.map((l) => l.text)).toEqual(['before']);
+    expect(a.said).toEqual(['before']);
 
     const c = new FakeConn();
     room.join(c, 'P2', 'tok-0002', true);
-    expect(c.lines.map((l) => l.text)).toEqual(['before']);
+    expect(c.said).toEqual(['before']);
     expect(c.social).toMatchObject({ text: false });
 
     send(room, a, { t: 'social', text: true });
     send(room, b, { t: 'chat', text: 'after' });
-    expect(c.lines.map((l) => [l.id, l.text])).toEqual([[1, 'before'], [2, 'after']]); // prettier-ignore
+    expect(c.lines.map((l) => [l.id, l.k === 'said' && l.text])).toEqual([[1, 'before'], [2, 'after']]); // prettier-ignore
   });
 });
 

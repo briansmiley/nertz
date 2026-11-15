@@ -2100,6 +2100,53 @@ label.check {
   color: #9a9482;
 }
 
+/* Volume, and under it the level of each channel: the one pressed opens its slider below them. */
+.volume {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mix {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+}
+
+.mix button {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.35rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  background: none;
+}
+
+.mix output {
+  font: 700 0.95rem/1 var(--num);
+  color: var(--ink);
+}
+
+.mix button.on {
+  color: var(--ink);
+  border-bottom-color: var(--red);
+}
+
+.mix button.quiet,
+.mix button.quiet output {
+  color: #9a9482;
+}
+
+.volume > input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--red);
+}
+
 /* Voting to end the round, at the bottom of your settings slip. */
 .end-vote {
   display: grid;
@@ -4283,7 +4330,6 @@ button.code.copy small {
   font-size: 0.95rem;
 }
 
-.hotkeys kbd,
 .hotkeys button {
   min-width: 2.2em;
   padding: 1px 8px 2px;
@@ -4293,9 +4339,6 @@ button.code.copy small {
   text-align: center;
   color: var(--ink);
   background: #fffdf6;
-}
-
-.hotkeys button {
   cursor: pointer;
 }
 
@@ -4401,7 +4444,7 @@ button.code.copy small {
   color: var(--ink-soft);
 }
 
-/* A notice from the table among the chat's lines (who sniped whom): slanted and a little fainter than what is said. */
+/* A notice from the table among the chat's lines (who sniped whom, a round dealt or over): slanted and a little fainter than what is said. */
 .passing .notice {
   font-style: italic;
   opacity: 0.85;
