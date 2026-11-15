@@ -2,6 +2,7 @@
 // voice, and the relay for WebRTC signalling. Like the room it does no IO, and
 // none of it is part of the game: nothing here ever goes into a snapshot.
 import { CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, type ChatEvent, type ChatLine, type IceServer, type Scored, type SocialClientMsg, type SocialServerMsg } from '../shared/chat';
+import { MAX_PLAYERS, MAX_WATCHERS } from '../shared/protocol';
 import type { RoundLine, RoundResult } from '../shared/types';
 import type { Conn } from './room';
 
@@ -41,6 +42,16 @@ export function roundOver(round: number, result: RoundResult): Extract<ChatEvent
   return { k: 'over', round, end: caller ? scored(caller) : result.ended!, best: shown.filter((l) => l.delta === most).map(scored) };
 }
 
+/**
+ * What one sender may relay in signals: a whole table joining voice at once, and no more. To each of the other
+ * (MAX_PLAYERS + MAX_WATCHERS - 1 = 29) an offer or answer of about 3.5 KB and up to 16 candidates of about
+ * 0.4 KB each, so some 10 KB a pair and 12 KB with room to spare (an ICE restart's second offer, say): 29 * 12 KB =
+ * 348 KB of burst. It is refilled over 5 seconds, about 70 KB/s, a seventh of what one connection could send before
+ * and far below the 1 MB a receiver may fall behind by (MAX_BUFFERED_BYTES in index.ts).
+ */
+export const SIGNAL_BURST_BYTES = (MAX_PLAYERS + MAX_WATCHERS - 1) * 12_000;
+const SIGNAL_REFILL_PER_MS = SIGNAL_BURST_BYTES / 5000;
+
 export class Social {
   /** The host's switches. To merge into a generic table-settings object, keep these four booleans there instead. */
   text = true;
@@ -53,6 +64,8 @@ export class Social {
   private nextId = 1;
   /** When each player's recent messages were sent, for the rate limit. Keyed by player, so a reconnect does not reset it. */
   private recent = new WeakMap<Member, number[]>();
+  /** How many bytes of signals each player may still send, and as of when. Keyed by player, so a reconnect does not reset it. */
+  private signalBudget = new WeakMap<Member, { bytes: number; at: number }>();
   /** Who is in voice, and whether their microphone is muted. Belongs to a connection: a new socket starts outside. */
   private inVoice = new Map<Member, boolean>();
 
@@ -98,9 +111,23 @@ export class Social {
         // Only between two players of this table who have both joined voice.
         const to = members.find((m) => m.id === msg.to);
         if (!this.voice || !to || to === member || !this.inVoice.has(member) || !this.inVoice.has(to)) return;
+        if (!this.spendSignal(member, msg.data)) return;
         to.conn?.send({ t: 'signal', from: member.id, data: msg.data });
       }
     }
+  }
+
+  /** Whether `member` may relay `data` now; if so, it is taken from their budget. */
+  private spendSignal(member: Member, data: string): boolean {
+    const now = Date.now();
+    const b = this.signalBudget.get(member) ?? { bytes: SIGNAL_BURST_BYTES, at: now };
+    b.bytes = Math.min(SIGNAL_BURST_BYTES, b.bytes + (now - b.at) * SIGNAL_REFILL_PER_MS);
+    b.at = now;
+    this.signalBudget.set(member, b);
+    const size = Buffer.byteLength(data);
+    if (size > b.bytes) return false;
+    b.bytes -= size;
+    return true;
   }
 
   private say(member: Member, members: readonly Member[], text: string): void {
