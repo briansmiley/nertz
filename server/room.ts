@@ -946,8 +946,6 @@ export class Room {
         score: p.score,
         rounds: p.rounds ?? 0,
         isHost: p === dealer,
-        stuck: !!hand(p)?.stuck,
-        ending: !!hand(p)?.ending,
         ...(dealt && (p.bot || p.ready) && hand(p) ? { ready: true } : {}),
         bot: p.bot?.level,
         ...(p.queued !== null ? { queued: true } : {}),

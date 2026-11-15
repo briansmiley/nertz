@@ -6,6 +6,7 @@
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { endVote, seatedPeople } from '../shared/engine';
 import type { TableSettings } from '../shared/settings';
 import type { RoomView } from '../shared/types';
 import { pause, redeal, send, setTableSettings } from './net';
@@ -227,8 +228,7 @@ function EndVote({ room }: { room: RoomView }) {
   const game = room.game;
   const me = game?.players.find((p) => p.seat === room.seat);
   if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
-  const people = room.players.filter((p) => p.connected && !p.bot && p.seat !== null);
-  const voted = people.filter((p) => p.ending || (p.id === room.me && me.ending)).length;
+  const { voters, voted } = endVote(game, seatedPeople(room.players));
   return (
     <div className="end-vote">
       <h3>This round</h3>
@@ -236,7 +236,7 @@ function EndVote({ room }: { room: RoomView }) {
         {me.ending ? 'Take back my vote' : 'Vote to end the round'}
       </button>
       <small>
-        {voted} of {people.length} voted. When everyone has, it ends where it stands and is scored as usual.
+        {voted} of {voters} voted. When everyone has, it ends where it stands and is scored as usual.
       </small>
     </div>
   );

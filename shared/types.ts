@@ -201,9 +201,6 @@ export interface PlayerView {
   /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */
   rounds: number;
   isHost: boolean;
-  stuck: boolean;
-  /** Has voted to end the round where it stands. */
-  ending: boolean;
   /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */
   ready?: boolean;
   /** Without a seat, and waiting for one: it is theirs when one is free and no round is being played, in the order they asked (the order of the list). Without a seat and without this: watching by choice. */

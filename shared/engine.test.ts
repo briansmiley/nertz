@@ -19,16 +19,18 @@ import {
   openPlay,
   refused,
   canProgress,
+  endVote,
   resolveEndVote,
   resolveStuck,
   scoreRound,
+  seatedPeople,
   startCountdown,
   viewFor,
   type Result,
   type Rng,
 } from './engine';
-import { card as c, cards as cs, felt, hold, inPlay, move, pile, seeded, slot, table, work, type Hand } from './testkit';
-import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, Suit } from './types';
+import { card as c, cards as cs, felt, hold, inPlay, move, pile, roomOf, seeded, slot, table, work, type Hand } from './testkit';
+import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
 
@@ -751,6 +753,42 @@ describe('voting to end the round', () => {
     expect(resolveEndVote(both, [])).toBe(both);
     const called = { ...both, nertzCalledBy: 0 };
     expect(resolveEndVote(called, [0, 1])).toBe(called);
+  });
+
+  it('has a say only for those dealt in: someone back after the deal is not counted, by the slip or by the resolver', () => {
+    const two = table([{ stock: 'S9 S8' }, { stock: 'S9 S8' }]);
+    const view = roomOf(two, 0);
+    const back = { ...view, players: [...view.players, { ...view.players[1]!, id: 2, seat: 2, name: 'p2' }] }; // seat 2, here again, no cards
+    expect(seatedPeople(back.players)).toEqual([0, 1, 2]);
+    expect(endVote(two, seatedPeople(back.players))).toEqual({ voters: 2, voted: 0 });
+    const both = run(two, [0, { k: 'end', on: true }], [1, { k: 'end', on: true }]);
+    expect(endVote(both, seatedPeople(back.players))).toEqual({ voters: 2, voted: 2 });
+    expect(resolveEndVote(both, seatedPeople(back.players)).ended).toBe('vote');
+  });
+
+  it('the slip says the round is over exactly when the resolver ends it, at any table', () => {
+    const lineup: (Partial<PlayerView> | null)[][] = [
+      [{}, {}, {}],
+      [{}, { connected: false }, {}],
+      [{}, { bot: 'fast' }, { bot: 'slow' }],
+      [{ bot: 'fast' }, { bot: 'slow' }, { bot: 'fast' }],
+      [{}, { seat: null }, { connected: false }], // seat 1 has stood up: watching
+      [{}, {}, {}, {}], // seat 3 is here and seated but was not dealt in
+      [{}, { connected: false }, { bot: 'fast' }, {}],
+    ];
+    for (const at of lineup) {
+      const view = roomOf(s, 0);
+      // An entry past the dealt players is someone seated after the deal: here, no cards.
+      const players = at.map((o, i) => ({ ...(view.players[i] ?? { ...view.players[0]!, id: i, seat: i, name: `p${i}` }), ...o }));
+      // The server's people: those at the table who are here and are not bots.
+      const people = players.filter((p) => p.seat !== null && p.connected && !p.bot).map((p) => p.seat!);
+      for (const voting of [[], [0], [0, 1], [0, 1, 2]]) {
+        const state = run(s, ...voting.map((seat): [number, Intent] => [seat, { k: 'end', on: true }]));
+        const { voters, voted } = endVote(state, seatedPeople(players));
+        expect(voters).toBeLessThanOrEqual(state.players.length); // nobody without cards has a say
+        expect(voters > 0 && voted === voters).toBe(resolveEndVote(state, people).ended === 'vote');
+      }
+    }
   });
 });
 
