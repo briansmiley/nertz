@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
-import { App, resume } from './App';
+import { App } from './App';
+import { resume } from './net';
 import './styles.css';
 
 resume(); // a reload lands back in its seat

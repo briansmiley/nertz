@@ -7,10 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
 import { felt, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
 import type { AnyCard, GameState, Intent, PileRef } from '../shared/types';
-import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
+import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 import { Client, type StateMsg } from './testkit';
 
@@ -339,7 +339,7 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBe(ace));
     // A second socket with the same token (a duplicated tab): the newest wins, and the card is not in its hand.
     const a2 = await open(a.code, 'P0', a.token);
-    await vi.waitFor(() => expect(a.closeCode).toBe(CLOSE_REPLACED));
+    await vi.waitFor(() => expect(a.closeCode).toBe(CLOSE_OVER));
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBeNull());
     expect(me(a2.game, a.seat).holding).toBeNull();
     expect(me(a2.game, a.seat).work[0]!.at(-1)!.id).toBe(ace);

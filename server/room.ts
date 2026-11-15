@@ -21,8 +21,8 @@ import { guard } from './guard';
 /** A live client connection, as far as a room cares. */
 export interface Conn {
   send(msg: ServerMsg): void;
-  /** Called when another connection takes over this one's seat (same token). */
-  close(): void;
+  /** The server is done with this connection for good (`CLOSE_OVER`): `reason` is what the player is told. */
+  close(reason: string): void;
 }
 
 /**
@@ -186,7 +186,7 @@ export class Room {
       // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
       const old = player.conn;
       this.conns.delete(old);
-      old.close();
+      old.close('This seat was opened in another tab.');
       this.letGo(player); // whatever the old socket was dragging is not in this one's hand
     }
     Object.assign(player, { name, conn, ack: -1 });
@@ -255,12 +255,11 @@ export class Room {
         if (player !== this.dealer || !out || out.bot || out === player || out.out === 'kicked') return;
         const theirs = out.conn;
         if (theirs) {
-          theirs.send({ t: 'removed' }); // (so that their window goes home and does not come straight back)
           this.conns.delete(theirs);
           out.conn = null;
         }
         this.gone(out, 'kicked');
-        theirs?.close();
+        theirs?.close('You were removed from the table by whoever deals.'); // (their window goes home, and does not come straight back)
         return;
       }
       case 'addBot':

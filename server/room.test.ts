@@ -6,10 +6,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import WebSocket from 'ws';
 import { checkInvariants, finishDeal, grab, isComplete, isHidden, legalDrops, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { STOCK_CARD_MS } from '../shared/protocol';
-import { DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
-import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
+import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, startRound, type StateMsg } from './testkit';
 
@@ -1523,8 +1523,8 @@ describe('server over real sockets', () => {
   });
 
   it('create makes a table with a server-chosen code; joining a code that does not exist is an error, not a new table', async () => {
-    const lost = await open('ZZZZ', 'Lost', randomUUID(), false);
-    await vi.waitFor(() => expect(lost.errors).toEqual([expect.stringMatching(/no table ZZZZ/i)]));
+    let lost = await open('ZZZZ', 'Lost', randomUUID(), false);
+    await vi.waitFor(() => expect(lost.closeCode).toBe(CLOSE_OVER));
     expect(lost.states).toHaveLength(0);
     expect(server.rooms.has('ZZZZ')).toBe(false);
 
@@ -1540,8 +1540,8 @@ describe('server over real sockets', () => {
     expect(bob.last.room).toMatchObject({ code: ann.code, me: 1, seat: 1 });
     await vi.waitFor(() => expect(ann.last.room.players.map((p) => p.name)).toEqual(['Ann', 'Bob']));
 
-    // The same socket can still come in after a refused join: to watch, and to a seat by asking.
-    lost.send({ t: 'join', room: ann.code, name: 'Lost', token: lost.token });
+    // A refused socket is closed; the same window can still come in on another: to watch, and to a seat by asking.
+    lost = await open(ann.code, 'Lost', lost.token, false);
     await vi.waitFor(() => expect(lost.last?.room).toMatchObject({ me: 2, seat: null }));
     lost.send({ t: 'sit', on: true });
     await vi.waitFor(() => expect(lost.last?.room.seat).toBe(2));
@@ -1712,7 +1712,7 @@ describe('server over real sockets', () => {
     await vi.waitFor(() => expect(a.last.room.players[1]!.connected).toBe(true));
 
     const b3 = await open(code, 'P1', b.token); // e.g. a duplicated tab: the newer socket takes over
-    await vi.waitFor(() => expect(b2.closeCode).toBe(CLOSE_REPLACED));
+    await vi.waitFor(() => expect(b2.closeCode).toBe(CLOSE_OVER));
     expect(b3.last.room.seat).toBe(before.room.seat);
     expect(room.connected).toBe(3); // a, b and the stranger watching
   });
@@ -1858,7 +1858,7 @@ describe('server over real sockets', () => {
     solo.send({ t: 'leave' }); // last player walks out of a lobby: nothing left to keep
     await vi.waitFor(() => expect(server.rooms.has(lane)).toBe(false));
     const late = await open(lane, 'Late', randomUUID(), false); // and the code is not quietly revived
-    await vi.waitFor(() => expect(late.errors).toHaveLength(1));
+    await vi.waitFor(() => expect(late.closeCode).toBe(CLOSE_OVER));
     expect(server.rooms.has(lane)).toBe(false);
 
     a.send({ t: 'start' });

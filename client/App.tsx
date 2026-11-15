@@ -8,65 +8,36 @@ import { BackPicker, YourBacks } from './BackPicker';
 import { choiceAt, deckOf, setPrefs, usePrefs } from './prefs';
 import { backNamed, isBack } from '../shared/protocol';
 import { Chat, signed } from './Chat';
-import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, sit, start, takeSeat, useNet } from './net';
+import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Table } from './Table';
 
-// The name is remembered across visits (localStorage) only to pre-fill the
-// form. What makes a reload rejoin by itself is the per-window copy
-// (sessionStorage), so a second window still gets to pick its own name.
+// The name is remembered across visits (localStorage) only to pre-fill the form. What makes a reload sit back down is
+// the window's own session, kept by client/net.ts.
 const NAME_KEY = 'nertz.name';
-const read = (store: 'localStorage' | 'sessionStorage'): string => {
+const remembered = (): string => {
   try {
-    return cleanName(window[store].getItem(NAME_KEY) ?? '');
+    return cleanName(localStorage.getItem(NAME_KEY) ?? '');
   } catch {
     return '';
   }
 };
-const write = (store: 'localStorage' | 'sessionStorage', name: string | null): void => {
-  try {
-    if (name === null) window[store].removeItem(NAME_KEY);
-    else window[store].setItem(NAME_KEY, name);
-  } catch {
-    // storage unavailable: the name just is not remembered
-  }
-};
-
-function roomInUrl(): string {
-  const code = (new URLSearchParams(location.search).get('room') ?? '').trim().toUpperCase();
-  return isRoomCode(code) ? code : '';
-}
 
 /** Sit down at table `room`, or with null ask the server to open a new one (it picks the code). */
 function enter(room: string | null, name: string): void {
-  write('localStorage', name);
-  write('sessionStorage', name);
+  try {
+    localStorage.setItem(NAME_KEY, name);
+  } catch {
+    // storage unavailable: the name just is not remembered
+  }
   if (room) join(room, name);
   else create(name);
-}
-
-function exit(): void {
-  write('sessionStorage', null);
-  history.replaceState(null, '', '/');
-  leave();
-}
-
-/** On page load: if this window was already seated at the table in the URL, sit back down. */
-export function resume(): void {
-  const room = roomInUrl();
-  const name = read('sessionStorage');
-  if (room && name) join(room, name);
 }
 
 export function App() {
   const net = useNet();
   const room = net.room;
-  // The address always names the table we are at, so it can be shared and survives a reload.
-  const code = room?.code;
-  useEffect(() => {
-    if (code) history.replaceState(null, '', `/?room=${code}`);
-  }, [code]);
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   if (!room) {
@@ -338,7 +309,7 @@ function Watching({ room }: { room: RoomView }) {
 
 function Leave() {
   return (
-    <button type="button" className="icon" aria-label="Leave table" title="Leave table" onClick={exit}>
+    <button type="button" className="icon" aria-label="Leave table" title="Leave table" onClick={leave}>
       <Door />
     </button>
   );
@@ -405,7 +376,7 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
 
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
-  const [name, setName] = useState(() => read('localStorage'));
+  const [name, setName] = useState(remembered);
   const [code, setCode] = useState(invited);
   const nameField = useRef<HTMLInputElement>(null);
   const clean = cleanName(name);

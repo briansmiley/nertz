@@ -154,7 +154,6 @@ describe('sent away', () => {
     expect(seats()).toEqual([0, 1, 2]);
     send(room, a, { t: 'kick', id: 2 });
     expect(seats()).toEqual([0, 1]);
-    expect(c.msgs.at(-1)).toEqual({ t: 'removed' });
     expect(closed).toEqual([c]);
     room.disconnect(b); // someone who is away can be sent away too
     send(room, a, { t: 'kick', id: 1 });
