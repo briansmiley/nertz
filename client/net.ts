@@ -274,7 +274,7 @@ function open(room: string | null, name: string): void {
 /** Opens a new table. The server picks its code; it arrives as `room.code` in the first snapshot. */
 export const create = (name: string): void => open(null, name);
 
-/** Sits down at an existing table. A code nobody opened comes back as `error`. */
+/** Sits down at an existing table. A code nobody opened is refused: the server closes with CLOSE_OVER and the reason. */
 export const join = (room: string, name: string): void => open(room, name);
 
 export function leave(): void {
