@@ -6,17 +6,9 @@ import WebSocket from 'ws';
 import { DEAL_MS, START_MS, type ServerMsg } from '../shared/protocol';
 import { startServer } from './index';
 import { Room, type Conn } from './room';
+import { FakeConn, type StateMsg } from './testkit';
 
-type StateMsg = Extract<ServerMsg, { t: 'state' }>;
-
-class FakeConn implements Conn {
-  states: StateMsg[] = [];
-  send(msg: ServerMsg): void {
-    if (msg.t === 'state') this.states.push(msg);
-  }
-  close(): void {}
-}
-
+/** Silences what the guard logs, so the test setup (server/testsetup.ts) lets it pass, and records it to look at. */
 const logged = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
 afterEach(() => {
