@@ -14,6 +14,7 @@ import { DEAL, dealWait, type Stage } from './layout';
 import { DEAL_MS } from '../shared/protocol';
 import { getPrefs, loudness, watchPrefs } from './prefs';
 import { graceTicking, soundCues, type Cue, type Frame, type Who } from './soundEvents';
+import { Voices, type Voice } from './voices';
 
 const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '?url', import: 'default' });
 
@@ -31,7 +32,7 @@ interface Sample {
 let ctx: AudioContext | null = null;
 /** Where a one-shot goes, by whose it is. */
 let buses: Record<Who, GainNode> | null = null;
-let voices = 0;
+const cap = new Voices(MAX_VOICES);
 const samples = new Map<string, Sample>();
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
@@ -102,11 +103,14 @@ interface Shot {
   who?: Who;
 }
 
-/** Whether a one-shot at this gain may start now, and at what gain (before its channel's). 0 = stay silent. */
-function admit(o: Shot): number {
-  if (!ctx || !buses || ctx.state !== 'running' || voices >= MAX_VOICES) return 0;
+/** Whether a one-shot `length` seconds long may sound: when it starts, at what gain (before its channel's), and its place under the cap. Null = stay silent. */
+function admit(o: Shot, length: number): { t: number; g: number; voice: Voice } | null {
+  if (!ctx || !buses || ctx.state !== 'running') return null;
   const g = o.gain ?? 1;
-  return g * level(o.who ?? 'me') < 0.002 ? 0 : g;
+  if (g * level(o.who ?? 'me') < 0.002) return null;
+  const t = ctx.currentTime + (o.delay ?? 0);
+  const voice = cap.take(ctx.currentTime, t, t + length);
+  return voice && { t, g, voice };
 }
 
 type Stop = () => void;
@@ -119,11 +123,12 @@ const NOTHING: Stop = () => {};
  */
 function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: number; attack?: number } = {}): Stop {
   const s = samples.get(name);
-  const g = admit(o);
-  if (!s || !g || !ctx || !buses) return NOTHING;
+  if (!s) return NOTHING;
   const rate = o.rate ?? 1;
-  const t = ctx.currentTime + (o.delay ?? 0);
   const length = (s.buffer.duration - s.at) / rate;
+  const a = admit(o, length);
+  if (!a || !ctx || !buses) return NOTHING;
+  const { t, g, voice } = a;
   const src = ctx.createBufferSource();
   src.buffer = s.buffer;
   src.playbackRate.value = rate;
@@ -147,34 +152,31 @@ function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: numb
     last = last.connect(filter);
   }
   last.connect(env).connect(buses[o.who ?? 'me']);
-  voices++;
-  src.onended = () => {
-    voices--;
-    env.disconnect();
-  };
+  src.onended = () => env.disconnect();
   src.start(t, s.at);
   const audio = ctx;
   return () => {
     const now = audio.currentTime;
     env.gain.cancelScheduledValues(now);
     env.gain.setTargetAtTime(0, now, 0.02);
-    src.stop(Math.max(now, t) + 0.1);
+    const end = Math.max(now, t) + 0.1;
+    src.stop(end);
+    voice.end = Math.min(voice.end, end);
   };
 }
 
 /** A soft bell-like tone: a few sine partials under one fast-attack, exponential-decay envelope. */
 function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
-  const g = admit(o);
-  if (!g || !ctx || !buses) return;
-  const t = ctx.currentTime + (o.delay ?? 0);
   const dur = o.dur ?? 0.45;
+  const a = admit(o, dur + 0.03);
+  if (!a || !ctx || !buses) return;
+  const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
   env.gain.linearRampToValueAtTime(g, t + 0.006);
   env.gain.exponentialRampToValueAtTime(0.0005, t + dur);
   env.gain.linearRampToValueAtTime(0, t + dur + 0.02);
   env.connect(buses[o.who ?? 'me']);
-  voices++;
   (o.partials ?? BELL).forEach(([ratio, amp], i) => {
     const osc = ctx!.createOscillator();
     osc.frequency.value = freq * ratio;
@@ -184,27 +186,23 @@ function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (reado
     osc.start(t);
     osc.stop(t + dur + 0.03);
     if (i === 0) {
-      osc.onended = () => {
-        voices--;
-        env.disconnect();
-      };
+      osc.onended = () => env.disconnect();
     }
   });
 }
 
 /** A note that slides from `from` to `to` (Hz) as it sounds, fading out as it goes. */
 function glide(from: number, to: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
-  const g = admit(o);
-  if (!g || !ctx || !buses) return;
-  const t = ctx.currentTime + (o.delay ?? 0);
   const dur = o.dur ?? 0.2;
+  const a = admit(o, dur + 0.03);
+  if (!a || !ctx || !buses) return;
+  const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
   env.gain.linearRampToValueAtTime(g, t + 0.004);
   env.gain.linearRampToValueAtTime(g * 0.5, t + dur * 0.6);
   env.gain.linearRampToValueAtTime(0, t + dur);
   env.connect(buses[o.who ?? 'me']);
-  voices++;
   (o.partials ?? ([[1, 1], [2, 0.2]] as const)).forEach(([ratio, amp], i) => {
     const osc = ctx!.createOscillator();
     osc.frequency.setValueAtTime(from * ratio, t);
@@ -215,10 +213,7 @@ function glide(from: number, to: number, o: Shot & { dur?: number; partials?: re
     osc.start(t);
     osc.stop(t + dur + 0.03);
     if (i === 0) {
-      osc.onended = () => {
-        voices--;
-        env.disconnect();
-      };
+      osc.onended = () => env.disconnect();
     }
   });
 }
