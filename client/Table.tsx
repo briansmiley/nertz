@@ -647,7 +647,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const dress = (seat: number): { deck?: string; back?: string } | undefined => {
     const l = line(seat);
     const p = info(seat);
-    return p && (!l || p.name === l.name) ? p : l;
+    return p && (!l || p.id === l.id) ? p : l;
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */

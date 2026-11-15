@@ -841,3 +841,8 @@ export function dealWait(i: number, dealMs: number, work = 10): number | null {
   const wait = DEAL.lead + at - (DEAL_MS - dealMs);
   return wait >= 0 ? wait : null;
 }
+
+/** When each card of a full deal lands and flicks (work-pile cards first, then the nertz pile), in seconds from now. */
+export function dealTimes(work = 10, nertz = 13): number[] {
+  return Array.from({ length: work + nertz }, (_, i) => ((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
+}

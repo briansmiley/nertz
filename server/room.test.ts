@@ -4,96 +4,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { checkInvariants, deal as dealRound, finishDeal, grab, isComplete, isHidden, legalDrops, openPlay, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { checkInvariants, finishDeal, grab, isComplete, isHidden, legalDrops, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { STOCK_CARD_MS } from '../shared/protocol';
 import { DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
-import type { Card, GameState, Intent, PileRef, Suit } from '../shared/types';
+import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
+import type { Card, GameState, Intent, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, CLOSE_REPLACED, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
-
-type StateMsg = Extract<ServerMsg, { t: 'state' }>;
+import { Client, FakeConn, opening, roomWith, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
-/** Walks a round through its opening to `play`. */
-const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
-/** A round in play. (The deal and the opening have their own tests.) */
-const deal = (seats: readonly number[], rng: () => number): GameState => toPlay(dealRound(seats, rng));
-
-function seeded(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const wire = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
-
-/** A connection that records what it was sent, as it would arrive over the wire. */
-class FakeConn implements Conn {
-  sent: StateMsg[] = [];
-  closed = false;
-  send(msg: ServerMsg): void {
-    if (msg.t === 'state') this.sent.push(wire(msg));
-  }
-  close(): void {
-    this.closed = true;
-  }
-  get last(): StateMsg {
-    return this.sent.at(-1)!;
-  }
-}
-
-/** A room that only flushes when the test says so, with `n` players joined (tokens tok-0000, tok-0001, ...). */
-function roomWith(n: number, seed = 1): { room: Room; conns: FakeConn[] } {
-  const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
-  const conns = Array.from({ length: n }, (_, i) => {
-    const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
-    return conn;
-  });
-  return { room, conns };
-}
-
-/** Starts a round and walks it to play: the deal, the dealer's Start, "1, 2, 3". Play is open, and no timer is left running. */
-function startRound(room: Room, dealer: Conn): void {
-  const faked = vi.isFakeTimers();
-  if (!faked) vi.useFakeTimers();
-  room.handle(dealer, { t: 'start' });
-  vi.advanceTimersByTime(DEAL_MS);
-  room.handle(dealer, { t: 'go' });
-  vi.advanceTimersByTime(START_MS);
-  if (!faked) vi.useRealTimers();
-}
-
-const move = (cardId: string, to: PileRef, count = 1): Intent => ({ k: 'move', cardId, count, to });
-const slot = (i: number): PileRef => ({ k: 'slot', i });
-const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
-const hold = (cardId: string): Intent => ({ k: 'hold', cardId });
 const sendIntent = (room: Room, conn: Conn, seq: number, intent: Intent) => room.handle(conn, { t: 'intent', seq, intent });
 
 /**
  * A deal where every player's work piles are single face-up cards: A-spades,
- * 2-spades, A-hearts and 5-diamonds (the 5 has nowhere legal to go).
+ * 2-spades, A-hearts and 5-diamonds (the 5 has nowhere legal to go). Dealt
+ * afresh to `seats` from seed 7, whatever the room itself dealt.
  */
-function rigged(seats: number[], emptyNertzFor: number[] = []): GameState {
-  const g = deal(seats, seeded(7));
-  return {
-    ...g,
-    players: g.players.map((p) => {
-      const cards = [...p.nertz, ...p.work.flat(), ...p.stock] as Card[];
-      const take = (suit: Suit, rank: number) => cards.splice(cards.findIndex((c) => c.suit === suit && c.rank === rank), 1)[0]!;
-      const work = [[take('S', 1)], [take('S', 2)], [take('H', 1)], [take('D', 5)]];
-      const nertz = emptyNertzFor.includes(p.seat) ? [] : cards.splice(0, 13);
-      return { ...p, work, down: [0, 0, 0, 0], nertz, stock: cards, waste: [] };
-    }),
-  };
-}
-const workTop = (g: GameState, seat: number, i: number) => g.players.find((p) => p.seat === seat)!.work[i]!.at(-1)!.id;
+const rigged = (seats: number[], emptyNertz: number[] = []): GameState => rig(inPlay(seats, seeded(7)), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz });
 const filled = (g: GameState) => g.slots.flatMap((pile) => (pile ? [pile.cards.map((c) => c.id)] : []));
 
 /** What a bot does next, given its (possibly stale) view: a mix of legal moves, drags, flips, wrong moves and nonsense. */
@@ -145,7 +74,7 @@ describe('Room', () => {
     expect(view.players.map((p) => [p.seat, p.name, p.isHost, p.connected])).toEqual([[0, 'P0', true, true], [1, 'Bea', false, true]]);
     expect(view.game).toEqual(wire(viewFor(room.game!, 1)));
     expect(checkInvariants(room.game!)).toBeNull();
-    expect(JSON.stringify(b.sent) + JSON.stringify(conns[0]!.sent)).not.toMatch(/tok-/);
+    expect(JSON.stringify(b.states) + JSON.stringify(conns[0]!.states)).not.toMatch(/tok-/);
   });
 
   it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
@@ -190,14 +119,14 @@ describe('Room', () => {
     const got: ServerMsg[] = [];
     room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc'); // only watching
     const told = (msgs: ServerMsg[], history = false) => msgs.flatMap((m) => (m.t === 'chat' && m.history === history ? m.lines.map(({ id: _, at: __, ...l }) => l) : []));
-    const opened = () => (room as unknown as { opened(): void }).opened(); // "...NERTZ!": play opens
+    vi.useFakeTimers();
     room.handle(a, { t: 'start' });
     expect(told(got)).toEqual([]); // dealt, not started: nothing is told yet
-    opened();
+    opening(room, a); // "...NERTZ!": play opens
     const first = room.game;
     room.handle(a, { t: 'redeal' }); // dealt over and started anew: the same round, not told again
     expect(room.game).not.toBe(first);
-    opened();
+    opening(room, a);
     expect(told(got).filter((l) => l.k === 'started')).toEqual([{ k: 'started', round: 1 }]);
     room.game = rigged([0, 1], [0, 1]);
     sendIntent(room, a, 0, move(workTop(room.game, 0, 0), felt(-0.6, 0)));
@@ -222,7 +151,7 @@ describe('Room', () => {
     // With text chat switched off they are still told (as a snipe is), but not kept.
     room.handle(a, { t: 'social', text: false });
     room.handle(a, { t: 'start' });
-    opened();
+    opening(room, a);
     expect(told(got).at(-1)).toEqual({ k: 'started', round: 1 });
     const later: ServerMsg[] = [];
     room.join({ send: (m) => void later.push(wire(m)), close: () => {} }, 'Ed', 'tok-eeee');
@@ -238,7 +167,7 @@ describe('Room', () => {
   const standUp = (room: Room, conn: Conn, id?: number) => room.handle(conn, { t: 'sit', on: false, ...(id === undefined ? {} : { id }) });
 
   it('whoever comes to a table watches until they ask for a seat; whoever opens it sits down', () => {
-    const room = new Room('TEST', { rng: seeded(1), schedule: () => {} });
+    const { room } = roomWith(0);
     const [a, b, c] = [new FakeConn(), new FakeConn(), new FakeConn()];
     room.join(a, 'A', 'tok-aaaa', true); // (as the server does for `create`)
     room.join(b, 'B', 'tok-bbbb');
@@ -574,12 +503,12 @@ describe('Room', () => {
     const [a, b] = conns as [FakeConn, FakeConn];
     startRound(room, a);
     room.flush();
-    const [sentA, sentB, rev] = [a.sent.length, b.sent.length, room.rev];
+    const [sentA, sentB, rev] = [a.states.length, b.states.length, room.rev];
 
     for (let seq = 0; seq < 5; seq++) sendIntent(room, a, seq, { k: 'flip' });
     room.flush();
-    expect(a.sent.length).toBe(sentA + 1);
-    expect(b.sent.length).toBe(sentB + 1);
+    expect(a.states.length).toBe(sentA + 1);
+    expect(b.states.length).toBe(sentB + 1);
     expect(a.last).toMatchObject({ ack: 4, rev: rev + 5 });
     expect(b.last).toMatchObject({ ack: -1, rev: rev + 5 });
     expect(a.last.room.game!.players[0]!).toMatchObject({ waste: { length: 5 }, dealt: 2 }); // one card per intent
@@ -590,9 +519,9 @@ describe('Room', () => {
     sendIntent(room, a, 3, { k: 'flip' }); // stale seq: ignored
     room.flush();
     expect(room.game).toBe(before);
-    expect(a.sent.length).toBe(sentA + 2);
+    expect(a.states.length).toBe(sentA + 2);
     expect(a.last).toMatchObject({ ack: 5, rev: rev + 6 });
-    expect(b.sent.length).toBe(sentB + 1); // nothing changed for b
+    expect(b.states.length).toBe(sentB + 1); // nothing changed for b
   });
 
   it('linearises a race for one pile: first arrival lands, the loser is rejected and its card stays put', () => {
@@ -720,9 +649,10 @@ describe('Room', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     room.disconnect(c);
+    vi.useFakeTimers();
     room.handle(a, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
-    (room as unknown as { dealt(): void }).dealt();
+    vi.advanceTimersByTime(DEAL_MS);
     room.handle(a, { t: 'go' }); // "1, 2, 3": from here on whoever comes is too late for this round
     // Back mid-round: seated, listed, but with no cards, and unable to act or to hold up a stuck vote.
     const c2 = new FakeConn();
@@ -840,23 +770,11 @@ describe('Room', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     room.handle(a, { t: 'start' });
-    const g = rigged([0, 1], [0]);
     // Seat 1's spades, Ace to Queen, are already out in slot 0; seat 0 holds the King on a work pile.
-    const spades = (seat: number) => {
-      const p = g.players[seat]!;
-      return ([...p.nertz, ...p.stock, ...p.work.flat()] as Card[]).filter((c) => c.suit === 'S').sort((x, y) => x.rank - y.rank);
-    };
-    const [king, pile] = [spades(0)[12]!, spades(1).slice(0, 12)];
-    const strip = (cards: Card[], gone: Card[]) => cards.filter((c) => !gone.includes(c));
-    room.game = {
-      ...g,
-      slots: g.slots.map((s, i) => (i === 0 ? { cards: [pile[0]!, ...pile.slice(1)], at: { x: 0, y: 0, r: 0 } } : s)),
-      players: g.players.map((p) =>
-        p.seat === 0
-          ? { ...p, stock: strip(p.stock as Card[], [king]), work: [[king], ...p.work.slice(1)], waste: [p.work[0]![0]!] }
-          : { ...p, nertz: strip(p.nertz as Card[], pile), stock: strip(p.stock as Card[], pile), work: p.work.map((w) => strip(w as Card[], pile)) },
-      ),
-    };
+    const g = withPile(rigged([0, 1], [0]), 0, 1, 'S', 12);
+    const pile = g.slots[0]!.cards;
+    const king = (g.players[0]!.stock as Card[]).find((c) => c.suit === 'S' && c.rank === 13)!;
+    room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, stock: p.stock.filter((c) => c !== king), work: [[king], ...p.work.slice(1)], waste: [p.work[0]![0]!] } : p)) };
     expect(checkInvariants(room.game)).toBeNull();
     sendIntent(room, a, 0, move(king.id, slot(0)));
     sendIntent(room, b, 0, { k: 'clear', slot: 0 }); // not theirs to clear
@@ -917,27 +835,27 @@ describe('Room', () => {
         const p = dealt.players[seat]!;
         const top = p.nertz.at(-1)!.id;
         const tries: Intent[] = [{ k: 'stuck', on: true }, { k: 'flip' }, hold(top), move(top, { k: 'work', i: 0 }), move(p.work[0]![0]!.id, felt(0, 0)), { k: 'release' }, { k: 'nertz' }, { k: 'clear', slot: 0 }];
-        const others = conns.filter((x) => x !== conn).map((x) => x.sent.length);
+        const others = conns.filter((x) => x !== conn).map((x) => x.states.length);
         tries.forEach((intent, seq) => sendIntent(room, conn, seq, intent));
         room.flush();
         expect(room.game).toBe(dealt); // nothing happened
         expect(conn.last).toMatchObject({ ack: tries.length - 1, room: { dealMs: DEAL_MS - 900, game: { stage: 'dealing' } } }); // acked all the same
         expect(faces(conn.last)).toBe(false);
-        expect(conns.filter((x) => x !== conn).map((x) => x.sent.length)).toEqual(others); // only the sender hears of a refusal
+        expect(conns.filter((x) => x !== conn).map((x) => x.states.length)).toEqual(others); // only the sender hears of a refusal
       }
       expect(a.last.room.players.map((p) => p.stuck)).toEqual([false, false, false]);
 
       vi.advanceTimersByTime(DEAL_MS - 901);
       expect(room.game).toBe(dealt);
-      const sent = conns.map((x) => x.sent.length);
-      const anyFaceBefore = conns.some((x) => x.sent.some(faces));
+      const sent = conns.map((x) => x.states.length);
+      const anyFaceBefore = conns.some((x) => x.states.some(faces));
       expect(anyFaceBefore).toBe(false);
 
       vi.advanceTimersByTime(1); // the deal timer
       expect(vi.getTimerCount()).toBe(0);
-      expect(conns.map((x) => x.sent.length)).toEqual(sent); // nobody has been told yet...
+      expect(conns.map((x) => x.states.length)).toEqual(sent); // nobody has been told yet...
       room.flush(); // ...and everybody is told in the same flush
-      expect(conns.map((x) => x.sent.length)).toEqual(sent.map((n) => n + 1));
+      expect(conns.map((x) => x.states.length)).toEqual(sent.map((n) => n + 1));
       for (const conn of conns) {
         expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, startMs: null, game: { stage: 'ready' } });
         expect(conn.last.rev).toBe(a.last.rev);
@@ -1070,13 +988,13 @@ describe('Room', () => {
       expect(room.game).toBe(waiting);
 
       // Not the dealer: ignored, and nobody hears of it.
-      const sent = conns.map((x) => x.sent.length);
+      const sent = conns.map((x) => x.states.length);
       room.handle(b, { t: 'go' });
       room.handle(c, { t: 'go' });
       room.flush();
       expect(room.game).toBe(waiting);
       expect(vi.getTimerCount()).toBe(0);
-      expect(conns.map((x) => x.sent.length)).toEqual(sent);
+      expect(conns.map((x) => x.states.length)).toEqual(sent);
 
       room.handle(a, { t: 'go' });
       expect(room.game!.stage).toBe('countdown');
@@ -1111,13 +1029,13 @@ describe('Room', () => {
 
       vi.advanceTimersByTime(START_MS - 501);
       expect(room.game!.stage).toBe('countdown');
-      const sent = conns.map((x) => x.sent.length);
+      const sent = conns.map((x) => x.states.length);
       vi.advanceTimersByTime(1); // NERTZ!
       expect(vi.getTimerCount()).toBe(0);
       expect(room.game!.stage).toBe('play');
-      expect(conns.map((x) => x.sent.length)).toEqual(sent); // nobody has been told yet...
+      expect(conns.map((x) => x.states.length)).toEqual(sent); // nobody has been told yet...
       room.flush(); // ...and everybody is told in the same flush
-      expect(conns.map((x) => x.sent.length)).toEqual(sent.map((n) => n + 1));
+      expect(conns.map((x) => x.states.length)).toEqual(sent.map((n) => n + 1));
       for (const conn of conns) {
         expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, startMs: null, game: { stage: 'play' } });
         expect(conn.last.rev).toBe(a.last.rev);
@@ -1352,13 +1270,13 @@ describe('Room', () => {
       sendIntent(room, c, 0, hold(C.aceS));
       sendIntent(room, c, 1, move(C.aceS, felt(0, 0)));
       room.flush();
-      const sent = b.sent.length;
+      const sent = b.states.length;
       sendIntent(room, a, 1, move(A.aceS, felt(0, 0))); // refused: the place is taken
       expect(filled(room.game!)).toEqual([[C.aceS]]);
       expect(workTop(room.game!, 0, 0)).toBe(A.aceS); // back where it came from
       expect(holding(room)).toEqual([null, null, null]);
       room.flush();
-      expect(b.sent.length).toBe(sent + 1); // the others are told that hand is empty
+      expect(b.states.length).toBe(sent + 1); // the others are told that hand is empty
       expect(b.last.room.game!.players.map((p) => p.holding)).toEqual([null, null, null]);
 
       sendIntent(room, a, 2, { k: 'flip' });
@@ -1431,11 +1349,11 @@ describe('Room', () => {
       sendIntent(room, c, 0, { k: 'flip' });
       room.flush();
       expect(c.last.room.graceMs).toBe(1);
-      const sent = a.sent.length;
+      const sent = a.states.length;
       vi.advanceTimersByTime(1);
       expect(room.phase).toBe('results');
       room.flush();
-      expect(a.sent.length).toBe(sent + 1); // everyone is told
+      expect(a.states.length).toBe(sent + 1); // everyone is told
       expect(a.last.room).toMatchObject({ phase: 'results', graceMs: null });
       expect(a.last.room.game).toMatchObject({ nertzCalledBy: 1, grace: [] });
       expect(holding(room)).toEqual([null, null, null]); // the drag is cancelled
@@ -1526,7 +1444,7 @@ describe('Room', () => {
   });
 
   it('keeps every invariant through thousands of random intents decided on stale views', () => {
-    const { room, conns } = roomWith(4, 42);
+    const { room, conns } = roomWith(4, { rng: seeded(42) });
     startRound(room, conns[0]!);
     room.flush();
     const rnd = seeded(99);
@@ -1549,73 +1467,13 @@ describe('Room', () => {
       expect(conn.last.ack).toBe(seqs[seat]! - 1);
       expect(conn.last.room.game).toEqual(wire(viewFor(room.game!, seat)));
       expect(checkInvariants(conn.last.room.game!)).toBeNull();
-      const revs = conn.sent.map((m) => m.rev);
+      const revs = conn.states.map((m) => m.rev);
       expect(revs.every((r, i) => i === 0 || r > revs[i - 1]!)).toBe(true);
     });
   });
 });
 
 // ---------------------------------------------------------------- the real server, over real sockets
-
-/** A websocket client that records everything the server sends it. */
-class Client {
-  states: StateMsg[] = [];
-  errors: string[] = [];
-  raw: string[] = [];
-  seq = 0;
-  closeCode: number | null = null;
-  private constructor(
-    readonly ws: WebSocket,
-    readonly token: string,
-  ) {
-    ws.on('message', (data) => {
-      const text = data.toString();
-      this.raw.push(text);
-      const msg = JSON.parse(text) as ServerMsg;
-      if (msg.t === 'state') this.states.push(msg);
-      else if (msg.t === 'error') this.errors.push(msg.message);
-    });
-    ws.on('close', (code) => (this.closeCode = code));
-    ws.on('error', () => {});
-  }
-  /** Connects and sits down: `room` null opens a new table (the server picks the code), otherwise joins that code. */
-  static async open(port: number, room: string | null, name: string, token: string = randomUUID(), expectSeat = true): Promise<Client> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-    await new Promise((ok, fail) => ws.once('open', ok).once('error', fail));
-    const client = new Client(ws, token);
-    client.send(room === null ? { t: 'create', name, token } : { t: 'join', room, name, token });
-    if (expectSeat) await vi.waitFor(() => expect(client.states.length).toBeGreaterThan(0));
-    if (expectSeat && room !== null) await client.sit();
-    return client;
-  }
-  send(msg: unknown): void {
-    this.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
-  }
-  /** Whoever comes to a table watches until they ask for a seat: asks, and waits until they have one or are in the queue for one. */
-  async sit(): Promise<void> {
-    this.send({ t: 'sit', on: true });
-    await vi.waitFor(() => expect(this.last.room.seat !== null || !!this.last.room.players.find((p) => p.id === this.last.room.me)?.queued).toBe(true));
-  }
-  intent(intent: unknown): number {
-    this.send({ t: 'intent', seq: this.seq, intent });
-    return this.seq++;
-  }
-  get last(): StateMsg {
-    return this.states.at(-1)!;
-  }
-  get seat(): number {
-    return this.last.room.seat ?? -1;
-  }
-  get code(): string {
-    return this.last.room.code;
-  }
-  async close(): Promise<void> {
-    if (this.ws.readyState === WebSocket.CLOSED) return;
-    const closed = new Promise((ok) => this.ws.once('close', ok));
-    this.ws.close();
-    await closed;
-  }
-}
 
 describe('server over real sockets', () => {
   let server: NertzServer;

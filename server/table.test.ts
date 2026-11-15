@@ -2,61 +2,14 @@
 // same patch of felt, the relay of card positions while a card is being
 // dragged, and bots playing whole rounds.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkInvariants, feltFree, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, START_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, type DragAt, type ServerMsg } from '../shared/protocol';
+import { checkInvariants, feltFree, viewFor } from '../shared/engine';
+import { DEAL_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, START_MS, type DragAt } from '../shared/protocol';
 import { cardSize, openPlace, TABLE, type Spot } from '../shared/table';
+import { felt, move, seeded } from '../shared/testkit';
 import type { Card, CentrePile, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
-import { Room, type Conn } from './room';
-
-function seeded(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-type StateMsg = Extract<ServerMsg, { t: 'state' }>;
-type DragMsg = Extract<ServerMsg, { t: 'drag' }>;
-
-/** A connection that records what it was sent, as it would arrive over the wire. */
-class FakeConn implements Conn {
-  states: StateMsg[] = [];
-  drags: DragMsg[] = [];
-  send(msg: ServerMsg): void {
-    const copy = JSON.parse(JSON.stringify(msg)) as ServerMsg;
-    if (copy.t === 'state') this.states.push(copy);
-    if (copy.t === 'drag') this.drags.push(copy);
-  }
-  close(): void {}
-  get room() {
-    return this.states.at(-1)!.room;
-  }
-}
-
-/** A room that only flushes when the test says so, with `n` people in it. */
-function roomWith(n: number, seed = 1): { room: Room; conns: FakeConn[] } {
-  const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
-  const conns = Array.from({ length: n }, (_, i) => {
-    const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
-    return conn;
-  });
-  return { room, conns };
-}
-
-/** Deals, sits through the deal, presses Start and sits through "1, 2, 3": play is open (fake timers must be on). */
-function start(room: Room, dealer: Conn): void {
-  room.handle(dealer, { t: 'start' });
-  vi.advanceTimersByTime(DEAL_MS);
-  room.handle(dealer, { t: 'go' });
-  vi.advanceTimersByTime(START_MS);
-  expect(room.game!.stage).toBe('play');
-}
+import type { Room } from './room';
+import { FakeConn, roomWith, startRound } from './testkit';
 
 /** Every player gets an Ace from their stock face-up on their waste, ready to play. Returns the Aces' ids by seat. */
 function acesUp(room: Room): string[] {
@@ -67,8 +20,6 @@ function acesUp(room: Room): string[] {
   return aces.map((c) => c.id);
 }
 
-const move = (cardId: string, to: PileRef): Intent => ({ k: 'move', cardId, count: 1, to });
-const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
 const at = (id: string, w = 0.5): { t: 'drag' } & DragAt => ({ t: 'drag', id, w, h: [1, 2], p: [0.1, 0.6] });
 
 afterEach(() => void vi.useRealTimers());
@@ -77,7 +28,7 @@ describe('the middle', () => {
   it('is dealt bare: no slot has a pile until an Ace starts one there', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
-    start(room, conns[0]!);
+    startRound(room, conns[0]!);
     expect(room.game!.slots).toEqual(Array.from({ length: 8 }, () => null));
     room.close();
   });
@@ -86,7 +37,7 @@ describe('the middle', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    start(room, a);
+    startRound(room, a);
     const [aceA, aceB, aceC] = acesUp(room) as [string, string, string];
     room.handle(a, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceA } });
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceB } });
@@ -116,7 +67,7 @@ describe('card positions while dragging', () => {
   function dragging(n = 3) {
     vi.useFakeTimers();
     const { room, conns } = roomWith(n);
-    start(room, conns[0]!);
+    startRound(room, conns[0]!);
     const held = room.game!.players[0]!.nertz.at(-1)!.id;
     room.handle(conns[0]!, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: held } });
     room.flush();
@@ -259,8 +210,8 @@ describe('bots starting piles', () => {
   /** A table of `n` where seat `seat` has an Ace on its waste. */
   function withAce(n: number, seat: number, seed = 3): { view: GameState; ace: string } {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(n, seed);
-    start(room, conns[0]!);
+    const { room, conns } = roomWith(n, { rng: seeded(seed) });
+    startRound(room, conns[0]!);
     const ace = acesUp(room)[seat]!;
     const view = viewFor(room.game!, seat);
     room.close();
@@ -332,12 +283,12 @@ describe('bots starting piles', () => {
     let aces = 0;
     for (const bots of [2, 3, 4, 5, 6]) {
       for (const seed of [21, 22, 23]) {
-        const room = new Room('TEST', { rng: seeded(seed * 10 + bots), schedule: () => {} });
+        const { room } = roomWith(0, { rng: seeded(seed * 10 + bots) });
         const host = new FakeConn();
         room.join(host, 'Ann', 'tok-host', true);
         for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
         const players = Math.min(6, bots + 1);
-        start(room, host);
+        startRound(room, host);
         room.disconnect(host); // the person is away: the bots' stuck votes are the only ones
         dealt++;
         const t0 = Date.now();
