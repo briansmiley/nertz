@@ -161,7 +161,7 @@ describe('the connection', () => {
     for (let i = 0; i < 7; i++) {
       const n = sockets();
       let waited = 0;
-      while (sockets() === n) {
+      while (sockets() === n && waited < 10_000) {
         vi.advanceTimersByTime(250);
         waited += 250;
       }
