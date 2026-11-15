@@ -829,15 +829,19 @@ describe('voting to end the round', () => {
       [{}, { bot: 'fast' }, { bot: 'slow' }],
       [{ bot: 'fast' }, { bot: 'slow' }, { bot: 'fast' }],
       [{}, { seat: null }, { connected: false }], // seat 1 has stood up: watching
+      [{}, {}, {}, {}], // seat 3 is here and seated but was not dealt in
+      [{}, { connected: false }, { bot: 'fast' }, {}],
     ];
     for (const at of lineup) {
       const view = roomOf(s, 0);
-      const players = view.players.map((p, i) => ({ ...p, ...at[i] }));
+      // An entry past the dealt players is someone seated after the deal: here, no cards.
+      const players = at.map((o, i) => ({ ...(view.players[i] ?? { ...view.players[0]!, id: i, seat: i, name: `p${i}` }), ...o }));
       // The server's people: those at the table who are here and are not bots.
       const people = players.filter((p) => p.seat !== null && p.connected && !p.bot).map((p) => p.seat!);
       for (const voting of [[], [0], [0, 1], [0, 1, 2]]) {
         const state = run(s, ...voting.map((seat): [number, Intent] => [seat, { k: 'end', on: true }]));
         const { voters, voted } = endVote(state, seatedPeople(players));
+        expect(voters).toBeLessThanOrEqual(state.players.length); // nobody without cards has a say
         expect(voters > 0 && voted === voters).toBe(resolveEndVote(state, people).ended === 'vote');
       }
     }
