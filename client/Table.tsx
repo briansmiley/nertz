@@ -19,7 +19,7 @@ import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortMs, TIMING } from './Finale';
-import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, onCanvas, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
 import { onDrag, onSniper, pause, post } from './net';
@@ -1080,7 +1080,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     w: stampSize * 4,
     h: callerPile.h,
   };
-  const finale = stage === 'spread' || stage === 'out' || stage === 'wash' || stage === 'sheet';
+  const finale = onCanvas(stage, 'slot');
   /** An Ace is in hand. */
   const placing = held?.k === 'card' && held.ace;
 
@@ -1294,7 +1294,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} instant={stage === 'sheet'} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {results && stage !== 'sheet' && (
         <button type="button" className="skip" onClick={skip}>

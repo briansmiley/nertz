@@ -5,19 +5,20 @@
 // cards move at once, so they are drawn on one canvas from pre-rendered back
 // sprites instead of being 300 animated elements; the labels beside the piles
 // are ordinary DOM.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backArt, backColour, bareOf, CARD_H, CARD_W } from './cards/Face';
 import { MINI_BELOW } from './layout';
-import { seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect } from './layout';
+import { onCanvas, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 6500 };
 /**
  * The finale's own clock starts when the centre piles are spread out ('spread'). With finished piles in the tray,
  * those come out next and are spread out in their turn, `trayAt` ms in; with none there is only a short beat. Then the
- * sorting starts, `sortAt` ms in.
+ * sorting starts, `sortAt` ms in. (The table's stages run to these times; when the canvas is given a pile's cards is
+ * the stage's to say, not this schedule's: see `frameAt`.)
  */
 export const trayAt = TIMING.spread + TIMING.out;
 export const sortAt = (trayPiles: number): number => (trayPiles ? trayAt + TIMING.wash : TIMING.spread + 400);
@@ -97,6 +98,7 @@ function noise(i: number, salt: number): number {
 }
 
 interface Mover {
+  id: string;
   owner: number;
   /** Start: the pile it lay in. */
   x: number;
@@ -106,8 +108,8 @@ interface Mover {
   radius: number;
   spin: number;
   delay: number;
-  /** When it joins the wash, ms on the finale's clock: at once, or for a card of a finished pile once that has come out of the tray (until then it is not drawn here). */
-  from: number;
+  /** A card of a finished pile out of the tray: the table keeps those a stage longer than the centre piles (`onCanvas`), and they join the wash when it lets go of them. */
+  tray: boolean;
   /** Destination: which sorted pile, and its place in it. */
   pile: number;
   k: number;
@@ -295,7 +297,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
       if (!at || to === undefined) return [];
       // Every pile starts the wash as the loose stack it was turned over or came out of the tray as (see `stackOffset`).
       const o = tray < 0 ? slotStack(slot, j, at.w) : trayStack(tray, j, at.w);
-      return [{ owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, from: tray < 0 ? 0 : trayAt, pile: to, k: 0, of: 0, tilt: 0, rot0: ((o.rot + ('rot' in at ? (at as { rot: number }).rot : 0)) * Math.PI) / 180 }];
+      return [{ id: card.id, owner: card.owner, x: at.x + o.x, y: at.y + o.y, angle: 0, radius: 0, spin: 0, delay: 0, tray: tray >= 0, pile: to, k: 0, of: 0, tilt: 0, rot0: ((o.rot + ('rot' in at ? (at as { rot: number }).rot : 0)) * Math.PI) / 180 }];
     }),
   );
   // Draw order is shuffled so the colours mix in the wash; a card's place in its sorted pile follows the draw order.
@@ -305,7 +307,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const order = movers.map((_, i) => noise(i, 1));
   const shuffled = movers
     .map((mv, i) => ({ mv, i, o: order[i]! }))
-    .sort((a, b) => a.mv.from - b.mv.from || (a.mv.from ? a.i - b.i : a.o - b.o))
+    .sort((a, b) => Number(a.mv.tray) - Number(b.mv.tray) || (a.mv.tray ? a.i - b.i : a.o - b.o))
     .map((e) => e.mv);
   shuffled.forEach((mv, i) => {
     mv.angle = noise(i, 2) * Math.PI * 2;
@@ -415,33 +417,28 @@ function backSprite(colour: string, w: number, h: number, dpr: number, art?: { i
   return sprite;
 }
 
+/** A card as the canvas draws it: the card, its centre, its turn (radians), and its size in cards of the wash. */
+export type Stamp = [Mover, number, number, number, number];
+
 /**
- * Draws the table `t` ms into the wash and returns how many cards have landed on each sorted pile.
- * `order[i]` is when pile i is gathered (0 first): one player's cards at a time.
+ * The canvas's cards at `stage`, `t` ms into the wash, in the order they are drawn, and how many have landed on each
+ * sorted pile. Which cards are the canvas's is the stage's to say (`onCanvas`), never the clock's: the table lets go
+ * of a pile on a stage, and what it has let go of is drawn here from that very frame, where it lay. The clock only
+ * says how far a card has got. `trayFrom` is when the finished piles were let go, on the same clock; `order[i]` is
+ * when pile i is gathered (0 first): one player's cards at a time.
  */
-function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTMLCanvasElement>, dpr: number, t: number, order: readonly number[] = []): number[] {
+export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, order: readonly number[] = []): { cards: Stamp[]; landed: number[] } {
   const { w, h } = plan;
-  const pad = Math.ceil(w * 0.08);
   const landed = plan.piles.map(() => 0);
   // The wash is simply one big mixed-up mess in the middle: the cards slide out of their piles to scattered places,
   // at all angles, and lie there. It does not turn, and it is not tidied up before the cards go out to their owners.
   const rx = plan.rx * WASH_SPREAD.x;
   const ry = plan.ry * WASH_SPREAD.y;
-  c.setTransform(1, 0, 0, 1, 0, 0);
-  c.clearRect(0, 0, c.canvas.width, c.canvas.height);
-  /** A card with its centre at (x, y), turned by `rot`, `size` times as large as a card in the wash. */
-  const stamp = (mv: Mover, x: number, y: number, rot: number, size: number) => {
-    const cos = Math.cos(rot) * dpr * size;
-    const sin = Math.sin(rot) * dpr * size;
-    c.setTransform(cos, sin, -sin, cos, (x - plan.area.x) * dpr, (y - plan.area.y) * dpr);
-    c.drawImage(sprites.get(mv.owner)!, -w / 2 - pad, -h / 2 - pad, w + 2 * pad, h + 2 * pad);
-  };
-  type Stamp = [Mover, number, number, number, number];
   const wash: Stamp[] = [];
   const resting: Stamp[] = [];
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
-    if (t < mv.from) continue; // still a pile in the tray, or on its way out of it: drawn by the table
+    if (!onCanvas(stage, mv.tray ? 'tray' : 'slot')) continue; // still a pile in the tray, or on its way out of it: drawn by the table
     const q = glideEase(clamp01((t - plan.sortAt - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
@@ -451,7 +448,7 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
       continue;
     }
     // In the wash: out from its pile to a spot on the felt, which then turns (the inside faster) and breathes.
-    const spread = glideEase(clamp01((t - mv.from - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
+    const spread = glideEase(clamp01((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
     const a = mv.angle;
     const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
@@ -469,8 +466,22 @@ function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTM
   // A card on its way out to its pile keeps its place in the heap: it slides out from under whatever lay on it, and
   // never jumps to the top. The gathered piles are clear of the wash, and are drawn first, so it still lands on top
   // of its own (cards land in the order they lie in the heap).
-  for (const f of [...resting, ...wash]) stamp(...f);
-  return landed;
+  return { cards: [...resting, ...wash], landed };
+}
+
+/** Draws them, in that order. */
+function paint(c: CanvasRenderingContext2D, plan: Plan, sprites: Map<number, HTMLCanvasElement>, dpr: number, cards: readonly Stamp[]): void {
+  const { w, h } = plan;
+  const pad = Math.ceil(w * 0.08);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+  // Each with its centre at (x, y), turned by `rot`, `size` times as large as a card in the wash.
+  for (const [mv, x, y, rot, size] of cards) {
+    const cos = Math.cos(rot) * dpr * size;
+    const sin = Math.sin(rot) * dpr * size;
+    c.setTransform(cos, sin, -sin, cos, (x - plan.area.x) * dpr, (y - plan.area.y) * dpr);
+    c.drawImage(sprites.get(mv.owner)!, -w / 2 - pad, -h / 2 - pad, w + 2 * pad, h + 2 * pad);
+  }
 }
 
 const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
@@ -480,19 +491,22 @@ interface Props {
   game: GameState;
   scores: readonly RoundScore[];
   name: (seat: number) => string;
-  /** Show the finished picture at once (skipped, reduced motion, or arriving after the fact). */
-  instant: boolean;
+  /** How far the end of the round has got: which piles the table has let go of, and at 'sheet' the finished picture at once (skipped, reduced motion, or arriving after the fact). */
+  stage: Stage;
   /** The back each player chose for their cards. */
   backs?: (seat: number) => string | undefined;
 }
 
-export function Finale({ L, game, scores, name, instant, backs }: Props) {
+export function Finale({ L, game, scores, name, stage, backs }: Props) {
+  const instant = stage === 'sheet';
   // (A back's picture that has not arrived yet: the cards are plain until it has, and then drawn again.)
   const [arrived, setArrived] = useState(0);
   const chosen = plan0(game).map((seat) => backs?.(seat) ?? '').join();
   const plan = useMemo(() => planFinale(L, game), [L, game]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const began = useRef(0);
+  /** When the table let go of the finished piles (ms on this clock): they spread out from then. */
+  const trayFrom = useRef(Infinity);
   const [landed, setLanded] = useState<number[]>(() => plan.piles.map((p) => (instant ? p.total : 0)));
   const n = plan.piles.length;
   /** How many piles have been gathered so far; -1 while the wash is still turning. */
@@ -507,7 +521,8 @@ export function Finale({ L, game, scores, name, instant, backs }: Props) {
   }, [plan, scores]);
   const best = Math.max(...plan.piles.map((p) => delta(p.seat)));
 
-  useEffect(() => {
+  // Before the browser paints: the commit that takes a pile's cards off the table is the one that draws them here.
+  useLayoutEffect(() => {
     const el = canvas.current;
     const c = el?.getContext('2d');
     if (!el || !c) return;
@@ -528,6 +543,7 @@ export function Finale({ L, game, scores, name, instant, backs }: Props) {
     };
     setup(full);
     began.current ||= performance.now();
+    if (onCanvas(stage, 'tray')) trayFrom.current = Math.min(trayFrom.current, performance.now() - began.current);
     const end = plan.sortAt + sortMs(n);
     let raf = 0;
     let shown = '';
@@ -541,7 +557,8 @@ export function Finale({ L, game, scores, name, instant, backs }: Props) {
       if (scale > 1 && last && now - last > 24 && ++late >= 5) setup(1);
       last = now;
       if (t >= end && scale < full) setup(full);
-      const counts = paint(c, plan, sprites, scale, t, turn);
+      const { cards, landed: counts } = frameAt(plan, stage, t, trayFrom.current, turn);
+      paint(c, plan, sprites, scale, cards);
       if (counts.join() !== shown) {
         shown = counts.join();
         setLanded(counts);
@@ -552,7 +569,7 @@ export function Finale({ L, game, scores, name, instant, backs }: Props) {
     };
     frame(performance.now());
     return () => cancelAnimationFrame(raf);
-  }, [plan, instant, turn, n, arrived, chosen]);
+  }, [plan, stage, turn, n, arrived, chosen]);
 
   return (
     <>
