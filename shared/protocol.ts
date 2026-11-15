@@ -170,8 +170,10 @@ export type ClientMsg =
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
-  /** I let a card go over the pile at `slot` and it was too late: someone else's very same card had just been put there. (Counted, if the table agrees.) */
-  | { t: 'sniped'; slot: number }
+  /** I let my one card `card` go over the pile at `slot`, which would not take it; its top was `seen` when I took the card up (null: there was no pile). The server judges whether I was sniped (`snipedBy`). */
+  | { t: 'tried'; card: string; slot: number; seen: string | null }
+  /** From a window older than the server's own judgement of snipes. Ignored. */
+  | { t: 'sniped' }
   /** Ask for a seat (on: it is yours at once if one is free and no round is being played, and otherwise when your turn in the queue comes), or give up your seat or your place in the queue and just watch (off): yourself, or as whoever deals the person `id`. Not out of a round you hold cards in. */
   | { t: 'sit'; on: boolean; id?: number }
   /** Whoever deals: hand the table on to the person `id` (someone at it), who hosts it from then on. */
@@ -194,8 +196,8 @@ export type ServerMsg =
   | { t: 'state'; rev: number; ack: number; room: RoomView }
   /** A complaint about something this connection sent. It changes nothing: the connection goes on. */
   | { t: 'error'; message: string }
-  /** To you alone: you have just beaten the player in seat `of` to a pile in the middle with the very card they were about to put there. */
-  | { t: 'sniper'; of: number }
+  /** To everyone in the room: seat `by` has just beaten seat `of` to the pile at `slot` with the very card `of` was about to put there. */
+  | { t: 'snipe'; by: number; of: number; slot: number }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
   | SocialServerMsg;
@@ -404,8 +406,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
+    case 'tried':
+      return isId(v.card) && isIndex(v.slot, MAX_SLOTS) && (v.seen === null || isId(v.seen)) ? { t: 'tried', card: v.card, slot: v.slot, seen: v.seen } : null;
     case 'sniped':
-      return isIndex(v.slot, MAX_SLOTS) ? { t: 'sniped', slot: v.slot } : null;
+      return { t: 'sniped' };
     case 'host':
       return isPlayerId(v.id) ? { t: 'host', id: v.id } : null;
     case 'kick':

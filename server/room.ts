@@ -8,7 +8,7 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -223,8 +223,10 @@ export class Room {
         return this.dragged(player, msg);
       case 'leave':
         return this.drop(conn, true);
+      case 'tried':
+        return this.sniped(player, msg.card, msg.slot, msg.seen);
       case 'sniped':
-        return this.sniped(player, msg.slot);
+        return;
       case 'sit': {
         // Asking for a seat, or giving it (or a place in the queue) up to watch: oneself, or whoever deals for someone else.
         const who = msg.id === undefined ? player : this.players.find((p) => p.id === msg.id);
@@ -440,22 +442,19 @@ export class Room {
   }
 
   /**
-   * `victim` was beaten to the pile at `slot`: its top card is someone else's, and they have the very same card (suit
-   * and rank) showing on one of their own piles, with nowhere to put it now. Counted once for each such card; shown
-   * with the round's scores. (Said by the victim's window, or seen here when their move arrives too late.)
+   * Was `victim` sniped, putting `card` on the pile at `slot`? The one judge of it (`snipedBy`), for a move refused on
+   * arrival and for a drop its window refused. Counted once for each card that did it, shown with the round's scores,
+   * and told to everyone in the room at once, and where the chat is.
    */
-  private sniped(victim: Player, slot: number): void {
-    if (this.phase !== 'playing' || !this.game) return;
-    const top = this.game.slots[slot]?.cards.at(-1);
-    const hand = this.game.players.find((g) => g.seat === victim.seat);
-    if (!top || !hand || !seated(victim) || top.owner === victim.seat || top.rank === 1) return; // (an Ace beaten to a place has others to go to)
-    const showing = [hand.nertz.at(-1), hand.waste.at(-1), ...hand.work.map((pile) => pile.at(-1))];
-    if (!showing.some((c) => c && 'suit' in c && c.suit === top.suit && c.rank === top.rank)) return;
-    if (this.snipes.some((s) => s.of === victim.seat && s.card === top.id)) return;
-    this.snipes.push({ by: top.owner, of: victim.seat, card: top.id });
-    const by = this.players.find((p) => p.seat === top.owner);
-    by?.conn?.send({ t: 'sniper', of: victim.seat });
-    if (by) this.social.tell(this.players, { k: 'sniped', by: named(by), of: named(victim) }); // and everyone reads of it where the chat is
+  private sniped(victim: Player, card: string, slot: number, seen: string | null): void {
+    if (this.phase !== 'playing' || !this.game || !seated(victim)) return;
+    const snipe = snipedBy(this.game, victim.seat, card, slot, seen);
+    if (!snipe || this.snipes.some((s) => s.of === victim.seat && s.card === snipe.card)) return;
+    this.snipes.push({ by: snipe.by, of: victim.seat, card: snipe.card });
+    const msg: ServerMsg = { t: 'snipe', by: snipe.by, of: victim.seat, slot };
+    for (const p of this.players) p.conn?.send(msg);
+    const by = this.players.find((p) => p.seat === snipe.by);
+    if (by) this.social.tell(this.players, { k: 'sniped', by: named(by), of: named(victim) });
   }
 
   /** Every timer the room sets: `fn` runs in `ms`, guarded (see server/guard.ts), and the timer never holds the process open. */
@@ -480,7 +479,7 @@ export class Room {
       player.flipped = now;
     }
     const result = applyIntent(this.game, at(player), intent);
-    if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.to.i); // (a race lost on the way here)
+    if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, intent.to.i, null); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.game, at(player), intent);
     if (next === this.game) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)

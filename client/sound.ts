@@ -297,9 +297,23 @@ export function home(who: Who = 'me'): void {
   hit(pick(TAPS), { gain: 0.36, rate: rand(0.8, 0.9), dull: 900, who });
 }
 
-/** Somebody got there first: the card's tap, then a womp: two low, dull notes, each sagging as it sounds, the second lower and longer. */
+/** Somebody got there first: the card's tap, then a womp. */
 export function lost(): void {
   home('me');
+  womp();
+}
+
+/**
+ * Two low, dull notes, each sagging as it sounds, the second lower and longer. Once for a race lost, though it is
+ * told twice when the move was sent (the snapshot that refuses it, and the server's word of the snipe): whichever
+ * comes first.
+ */
+const WOMP_MS = 500;
+let wompAt = -Infinity;
+function womp(): void {
+  const now = performance.now();
+  if (now - wompAt < WOMP_MS) return;
+  wompAt = now;
   glide(196, 150, { gain: 0.26, dur: 0.16, delay: 0.03, partials: DULL });
   glide(156, 110, { gain: 0.28, dur: 0.42, delay: 0.2, partials: DULL });
 }
@@ -315,14 +329,9 @@ export function sniped(who: Who = 'me'): void {
   tone(2400, { gain: 0.05, dur: 0.04, delay: 0.1, partials: TICK, who });
 }
 
-/**
- * Table.tsx says so when a card is let go over a pile in the middle that someone else got to first: the card's way
- * home, which follows at once, then sounds as a lost race and not as a plain tap.
- */
-const BEATEN_MS = 500;
-let beatenAt = -Infinity;
+/** You were sniped (the server says so: client/Table.tsx): the womp of a race lost, after the card's tap home. */
 export function beaten(): void {
-  beatenAt = performance.now();
+  womp();
 }
 
 /**
@@ -431,8 +440,6 @@ function play(cue: Cue): void {
     case 'clear':
       return clearPile(cue.who);
     case 'home':
-      // Our card going back because it was let go over a pile someone else had just taken: the disappointed sound.
-      if (cue.who === 'me' && performance.now() - beatenAt < BEATEN_MS) return void ((beatenAt = -Infinity), lost());
       return home(cue.who);
     case 'lost':
       return lost();

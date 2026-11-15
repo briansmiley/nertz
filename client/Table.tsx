@@ -22,12 +22,10 @@ import { Finale, sortAt, sortMs, TIMING } from './Finale';
 import { aloftAt, computeLayout, inside, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, onCanvas, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { Opening } from './Opening';
-import { onDrag, onSniper, pause, post } from './net';
+import { onDrag, onSnipe, pause, post } from './net';
 import { canResume } from './Settings';
 import { calm, choiceAt, deckOf, usePrefs } from './prefs';
-import { useSocial } from './social';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
-import { beatenTo } from './soundEvents';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
 const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
@@ -439,29 +437,19 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const untap = useRef<string | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [hot, setHot] = useState<string | null>(null);
-  /** Who last beat you to a pile (and a count, so that the same name flashes again). */
-  const [sniper, setSniper] = useState<{ by: number; n: number; of?: number } | null>(null);
-  useEffect(() => setSniper(null), [room.round]);
-  // Someone else's snipe (neither of the two is you): the table's notice of it, which also stands among the chat's
-  // lines, flashes small under the felt. (Only one that comes while you watch: not what was said before.)
-  const [aside, setAside] = useState<{ by: number; byName: string; of: number; ofName: string; n: number } | null>(null);
-  const passing = useSocial().passing;
-  const newest = passing.at(-1)?.line;
-  const seenLine = useRef(newest?.id ?? 0);
-  useEffect(() => {
-    for (const { line } of passing) {
-      if (line.id <= seenLine.current) continue;
-      seenLine.current = line.id;
-      if (line.k !== 'sniped' || line.by.who === room.me || line.of.who === room.me) continue;
-      const { by, of } = line;
-      snipeSound('other');
-      const seatOf = (id: number) => room.players.find((p) => p.id === id)?.seat ?? -1;
-      setAside((a) => ({ by: seatOf(by.who), byName: by.name, of: seatOf(of.who), ofName: of.name, n: (a?.n ?? 0) + 1 }));
-    }
-  }, [newest?.id]);
-  useEffect(() => setAside(null), [room.round]);
-  // And the other way round: the table says so when it was you who beat someone.
-  useEffect(() => onSniper((of) => (snipeSound('me'), setSniper((s) => ({ by: you, of, n: (s?.n ?? 0) + 1 })))), [you]);
+  /** The last snipe the server told of: who beat whom to a pile (and a count, so that the same names flash again). */
+  const [snipe, setSnipe] = useState<{ by: number; of: number; n: number } | null>(null);
+  useEffect(() => setSnipe(null), [room.round]);
+  useEffect(
+    () =>
+      onSnipe(({ by, of }) => {
+        if (by === you) snipeSound('me');
+        else if (of === you) beaten();
+        else snipeSound('other');
+        setSnipe((s) => ({ by, of, n: (s?.n ?? 0) + 1 }));
+      }),
+    [you],
+  );
   /** The outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
@@ -847,13 +835,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (d?.active) aim(d);
   }, [game, L]);
 
-  /** Beaten to the pile at `slot`: the sound of it, the name of whoever did it across the middle for a moment, and a word to the table, which keeps count. */
-  const snipedAt = (slot: number) => {
-    const top = game.slots[slot]?.cards.at(-1);
-    if (!top || top.rank === 1) return; // (an Ace beaten to a place has others to go to: it goes home like any card)
-    beaten();
-    post({ t: 'sniped', slot });
-    setSniper({ by: top.owner, n: (sniper?.n ?? 0) + 1 });
+  /** One card let go over the pile at `slot`, which would not take it: the server says whether that was a snipe. */
+  const tried = (d: Drag, slot: number) => {
+    if (d.held.k === 'card') post({ t: 'tried', card: d.held.id, slot, seen: d.tops[slot] ?? null });
   };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (stage === 'flip' || stage === 'spread' || stage === 'out' || stage === 'wash') return; // the end of a round plays out; only Escape skips it
@@ -875,9 +859,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
       const moved = !!t && typeof t.to === 'object' && send({ k: 'move', cardId: sel.held.id, count: sel.ids.length, to: t.to });
       if (!moved) {
-        // (Tapped onto a pile that someone else's same card has reached since this one was taken up: beaten to it.)
         const over = sel.ids.length === 1 ? L.slotHit.findIndex((r) => r && inside(r, at.x, at.y)) : -1;
-        if (over >= 0 && game.slots[over]?.cards.at(-1)?.id !== sel.tops[over] && beatenTo(game, you, sel.held.id, over)) snipedAt(over);
+        if (over >= 0) tried(sel, over);
         send({ k: 'release' });
       }
       letGo(sel);
@@ -1032,13 +1015,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     } else if (d.held.k === 'stock') {
       if (t) send({ k: 'flip' });
     } else if (!t || t.to === 'tray' || t.to === 'waste' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
-      // Let go over a pile in the middle that will not take it because someone else's same card is there, put there
-      // since this one was picked up: beaten to it. (The same card lying there all along is no race lost, only a
-      // card that has nowhere to go: it goes home with the plain sound.)
-      const id = d.held.id;
+      // Let go over a pile in the middle that will not take it: perhaps someone else's same card got there first.
       const c = centreOf(d);
       const over = d.ids.length === 1 && !t ? L.slotHit.findIndex((r) => r && (inside(r, d.px, d.py) || (c && inside(r, c.x, c.y)))) : -1;
-      if (over >= 0 && game.slots[over]?.cards.at(-1)?.id !== d.tops[over] && beatenTo(game, you, id, over)) snipedAt(over);
+      if (over >= 0) tried(d, over);
       send({ k: 'release' });
     }
     letGo(d);
@@ -1265,17 +1245,17 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{game.nertzCalledBy === you ? 'You' : name(game.nertzCalledBy!)} got Nertz!</span>
         </div>
       )}
-      {/* Beaten to a pile: who by, across the middle, there and gone in under a second. */}
-      {sniper && !called && (
-        <div key={`sniped${sniper.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          <span style={{ color: backColour(sniper.of ?? sniper.by) }}>{sniper.of === undefined ? `Sniped by ${name(sniper.by)}!` : `You sniped ${name(sniper.of)}!`}</span>
+      {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
+      {snipe && !called && (snipe.by === you || snipe.of === you) && (
+        <div key={`sniped${snipe.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
+          <span style={{ color: backColour(snipe.by === you ? snipe.of : snipe.by) }}>{snipe.by === you ? `You sniped ${name(snipe.of)}!` : `Sniped by ${name(snipe.by)}!`}</span>
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies. */}
-      {aside && !called && (
-        <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
+      {snipe && !called && snipe.by !== you && snipe.of !== you && (
+        <div key={`aside${snipe.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           <span>
-            <b style={{ color: backColour(aside.by) }}>{aside.byName}</b> sniped <b style={{ color: backColour(aside.of) }}>{aside.ofName}</b>
+            <b style={{ color: backColour(snipe.by) }}>{name(snipe.by)}</b> sniped <b style={{ color: backColour(snipe.of) }}>{name(snipe.of)}</b>
           </span>
         </div>
       )}

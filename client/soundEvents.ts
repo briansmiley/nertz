@@ -37,8 +37,8 @@ export type Cue =
   /** A card went back where it came from: put down nowhere, refused by the server, or taken out of the hand. */
   | { k: 'home'; who: Who }
   /**
-   * Somebody got there first: a move of ours that we showed as made was refused by the server after all. (A card let
-   * go over a pile that someone else has just taken makes the same sound: client/sound.ts `beaten`.)
+   * Somebody got there first: a move of ours that we showed as made was refused by the server after all. (Being told
+   * we were sniped makes the same womp: client/sound.ts `beaten`.)
    */
   | { k: 'lost' }
   /** Nertz is called. `bot`: by a bot (which may say so aloud: client/sound.ts `botSays`). */
@@ -150,19 +150,6 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
 
   if (a.game.nertzCalledBy === null && b.game.nertzCalledBy !== null) add({ k: 'nertz', ...(b.players.find((p) => p.seat === b.game!.nertzCalledBy)?.bot ? { bot: true } : {}) });
   return [...cues.values()];
-}
-
-/**
- * Putting `card` down on the pile in the middle at `slot` comes too late: someone else's card of the very same suit
- * and rank lies on top of it, so ours would have gone there a moment ago. (Asked by Table.tsx when a card is let go
- * over a pile that will not take it: only then is being beaten to a pile worth a sound. A card still in hand may
- * have somewhere else to go.)
- */
-export function beatenTo(game: GameState, seat: number, card: string, slot: number): boolean {
-  const p = game.players.find((q) => q.seat === seat);
-  const mine = p && [...p.nertz, ...p.waste, ...p.work.flat()].find((c) => c.id === card);
-  const top = game.slots[slot]?.cards.at(-1);
-  return !!mine && !!top && 'suit' in mine && top.owner !== seat && top.suit === mine.suit && top.rank === mine.rank;
 }
 
 /** The grace countdown ticks only for someone who still has a card to put down. */

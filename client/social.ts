@@ -33,9 +33,8 @@ onSocial((msg) => {
   if (msg.t === 'chat') {
     const news = msg.history ? 0 : msg.lines.filter((l) => l.k === 'said' && l.by.who !== current().room?.me).length;
     const now = Date.now();
-    // (With text chat switched off the table still sends its notices, for the sound and the flash: they pass, and are not kept to read.)
     const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...msg.lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);
-    set({ lines: msg.history ? msg.lines : state.text ? [...state.lines, ...msg.lines] : state.lines, unread: state.open ? 0 : state.unread + news, passing });
+    set({ lines: msg.history ? msg.lines : [...state.lines, ...msg.lines], unread: state.open ? 0 : state.unread + news, passing });
   } else if (msg.t === 'social') {
     setIce(msg.ice);
     set({ text: msg.text, voice: msg.voice, watchText: msg.watchText !== false, watchVoice: msg.watchVoice !== false, inVoice: msg.inVoice });

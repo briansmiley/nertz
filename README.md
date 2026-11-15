@@ -550,7 +550,7 @@ by ear), and not in Safari or Firefox or across real networks.
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
   table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, legalDrops, feltFree, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
