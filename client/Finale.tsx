@@ -288,7 +288,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
   const piles: SortedPile[] = spots.map((s, i) => ({ seat: s.seat, x: s.x, y: s.y, w: pw, h: ph, total: 0, label: labels[i]!.box, side: labels[i]!.side }));
   const pileOf = new Map(piles.map((p, i) => [p.seat, i]));
 
-  const lying = [...game.slots.map((pile, i) => ({ pile, at: L.slots[i], tray: -1, slot: i })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i], tray: i, slot: -1 }))];
+  const lying = [...game.slots.map((pile, i) => ({ pile: pile?.cards ?? [], at: L.slots[i], tray: -1, slot: i })), ...game.tray.map((pile, i) => ({ pile, at: L.out[i], tray: i, slot: -1 }))];
   const movers = lying.flatMap(({ pile, at, tray, slot }) =>
     pile.flatMap((card, j): Mover[] => {
       const to = pileOf.get(card.owner);

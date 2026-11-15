@@ -82,7 +82,7 @@ function places(game: GameState): Map<string, Place> {
     for (const c of p.waste) at.set(c.id, { pile: 'waste', seat: p.seat, i: 0 });
     p.work.forEach((w, i) => w.forEach((c) => at.set(c.id, { pile: 'work', seat: p.seat, i })));
   }
-  game.slots.forEach((s, i) => s.forEach((c) => at.set(c.id, { pile: 'slot', seat: -1, i })));
+  game.slots.forEach((s, i) => s?.cards.forEach((c) => at.set(c.id, { pile: 'slot', seat: -1, i })));
   game.tray.forEach((s, i) => s.forEach((c) => at.set(c.id, { pile: 'tray', seat: -1, i })));
   return at;
 }
@@ -119,7 +119,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     if (to.pile === 'slot') {
       if (from.seat < 0) continue;
       const pile = b.game.slots[to.i]!;
-      const rank = pile.find((c) => c.id === id)!.rank;
+      const rank = pile.cards.find((c) => c.id === id)!.rank;
       if (rank === 13) add({ k: 'king', who: who(from.seat) }, id);
       else add({ k: 'centre', who: who(from.seat), rank }, id);
     } else if (to.pile === 'tray') {
@@ -127,7 +127,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     } else if (from.pile === 'slot' || (from.pile === 'work' && to.pile !== 'work')) {
       // No move goes that way: a predicted one was undone. Ours: we lost a race for that place. (Not with an Ace:
       // someone started a pile where ours was going, and it has other places to go. It just comes home.)
-      const ace = from.pile === 'slot' && a.game.slots[from.i]?.find((c) => c.id === id)?.rank === 1;
+      const ace = from.pile === 'slot' && a.game.slots[from.i]?.cards.find((c) => c.id === id)?.rank === 1;
       add(who(to.seat) === 'me' && !ace ? { k: 'lost' } : { k: 'home', who: who(to.seat) });
     } else if (to.pile === 'work') {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
@@ -161,7 +161,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
 export function beatenTo(game: GameState, seat: number, card: string, slot: number): boolean {
   const p = game.players.find((q) => q.seat === seat);
   const mine = p && [...p.nertz, ...p.waste, ...p.work.flat()].find((c) => c.id === card);
-  const top = game.slots[slot]?.at(-1);
+  const top = game.slots[slot]?.cards.at(-1);
   return !!mine && !!top && 'suit' in mine && top.owner !== seat && top.suit === mine.suit && top.rank === mine.rank;
 }
 

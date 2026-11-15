@@ -115,8 +115,7 @@ describe('prediction', () => {
     const king = spades[12]!;
     const rigged: GameState = {
       ...g,
-      slots: g.slots.map((_, i) => (i === 0 ? spades.slice(0, 12) : [])),
-      places: g.places.map((at, i) => (i === 0 ? { x: 0, y: 0, r: 0 } : at)),
+      slots: g.slots.map((_, i) => (i === 0 ? { cards: [spades[0]!, ...spades.slice(1, 12)], at: { x: 0, y: 0, r: 0 } } : null)),
       players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest.slice(0, 3), work: [[king], [], [], []], down: [0, 0, 0, 0], stock: rest.slice(3), waste: [] } : p)),
     };
     expect(checkInvariants(rigged)).toBeNull();
@@ -125,14 +124,14 @@ describe('prediction', () => {
     let sync = onSnapshot(freshSync, s.snapshot());
     sync = send(sync, kingMove);
     const blocked = predict(sync)!.game!;
-    expect(blocked.slots[0]).toHaveLength(13);
+    expect(blocked.slots[0]!.cards).toHaveLength(13);
     // What `net.send` asks: everything but the clear is refused on the predicted table, before the server has said a word.
     const nertzTop = blocked.players[0]!.nertz.at(-1)!.id;
     for (const intent of [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'hold', cardId: nertzTop }, { k: 'nertz' }] as Intent[]) expect(applyIntent(blocked, 0, intent).ok).toBe(false);
     expect(applyIntent(blocked, 0, { k: 'clear', slot: 0 }).ok).toBe(true);
     // King and clear in flight together; a flip sent between them (a stale client) is dropped by both sides.
     sync = send(send(sync, { k: 'flip' }), { k: 'clear', slot: 0 });
-    expect(predict(sync)!.game!.slots[0]).toEqual([]);
+    expect(predict(sync)!.game!.slots[0]).toBeNull();
     expect(predict(sync)!.game!.tray.map((pile) => pile.length)).toEqual([13]);
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0);
     expect(sync.pending.map((p) => s.apply(0, p.intent, p.seq))).toEqual([true, false, true]);
@@ -142,7 +141,7 @@ describe('prediction', () => {
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
 
     // The other way round: the server refuses my King (the pile is no longer there for it). I am not held up by a pile I never finished.
-    const lost = server({ ...rigged, slots: rigged.slots.map(() => []) }, 0);
+    const lost = server({ ...rigged, slots: rigged.slots.map(() => null) }, 0);
     sync = onSnapshot(freshSync, s2snap(rigged));
     sync = send(send(sync, kingMove), { k: 'flip' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0); // predicted: blocked behind my King
@@ -205,7 +204,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(2);
     let game = predict(sync)!.game!;
-    expect(game.slots[0]!.map((c) => c.id)).toEqual([ace.id]);
+    expect(game.slots[0]!.cards.map((c) => c.id)).toEqual([ace.id]);
     expect(game.players[0]!.waste).toHaveLength(1);
     expect(game.players[1]!.waste).toHaveLength(1);
 
@@ -214,7 +213,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending.map((p) => p.seq)).toEqual([2]);
     game = predict(sync)!.game!;
-    expect(game.slots.filter((pile) => pile.length > 0)).toHaveLength(1);
+    expect(game.slots.filter((pile) => pile !== null)).toHaveLength(1);
     expect(game.players[0]!.waste).toHaveLength(1);
     expect(checkInvariants(game)).toBeNull();
   });
@@ -242,7 +241,7 @@ describe('prediction', () => {
     let sync = onSnapshot(freshSync, s.snapshot());
     const to = { k: 'slot', i: 0 } as const;
     sync = send(sync, { k: 'move', cardId: mine.id, count: 1, to });
-    expect(predict(sync)!.game!.slots[0]!.at(-1)!.id).toBe(mine.id);
+    expect(predict(sync)!.game!.slots[0]!.cards.at(-1)!.id).toBe(mine.id);
 
     // The opponent's identical move reaches the server first.
     expect(s.apply(1, { k: 'move', cardId: theirs.id, count: 1, to })).toBe(true);
@@ -250,7 +249,7 @@ describe('prediction', () => {
     // Still pending, but it no longer applies, so the replay skips it.
     expect(sync.pending).toHaveLength(1);
     let game = predict(sync)!.game!;
-    expect(game.slots[0]!.at(-1)!.id).toBe(theirs.id);
+    expect(game.slots[0]!.cards.at(-1)!.id).toBe(theirs.id);
     expect(game.players[0]!.work[1]!.map((c) => c.id)).toEqual([mine.id]);
 
     // The server rejects ours; ack still advances and pending empties.
@@ -288,7 +287,7 @@ describe('prediction', () => {
     sync = send(sync, { k: 'hold', cardId: ace.id });
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     expect(me().holding).toBeNull();
-    expect(predict(sync)!.game!.slots[0]!.map((c) => c.id)).toEqual([ace.id]);
+    expect(predict(sync)!.game!.slots[0]!.cards.map((c) => c.id)).toEqual([ace.id]);
     for (const p of sync.pending) expect(s.apply(0, p.intent, p.seq)).toBe(true);
     sync = onSnapshot(sync, s.snapshot());
     expect(s.game.players[0]!.holding).toBeNull();
@@ -328,7 +327,7 @@ describe('prediction', () => {
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0);
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     const game = predict(sync)!.game!;
-    expect(game.slots[0]!.map((c) => c.id)).toEqual([ace.id]);
+    expect(game.slots[0]!.cards.map((c) => c.id)).toEqual([ace.id]);
     expect(game.grace).toEqual([]);
     expect(game.players[0]!.holding).toBeNull();
     expect(checkInvariants(game)).toBeNull();
@@ -342,8 +341,7 @@ describe('prediction', () => {
     const strip = (cards: readonly unknown[]) => (cards as Card[]).filter((c) => !pile.includes(c));
     const rigged: GameState = {
       ...base,
-      slots: base.slots.map((x, i) => (i === 3 ? pile : x)),
-      places: base.places.map((at, i) => (i === 3 ? { x: 0, y: 0, r: 0 } : at)),
+      slots: base.slots.map((x, i) => (i === 3 ? { cards: [pile[0]!, ...pile.slice(1)], at: { x: 0, y: 0, r: 0 } } : x)),
       players: base.players.map((p) => {
         if (p.seat !== 0) return p;
         const rest = strip([...p.nertz, ...p.work.flat(), ...p.stock]);
@@ -361,7 +359,7 @@ describe('prediction', () => {
     sync = onSnapshot(freshSync, mine.snapshot());
     sync = send(sync, { k: 'clear', slot: 3 });
     const game = predict(sync)!.game!;
-    expect(game.slots[3]).toEqual([]);
+    expect(game.slots[3]).toBeNull();
     expect(game.tray.map((t) => t.at(-1)!.rank)).toEqual([13]);
     expect(checkInvariants(game)).toBeNull();
   });
@@ -411,7 +409,7 @@ describe('a refused drop in the replay', () => {
     let sync = onSnapshot(freshSync, s.snapshot());
     sync = send(sync, { k: 'hold', cardId: mine.id });
     sync = send(sync, { k: 'move', cardId: mine.id, count: 1, to });
-    expect(predict(sync)!.game!.slots[0]!.map((c) => c.id)).toEqual([mine.id]);
+    expect(predict(sync)!.game!.slots[0]!.cards.map((c) => c.id)).toEqual([mine.id]);
 
     // The other Ace lands first. Our hold has reached the server, our move has not been answered yet.
     s.apply(0, { k: 'hold', cardId: mine.id }, 1);

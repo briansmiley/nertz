@@ -217,7 +217,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 rectangle with rounded corners, 2 units high and 5.6 wide with up to three players, 4.4 wide from four on (`feltHw`:
 there are hands at its sides then, and a squarer felt can be taller on the screen), corner radius 0.62, centre (0, 0), y down the screen, one
 unit the same distance both ways. A centre pile is a point of it (the middle of its cards), kept in the game state
-(`GameState.places`, one per slot, in every snapshot). Nothing in the state says where anything is on a screen.
+on the pile itself (each pile in `GameState.slots` is its `cards` and where it lies, `at`: in every snapshot). Nothing in the state says where anything is on a screen.
 
 **The same way up for everyone.** The felt is not turned for anybody. A client only chooses where on its screen the
 centre of the felt goes and how many pixels a unit is: a point (x, y) of the table is drawn at

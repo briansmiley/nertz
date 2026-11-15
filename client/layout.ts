@@ -116,7 +116,7 @@ export interface Layout {
   opponents: Seat[];
   /** The middle of the table: where table space is on this screen. */
   felt: Felt;
-  /** One per centre slot, in slot order; null for a slot that has no place (an unused one). */
+  /** One per centre slot, in slot order; null for a slot with no pile in it. */
   slots: (SlotRect | null)[];
   /** Drop area of each slot: the slot plus a margin smaller than half the gap, so neighbours never touch. */
   slotHit: (Rect | null)[];
@@ -650,10 +650,10 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const fh = fw * RATIO;
   const fs = fw / CARD_W;
   const middle: Rect = { x: felt.cx - hw * u, y: cy - u, w: 2 * hw * u, h: 2 * u };
-  const slots = game.places.map((at): SlotRect | null => {
-    if (!at) return null;
-    const c = toScreen(felt, at);
-    return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: at.r };
+  const slots = game.slots.map((pile): SlotRect | null => {
+    if (!pile) return null;
+    const c = toScreen(felt, pile.at);
+    return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: pile.at.r };
   });
 
   // The tray lies beside your hand, off the right edge: piles cascade down it, face-down, a strip of each showing
@@ -711,12 +711,12 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   if (stage === 'live' || stage === 'flip') {
     game.slots.forEach((pile, i) => {
       const r = slots[i];
-      if (!r) return;
+      if (!pile || !r) return;
       if (stage === 'live') {
-        pile.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, up: true, pile: 'slot', mine: false, at: i, rot: r.rot }));
+        pile.cards.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, up: true, pile: 'slot', mine: false, at: i, rot: r.rot }));
         return;
       }
-      pile.forEach((card, j) => {
+      pile.cards.forEach((card, j) => {
         const o = slotStack(i, j, r.w);
         cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5000 + i * 14 + j, up: false, pile: 'slot', mine: false, at: i, rot: r.rot + o.rot });
       });

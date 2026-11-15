@@ -215,8 +215,7 @@ describe('sound cues from rendered state', () => {
     const kingCard = mine[12]!;
     const start: GameState = {
       ...g,
-      slots: g.slots.map((s, i) => (i === 2 ? mine.slice(0, 12) : s)),
-      places: g.places.map((at, i) => (i === 2 ? { x: 0, y: 0, r: 0 } : at)),
+      slots: g.slots.map((s, i) => (i === 2 ? { cards: [mine[0]!, ...mine.slice(1, 12)], at: { x: 0, y: 0, r: 0 } } : s)),
       players: g.players.map((p) => {
         if (p.seat !== 0) return p;
         const gone = new Set(mine.map((c) => c.id));
@@ -358,10 +357,10 @@ describe('an Ace on the felt', () => {
     // Their Ace reaches the server first and takes slot 0; mine, predicted into slot 0, ends up in slot 1 at the same place.
     s.act(1, move(theirs, felt(-0.5, -0.3)));
     expect(s.me(move(mine, felt(0.4, 0.3)))).toEqual([{ k: 'centre', who: 'me', rank: 1 }]);
-    expect(s.frame.room!.game!.slots[0]!.map((c) => c.id)).toEqual([mine]);
+    expect(s.frame.room!.game!.slots[0]!.cards.map((c) => c.id)).toEqual([mine]);
     expect(s.confirm()).toEqual([{ k: 'centre', who: 'other', rank: 1 }]); // their card arriving, and nothing for mine
-    expect(s.frame.room!.game!.slots.slice(0, 2).map((p) => p[0]!.id)).toEqual([theirs, mine]);
-    expect(s.frame.room!.game!.places[1]).toMatchObject({ x: 0.4, y: 0.3 });
+    expect(s.frame.room!.game!.slots.slice(0, 2).map((p) => p!.cards[0].id)).toEqual([theirs, mine]);
+    expect(s.frame.room!.game!.slots[1]!.at).toMatchObject({ x: 0.4, y: 0.3 });
   });
 
   it('an Ace that lost the race for its patch of felt just goes home: it has other places to go, so no disappointed sound', () => {

@@ -531,7 +531,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         const there = toScreen(L.felt, table);
         const off = (q: { x: number; y: number }) => Math.hypot(q.x - there.x, q.y - there.y);
         L.slots.forEach((r, i) => {
-          if (!r || game.slots[i]!.length === 0 || !canDrop(game, p.seat, f!.id, { k: 'slot', i })) return;
+          if (!r || !canDrop(game, p.seat, f!.id, { k: 'slot', i })) return;
           const q = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
           if (!pile || off(q) < off(pile)) pile = q;
         });
@@ -656,7 +656,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     return l ? l.total - (stage === 'sheet' ? 0 : l.delta) : (info(seat)?.score ?? 0);
   };
   /** Finished piles waiting for you to carry them to the tray. */
-  const toClear = (slot: number) => !frozen && completedBy(game.slots[slot] ?? []) === you;
+  const toClear = (slot: number) => !frozen && completedBy(game.slots[slot]) === you;
 
   /** The table rule for dealing off the stock: drag each card to the waste, or click the stock once per card. */
   const dragDeal = room.settings.stockDeal === 'drag';
@@ -849,7 +849,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   /** Beaten to the pile at `slot`: the sound of it, the name of whoever did it across the middle for a moment, and a word to the table, which keeps count. */
   const snipedAt = (slot: number) => {
-    const top = game.slots[slot]?.at(-1);
+    const top = game.slots[slot]?.cards.at(-1);
     if (!top || top.rank === 1) return; // (an Ace beaten to a place has others to go to: it goes home like any card)
     beaten();
     post({ t: 'sniped', slot });
@@ -877,7 +877,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       if (!moved) {
         // (Tapped onto a pile that someone else's same card has reached since this one was taken up: beaten to it.)
         const over = sel.ids.length === 1 ? L.slotHit.findIndex((r) => r && inside(r, at.x, at.y)) : -1;
-        if (over >= 0 && game.slots[over]?.at(-1)?.id !== sel.tops[over] && beatenTo(game, you, sel.held.id, over)) snipedAt(over);
+        if (over >= 0 && game.slots[over]?.cards.at(-1)?.id !== sel.tops[over] && beatenTo(game, you, sel.held.id, over)) snipedAt(over);
         send({ k: 'release' });
       }
       letGo(sel);
@@ -914,7 +914,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       touch: e.pointerType !== 'mouse',
       active: false,
       report: null,
-      tops: game.slots.map((pile) => pile.at(-1)?.id),
+      tops: game.slots.map((pile) => pile?.cards.at(-1)?.id),
       sent: 0,
       timer: undefined,
     };
@@ -1038,7 +1038,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       const id = d.held.id;
       const c = centreOf(d);
       const over = d.ids.length === 1 && !t ? L.slotHit.findIndex((r) => r && (inside(r, d.px, d.py) || (c && inside(r, c.x, c.y)))) : -1;
-      if (over >= 0 && game.slots[over]?.at(-1)?.id !== d.tops[over] && beatenTo(game, you, id, over)) snipedAt(over);
+      if (over >= 0 && game.slots[over]?.cards.at(-1)?.id !== d.tops[over] && beatenTo(game, you, id, over)) snipedAt(over);
       send({ k: 'release' });
     }
     letGo(d);
@@ -1054,7 +1054,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   const cardClass = (c: Placed): string => {
     let cls = dealing && calm() ? 'card dealt' : 'card';
-    if (c.pile === 'slot' && game.slots[c.at]?.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
+    if (c.pile === 'slot' && game.slots[c.at]?.cards.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
     if (aloft.has(c.card.id)) cls += ' aloft';
     if (c.mine && !frozen && !must.blocked) {
       if (c.pile === 'stock') cls += dragDeal ? ' grab' : ' tap';
@@ -1098,7 +1098,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       <div className={`felt${placing ? ' placing' : ''}`} style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, borderRadius: TABLE.corner * L.felt.u }} />
       {L.slots.map((slot, i) => {
         if (!slot) return null;
-        const full = game.slots[i]?.length === 13 && stage === 'live' && !(held?.k === 'pile' && held.slot === i);
+        const full = game.slots[i]?.cards.length === 13 && stage === 'live' && !(held?.k === 'pile' && held.slot === i);
         return (
           <div key={i} className={`slot centre${full ? (toClear(i) ? ' yours' : ' done') : ''}`} style={box(slot)}>
             {full && toClear(i) && <em>Drag to tray</em>}
@@ -1223,7 +1223,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         ))}
       {/* An Ace is in hand that may go anywhere there is room: what is not room. Around every pile, the gap the rules
           keep (shared/table.ts `clash`); the edge of the felt is the other limit, and is drawn up while this lasts. */}
-      {placing && L.slots.map((slot, i) => slot && game.slots[i]!.length > 0 && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}
+      {placing && L.slots.map((slot, i) => slot && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}
       <div ref={preview} className="landing" hidden />
 
       {L.cards.map((c) => {

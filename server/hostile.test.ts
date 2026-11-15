@@ -132,7 +132,7 @@ const slot = (i: number): PileRef => ({ k: 'slot', i });
 const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
 const me = (g: GameState, seat: number) => g.players.find((p) => p.seat === seat)!;
 const workTop = (g: GameState, seat: number, i: number) => me(g, seat).work[i]!.at(-1)!.id;
-const piles = (g: GameState) => g.slots.filter((s) => s.length > 0);
+const piles = (g: GameState) => g.slots.filter((s) => s !== null);
 
 /** The round as dealt, with every player's work piles made single face-up cards: A-spades, 2-spades, A-hearts, K-clubs. */
 function rig(g: GameState, emptyNertzFor: number[] = []): GameState {
@@ -159,8 +159,7 @@ function nearlyDone(g: GameState, owner: number, i: number): GameState {
   return {
     ...g,
     players: g.players.map((q) => (q === p ? { ...q, nertz: without(q.nertz), stock: without(q.stock) } : q)),
-    slots: g.slots.map((s, k) => (k === i ? taken : s)),
-    places: g.places.map((old, k) => (k === i ? { x: 0, y: 0, r: 0 } : old)),
+    slots: g.slots.map((s, k) => (k === i ? { cards: [taken[0]!, ...taken.slice(1)], at: { x: 0, y: 0, r: 0 } } : s)),
   };
 }
 
@@ -223,13 +222,13 @@ describe('a hostile client over real sockets', () => {
     const seqs = players.map((p) => p.intent(move(workTop(room.game!, p.seat, 0), felt(0.1, 0.1))));
     await vi.waitFor(() => players.forEach((p, i) => expect(p.last.ack).toBe(seqs[i])));
     expect(piles(room.game!)).toHaveLength(1);
-    const at = room.game!.slots.findIndex((s) => s.length === 1);
-    const winner = room.game!.slots[at]![0]!.owner;
+    const at = room.game!.slots.findIndex((s) => s?.cards.length === 1);
+    const winner = room.game!.slots[at]!.cards[0].owner;
     for (const p of players) expect(me(room.game!, p.seat).work[0]!.length).toBe(p.seat === winner ? 0 : 1); // the losers' Aces lie where they lay
     // Three twos of spades for that one pile.
     const twos = players.map((p) => p.intent(move(workTop(room.game!, p.seat, 1), slot(at))));
     await vi.waitFor(() => players.forEach((p, i) => expect(p.last.ack).toBe(twos[i])));
-    expect(room.game!.slots[at]!.map((c) => c.rank)).toEqual([1, 2]);
+    expect(room.game!.slots[at]!.cards.map((c) => c.rank)).toEqual([1, 2]);
     expect(players.filter((p) => me(room.game!, p.seat).work[1]!.length === 1)).toHaveLength(2);
     // Overlapping, not identical, patches of felt: still one. A patch well clear of it: both.
     const [a, b] = players as [Client, Client, Client];
@@ -300,7 +299,7 @@ describe('a hostile client over real sockets', () => {
     expect(await closed).toBe(CLOSE_FLOOD);
     await vi.waitFor(() => expect(b.game.players.map((p) => p.holding)).toEqual([null, null, null])); // the flooder's card went home
     expect(b.drags.length - before).toBeLessThanOrEqual(DRAG_BURST + 3);
-    expect(room.game!.slots[0]!).toHaveLength(1);
+    expect(room.game!.slots[0]!.cards).toHaveLength(1);
     expect(checkInvariants(room.game!)).toBeNull();
     const back = await open(a.code, 'P0', a.token);
     expect(back.seat).toBe(a.seat);
@@ -433,7 +432,7 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => expect(a.last.ack).toBe(a.seq - 1));
     await a.synced();
     const waiting = room.game!;
-    expect(waiting.slots[3]).toHaveLength(13);
+    expect(waiting.slots[3]!.cards).toHaveLength(13);
     expect(me(waiting, a.seat)).toMatchObject({ holding: null, stuck: false, waste: [], work: [{ length: 1 }, { length: 1 }, { length: 1 }, []] });
     expect(waiting.nertzCalledBy).toBeNull();
     expect(piles(waiting)).toHaveLength(1);
@@ -485,7 +484,7 @@ describe('a hostile client over real sockets', () => {
     const a3 = await open(a.code, 'P0', a.token);
     expect(a3.game).toEqual(wire(viewFor(room.game!, a.seat)));
     await a3.did(move(ace, felt(0, 0)));
-    expect(room.game!.slots[0]!.map((c) => c.id)).toEqual([ace]);
+    expect(room.game!.slots[0]!.cards.map((c) => c.id)).toEqual([ace]);
     expect(checkInvariants(room.game!)).toBeNull();
     await converged(room, [a3, b]);
   });
@@ -584,7 +583,7 @@ describe('four bots and a swarm at one table', () => {
       count.cleared += room.game!.tray.length;
       expect(checkInvariants(room.game!)).toBeNull();
       const played = room.lastRound!.scores.reduce((sum, s) => sum + s.played, 0);
-      expect(played).toBe([...room.game!.slots, ...room.game!.tray].flat().length);
+      expect(played).toBe([...room.game!.slots.map((s) => s?.cards ?? []), ...room.game!.tray].flat().length);
     }
     expect(problems).toEqual([]);
     expect(taps.flatMap((t) => t.bad)).toEqual([]);

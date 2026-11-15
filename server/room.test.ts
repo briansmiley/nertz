@@ -94,7 +94,7 @@ function rigged(seats: number[], emptyNertzFor: number[] = []): GameState {
   };
 }
 const workTop = (g: GameState, seat: number, i: number) => g.players.find((p) => p.seat === seat)!.work[i]!.at(-1)!.id;
-const filled = (g: GameState) => g.slots.map((pile) => pile.map((c) => c.id)).filter((pile) => pile.length > 0);
+const filled = (g: GameState) => g.slots.flatMap((pile) => (pile ? [pile.cards.map((c) => c.id)] : []));
 
 /** What a bot does next, given its (possibly stale) view: a mix of legal moves, drags, flips, wrong moves and nonsense. */
 function botIntent(view: GameState, seat: number, rnd: Rng): Intent {
@@ -115,11 +115,11 @@ function botIntent(view: GameState, seat: number, rnd: Rng): Intent {
   if (roll < 0.8) return mine.length > 0 ? hold(pick(mine).id) : { k: 'release' };
   if (roll < 0.85) return { k: 'release' };
   if (roll < 0.9) {
-    const full = view.slots.flatMap((pile, i) => (isComplete(pile) ? [i] : []));
+    const full = view.slots.flatMap((pile, i) => (pile && isComplete(pile.cards) ? [i] : []));
     return { k: 'clear', slot: full.length > 0 ? pick(full) : Math.floor(rnd() * 24) };
   }
   // Anyone's card, anywhere, to anywhere: almost always illegal.
-  const everything = [...view.players.flatMap((p) => [...p.nertz, ...p.waste, ...p.stock, ...p.work.flat()]), ...view.slots.flat(), ...view.tray.flat()];
+  const everything = [...view.players.flatMap((p) => [...p.nertz, ...p.waste, ...p.stock, ...p.work.flat()]), ...view.slots.flatMap((pile) => pile?.cards ?? []), ...view.tray.flat()];
   const targets: PileRef[] = [...[0, 1, 2, 3].map((i): PileRef => ({ k: 'work', i })), ...view.slots.map((_, i) => slot(i)), slot(23)];
   return move(rnd() < 0.1 ? 'no-such-card' : pick(everything).id, pick(targets));
 }
@@ -563,8 +563,8 @@ describe('Room', () => {
     sendIntent(room, a, 1, move(twoA, slot(0)));
     room.flush();
     // No fallback: a's 2 would fit b's ace in slot 1, but it was dropped on slot 0, so it goes home.
-    expect(room.game.slots[0]!.map((c) => c.id)).toEqual([aceA, twoB]);
-    expect(room.game.slots[1]!.map((c) => c.id)).toEqual([aceB]);
+    expect(room.game.slots[0]!.cards.map((c) => c.id)).toEqual([aceA, twoB]);
+    expect(room.game.slots[1]!.cards.map((c) => c.id)).toEqual([aceB]);
     expect(filled(room.game)).toHaveLength(2);
     expect(workTop(room.game, 0, 1)).toBe(twoA); // a's card never left its pile
     expect(a.last.ack).toBe(1);
@@ -586,7 +586,7 @@ describe('Room', () => {
     expect(workTop(room.game, 0, 2)).toBe(aceA);
     expect([a.last.ack, b.last.ack]).toEqual([0, 0]);
     sendIntent(room, a, 1, move(aceA, felt(0.6, 0))); // a deliberate second drop on clear felt is fine
-    expect(room.game.slots.slice(0, 2).map((pile) => pile.map((c) => c.id))).toEqual([[aceB], [aceA]]);
+    expect(room.game.slots.slice(0, 2).map((pile) => pile!.cards.map((c) => c.id))).toEqual([[aceB], [aceA]]);
     expect(checkInvariants(room.game)).toBeNull();
   });
 
@@ -804,8 +804,7 @@ describe('Room', () => {
     const strip = (cards: Card[], gone: Card[]) => cards.filter((c) => !gone.includes(c));
     room.game = {
       ...g,
-      slots: g.slots.map((s, i) => (i === 0 ? pile : s)),
-      places: g.places.map((at, i) => (i === 0 ? { x: 0, y: 0, r: 0 } : at)),
+      slots: g.slots.map((s, i) => (i === 0 ? { cards: [pile[0]!, ...pile.slice(1)], at: { x: 0, y: 0, r: 0 } } : s)),
       players: g.players.map((p) =>
         p.seat === 0
           ? { ...p, stock: strip(p.stock as Card[], [king]), work: [[king], ...p.work.slice(1)], waste: [p.work[0]![0]!] }
@@ -829,10 +828,10 @@ describe('Room', () => {
     sendIntent(room, a, 10, { k: 'clear', slot: 0 });
     room.flush();
     expect(b.last.room.game!.tray).toEqual([wire([...pile, king])]);
-    expect(b.last.room.game!.slots[0]).toEqual([]);
+    expect(b.last.room.game!.slots[0]).toBeNull();
     const ace = room.game.players[0]!.waste[0]!.id;
     sendIntent(room, a, 11, move(ace, felt(0, 0))); // the freed slot, and the felt it lay on, take a new Ace
-    expect(room.game.slots[0]!.map((c) => c.id)).toEqual([ace]);
+    expect(room.game.slots[0]!.cards.map((c) => c.id)).toEqual([ace]);
     sendIntent(room, a, 12, { k: 'nertz' });
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
@@ -1289,12 +1288,12 @@ describe('Room', () => {
       expect(vi.getTimerCount()).toBe(0);
       expect(a.last.room).toMatchObject({ phase: 'results', graceMs: null });
       expect(a.last.room.game).toMatchObject({ nertzCalledBy: 1, grace: [] });
-      expect(a.last.room.game!.slots[0]!.map((x) => x.id)).toEqual([A.aceS]);
+      expect(a.last.room.game!.slots[0]!.cards.map((x) => x.id)).toEqual([A.aceS]);
       expect(a.last.room.lastRound!.scores.map((x) => [x.played, x.delta])).toEqual([[1, -25], [0, 0], [0, -26]]); // the grace move counted
       const rev = room.rev;
       vi.advanceTimersByTime(10_000);
       sendIntent(room, a, 5, move(A.aceH, felt(-0.5, 0))); // exactly one move
-      expect(room.game!.slots[1]).toEqual([]);
+      expect(room.game!.slots[1]).toBeNull();
       expect(room.rev).toBe(rev + 1); // only the rejection's ack
     });
 
@@ -1433,7 +1432,7 @@ describe('Room', () => {
       expect(vi.getTimerCount()).toBe(0);
       sendIntent(room, a, 2, move(A.twoS, slot(0)));
       room.flush();
-      expect(room.game!.slots[0]!.map((x) => x.id)).toEqual([A.aceS, C.twoS]);
+      expect(room.game!.slots[0]!.cards.map((x) => x.id)).toEqual([A.aceS, C.twoS]);
       expect(workTop(room.game!, 0, 1)).toBe(A.twoS);
       expect(holding(room)).toEqual([null, null, null]);
       expect(a.last.room.lastRound!.scores.map((x) => x.played)).toEqual([1, 0, 1]);
@@ -1690,12 +1689,12 @@ describe('server over real sockets', () => {
       expect(a.last.ack).toBe(seqA);
       expect(b.last.ack).toBe(seqB);
     });
-    const pile = room.game.slots[0]!.map((c) => c.id);
+    const pile = room.game.slots[0]!.cards.map((c) => c.id);
     expect(pile).toHaveLength(2);
     expect(twos).toContain(pile[1]);
     const loser = twos.find((id) => id !== pile[1])!;
     expect(room.game.players.some((p) => p.work[1]!.at(-1)?.id === loser)).toBe(true); // still where it was
-    const red = room.game.slots[1]!.map((c) => c.id);
+    const red = room.game.slots[1]!.cards.map((c) => c.id);
     expect(red).toHaveLength(1);
     expect(hearts).toContain(red[0]);
     expect(room.game.players.some((p) => p.work[2]!.at(-1)?.id === hearts.find((id) => id !== red[0]))).toBe(true);
@@ -1733,7 +1732,7 @@ describe('server over real sockets', () => {
     expect(a.last.room).toMatchObject({ graceMs: null, lastRound: { calledBy: 1 } });
     expect(a.last.room.lastRound!.scores.map((x) => x.played)).toEqual([1, 0, 0]);
     expect(a.last.room.game).toEqual(wire(viewFor(room.game!, 0)));
-    expect(a.last.room.game!.slots[0]!.map((x) => x.id)).toEqual([aceA]);
+    expect(a.last.room.game!.slots[0]!.cards.map((x) => x.id)).toEqual([aceA]);
     expect(a.last.room.game!.players.every((p) => p.holding === null)).toBe(true);
   });
 
