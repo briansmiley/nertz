@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { SLOTS_PER_PLAYER } from './protocol';
 import { cardSize, CARD_RATIO, clash, feltHw, offFelt, onTable, openPlace, pileGap, roomAt, TABLE, tiltAt, type Pt } from './table';
+import { lcg } from './testkit';
 
 const COUNTS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 2 ** 32;
-  };
-}
 /** Somewhere in the box round the felt. */
 const anywhere = (r: () => number, reach = 1, n = 2): Pt => ({ x: (r() * 2 - 1) * feltHw(n) * reach, y: (r() * 2 - 1) * reach });
 
@@ -42,7 +37,7 @@ describe('the felt', () => {
       expect(hw).toBeGreaterThanOrEqual(2);
       expect(hw).toBeLessThanOrEqual(TABLE.hw); // what a message may name
       if (n > 2) expect(hw).toBeLessThanOrEqual(feltHw(n - 1));
-      const r = rng(n);
+      const r = lcg(n);
       for (let k = 0; k < 4000; k++) {
         const p = anywhere(r, 1.3, n);
         expect(offFelt(p, n) <= 0, `${p.x}, ${p.y}`).toBe(onFelt(p, n));
@@ -79,7 +74,7 @@ describe('the felt', () => {
 describe('where piles may go', () => {
   it('two piles clash exactly when their cards, grown by half the gap each, overlap: what everyone sees', () => {
     for (const n of COUNTS) {
-      const r = rng(n);
+      const r = lcg(n);
       const { w, h } = cardSize(n);
       const gap = pileGap(n);
       let clashes = 0;
@@ -109,7 +104,7 @@ describe('where piles may go', () => {
   it('a pile is on the table exactly when all four corners of its card are on the felt', () => {
     for (const n of COUNTS) {
       const { w, h } = cardSize(n);
-      const r = rng(50 + n);
+      const r = lcg(50 + n);
       let on = 0;
       for (let k = 0; k < 4000; k++) {
         const p = anywhere(r, 1.1, n);
@@ -150,7 +145,7 @@ describe('where piles may go', () => {
       }
       expect(covered / felt, `${n} players`).toBeGreaterThan(0.97); // (asked for: more than 0.85)
       // And the rule is exactly the shape: no place where a card fits on the felt is refused, none where it does not is allowed.
-      const r = rng(70 + n);
+      const r = lcg(70 + n);
       for (let k = 0; k < 2000; k++) {
         const p = anywhere(r, 1, n);
         expect(roomAt(p, [], n)).toBe(corners(p, n).every((c) => onFelt(c, n)));
@@ -168,7 +163,7 @@ describe('where piles may go', () => {
       expect(roomAt({ x: w * 0.3, y: h + gap + 0.001 }, [pile], n)).toBe(true); // (even under a pile in the very middle, with the largest cards)
       expect(roomAt({ x: w + gap - 0.001, y: 0 }, [pile], n)).toBe(false);
       // The share of the felt's places that one pile takes away: about four cards' worth, a few per cent.
-      const r = rng(90 + n);
+      const r = lcg(90 + n);
       let free = 0;
       let shut = 0;
       for (let k = 0; k < 6000; k++) {
@@ -196,13 +191,13 @@ describe('where piles may go', () => {
       // still room for the rest above and below it.
       const row: Pt[] = [];
       const { w } = cardSize(n);
-      const jog = rng(40 + n);
+      const jog = lcg(40 + n);
       for (let x = -feltHw(n) + w; x < feltHw(n) - w; x += w * 1.7) row.push({ x, y: (jog() - 0.5) * 0.18 });
       expect(row.every((p, i) => roomAt(p, row.slice(0, i), n))).toBe(true);
       for (let at = openPlace(row, n); at && row.length < 60; at = openPlace(row, n)) row.push(at);
       expect(row.length, `${n} players, after a careless row`).toBeGreaterThanOrEqual(all);
       // Careless: each pile anywhere at random that happens to be free. All four per player fit, nearly every time.
-      const r = rng(100 + n);
+      const r = lcg(100 + n);
       const trials = 60;
       let full = 0;
       let fitted = 0;

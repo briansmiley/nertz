@@ -8,6 +8,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { TableSummary } from '../shared/types';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
+import { guard } from './guard';
 import { Room, type Conn } from './room';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
@@ -19,7 +20,7 @@ const MAX_LISTED = 20; // tables on the home page's list: those where something 
 const MAX_BUFFERED_BYTES = 1 << 20; // a client this far behind on snapshots is dropped
 const FLIP_SLACK_MS = 100; // two cards sent STOCK_CARD_MS apart may arrive a little closer together than that
 const RATE_PER_SECOND = 60; // sustained messages per connection; far above what a hand can do
-// The burst has to hold a whole table joining voice at once: to each of five others an offer in several pieces and a
+// The burst has to hold a whole table joining voice at once: to each of five others an offer and a
 // dozen or two candidates, on top of the reports of a card being carried. (At 3 seconds of 40 a table of six could
 // run a connection out of allowance in the middle of setting voice up: it was closed, and a pair was left deaf.)
 const RATE_BURST_SECONDS = 10;
@@ -168,9 +169,13 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
     /** The socket closed: the seat is kept for a reconnect. */
     const detach = (): void => {
       if (!room) return;
-      room.disconnect(conn);
-      released(room);
+      const left = room;
       room = null;
+      try {
+        left.disconnect(conn);
+      } finally {
+        released(left); // even if the disconnect threw, or the room would never be forgotten
+      }
     };
     /**
      * The socket is going to another table. A seat in a lobby is given up (so a
@@ -185,13 +190,13 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
 
     ws.on('pong', () => alive.add(ws));
     ws.on('error', () => {}); // e.g. an oversized frame; 'close' follows and does the cleanup
-    ws.on('close', detach);
+    ws.on('close', () => guard("a socket's close", detach));
     ws.on('message', (data, isBinary) => {
       const now = Date.now();
       allowance = Math.min(rate * RATE_BURST_SECONDS, allowance + ((now - refilled) / 1000) * rate) - 1;
       refilled = now;
       if (allowance < 0) return ws.close(CLOSE_FLOOD, 'Too many messages'); // the client reconnects and resumes its seat
-      try {
+      guard('a message', () => {
         const msg = isBinary ? null : parseClientMsg(data.toString());
         if (!msg) return room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
         if (msg.t === 'create' || msg.t === 'join') {
@@ -216,24 +221,21 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
             room = null;
           }
         }
-      } catch (err) {
-        console.error('error handling message', err); // one bad message must never take the process down
-      }
+      });
     });
   });
 
   // Browsers answer pings automatically; a socket that missed a whole interval is dead (laptop lid, lost wifi).
   const heartbeat = setInterval(() => {
     for (const ws of wss.clients) {
-      if (!alive.has(ws)) {
-        ws.terminate();
-        continue;
-      }
-      alive.delete(ws);
-      ws.ping();
+      guard('the heartbeat', () => {
+        if (!alive.has(ws)) return ws.terminate();
+        alive.delete(ws);
+        ws.ping();
+      });
     }
   }, HEARTBEAT_MS);
-  const sweeper = setInterval(sweep, SWEEP_MS);
+  const sweeper = setInterval(() => guard('the sweep', sweep), SWEEP_MS);
   heartbeat.unref();
   sweeper.unref();
 

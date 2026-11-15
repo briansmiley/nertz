@@ -1,57 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CHAT_HISTORY, CHAT_MAX_LENGTH, CHAT_RATE_COUNT, CHAT_RATE_MS, cleanChat, SIGNAL_MAX_LENGTH, type ChatLine, type SocialServerMsg } from '../shared/chat';
-import { MAX_MESSAGE_BYTES, parseClientMsg, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { CHAT_HISTORY, CHAT_MAX_LENGTH, CHAT_RATE_COUNT, CHAT_RATE_MS, cleanChat, SIGNAL_MAX_LENGTH } from '../shared/chat';
+import { MAX_MESSAGE_BYTES, parseClientMsg, type ClientMsg } from '../shared/protocol';
 import type { RoundLine } from '../shared/types';
 import { roundOver } from './chat';
-import { Room, type Conn } from './room';
-
-type Of<T extends SocialServerMsg['t']> = Extract<SocialServerMsg, { t: T }>;
-
-/** A connection that records the chat and voice messages it was sent (snapshots are counted only). */
-class FakeConn implements Conn {
-  sent: SocialServerMsg[] = [];
-  states = 0;
-  closed = false;
-  send(msg: ServerMsg): void {
-    if (msg.t === 'state') this.states++;
-    else if (msg.t !== 'error') this.sent.push(JSON.parse(JSON.stringify(msg)) as SocialServerMsg);
-  }
-  close(): void {
-    this.closed = true;
-  }
-  of<T extends SocialServerMsg['t']>(t: T): Of<T>[] {
-    return this.sent.filter((m): m is Of<T> => m.t === t);
-  }
-  /** Every chat line received, in order, history included. */
-  get lines(): ChatLine[] {
-    return this.of('chat').flatMap((m) => m.lines);
-  }
-  /** What was said among those lines (no notices from the table). */
-  get said(): string[] {
-    return this.lines.flatMap((l) => (l.k === 'said' ? [l.text] : []));
-  }
-  get social(): Of<'social'> {
-    return this.of('social').at(-1)!;
-  }
-}
-
-function roomWith(n: number, code = 'TEST'): { room: Room; conns: FakeConn[] } {
-  const room = new Room(code, { schedule: () => {} });
-  const conns = Array.from({ length: n }, (_, i) => {
-    const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
-    return conn;
-  });
-  return { room, conns };
-}
-
-/** What a client sends, through the same validation as the real server. */
-function send(room: Room, conn: Conn, raw: unknown): boolean {
-  const msg = parseClientMsg(JSON.stringify(raw));
-  if (!msg || msg.t === 'join' || msg.t === 'create') return false;
-  room.handle(conn, msg);
-  return true;
-}
+import type { Room } from './room';
+import { FakeConn, roomWith, send } from './testkit';
 
 afterEach(() => vi.useRealTimers());
 
@@ -81,8 +34,8 @@ describe('chat validation', () => {
     expect(cleanChat('a\u0000b\u001fc\u007fd\u2028e')).toBe('a b c d e');
     expect(cleanChat('<b>bold</b>')).toBe('<b>bold</b>'); // plain text: the client renders it as text
     expect((parseClientMsg({ t: 'chat', text: 'y'.repeat(1000) }) as Extract<ClientMsg, { t: 'chat' }>).text).toHaveLength(CHAT_MAX_LENGTH);
-    // The biggest signalling piece, escaped as badly as JSON can, still fits one frame.
-    expect(JSON.stringify({ t: 'signal', to: 5, data: '"'.repeat(800) }).length).toBeLessThan(MAX_MESSAGE_BYTES);
+    // The biggest signalling message, escaped as badly as JSON can, still fits one frame.
+    expect(JSON.stringify({ t: 'signal', to: 5, data: '"'.repeat(SIGNAL_MAX_LENGTH) }).length).toBeLessThan(MAX_MESSAGE_BYTES);
   });
 });
 
@@ -90,7 +43,7 @@ describe('text chat', () => {
   it('stamps seat, name and a rising id, and reaches everyone at the table but nobody else', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    const other = roomWith(2, 'ELSE');
+    const other = roomWith(2, { code: 'ELSE' });
     expect(send(room, b, { t: 'chat', text: 'hello', seat: 0, name: 'Mallory', id: 99 })).toBe(true);
     send(room, a, { t: 'chat', text: 'hi' });
     for (const conn of [a, b, c]) {
@@ -105,11 +58,11 @@ describe('text chat', () => {
   it('is never part of a snapshot', () => {
     const { room, conns } = roomWith(2);
     room.flush();
-    const [rev, states] = [room.rev, conns[0]!.states];
+    const [rev, states] = [room.rev, conns[0]!.states.length];
     send(room, conns[0]!, { t: 'chat', text: 'not in the snapshot' });
     room.flush();
     expect(room.rev).toBe(rev);
-    expect(conns[0]!.states).toBe(states);
+    expect(conns[0]!.states.length).toBe(states);
   });
 
   it('drops what one player sends beyond the rate limit, quietly, and lets them speak again later', () => {
@@ -160,9 +113,9 @@ describe('text chat', () => {
   it('skips players without a connection', () => {
     const { room, conns } = roomWith(3);
     room.disconnect(conns[1]!);
-    const before = conns[1]!.sent.length;
+    const before = conns[1]!.msgs.length;
     send(room, conns[0]!, { t: 'chat', text: 'anyone?' });
-    expect(conns[1]!.sent.length).toBe(before);
+    expect(conns[1]!.msgs.length).toBe(before);
     expect(conns[2]!.said).toEqual(['anyone?']);
   });
 });
@@ -250,7 +203,7 @@ describe('voice', () => {
   it('forwards signalling only inside the table, between players in voice, with the sender seat stamped by the server', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    const other = roomWith(2, 'ELSE');
+    const other = roomWith(2, { code: 'ELSE' });
     join(other.room, ...other.conns);
     join(room, a, b);
     send(room, b, { t: 'signal', to: 0, data: '.offer', from: 2 }); // a forged sender is dropped by validation

@@ -237,7 +237,8 @@ export const DRAG_HZ = 18;
 export const DRAG_RATE = 30;
 export const DRAG_BURST = 12;
 
-export const MAX_MESSAGE_BYTES = 2048;
+/** The largest frame a client may send. Each message is bounded field by field in `parseClientMsg`; this is room for a voice offer in one message. */
+export const MAX_MESSAGE_BYTES = 16_384;
 export const MAX_NAME_LENGTH = 20;
 export const MIN_PLAYERS = 2;
 /** Beyond the seats, this many more may be in the room to watch (and wait for a seat). */

@@ -1,37 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, openPlay, refused, startCountdown, viewFor } from '../shared/engine';
-import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { Card, GameState, Intent, RoomView } from '../shared/types';
+import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, refused, startCountdown } from '../shared/engine';
+import { inPlay, lcg, roomOf, toPlay, withPile } from '../shared/testkit';
+import type { Card, GameState, Intent } from '../shared/types';
 import * as net from './net';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
-
-/** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
-const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
-const deal = (seats: readonly number[], rng: () => number): GameState => toPlay(dealRound(seats, rng));
-
-/** Deterministic rng so the deals are reproducible. */
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 2 ** 32;
-  };
-}
-
-const roomOf = (game: GameState, you: number): RoomView => ({
-  code: 'ABCD',
-  phase: 'playing',
-  round: 1,
-  me: you,
-  seat: you,
-  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, stuck: p.stuck, ending: false })),
-  settings: DEFAULT_SETTINGS,
-  game: viewFor(game, you),
-  graceMs: null,
-  dealMs: null,
-  startMs: null,
-  clock: null, paused: null,
-  lastRound: null,
-});
 
 /** A tiny authoritative server for one player's messages. */
 function server(game: GameState, you: number) {
@@ -56,7 +28,7 @@ function server(game: GameState, you: number) {
 /** A deal in which both seats hold an ace on top of work pile 0 (found by trying seeds). */
 function dealWithAces(): GameState {
   for (let seed = 1; seed < 20000; seed++) {
-    const g = deal([0, 1], rng(seed));
+    const g = inPlay([0, 1], lcg(seed));
     if (g.players.every((p) => (p.work[0]![0] as Card).rank === 1)) return g;
   }
   throw new Error('no suitable deal');
@@ -66,7 +38,7 @@ const send = (sync: Sync, intent: Intent): Sync => onSend(sync, intent);
 
 describe('prediction', () => {
   it('predicts nothing while the cards are being dealt, while the table waits and through the count, and plays on from the snapshot that opens the round', () => {
-    const dealt = dealRound([0, 1], rng(1));
+    const dealt = dealRound([0, 1], lcg(1));
     const s = server(dealt, 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     expect(predict(sync)).toBe(sync.server);
@@ -108,14 +80,12 @@ describe('prediction', () => {
 
   it('clear-first is predicted too: after my King nothing else of mine applies until the pile is in the tray; a King that lost its race holds nothing up', () => {
     // Seat 0's spades up to the Queen are a centre pile; its King of spades is the top of work pile 0.
-    const g = deal([0, 1], rng(4));
+    const g = withPile(inPlay([0, 1], lcg(4)), 0, 0, 'S', 12);
     const cards = g.players[0]!.nertz.concat(g.players[0]!.work.flat(), g.players[0]!.stock) as Card[];
-    const spades = cards.filter((c) => c.suit === 'S').sort((x, y) => x.rank - y.rank);
-    const rest = cards.filter((c) => c.suit !== 'S');
-    const king = spades[12]!;
+    const king = cards.find((c) => c.suit === 'S')!;
+    const rest = cards.filter((c) => c !== king);
     const rigged: GameState = {
       ...g,
-      slots: g.slots.map((_, i) => (i === 0 ? { cards: [spades[0]!, ...spades.slice(1, 12)], at: { x: 0, y: 0, r: 0 } } : null)),
       players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest.slice(0, 3), work: [[king], [], [], []], down: [0, 0, 0, 0], stock: rest.slice(3), waste: [] } : p)),
     };
     expect(checkInvariants(rigged)).toBeNull();
@@ -154,13 +124,13 @@ describe('prediction', () => {
   });
 
   it('renders the snapshot untouched when nothing is pending', () => {
-    const s = server(deal([0, 1], rng(1)), 0);
+    const s = server(inPlay([0, 1], lcg(1)), 0);
     const sync = onSnapshot(freshSync, s.snapshot());
     expect(predict(sync)).toBe(sync.server);
   });
 
   it('predicts cards dealt off the stock one by one, face-down, and keeps their ids when the group turns up', () => {
-    const s = server(deal([0, 1], rng(2)), 0);
+    const s = server(inPlay([0, 1], lcg(2)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     const mine = () => predict(sync)!.game!.players[0]!;
     sync = send(sync, { k: 'flip' });
@@ -334,17 +304,13 @@ describe('prediction', () => {
   });
 
   it('clearing a finished pile is predicted, and only for the player who placed the King', () => {
-    const base = deal([0, 1], rng(7));
     // Seat 0's whole spade suit stands in slot 3.
-    const spades = (p: GameState['players'][number]) => ([...p.nertz, ...p.work.flat(), ...p.stock] as Card[]).filter((c) => c.suit === 'S').sort((a, b) => a.rank - b.rank);
-    const pile = spades(base.players[0]!);
-    const strip = (cards: readonly unknown[]) => (cards as Card[]).filter((c) => !pile.includes(c));
+    const base = withPile(inPlay([0, 1], lcg(7)), 3, 0, 'S', 13);
     const rigged: GameState = {
       ...base,
-      slots: base.slots.map((x, i) => (i === 3 ? { cards: [pile[0]!, ...pile.slice(1)], at: { x: 0, y: 0, r: 0 } } : x)),
       players: base.players.map((p) => {
         if (p.seat !== 0) return p;
-        const rest = strip([...p.nertz, ...p.work.flat(), ...p.stock]);
+        const rest = [...p.nertz, ...p.work.flat(), ...p.stock] as Card[];
         return { ...p, nertz: rest.slice(0, 13), work: [[rest[13]!], [rest[14]!], [rest[15]!], [rest[16]!]], down: [0, 0, 0, 0], stock: rest.slice(17) };
       }),
     };
@@ -365,7 +331,7 @@ describe('prediction', () => {
   });
 
   it('ignores a snapshot older than the last one seen, and accepts an equal rev with a newer ack', () => {
-    const s = server(deal([0, 1], rng(3)), 0);
+    const s = server(inPlay([0, 1], lcg(3)), 0);
     const old = s.snapshot();
     s.apply(1, { k: 'flip' });
     let sync = onSnapshot(freshSync, s.snapshot());
@@ -377,7 +343,7 @@ describe('prediction', () => {
   });
 
   it('does not replay outside a round', () => {
-    const s = server(deal([0, 1], rng(4)), 0);
+    const s = server(inPlay([0, 1], lcg(4)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     sync = send(sync, { k: 'flip' });
     const results = { rev: 9, ack: -1, room: { ...s.snapshot().room, phase: 'results' as const } };
@@ -394,7 +360,7 @@ describe('prediction', () => {
     let sync = send(send(freshSync, { k: 'flip' }), { k: 'flip' });
     expect(sync.seq).toBe(2);
     sync = freshSync;
-    const s = server(deal([0, 1], rng(5)), 0);
+    const s = server(inPlay([0, 1], lcg(5)), 0);
     sync = onSnapshot(sync, { ...s.snapshot(), rev: 0 }); // e.g. the server restarted: rev is low again
     expect(sync.server).not.toBeNull();
     expect(send(sync, { k: 'flip' }).pending[0]!.seq).toBe(1);
@@ -472,7 +438,7 @@ describe('the store over a (fake) socket', () => {
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('location', { origin: 'http://localhost:5173' });
     FakeSocket.all = [];
-    const s = server(deal([0, 1], rng(8)), 0);
+    const s = server(inPlay([0, 1], lcg(8)), 0);
 
     net.join('ABCD', 'Ada');
     const first = FakeSocket.all[0]!;

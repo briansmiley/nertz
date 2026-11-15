@@ -1,0 +1,30 @@
+# Typecheck, tests and the client build on the merge of a pull request into staging or main. It advises: the plan has no branch
+# protection, so it cannot block a merge, and it is not re-run when the base moves. Before merging the second of
+# two overlapping PRs, re-run this or merge the base into the branch.
+name: Check
+
+on:
+  pull_request:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run --testTimeout=180000
+      - run: npm run build

@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { applyIntent, canDrop, checkInvariants, deal as dealRound, DEAL_MS, finishDeal, isHidden, NERTZ_SIZE, openPlay, startCountdown, viewFor } from '../shared/engine';
+import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, viewFor } from '../shared/engine';
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
+import { inPlay, lcg, seats, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
 import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
-/** A round in play: dealt, and the deal over. (The deal itself has its own tests.) */
-const deal = (seats: readonly number[], rng: () => number): GameState => openPlay(startCountdown(finishDeal(dealRound(seats, rng))));
-
-/** The same round with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
+/** `game` with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
 function aced(game: GameState): GameState {
   const n = game.players.length;
   const aces: Card[] = [];
@@ -30,14 +28,6 @@ function aced(game: GameState): GameState {
   return { ...game, players, slots };
 }
 
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 2 ** 32;
-  };
-}
-
-const seats = (n: number) => Array.from({ length: n }, (_, i) => i);
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 /** The sizes the table is laid out for (desktop first), and a small laptop. */
 const WINDOWS: [number, number][] = [
@@ -69,16 +59,14 @@ const DESKTOPS: [number, number][] = [
 
 /** Moves every player's whole spade suit into the tray and three hearts into slot 1, as if they had been played. */
 function played(game: GameState): GameState {
-  const out = (c: Card) => c.suit === 'S' || (c.suit === 'H' && c.rank <= 3 && c.owner === 0);
+  const g = withPile(game, 1, 0, 'H', 3);
   const hand = (p: GameState['players'][number]) => [...p.nertz, ...p.work.flat(), ...p.stock] as Card[];
-  const tray = game.players.map((p) => hand(p).filter((c) => c.suit === 'S').sort((a, b) => a.rank - b.rank));
-  const hearts = hand(game.players[0]!).filter((c) => c.suit === 'H' && c.rank <= 3).sort((a, b) => a.rank - b.rank);
+  const tray = g.players.map((p) => hand(p).filter((c) => c.suit === 'S').sort((a, b) => a.rank - b.rank));
   return {
-    ...game,
+    ...g,
     tray,
-    slots: game.slots.map((s, i) => (i === 1 ? { cards: [hearts[0]!, ...hearts.slice(1)], at: { x: 0, y: 0, r: 0 } } : s)),
-    players: game.players.map((p) => {
-      const rest = hand(p).filter((c) => !out(c));
+    players: g.players.map((p) => {
+      const rest = hand(p).filter((c) => c.suit !== 'S');
       return { ...p, nertz: rest.slice(0, 3), work: [[rest[3]!], [rest[4]!], [rest[5]!], [rest[6]!]], down: [0, 0, 0, 0], stock: rest.slice(7) };
     }),
   };
@@ -88,7 +76,7 @@ describe('table layout', () => {
   it('seats 2 to 6 players around the felt with nothing overlapping anything, from every chair', () => {
     for (const [W, H] of WINDOWS) {
       for (let n = 2; n <= 6; n++) {
-        const game = aced(deal(seats(n), rng(n)));
+        const game = aced(inPlay(seats(n), lcg(n)));
         expect(checkInvariants(game)).toBeNull();
         for (let you = 0; you < n; you++) {
           const at = `${n} players, seat ${you}, ${W}x${H}`;
@@ -141,7 +129,7 @@ describe('table layout', () => {
     const sizes: Record<string, number[]> = {};
     for (const [W, H] of DESKTOPS) {
       sizes[`${W}x${H}`] = [2, 3, 4, 5, 6].map((n) => {
-        const L = computeLayout(W, H, deal(seats(n), rng(n)), 0);
+        const L = computeLayout(W, H, inPlay(seats(n), lcg(n)), 0);
         // Never larger than your own cards, and not much smaller than half of them even with six at the table.
         expect(L.fs).toBeLessThanOrEqual(L.me!.s);
         expect(L.fs).toBeGreaterThan(L.me!.s * 0.42);
@@ -160,7 +148,7 @@ describe('table layout', () => {
   it('is one felt for everybody, the same way up from every chair: only the seating differs', () => {
     for (const [W, H] of [[1280, 720], [1440, 900], [1920, 1080]] as const) {
       for (let n = 2; n <= 6; n++) {
-        const game = aced(deal(seats(n), rng(n)));
+        const game = aced(inPlay(seats(n), lcg(n)));
         const layouts = seats(n).map((you) => computeLayout(W, H, game, you));
         for (const [you, L] of layouts.entries()) {
           // The same felt in the same place of the window, and every pile at the same place on it, whoever looks.
@@ -210,7 +198,7 @@ describe('table layout', () => {
 
   it('draws the hand of a player across the table the other way round, and a neighbour\'s the same way as yours', () => {
     for (let n = 2; n <= 6; n++) {
-      const L = computeLayout(1280, 720, deal(seats(n), rng(n)), 0);
+      const L = computeLayout(1280, 720, inPlay(seats(n), lcg(n)), 0);
       expect(L.me!.flip).toBe(false);
       expect(L.me!.nertz.x).toBeLessThan(L.me!.stock.x);
       for (const o of L.opponents) {
@@ -235,7 +223,7 @@ describe('table layout', () => {
 
   it('someone who is not in the round watches from the first player\'s chair, with that player\'s hand small at the bottom', () => {
     for (let n = 2; n <= 6; n++) {
-      const L = computeLayout(1280, 720, aced(deal(seats(n), rng(n))), 99);
+      const L = computeLayout(1280, 720, aced(inPlay(seats(n), lcg(n))), 99);
       expect(L.me).toBeNull();
       expect(L.opponents).toHaveLength(n);
       const hands = L.opponents.map(tagged);
@@ -250,7 +238,7 @@ describe('table layout', () => {
   });
 
   it('maps table space to the screen and back exactly, on the felt and off it, the same from every chair', () => {
-    const game = deal(seats(5), rng(5));
+    const game = inPlay(seats(5), lcg(5));
     const L = computeLayout(1280, 720, game, 3);
     for (const p of [{ x: 0, y: 0 }, { x: 0.3, y: -0.8 }, { x: -hwOf(L), y: 0 }, { x: 4.5, y: 1.7 }]) {
       const s = toScreen(L.felt, p);
@@ -277,7 +265,7 @@ describe('table layout', () => {
   });
 
   it('draws a pile exactly where it was put down and nothing where there is none', () => {
-    const game = deal(seats(4), rng(4));
+    const game = inPlay(seats(4), lcg(4));
     const ace = (owner: number): Card => ({ id: `ace${owner}`, owner, suit: 'S', rank: 1 });
     const placed: GameState = { ...game, slots: game.slots.map((s, i) => (i === 2 ? { cards: [ace(0)], at: { x: 1.25, y: -0.4, r: 1.5 } } : s)) };
     const L = computeLayout(1280, 720, placed, 1);
@@ -303,14 +291,14 @@ describe('table layout', () => {
     // What Table.tsx draws while an Ace is in hand (`landingAt`, `keepOut`, the felt with its rounded corners) held
     // against what the engine accepts (`canDrop` on a point of the felt), in px, for every table size and window.
     // Random places, and places on purpose just either side of every line.
-    const next = rng(77);
+    const next = lcg(77);
     let [yes, no, close] = [0, 0, 0];
     for (let n = 2; n <= 6; n++) {
       const { w, h } = cardSize(n);
       const gap = pileGap(n);
       for (const [W, H] of WINDOWS) {
         // A table with a good few piles on it, put down wherever the engine lets them go.
-        let game = deal(seats(n), rng(n * 100 + W));
+        let game = inPlay(seats(n), lcg(n * 100 + W));
         const ace = (i: number): Card => ({ id: `pile${i}`, owner: i % n, suit: 'S', rank: 1 });
         const at: { x: number; y: number }[] = [];
         for (let tries = 0; at.length < 3 * n && tries < 2000; tries++) {
@@ -376,7 +364,7 @@ describe('table layout', () => {
   it('keeps the tray where it is whatever is in it, shows the near side of every pile, and takes a drop anywhere out to the edge', () => {
     for (const [W, H] of [[1280, 720], [1440, 900]] as [number, number][]) {
       for (let n = 2; n <= 6; n++) {
-        const full = played(deal(seats(n), rng(n)));
+        const full = played(inPlay(seats(n), lcg(n)));
         const empty = computeLayout(W, H, { ...full, tray: [] }, 0);
         for (const piles of [0, 1, n]) {
           const game = { ...full, tray: full.tray.slice(0, piles) };
@@ -409,7 +397,7 @@ describe('table layout', () => {
   it('drop areas never touch: a card released between two piles is on neither', () => {
     for (const [W, H] of WINDOWS) {
       for (let n = 2; n <= 6; n++) {
-        const L = computeLayout(W, H, aced(deal(seats(n), rng(n))), 0);
+        const L = computeLayout(W, H, aced(inPlay(seats(n), lcg(n))), 0);
         const hits = [...L.slotHit.filter((r) => r !== null), ...L.me!.workHit];
         for (const [i, a] of hits.entries()) for (const b of hits.slice(i + 1)) expect(overlap(a, b)).toBe(false);
         // Each area holds its own pile, and reaches only a little way past it.
@@ -424,7 +412,7 @@ describe('table layout', () => {
   });
 
   it('shows face-down work cards as backs under the face-up card, in every hand', () => {
-    const game = viewFor(deal(seats(3), rng(9)), 0); // what a client is actually sent
+    const game = viewFor(inPlay(seats(3), lcg(9)), 0); // what a client is actually sent
     const L = computeLayout(1280, 800, game, 0);
     for (const p of game.players) {
       p.work.forEach((pile, i) => {
@@ -436,7 +424,7 @@ describe('table layout', () => {
   });
 
   it('cascades tray piles so that a strip of each shows, face-down, and brings them out for the end of the round', () => {
-    const game = played(deal(seats(4), rng(11)));
+    const game = played(inPlay(seats(4), lcg(11)));
     const live = computeLayout(1280, 800, game, 0);
     const kings = live.cards.filter((c) => c.pile === 'tray' && 'rank' in c.card && c.card.rank === 13).sort((a, b) => a.at - b.at);
     expect(kings).toHaveLength(4);
@@ -461,7 +449,7 @@ describe('table layout', () => {
   });
 
   it('plans the wash: every card in the middle, sorted into one pile per player', () => {
-    const game = played(deal(seats(4), rng(11)));
+    const game = played(inPlay(seats(4), lcg(11)));
     const L = computeLayout(1280, 800, game, 0, 'wash');
     const plan = planFinale(L, game);
     expect(plan.movers).toHaveLength(4 * 13 + 3);
@@ -472,7 +460,7 @@ describe('table layout', () => {
 
   it('hands every card of the middle from the table to the wash once, where it lies: through the end of a round each is drawn by exactly one of the two, whatever the canvas\'s clock says', () => {
     for (const n of [2, 4, 6]) {
-      const base = played(deal(seats(n), rng(11)));
+      const base = played(inPlay(seats(n), lcg(11)));
       // Besides the piles in the tray, one that was finished and not yet cleared when Nertz was called: it lies in the middle.
       const whole = base.players[1]!.stock.slice(0, 13) as Card[];
       const game: GameState = { ...base, slots: base.slots.map((s, i): CentrePile | null => (i === 0 ? { cards: [whole[0]!, ...whole.slice(1)], at: { x: 0.6, y: 0, r: 0 } } : s)), players: base.players.map((p, i) => (i === 1 ? { ...p, stock: p.stock.slice(13) } : p)) };
@@ -518,7 +506,7 @@ describe('table layout', () => {
   it('gathers each pile out in front of its player, on the felt and clear of the wash, with a label that touches nothing else: 2 to 6 players, every chair', () => {
     for (const [W, H] of [[1280, 720], [1440, 900]] as const) {
       for (let n = 2; n <= 6; n++) {
-        const game = played(deal(seats(n), rng(n)));
+        const game = played(inPlay(seats(n), lcg(n)));
         for (let you = 0; you < n; you++) {
           const L = computeLayout(W, H, game, you, 'wash');
           const plan = planFinale(L, game);
@@ -612,7 +600,7 @@ describe('table layout', () => {
   describe('long work piles', () => {
     /** Seat 0's work pile 1 becomes `down` face-down cards under a run of `up` face-up ones (faces do not matter to the layout). */
     function longPile(n: number, down: number, up: number): GameState {
-      const g = aced(deal(seats(n), rng(n)));
+      const g = aced(inPlay(seats(n), lcg(n)));
       return {
         ...g,
         players: g.players.map((p) => {
@@ -643,7 +631,7 @@ describe('table layout', () => {
     // Regression: a pile of 2 face-down + 10 face-up cards got about 17px a card: half a rank, no suit.
     it('rises into what cloth there is between its column and the felt, never onto the felt, without moving anything else', () => {
       const [W, H] = [1440, 900];
-      const short = computeLayout(W, H, aced(deal(seats(2), rng(2))), 0);
+      const short = computeLayout(W, H, aced(inPlay(seats(2), lcg(2))), 0);
       const game = longPile(2, 1, 7);
       const L = computeLayout(W, H, game, 0);
       const cardH = L.me!.nertz.h;
@@ -722,7 +710,7 @@ describe('table layout', () => {
   it('puts the grace countdown where no opponent sits: the corner if it is free, otherwise the nearest clear place below', () => {
     for (const [W, H] of [...WINDOWS, [1280, 720]] as [number, number][]) {
       for (let n = 2; n <= 6; n++) {
-        const L = computeLayout(W, H, deal(seats(n), rng(n)), 0);
+        const L = computeLayout(W, H, inPlay(seats(n), lcg(n)), 0);
         const pill: Rect = { x: W - COUNTDOWN.right - COUNTDOWN.w, y: countdownTop(L, W), w: COUNTDOWN.w, h: COUNTDOWN.h };
         for (const o of L.opponents) expect(overlap(pill, tagged(o))).toBe(false);
         expect(pill.y).toBe(12); // nobody is ever seated in the top-right corner: it is the countdown's
@@ -740,7 +728,7 @@ describe("another player's card in the air", () => {
    * reports how far it has come. Without, it is an Ace over bare felt: it gets there, and is then held still.
    */
   function seen(n: number, k: number, W: number, H: number, P: { x: number; y: number }, pile: boolean) {
-    const game = deal(seats(n), rng(n));
+    const game = inPlay(seats(n), lcg(n));
     const [mine, theirs] = [computeLayout(W, H, game, 0), computeLayout(W, H, game, k)];
     // On their screen: their own hand at the bottom.
     const own = theirs.me!;
@@ -806,7 +794,7 @@ describe("another player's card in the air", () => {
 
   it('a card going from pile to pile within a hand is drawn in that hand as this window draws it, mirrored for a hand across the table', () => {
     for (let n = 2; n <= 6; n++) {
-      const game = deal(seats(n), rng(n));
+      const game = inPlay(seats(n), lcg(n));
       const mine = computeLayout(1280, 720, game, 0);
       for (let k = 1; k < n; k++) {
         const theirs = computeLayout(1280, 720, game, k);
@@ -860,7 +848,7 @@ describe('a group dealt off the stock', () => {
   const at = (L: Layout, id: string) => L.cards.find((c) => c.card.id === id);
 
   it('is counted off card by card into a fan held over the stock, face-down, and turns over onto the waste when complete', () => {
-    const start = deal(seats(2), rng(7));
+    const start = inPlay(seats(2), lcg(7));
     const three = start.players[0]!.stock.slice(-3).reverse().map((c) => c.id); // in the order dealt: the stock's top card first
     let g = start;
     for (let k = 1; k <= 2; k++) {
@@ -891,7 +879,7 @@ describe('a group dealt off the stock', () => {
   it('lies over a pile of the middle that it reaches, as all of your own hand does; everyone else\'s hand lies under the middle', () => {
     const box = (c: Layout['cards'][number]): Rect => ({ x: c.x, y: c.y, w: c.s * CARD_W, h: c.s * CARD_H });
     for (const [W, H] of DESKTOPS) {
-      const start = deal(seats(6), rng(6));
+      const start = inPlay(seats(6), lcg(6));
       // A pile as near your edge of the felt as the rules allow, straight above your stock.
       const stock = computeLayout(W, H, start, 0).me!.stock;
       const spot = { x: toTable(computeLayout(W, H, start, 0).felt, stock.x + stock.w / 2, 0).x, y: 1 - cardSize(6).h / 2 - 1e-6, r: 0 };
@@ -914,14 +902,14 @@ describe('a group dealt off the stock', () => {
   });
 
   it('keeps the outline under the stock where its bottom card lies, the size of a card', () => {
-    const g = deal(seats(2), rng(7));
+    const g = inPlay(seats(2), lcg(7));
     const L = computeLayout(1280, 720, g, 0);
     const bottom = at(L, g.players[0]!.stock[0]!.id)!;
     expect(L.me!.stockPad).toMatchObject({ x: bottom.x, y: bottom.y, w: L.me!.stock.w, h: L.me!.stock.h });
   });
 
   it('is dealt card by card onto the waste on a table that carries each card there', () => {
-    const g = flip(deal(seats(2), rng(7)));
+    const g = flip(inPlay(seats(2), lcg(7)));
     const L = computeLayout(1280, 720, g, 0, 'live', null, false);
     const c = at(L, g.players[0]!.waste.at(-1)!.id)!;
     expect(c.pile === 'waste' && !c.up).toBe(true);
@@ -947,7 +935,7 @@ describe('a phone held upright', () => {
   it('keeps every hand and the felt on the screen and clear of each other, for two to six players', () => {
     for (const [W, H] of sizes) {
       for (let n = 2; n <= 6; n++) {
-        const L = computeLayout(W, H, deal(seats(n), rng(n)), 0);
+        const L = computeLayout(W, H, inPlay(seats(n), lcg(n)), 0);
         const at = `${W}x${H}, ${n} players`;
         expect(L.tall, at).toBe(true);
         const me = L.me!;

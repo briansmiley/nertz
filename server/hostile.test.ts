@@ -2,35 +2,19 @@
 // patch of felt, moving cards with position reports, dealing faster than a card per message, acting before play opens,
 // getting round clear-first, reading faces early, and reconnecting at every awkward moment. Nothing here uses the
 // client's code: only the wire.
-import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import WebSocket from 'ws';
-import { checkInvariants, finishDeal, isHidden, legalDrops, grab, openPlay, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { checkInvariants, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
 import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
-import type { AnyCard, Card, GameState, Intent, PileRef, Suit } from '../shared/types';
+import { felt, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
+import type { AnyCard, GameState, Intent, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
+import { Client, type StateMsg } from './testkit';
 
-type StateMsg = Extract<ServerMsg, { t: 'state' }>;
-type DragMsg = Extract<ServerMsg, { t: 'drag' }>;
-
-const wire = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
-const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
-
-function seeded(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /**
  * Which cards of a snapshot show a face that the rules say nobody may see yet. Judged from the snapshot alone, by
@@ -49,119 +33,8 @@ function leaks(g: GameState): string[] {
   return out;
 }
 
-class Client {
-  states: StateMsg[] = [];
-  drags: DragMsg[] = [];
-  errors: string[] = [];
-  raw: string[] = [];
-  seq = 0;
-  closeCode: number | null = null;
-  constructor(
-    readonly ws: WebSocket,
-    readonly token: string,
-  ) {
-    ws.on('message', (data) => {
-      const text = data.toString();
-      this.raw.push(text);
-      const msg = JSON.parse(text) as ServerMsg;
-      if (msg.t === 'state') this.states.push(msg);
-      else if (msg.t === 'drag') this.drags.push(msg);
-      else if (msg.t === 'error') this.errors.push(msg.message);
-    });
-    ws.on('close', (code) => (this.closeCode = code));
-    ws.on('error', () => {});
-  }
-  static async open(port: number, room: string | null, name: string, token: string = randomUUID()): Promise<Client> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-    await new Promise((ok, fail) => ws.once('open', ok).once('error', fail));
-    const client = new Client(ws, token);
-    client.send(room === null ? { t: 'create', name, token } : { t: 'join', room, name, token });
-    await vi.waitFor(() => expect(client.states.length).toBeGreaterThan(0));
-    if (room !== null) await client.sit();
-    return client;
-  }
-  send(msg: unknown): void {
-    this.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
-  }
-  /** Whoever comes to a table watches until they ask for a seat: asks, and waits until they have one or are in the queue for one. */
-  async sit(): Promise<void> {
-    this.send({ t: 'sit', on: true });
-    await vi.waitFor(() => expect(this.last.room.seat !== null || !!this.last.room.players.find((p) => p.id === this.last.room.me)?.queued).toBe(true));
-  }
-  intent(intent: unknown): number {
-    this.send({ t: 'intent', seq: this.seq, intent });
-    return this.seq++;
-  }
-  /** Sends the intent and waits until the server has answered it. */
-  async did(intent: unknown): Promise<StateMsg> {
-    const seq = this.intent(intent);
-    await vi.waitFor(() => expect(this.last.ack).toBeGreaterThanOrEqual(seq));
-    return this.last;
-  }
-  drag(id: string, x = 0.1, y = 0.2): void {
-    this.send({ t: 'drag', id, w: 0.5, h: [1, 1], p: [x, y] });
-  }
-  /** Everything the server has sent so far has arrived: an error is answered in order, after all that came before. */
-  async synced(): Promise<void> {
-    const n = this.errors.length;
-    this.send('?');
-    await vi.waitFor(() => expect(this.errors.length).toBeGreaterThan(n));
-  }
-  get last(): StateMsg {
-    return this.states.at(-1)!;
-  }
-  get game(): GameState {
-    return this.last.room.game!;
-  }
-  get seat(): number {
-    return this.last.room.seat ?? -1;
-  }
-  get code(): string {
-    return this.last.room.code;
-  }
-  async close(): Promise<void> {
-    if (this.ws.readyState === WebSocket.CLOSED) return;
-    const closed = new Promise((ok) => this.ws.once('close', ok));
-    this.ws.terminate();
-    await closed;
-  }
-}
-
-const move = (cardId: string, to: PileRef, count = 1): Intent => ({ k: 'move', cardId, count, to });
-const slot = (i: number): PileRef => ({ k: 'slot', i });
-const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
 const me = (g: GameState, seat: number) => g.players.find((p) => p.seat === seat)!;
-const workTop = (g: GameState, seat: number, i: number) => me(g, seat).work[i]!.at(-1)!.id;
 const piles = (g: GameState) => g.slots.filter((s) => s !== null);
-
-/** The round as dealt, with every player's work piles made single face-up cards: A-spades, 2-spades, A-hearts, K-clubs. */
-function rig(g: GameState, emptyNertzFor: number[] = []): GameState {
-  return {
-    ...g,
-    players: g.players.map((p) => {
-      const cards = [...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste] as Card[];
-      const take = (suit: Suit, rank: number) => cards.splice(cards.findIndex((c) => c.suit === suit && c.rank === rank), 1)[0]!;
-      const work = [[take('S', 1)], [take('S', 2)], [take('H', 1)], [take('C', 13)]];
-      const nertz = emptyNertzFor.includes(p.seat) ? [] : cards.splice(0, 13);
-      return { ...p, work, down: [0, 0, 0, 0], nertz, stock: cards, waste: [], dealt: 0, holding: null };
-    }),
-  };
-}
-
-/** A centre pile of clubs, Ace to Queen, built from `owner`'s deck and put in slot `i`: one King short of finished. */
-function nearlyDone(g: GameState, owner: number, i: number): GameState {
-  const p = me(g, owner);
-  const clubs = (pile: AnyCard[]) => pile.filter((c): c is Card => !isHidden(c) && c.suit === 'C' && c.rank < 13);
-  const taken = [...clubs(p.nertz), ...clubs(p.stock)].sort((a, b) => a.rank - b.rank);
-  expect(taken).toHaveLength(12);
-  const ids = new Set(taken.map((c) => c.id));
-  const without = (pile: AnyCard[]) => pile.filter((c) => !ids.has(c.id));
-  return {
-    ...g,
-    players: g.players.map((q) => (q === p ? { ...q, nertz: without(q.nertz), stock: without(q.stock) } : q)),
-    slots: g.slots.map((s, k) => (k === i ? { cards: [taken[0]!, ...taken.slice(1)], at: { x: 0, y: 0, r: 0 } } : s)),
-  };
-}
 
 describe('a hostile client over real sockets', () => {
   let server: NertzServer;
@@ -183,7 +56,7 @@ describe('a hostile client over real sockets', () => {
   /** The same with play open and the hands rigged; every client has seen the rigged table. */
   const playing = async (n: number, emptyNertzFor: number[] = [], also: (g: GameState) => GameState = (g) => g) => {
     const t = await dealt(n);
-    t.room.game = also(rig(toPlay(t.room.game!), emptyNertzFor));
+    t.room.game = also(rig(toPlay(t.room.game!), { work: ['S1', 'S2', 'H1', 'C13'], emptyNertz: emptyNertzFor }));
     expect(checkInvariants(t.room.game)).toBeNull();
     // Any change sends everyone the table as it now is.
     await t.players[0]!.did({ k: 'stuck', on: false });
@@ -213,7 +86,7 @@ describe('a hostile client over real sockets', () => {
         expect(checkInvariants(s.room.game)).toBeNull();
       }
     }
-    await Promise.all(clients.splice(0).map((c) => c.close()));
+    await Promise.all(clients.splice(0).map((c) => c.drop()));
   });
 
   it('races: one pile, one patch of felt: exactly one lands every time, the other goes home, everyone converges', async () => {
@@ -407,7 +280,7 @@ describe('a hostile client over real sockets', () => {
   }, 20_000);
 
   it('clear-first cannot be got round: no intent of any kind, no report, no reconnect; and nobody else is held up', async () => {
-    const { room, players } = await playing(2, [0], (g) => nearlyDone(g, 0, 3));
+    const { room, players } = await playing(2, [0], (g) => withPile(g, 3, 0, 'C', 12)); // clubs to the Queen in slot 3: one King short of finished
     const [a, b] = players as [Client, Client];
     const king = workTop(room.game!, a.seat, 3);
     const ace = workTop(room.game!, a.seat, 0);
@@ -477,7 +350,7 @@ describe('a hostile client over real sockets', () => {
     // Held again, then the network drops.
     await a2.did({ k: 'hold', cardId: ace });
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBe(ace));
-    await a2.close();
+    await a2.drop();
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBeNull());
     expect(b.last.room.players.find((p) => p.seat === a.seat)!.connected).toBe(false);
     // Nertz called while they are away: no grace window for a card nobody holds.

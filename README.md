@@ -559,6 +559,7 @@ server/   Node http + ws
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
   index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list)
+  guard.ts      what every message, timer, snapshot and socket close runs inside: a throw is logged, and every other table carries on
 client/   Vite + React
   net.ts        websocket store and prediction
   layout.ts     pure geometry: where the felt, every hand, card, pile, tray pile, drop area and the countdown goes for a given window size; where another player's held card is drawn; the deal's schedule
@@ -730,6 +731,9 @@ The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
   if the team has none of that name), with the screenshot in its description.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
+- `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
+  issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
+  ask for it). Without it, or if Claude does not answer within ten seconds, a report is titled by its first line.
 
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
