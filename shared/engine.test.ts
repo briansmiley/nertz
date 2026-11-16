@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cardSize, clash, onTable, pileGap, TABLE } from './table';
 import {
   applyIntent,
+  calledBy,
   canDrop,
   checkInvariants,
   CLEAR_FIRST,
@@ -11,8 +12,10 @@ import {
   feltFree,
   finishDeal,
   grab,
+  inGrace,
   isComplete,
   isHidden,
+  isLive,
   isOver,
   legalDrops,
   mustClear,
@@ -92,7 +95,7 @@ describe('dealing', () => {
   };
 
   it('a fresh deal is still being dealt: every intent from every seat is refused and changes nothing', () => {
-    expect(fresh.stage).toBe('dealing');
+    expect(fresh.status.at).toBe('dealing');
     expect(checkInvariants(fresh)).toBeNull();
     for (const seat of [0, 1, 2]) {
       for (const intent of everyIntent(fresh, seat)) {
@@ -110,7 +113,7 @@ describe('dealing', () => {
   it('shows nobody a single face until the deal is over, their own cards included; ids, owners and shape stay put', () => {
     for (const seat of [0, 1, 2, 7]) {
       const view = viewFor(fresh, seat);
-      expect(view.stage).toBe('dealing');
+      expect(view.status.at).toBe('dealing');
       expect(allCards(view)).toHaveLength(3 * 52);
       expect(allCards(view).every(isHidden)).toBe(true);
       expect(JSON.stringify(view)).not.toMatch(/suit|rank/);
@@ -129,8 +132,8 @@ describe('dealing', () => {
   const open = deepFreeze(openPlay(counting));
 
   it('the opening is one state machine: dealing, ready, countdown, play; each step only from the stage before, never touching a card', () => {
-    expect([fresh, ready, counting, open].map((s) => s.stage)).toEqual(['dealing', 'ready', 'countdown', 'play']);
-    for (const s of [ready, counting, open]) expect({ ...s, stage: 'dealing' }).toEqual(fresh);
+    expect([fresh, ready, counting, open].map((s) => s.status.at)).toEqual(['dealing', 'ready', 'countdown', 'play']);
+    for (const s of [ready, counting, open]) expect({ ...s, status: fresh.status }).toEqual(fresh);
     const steps = [finishDeal, startCountdown, openPlay];
     [fresh, ready, counting, open].forEach((s, at) => {
       steps.forEach((step, i) => {
@@ -144,7 +147,7 @@ describe('dealing', () => {
     it(`${name}: the work tops are face-up for everyone, every nertz top is still face-down, ids stable`, () => {
       for (const seat of [0, 1, 2, 7]) {
         const view = viewFor(waiting, seat);
-        expect(view.stage).toBe(name);
+        expect(view.status.at).toBe(name);
         expect(ids(allCards(view))).toEqual(ids(allCards(fresh)));
         view.players.forEach((p, i) => {
           expect(p.nertz.every(isHidden)).toBe(true); // nobody sees a nertz card, not even their own
@@ -188,7 +191,7 @@ describe('dealing', () => {
 
   it('checkInvariants rejects an opening during which something was played', () => {
     const played = ok(applyIntent(open, 0, { k: 'flip' }));
-    for (const stage of ['dealing', 'ready', 'countdown'] as const) expect(checkInvariants({ ...played, stage })).toMatch(/before the round was open/);
+    for (const stage of ['dealing', 'ready', 'countdown'] as const) expect(checkInvariants({ ...played, status: { at: stage } })).toMatch(/before the round was open/);
   });
 });
 
@@ -214,8 +217,8 @@ describe('deal', () => {
     expect(state.slots).toEqual(Array.from({ length: 12 }, () => null)); // 4 slots per player
     expect(inPlay([4, 9], seeded(1)).slots).toHaveLength(8);
     expect(state.tray).toEqual([]);
-    expect(state.nertzCalledBy).toBeNull();
-    expect(state.grace).toEqual([]);
+    expect(calledBy(state)).toBeNull();
+    expect(inGrace(state)).toEqual([]);
     expect(isOver(state)).toBe(false);
     expect(checkInvariants(state)).toBeNull();
   });
@@ -591,7 +594,7 @@ describe('clear first: a finished pile must go to the tray before its player doe
     rejected(applyIntent(holding, 0, hold('0:C4')));
     // A King played as the one grace move ends that seat's round like any other grace move.
     const grace = run(emptyNertz(s, 1), [0, hold('0:SK')], [1, NERTZ]);
-    expect(grace.grace).toEqual([0]);
+    expect(inGrace(grace)).toEqual([0]);
     expect(isOver(ok(applyIntent(grace, 0, move('0:SK', slot(2)))))).toBe(true);
     // checkInvariants knows it too: seat 0's spades are a finished pile, and the waste card it would hold is not to be held.
     const waiting = table([{ waste: 'HA' }, {}], { slots: [pile('SK')] });
@@ -720,10 +723,28 @@ describe('everyone stuck: a table where nothing can move ends the round', () => 
     ]);
     expect([0, 1].map((seat) => canProgress(s, seat))).toEqual([false, false]);
     const r = resolveStuck(both(s), [0, 1]);
-    expect(r.ended).toBe('jam');
+    expect(r.status).toEqual({ at: 'over', end: { by: 'jam' } });
     expect(r.players.every((p) => !p.stuck)).toBe(true);
     expect(ids(r.players[0]!.stock)).toEqual(ids(s.players[0]!.stock)); // nothing is moved: it is scored as it lies
     expect(resolveStuck(r, [0, 1])).toBe(r);
+  });
+
+  it('a jammed round is over like any other: a card in hand goes back, and nobody is held to clearing a pile', () => {
+    // Seat 1 finished the diamonds, and went away before carrying them to the tray; seat 0 has a card in hand.
+    const s = table(
+      [
+        { work: blocked, stock: 'SJ S9 S7 C5 CJ CQ', nertz: 'C2', rest: 0 },
+        { work: blocked, stock: 'SQ SK', nertz: 'S2', rest: 0 },
+      ],
+      { slots: [[...pile('DQ', 0), c('DK', 1)]] },
+    );
+    const stuck = run(s, [0, hold('0:C2')], [0, { k: 'stuck', on: true }]);
+    expect([stuck.players.map((p) => p.holding), mustClear(stuck, 1)]).toEqual([['0:C2', null], true]);
+    const r = resolveStuck(stuck, [0]);
+    expect(r.status).toEqual({ at: 'over', end: { by: 'jam' } });
+    expect([r.players.map((p) => p.holding), mustClear(r, 1)]).toEqual([[null, null], false]);
+    expect(checkInvariants(r)).toBeNull();
+    rejected(applyIntent(r, 1, { k: 'clear', slot: 0 }));
   });
 
   it('counts a run moved to turn up a face-down card, and a card from a work pile to the middle', () => {
@@ -750,9 +771,9 @@ describe('voting to end the round', () => {
     const back = run(one, [0, { k: 'end', on: false }]);
     expect(back.players[0]!.ending).toBeUndefined();
     const both = run(one, [1, { k: 'end', on: true }]);
-    expect(resolveEndVote(both, [0, 1]).ended).toBe('vote'); // seat 2 (a bot, say) is not asked
+    expect(resolveEndVote(both, [0, 1]).status).toEqual({ at: 'over', end: { by: 'vote' } }); // seat 2 (a bot, say) is not asked
     expect(resolveEndVote(both, [])).toBe(both);
-    const called = { ...both, nertzCalledBy: 0 };
+    const called: GameState = { ...both, status: { at: 'over', end: { by: 'nertz', seat: 0 } } };
     expect(resolveEndVote(called, [0, 1])).toBe(called);
   });
 
@@ -764,7 +785,22 @@ describe('voting to end the round', () => {
     expect(endVote(two, seatedPeople(back.players))).toEqual({ voters: 2, voted: 0 });
     const both = run(two, [0, { k: 'end', on: true }], [1, { k: 'end', on: true }]);
     expect(endVote(both, seatedPeople(back.players))).toEqual({ voters: 2, voted: 2 });
-    expect(resolveEndVote(both, seatedPeople(back.players)).ended).toBe('vote');
+    expect(resolveEndVote(both, seatedPeople(back.players)).status).toEqual({ at: 'over', end: { by: 'vote' } });
+  });
+
+  it('a round ended by vote is over like any other: a card in hand goes back, nobody is held to clearing a pile, and nothing more is taken', () => {
+    // Seat 1 finished the spades and has not carried them to the tray: it may still vote. Seat 0 votes with a card in hand.
+    const t = table([{ work: ['H6'] }, { stock: 'D9' }], { slots: [[...pile('SQ', 0), c('SK', 1)]] });
+    const voted = run(t, [0, hold('0:H6')], [0, { k: 'end', on: true }], [1, { k: 'end', on: true }]);
+    expect([voted.players.map((p) => p.holding), mustClear(voted, 1)]).toEqual([['0:H6', null], true]);
+    const over = resolveEndVote(voted, [0, 1]);
+    expect([isOver(over), isLive(over), calledBy(over), inGrace(over)]).toEqual([true, false, null, []]);
+    expect([over.players.map((p) => p.holding), mustClear(over, 1)]).toEqual([[null, null], false]);
+    expect(checkInvariants(over)).toBeNull();
+    for (const intent of [RELEASE, move('0:H6', work(1)), { k: 'flip' }, { k: 'end', on: false }, { k: 'clear', slot: 0 }] as Intent[]) {
+      for (const seat of [0, 1]) expect(applyIntent(over, seat, intent)).toEqual({ ok: false, reason: 'The round is over' });
+    }
+    expect(resolveEndVote(over, [0, 1])).toBe(over);
   });
 
   it('the slip says the round is over exactly when the resolver ends it, at any table', () => {
@@ -787,7 +823,7 @@ describe('voting to end the round', () => {
         const state = run(s, ...voting.map((seat): [number, Intent] => [seat, { k: 'end', on: true }]));
         const { voters, voted } = endVote(state, seatedPeople(players));
         expect(voters).toBeLessThanOrEqual(state.players.length); // nobody without cards has a say
-        expect(voters > 0 && voted === voters).toBe(resolveEndVote(state, people).ended === 'vote');
+        expect(voters > 0 && voted === voters).toBe(isOver(resolveEndVote(state, people)));
       }
     }
   });
@@ -828,9 +864,9 @@ describe('a half-dealt group, the stuck rotation and the Nertz call', () => {
     const mid = flips(g, 0, 1);
     rejected(applyIntent(mid, 0, hold(mid.players[0]!.waste.at(-1)!.id)));
     const idle = ok(applyIntent(mid, 1, NERTZ));
-    expect([idle.grace, isOver(idle)]).toEqual([[], true]);
+    expect([inGrace(idle), isOver(idle)]).toEqual([[], true]);
     const holding = run(mid, [0, hold('0:D2')], [1, NERTZ]);
-    expect(holding.grace).toEqual([0]);
+    expect(inGrace(holding)).toEqual([0]);
     rejected(applyIntent(holding, 0, FLIP)); // in grace only the held card may be played
     const landed = ok(applyIntent(holding, 0, move('0:D2', slot(0))));
     expect([isOver(landed), landed.players[0]!.dealt]).toEqual([true, 1]);
@@ -886,7 +922,7 @@ describe('stuck', () => {
   });
 
   it('is a no-op once Nertz has been called', () => {
-    const over = { ...stuck(stuck(stuck(base, 0), 1), 2), nertzCalledBy: 1 };
+    const over: GameState = { ...stuck(stuck(stuck(base, 0), 1), 2), status: { at: 'over', end: { by: 'nertz', seat: 1 } } };
     expect(resolveStuck(over, [0, 1, 2])).toBe(over);
   });
 });
@@ -904,11 +940,11 @@ describe('calling nertz and scoring', () => {
 
   it('is an explicit action; with nobody holding a card the round is over at once and the table is frozen', () => {
     const emptied = ok(applyIntent(s, 0, move('0:HA', felt(-1.5, 0))));
-    expect(emptied.nertzCalledBy).toBeNull(); // emptying the pile does not end the round by itself
+    expect(calledBy(emptied)).toBeNull(); // emptying the pile does not end the round by itself
     expect(isOver(emptied)).toBe(false);
     const over = ok(applyIntent(emptied, 0, NERTZ));
-    expect(over.nertzCalledBy).toBe(0);
-    expect(over.grace).toEqual([]);
+    expect(calledBy(over)).toBe(0);
+    expect(inGrace(over)).toEqual([]);
     expect(isOver(over)).toBe(true);
     for (const seat of [0, 1]) {
       for (const intent of [{ k: 'flip' }, NERTZ, { k: 'stuck', on: true }, move('1:C7', work(0)), hold('1:C7'), RELEASE, { k: 'clear', slot: 0 }] as Intent[]) {
@@ -1016,11 +1052,11 @@ describe('a refused drop', () => {
 
   it('in grace it is that seat\'s one move: they are out, and the round ends if they were the last', () => {
     const called = run(s, [0, hold('0:SA')], [1, NERTZ]);
-    expect(called.grace).toEqual([0]);
+    expect(inGrace(called)).toEqual([0]);
     const drop = move('0:SA', work(1)); // an Ace on a 3
     rejected(applyIntent(called, 0, drop));
     const after = refused(called, 0, drop);
-    expect([after.grace, after.players[0]!.holding, isOver(after)]).toEqual([[], null, true]);
+    expect([inGrace(after), after.players[0]!.holding, isOver(after)]).toEqual([[], null, true]);
     expect(refused(after, 0, drop)).toBe(after); // and that is final
   });
 
@@ -1088,24 +1124,24 @@ describe('held-card grace after a Nertz call', () => {
 
   it('nobody holding: the round is over immediately', () => {
     const over = ok(applyIntent(s, 0, NERTZ));
-    expect([over.nertzCalledBy, over.grace, isOver(over)]).toEqual([0, [], true]);
+    expect([calledBy(over), inGrace(over), isOver(over)]).toEqual([0, [], true]);
   });
 
   it('the caller is never in grace: calling puts down whatever they held', () => {
     const over = run(s, [0, hold('0:S9')], [0, NERTZ]);
-    expect([over.grace, holding(over), isOver(over)]).toEqual([[], [null, null, null, null], true]);
+    expect([inGrace(over), holding(over), isOver(over)]).toEqual([[], [null, null, null, null], true]);
   });
 
   it('a holder with a legal destination gets one move with that card; it lands, counts, and ends the round', () => {
     const called = run(s, [1, hold('1:H2')], [0, NERTZ]);
-    expect(called.nertzCalledBy).toBe(0);
-    expect(called.grace).toEqual([1]);
+    expect(calledBy(called)).toBe(0);
+    expect(inGrace(called)).toEqual([1]);
     expect(isOver(called)).toBe(false);
     expect(holding(called)).toEqual([null, '1:H2', null, null]);
-    expect(viewFor(called, 3).grace).toEqual([1]); // everyone can see who is still playing
+    expect(inGrace(viewFor(called, 3))).toEqual([1]); // everyone can see who is still playing
     expect(canDrop(called, 1, '1:H2', slot(0))).toBe(true);
     const over = ok(applyIntent(called, 1, move('1:H2', slot(0))));
-    expect([over.grace, isOver(over), holding(over)]).toEqual([[], true, [null, null, null, null]]);
+    expect([inGrace(over), isOver(over), holding(over)]).toEqual([[], true, [null, null, null, null]]);
     expect(ids(over.slots[0]!.cards)).toEqual(['0:HA', '1:H2']);
     expect(scoreRound(over).map((x) => x.delta)).toEqual([1, 1 - 2, -2, -2]); // the grace move scored and shortened the nertz pile
     rejected(applyIntent(over, 1, move('1:C5', work(0))));
@@ -1113,7 +1149,7 @@ describe('held-card grace after a Nertz call', () => {
 
   it('exactly one move, with the held card only, to a legal spot; everything else is refused and keeps them in grace', () => {
     const called = run(s, [3, hold('3:H2')], [0, NERTZ]);
-    expect(called.grace).toEqual([3]);
+    expect(inGrace(called)).toEqual([3]);
     expect(legalDrops(called, 3, '3:C3')).toEqual([work(3)]); // a perfectly good move, a moment ago
     for (const intent of [move('3:C3', slot(1)), move('3:C3', work(3)), { k: 'flip' }, { k: 'stuck', on: true }, NERTZ, hold('3:C3'), hold('3:H2'), { k: 'clear', slot: 0 }] as Intent[]) {
       rejected(applyIntent(called, 3, intent));
@@ -1129,7 +1165,7 @@ describe('held-card grace after a Nertz call', () => {
   it('a grace move may also go to a work pile, taking the run above the held card with it', () => {
     const g = table([{}, { work: ['S9 H8 C7', 'C9', 'D2', 'D3'] }]);
     const called = run(g, [1, hold('1:H8')], [0, NERTZ]);
-    expect(called.grace).toEqual([1]);
+    expect(inGrace(called)).toEqual([1]);
     rejected(applyIntent(called, 1, move('1:C7', work(0)))); // part of the lifted run, but not the card that was grabbed
     const over = ok(applyIntent(called, 1, move('1:H8', work(1), 2)));
     expect(ids(over.players[1]!.work[1]!)).toEqual(['1:C9', '1:H8', '1:C7']);
@@ -1150,19 +1186,19 @@ describe('held-card grace after a Nertz call', () => {
   it('a holder whose card has nowhere legal to go is cut off at the call and the drag is cancelled', () => {
     expect(legalDrops(s, 2, '2:D9')).toEqual([]);
     const called = run(s, [2, hold('2:D9')], [1, hold('1:H2')], [0, NERTZ]);
-    expect(called.grace).toEqual([1]);
+    expect(inGrace(called)).toEqual([1]);
     expect(holding(called)).toEqual([null, '1:H2', null, null]);
     rejected(applyIntent(called, 2, RELEASE));
     const alone = run(s, [2, hold('2:D9')], [0, NERTZ]);
-    expect([alone.grace, holding(alone), isOver(alone)]).toEqual([[], [null, null, null, null], true]);
+    expect([inGrace(alone), holding(alone), isOver(alone)]).toEqual([[], [null, null, null, null], true]);
   });
 
   it('a target taken during grace by another grace player cuts off whoever now has nowhere to go', () => {
     const called = run(s, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
-    expect(called.grace).toEqual([1, 3]);
+    expect(inGrace(called)).toEqual([1, 3]);
     const taken = ok(applyIntent(called, 3, move('3:H2', slot(0))));
     expect(ids(taken.slots[0]!.cards)).toEqual(['0:HA', '3:H2']);
-    expect([taken.grace, holding(taken), isOver(taken)]).toEqual([[], [null, null, null, null], true]);
+    expect([inGrace(taken), holding(taken), isOver(taken)]).toEqual([[], [null, null, null, null], true]);
     expect(ids(taken.players[1]!.nertz)).toEqual(['1:C5', '1:H2']); // seat 1's card went back where it came from
     rejected(applyIntent(taken, 1, move('1:H2', slot(0))));
     rejected(applyIntent(taken, 1, RELEASE));
@@ -1172,7 +1208,7 @@ describe('held-card grace after a Nertz call', () => {
     const roomy = { ...s, players: s.players.map((p) => (p.seat === 1 ? { ...p, work: [...p.work.slice(0, 3), []] } : p)) };
     const called = run(roomy, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
     const taken = ok(applyIntent(called, 3, move('3:H2', slot(0))));
-    expect([taken.grace, holding(taken), isOver(taken)]).toEqual([[1], [null, '1:H2', null, null], false]);
+    expect([inGrace(taken), holding(taken), isOver(taken)]).toEqual([[1], [null, '1:H2', null, null], false]);
     rejected(applyIntent(taken, 1, move('1:H2', slot(0)))); // that spot is gone
     expect(isOver(ok(applyIntent(taken, 1, move('1:H2', work(3)))))).toBe(true);
   });
@@ -1180,7 +1216,7 @@ describe('held-card grace after a Nertz call', () => {
   it('releasing without a move also ends that player\'s grace', () => {
     const called = run(s, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
     const one = ok(applyIntent(called, 1, RELEASE));
-    expect([one.grace, holding(one)]).toEqual([[3], [null, null, null, '3:H2']]);
+    expect([inGrace(one), holding(one)]).toEqual([[3], [null, null, null, '3:H2']]);
     expect(one.slots).toEqual(called.slots);
     rejected(applyIntent(one, 1, move('1:H2', slot(0)))); // they let go: frozen like everyone else
     const over = ok(applyIntent(one, 3, RELEASE));
@@ -1191,7 +1227,7 @@ describe('held-card grace after a Nertz call', () => {
   it('expireGrace cuts off everyone still in grace and is otherwise the identity', () => {
     const called = run(s, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
     const expired = expireGrace(called);
-    expect([expired.grace, holding(expired), isOver(expired), expired.nertzCalledBy]).toEqual([[], [null, null, null, null], true, 0]);
+    expect([inGrace(expired), holding(expired), isOver(expired), calledBy(expired)]).toEqual([[], [null, null, null, null], true, 0]);
     expect(expired.slots).toEqual(called.slots);
     expect(expireGrace(expired)).toBe(expired);
     expect(expireGrace(s)).toBe(s);
@@ -1203,7 +1239,7 @@ describe('held-card grace after a Nertz call', () => {
     const called = run(s, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
     const predicted = ok(applyIntent(viewFor(called, 1), 1, move('1:H2', slot(0))));
     const truth = ok(applyIntent(called, 1, move('1:H2', slot(0))));
-    expect(predicted.grace).toEqual(truth.grace);
+    expect(inGrace(predicted)).toEqual(inGrace(truth));
     expect(predicted.slots).toEqual(truth.slots);
     expect(isHidden(predicted.players[1]!.nertz[0]!)).toBe(true); // the uncovered nertz card stays unknown
     expect(ok(applyIntent(viewFor(s, 0), 0, NERTZ))).toEqual(viewFor(ok(applyIntent(s, 0, NERTZ)), 0));
@@ -1256,7 +1292,7 @@ describe('viewFor', () => {
     const g = table([{}, { nertz: 'H2' }], { slots: [pile('HA', 0)], tray: [pile('SK', 0)] });
     const called = run(g, [1, hold('1:H2')], [0, NERTZ]);
     const v = viewFor(called, 1);
-    expect([v.slots, v.tray, v.grace, v.nertzCalledBy]).toEqual([called.slots, called.tray, [1], 0]);
+    expect([v.slots, v.tray, inGrace(v), calledBy(v)]).toEqual([called.slots, called.tray, [1], 0]);
   });
 
   it('lets the reducer run structurally on hidden cards but never judge them', () => {
@@ -1302,7 +1338,7 @@ describe('checkInvariants', () => {
   });
   it('catches a work pile with no face-up top', () =>
     expect(checkInvariants(withPlayer0((p) => ({ down: [1, ...p.down.slice(1)] })))).toMatch(/no face-up card/));
-  it('catches a nertz call with cards left', () => expect(checkInvariants({ ...good, nertzCalledBy: 0 })).toMatch(/nertz called/));
+  it('catches a nertz call with cards left', () => expect(checkInvariants({ ...good, status: { at: 'over', end: { by: 'nertz', seat: 0 } } })).toMatch(/nertz called/));
   it('catches a wrong number of work piles', () => expect(checkInvariants(withPlayer0((p) => ({ work: p.work.slice(1) })))).toMatch(/work piles/));
   it("catches a card in someone else's pile", () => {
     const [a, b] = good.players as [PlayerState, PlayerState];
@@ -1323,12 +1359,11 @@ describe('checkInvariants', () => {
     expect(checkInvariants({ ...moved, tray: [[ace]] })).toMatch(/tray/);
   });
   it('catches inconsistent grace', () => {
-    expect(checkInvariants({ ...good, grace: [0] })).toMatch(/grace without/);
     const emptied = withPlayer0((p) => ({ nertz: [], stock: [...p.stock, ...p.nertz] }));
-    expect(checkInvariants({ ...emptied, nertzCalledBy: 0, grace: [1] })).toMatch(/in grace without/);
-    const frozenHolder = { ...emptied, nertzCalledBy: 0, players: emptied.players.map((p, i) => (i === 1 ? { ...p, holding: p.nertz.at(-1)!.id } : p)) };
-    expect(checkInvariants(frozenHolder)).toMatch(/frozen player/);
-    expect(checkInvariants({ ...frozenHolder, grace: [1] })).toMatch(/in grace without/); // that card has nowhere to go
+    expect(checkInvariants({ ...emptied, status: { at: 'grace', calledBy: 0 } })).toMatch(/grace with nobody/);
+    const holder = { ...emptied, players: emptied.players.map((p, i) => (i === 1 ? { ...p, holding: p.nertz.at(-1)!.id } : p)) };
+    expect(checkInvariants({ ...holder, status: { at: 'over', end: { by: 'nertz', seat: 0 } } })).toMatch(/frozen player/);
+    expect(checkInvariants({ ...holder, status: { at: 'grace', calledBy: 0 } })).toMatch(/in grace without/); // that card has nowhere to go
   });
 });
 
@@ -1445,7 +1480,7 @@ describe('starting a pile on the felt', () => {
     const s = table([aces, aces]);
     for (const stage of ['dealing', 'ready', 'countdown'] as const) {
       // (Before play the nertz tops are hidden in a real round; the reducer refuses by stage before it looks at any card.)
-      const closed = { ...s, stage };
+      const closed: GameState = { ...s, status: { at: stage } };
       rejected(applyIntent(closed, 0, move('0:SA', felt(0, 0))));
       rejected(applyIntent(closed, 0, hold('0:SA')));
       expect(canDrop(closed, 0, '0:SA', felt(0, 0))).toBe(false);
@@ -1572,7 +1607,7 @@ describe('starting a pile on the felt', () => {
     const s = table([{ nertz: 'C9', work: ['SA'] }, { work: ['H5'] }]);
     const holding = ok(applyIntent(s, 0, hold('0:SA')));
     const called = ok(applyIntent(holding, 1, NERTZ));
-    expect(called.grace).toEqual([0]);
+    expect(inGrace(called)).toEqual([0]);
     const landed = ok(applyIntent(called, 0, move('0:SA', felt(0.3, 0.3))));
     expect(isOver(landed)).toBe(true);
     expect(scoreRound(landed).find((x) => x.seat === 0)!.played).toBe(1);
@@ -1677,12 +1712,12 @@ describe('random play keeps every invariant', () => {
             expect(onTable(place, seatCount)).toBe(true);
             for (const pile of before.slots) if (pile) expect(clash(pile.at, place, seatCount)).toBe(false);
           }
-          if (before.nertzCalledBy === null && state.grace.length > 0) seen.graces++;
-          if (before.nertzCalledBy !== null) {
+          if (calledBy(before) === null && inGrace(state).length > 0) seen.graces++;
+          if (calledBy(before) !== null) {
             // In grace: only someone who was in it can have acted, they are out of it now, and nobody was added.
-            expect(before.grace).toContain(seat);
-            expect(state.grace).not.toContain(seat);
-            expect(state.grace.every((g) => before.grace.includes(g))).toBe(true);
+            expect(inGrace(before)).toContain(seat);
+            expect(inGrace(state)).not.toContain(seat);
+            expect(inGrace(state).every((g) => inGrace(before).includes(g))).toBe(true);
             if (intent.k === 'move') seen.graceMoves++;
           }
           if (intent.k === 'clear') {
@@ -1695,7 +1730,7 @@ describe('random play keeps every invariant', () => {
           if (downs(state) < downs(before)) seen.reveals++;
         }
         // The server's timer, played by the dice: grace does not last for ever.
-        if (state.nertzCalledBy !== null && rng() < 0.1) state = deepFreeze(expireGrace(state));
+        if (calledBy(state) !== null && rng() < 0.1) state = deepFreeze(expireGrace(state));
         if (isOver(state)) {
           expect(checkInvariants(state)).toBeNull();
           expect(state.players.every((p) => p.holding === null)).toBe(true);
@@ -1783,7 +1818,7 @@ describe('greedy bots can finish a round', () => {
       const seats = [0, 1, 2, 3];
       let state = inPlay(seats, rng);
       const idle = new Map(seats.map((s) => [s, 0]));
-      for (let step = 0; step < 20_000 && state.nertzCalledBy === null && !state.ended; step++) {
+      for (let step = 0; step < 20_000 && isLive(state); step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const intent = botIntent(state, seat, idle.get(seat)!);
         const r = applyIntent(state, seat, intent);
@@ -1793,11 +1828,11 @@ describe('greedy bots can finish a round', () => {
         if (state !== r.state) seats.forEach((s) => idle.set(s, 0));
         expect(checkInvariants(state)).toBeNull();
       }
-      if (state.nertzCalledBy === null) continue;
+      if (calledBy(state) === null) continue;
       finished++;
       expect(isOver(state)).toBe(true); // nobody was holding anything
       const scores = scoreRound(state);
-      const caller = scores.find((x) => x.seat === state.nertzCalledBy)!;
+      const caller = scores.find((x) => x.seat === calledBy(state))!;
       expect(caller.nertzLeft).toBe(0);
       expect(caller.delta).toBe(caller.played);
       for (const x of scores) expect(x.delta).toBe(x.played - 2 * x.nertzLeft);
@@ -1817,8 +1852,8 @@ describe('greedy bots can finish a round', () => {
  * server just revealed) or more (waste cards it saw before recycling them).
  */
 function expectPredictionMatches(predicted: GameState, truth: GameState) {
-  expect(predicted.nertzCalledBy).toBe(truth.nertzCalledBy);
-  expect(predicted.grace).toEqual(truth.grace);
+  expect(predicted.status).toEqual(truth.status);
+  expect(inGrace(predicted)).toEqual(inGrace(truth));
   expect(predicted.slots).toEqual(truth.slots);
   expect(predicted.tray).toEqual(truth.tray);
   expect(predicted.players).toHaveLength(truth.players.length);
@@ -1861,14 +1896,14 @@ describe('client prediction on a redacted view agrees with the server', () => {
         const onTruth = applyIntent(state, seat, intent);
         expect(onView.ok, `step ${step} ${JSON.stringify(intent)}`).toBe(onTruth.ok);
         if (onView.ok && onTruth.ok) {
-          if (state.nertzCalledBy !== null) graceIntents++;
+          if (calledBy(state) !== null) graceIntents++;
           expectPredictionMatches(onView.state, onTruth.state);
           const revealed = unrevealed(onView.state, viewFor(onTruth.state, seat));
           expect(revealed).toBeLessThanOrEqual(intent.k === 'flip' ? 3 : 1);
           if (intent.k !== 'move' && intent.k !== 'flip') expect(onView.state).toEqual(viewFor(onTruth.state, seat));
           state = resolveStuck(onTruth.state, seats);
         }
-        if (state.nertzCalledBy !== null && rng() < 0.1) state = expireGrace(state);
+        if (calledBy(state) !== null && rng() < 0.1) state = expireGrace(state);
         if (isOver(state)) state = shortDeal(seats, rng);
       }
     }
@@ -1902,7 +1937,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
             break;
           }
         }
-        if (state.nertzCalledBy !== null) state = inPlay(seats, rng);
+        if (calledBy(state) !== null) state = inPlay(seats, rng);
       }
       expect(diverged).toBeLessThan(200);
     }

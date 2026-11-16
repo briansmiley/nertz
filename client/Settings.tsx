@@ -6,10 +6,11 @@
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { endVote, seatedPeople } from '../shared/engine';
+import { endVote, isLive, seatedPeople } from '../shared/engine';
 import type { TableSettings } from '../shared/settings';
+import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { pause, redeal, send, setTableSettings } from './net';
+import { pause, redeal, send, setSeats, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { Feedback } from './Feedback';
@@ -141,10 +142,10 @@ function PauseIcon() {
   );
 }
 
-/** Can you pause the round right now? While it is being played, before anyone calls Nertz, if you were dealt in. */
+/** Can you pause the round right now? While it is live, if you were dealt in. */
 export function canPause(room: RoomView | null | undefined): boolean {
   const g = room?.game;
-  return !!room && room.phase === 'playing' && !room.paused && !!g && g.stage === 'play' && g.nertzCalledBy === null && !g.ended && g.players.some((p) => p.seat === room.seat);
+  return !!room && !room.paused && !!g && isLive(g) && g.players.some((p) => p.seat === room.seat);
 }
 
 /** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
@@ -212,12 +213,12 @@ function Volume({ prefs }: { prefs: Prefs }) {
 
 /**
  * Ending the round where it stands, for a round that drags on (everyone voting: bots go along). Shown while a round
- * is in play and you are in it.
+ * is live and you are in it.
  */
 function EndVote({ room }: { room: RoomView }) {
   const game = room.game;
   const me = game?.players.find((p) => p.seat === room.seat);
-  if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
+  if (!game || !isLive(game) || !me) return null;
   const { voters, voted } = endVote(game, seatedPeople(room.players));
   return (
     <div className="end-vote">
@@ -337,8 +338,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   }, [open]);
 
   /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
-  const stage = room?.phase === 'playing' ? room.game?.stage : undefined;
-  const styling = stage !== 'countdown' && stage !== 'play';
+  const stage = room?.game?.status.at;
+  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
@@ -466,9 +467,28 @@ export function Corner({ room }: { room?: RoomView | null }) {
   );
 }
 
+/** How many may sit at the table: a number between a minus and a plus. Each tap is one seat more or fewer; the server keeps it within its bounds. */
+function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
+  const n = room.seats.of;
+  return (
+    <div className="stepper">
+      <span id="seats-label">Seats</span>
+      <span role="group" aria-labelledby="seats-label">
+        <button type="button" aria-label="Fewer seats" disabled={!mine || n <= fewestSeats(room.seats)} onClick={() => setSeats(-1)}>
+          −
+        </button>
+        <output aria-live="polite">{n}</output>
+        <button type="button" aria-label="More seats" disabled={!mine || n >= MAX_PLAYERS} onClick={() => setSeats(1)}>
+          +
+        </button>
+      </span>
+    </div>
+  );
+}
+
 /**
  * The table's house rules, in the lobby and behind the score sheet's gear. One row per option
- * of `TableSettings` that the host is offered.
+ * of `TableSettings` that the host is offered, and the number of seats.
  */
 export function TableRules({ room }: { room: RoomView }) {
   const host = room.players.find((p) => p.isHost);
@@ -483,6 +503,7 @@ export function TableRules({ room }: { room: RoomView }) {
           Move without dragging <Info>Tap or click a card, then where it goes.</Info>
         </span>
       </label>
+      <SeatCount room={room} mine={mine} />
     </fieldset>
   );
 }

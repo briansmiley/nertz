@@ -2,7 +2,7 @@
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them (net.ts).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, finishDeal, refused, startCountdown } from '../shared/engine';
+import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
@@ -240,18 +240,18 @@ describe('sound cues from rendered state', () => {
     const stages = { dealing: dealt, ready: finishDeal(dealt), countdown: startCountdown(finishDeal(dealt)), play: toPlay(dealt) };
     const frame = (stage: keyof typeof stages, extra: Partial<RoomView> = {}): Frame => ({ room: roomOf(stages[stage], 0, extra), online: true });
     const beat = START_BEAT_MS / 1000;
-    expect(soundCues(frame('dealing', { dealMs: 5 }), frame('ready'))).toEqual([]);
+    expect(soundCues(frame('dealing', { timerMs: 5 }), frame('ready'))).toEqual([]);
     expect(soundCues(frame('ready'), frame('ready'))).toEqual([]);
-    expect(soundCues(frame('ready'), frame('countdown', { startMs: START_MS }))).toEqual([{ k: 'count', at: [0, beat, 2 * beat] }]);
+    expect(soundCues(frame('ready'), frame('countdown', { timerMs: START_MS }))).toEqual([{ k: 'count', at: [0, beat, 2 * beat] }]);
     // More snapshots during the count (someone reconnected, a refused intent) do not start it again.
-    expect(soundCues(frame('countdown', { startMs: START_MS }), frame('countdown', { startMs: START_MS - 900 }))).toEqual([]);
-    expect(soundCues(frame('countdown', { startMs: 300 }), frame('play'))).toEqual([{ k: 'open' }]);
+    expect(soundCues(frame('countdown', { timerMs: START_MS }), frame('countdown', { timerMs: START_MS - 900 }))).toEqual([]);
+    expect(soundCues(frame('countdown', { timerMs: 300 }), frame('play'))).toEqual([{ k: 'open' }]);
     expect(soundCues(frame('play'), frame('play'))).toEqual([]);
     // The word at the start is its own cue: never the call that ends a round.
     expect(soundCues(frame('countdown'), frame('play')).some((c) => c.k === 'nertz')).toBe(false);
     // A window that arrives mid-count (reload, reconnect) has nothing to compare with: silent, as everywhere.
-    expect(soundCues(null, frame('countdown', { startMs: 1000 }))).toEqual([]);
-    expect(soundCues({ ...frame('ready'), online: false }, frame('countdown', { startMs: START_MS }))).toEqual([]);
+    expect(soundCues(null, frame('countdown', { timerMs: 1000 }))).toEqual([]);
+    expect(soundCues({ ...frame('ready'), online: false }, frame('countdown', { timerMs: START_MS }))).toEqual([]);
     expect(soundCues({ ...frame('countdown'), online: false }, frame('play'))).toEqual([]);
     // Opening play moves no card: nothing but the hit, for a player and for someone watching.
     expect(soundCues({ room: roomOf(stages.countdown, 5), online: true }, { room: roomOf(stages.play, 5), online: true })).toEqual([{ k: 'open' }]);
@@ -274,11 +274,11 @@ describe('sound cues from rendered state', () => {
     if (!state.ok) throw new Error(state.reason);
     state = applyIntent(state.state, 1, { k: 'nertz' });
     if (!state.ok) throw new Error(state.reason);
-    expect(state.state.grace).toEqual([0]);
+    expect(inGrace(state.state)).toEqual([0]);
     expect(graceTicking(roomOf(state.state, 0))).toBe(true);
     expect(graceTicking(roomOf(state.state, 1))).toBe(false); // the caller just waits
     expect(graceTicking(roomOf(g, 0))).toBe(false);
-    expect(graceTicking({ ...roomOf(state.state, 0), phase: 'results' })).toBe(false);
+    expect(graceTicking(roomOf(expireGrace(state.state), 0, { phase: 'results' }))).toBe(false);
     expect(graceTicking(null)).toBe(false);
   });
 });

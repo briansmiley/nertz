@@ -3,7 +3,9 @@
 // and server/testkit.ts.
 import { expect } from 'vitest';
 import { checkInvariants, deal, finishDeal, isHidden, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
+import { PLAIN_LOOK } from './protocol';
 import { DEFAULT_SETTINGS } from './settings';
+import { MAX_PLAYERS } from './protocol';
 import { openPlace, type Spot } from './table';
 import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, RoomView, Suit } from './types';
 
@@ -149,7 +151,7 @@ export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra 
     }
     return { seat, ...p, down, dealt: 0, stuck: h.stuck ?? false, holding: null };
   });
-  const state: GameState = { players, stage: 'play', slots: laid, tray: tray.map((t) => [...t]), nertzCalledBy: null, grace: [], ...extra };
+  const state: GameState = { players, status: { at: 'play' }, slots: laid, tray: tray.map((t) => [...t]), ...extra };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }
@@ -178,12 +180,11 @@ export const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = 
   round: 1,
   me: you,
   seat: you,
-  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0 })),
+  players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, look: PLAIN_LOOK })),
   settings: DEFAULT_SETTINGS,
+  seats: { of: MAX_PLAYERS, taken: game.players.length },
   game: viewFor(game, you),
-  graceMs: null,
-  dealMs: null,
-  startMs: null,
+  timerMs: null,
   clock: null,
   paused: null,
   lastRound: null,

@@ -1,12 +1,11 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
+import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
 import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
-import { deckOf, usePrefs } from './prefs';
-import { backNamed, isBack } from '../shared/protocol';
+import { lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
@@ -52,7 +51,7 @@ export function App() {
   const me = room.players.find((p) => p.id === room.me);
   // Without a seat: watching, whatever the table is doing: by choice, until they ask for one; or having asked, until there is one (the table is full, or a round is on). With one, but come in the middle of a round: watching until the next.
   const nextRound = 'Spectating - You can join next round';
-  const free = MAX_PLAYERS - room.players.filter(hasSeat).length;
+  const free = freeSeats(room.seats);
   /** How many are before you in the queue for a seat (the list is in the order they will be seated). */
   const ahead = room.players.filter((p) => p.queued && p.connected).findIndex((p) => p.id === room.me);
   const spectating = !me
@@ -101,16 +100,16 @@ function Pad({ children, wide }: { children: ReactNode; wide?: boolean }) {
 }
 
 /** A small card, used as decoration and as each player's colour swatch. */
-function Mini({ seat, suit, rank, style, back }: { seat?: number; suit?: 'S' | 'H' | 'D' | 'C'; rank?: number; style?: CSSProperties; back?: string }) {
-  const deck = deckOf(usePrefs()); // a card shown for its own sake is one of yours
+function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | 'H' | 'D' | 'C'; rank?: number; style?: CSSProperties; look?: Look }) {
+  const { deck, night } = usePrefs(); // a card shown for its own sake is one of yours
   return (
     <span className="mini" style={style}>
       {suit && rank ? (
         <span className="front">
-          <Face suit={suit} rank={rank} mini={false} deck={deck} />
+          <Face suit={suit} rank={rank} mini={false} deck={deck} night={night} />
         </span>
       ) : (
-        <span {...backOf(backColour(seat ?? 0), back, true)} />
+        <span {...backOf(backColour(seat ?? 0), look ? shownBack(look.backs) : 'plain', !!look?.bare, true)} />
       )}
     </span>
   );
@@ -119,7 +118,7 @@ function Mini({ seat, suit, rank, style, back }: { seat?: number; suit?: 'S' | '
 /** For whoever deals, between rounds: a robot button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const full = room.players.filter(hasSeat).length >= MAX_PLAYERS;
+  const full = freeSeats(room.seats) === 0;
   return (
     <Pop icon={<Robot />} label="Add a bot">
       <h3>Add a bot</h3>
@@ -451,6 +450,8 @@ function Lobby({ room }: { room: RoomView }) {
   /** Whose backs are being chosen (the seat), if the sheet of backs is open: your own, or a bot's. */
   const [picking, setPicking] = useState<number | null>(null);
   const picked = room.players.filter(hasSeat).find((p) => p.seat === picking && (p.id === room.me || (me?.isHost && p.bot)));
+  /** The back a bot whose backs are being chosen has now: plain, for a lot not drawn yet. */
+  const botHas = (picked && shownBack(picked.look.backs)) ?? 'plain';
   const host = room.players.find((p) => p.isHost);
   const ready = enoughToDeal(room);
 
@@ -503,14 +504,14 @@ function Lobby({ room }: { room: RoomView }) {
               {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
               {p.id === room.me || (me?.isHost && p.bot) ? (
                 <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (prefs.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
-                  <Mini seat={p.seat} back={p.id === room.me ? (prefs.random ? 'any' : backNamed(prefs.back, prefs.bare)) : p.back} />
+                  <Mini seat={p.seat} look={p.id === room.me ? lookOf(prefs) : p.look} />
                 </button>
               ) : (
-                <Mini seat={p.seat} back={p.back} />
+                <Mini seat={p.seat} look={p.look} />
               )}
               <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
               <span className="note">
-                {[p.id === room.me && 'you', !p.connected && 'away'].filter(Boolean).join(', ')}
+                {[p.id === room.me && 'you', p.left ? 'left' : !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
                 {p.bot && (
                   <span className="botnote" title={`${p.bot} bot`} aria-label={`${p.bot} bot`}>
@@ -533,10 +534,10 @@ function Lobby({ room }: { room: RoomView }) {
               title={`${picked.name}'s card backs`}
               colour={backColour(picked.seat)}
               bare={false}
-              back={isBack(picked.back) ? picked.back : 'plain'}
-              random={picked.lot ?? null}
-              onPick={(back) => (botBack(picked.seat, { back, lot: null }), setPicking(null))}
-              onRandom={(lot) => botBack(picked.seat, { lot })}
+              back={botHas}
+              random={picked.look.backs.k === 'lot' ? picked.look.backs.lot : null}
+              onPick={(back) => (botBack(picked.seat, { k: 'own', back }), setPicking(null))}
+              onRandom={(lot) => botBack(picked.seat, lot ? { k: 'lot', lot, drawn: null } : { k: 'own', back: botHas })}
               onClose={() => setPicking(null)}
             />
           ))}
@@ -545,7 +546,7 @@ function Lobby({ room }: { room: RoomView }) {
           <div className="yourback">
             {/* One button: the card, and tucked under its bottom edge a small yellow tag saying what pressing it does. */}
             <button type="button" className="change" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
-              <Mini seat={me.seat} back={prefs.random ? 'any' : backNamed(prefs.back, prefs.bare)} />
+              <Mini seat={me.seat} look={lookOf(prefs)} />
               <span>Change</span>
             </button>
             {/* Your colour is your seat. Until the first deal it can be changed for any that nobody has: a dot of it, and behind the dot the ones still free. */}
@@ -556,7 +557,7 @@ function Lobby({ room }: { room: RoomView }) {
         {/* Whoever has just come in is watching: a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
           <button className="go" onClick={() => takeSeat(true)}>
-            {room.players.filter(hasSeat).length < MAX_PLAYERS ? 'Take a seat' : 'Join the queue for a seat'}
+            {freeSeats(room.seats) > 0 ? 'Take a seat' : 'Join the queue for a seat'}
           </button>
         )}
         {me?.isHost ? (
@@ -635,7 +636,10 @@ function Results({ room }: { room: RoomView }) {
   const host = room.players.find((p) => p.isHost);
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
-  const caller = rows.find((s) => s.seat === round?.calledBy);
+  const end = round?.end;
+  const calledBy = end?.by === 'nertz' ? end.seat : null;
+  // (Not found among the rows if they were sent away since: a bot that called, then removed.)
+  const caller = rows.find((s) => s.seat === calledBy);
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
   /** Whose line of the round this is, if they are still in the room: a line goes by who played it, not by who has its seat now. */
   const of = (s: { id: number }) => room.players.find((p) => p.id === s.id);
@@ -659,7 +663,7 @@ function Results({ room }: { room: RoomView }) {
       <Pad wide>
         <h2>Round {room.round}</h2>
         {/* Who called it is said in their own line of the sheet, with the stamp; only a round that ended some other way gets a sentence. */}
-        {!caller && <p className="lead">{round?.ended === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : round?.ended === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
+        {!caller && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
         <table className="scores">
           <thead>
             <tr>
@@ -679,7 +683,7 @@ function Results({ room }: { room: RoomView }) {
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
                   <span className="nm">{me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}</span>
-                  {s.seat === round?.calledBy && (
+                  {s.seat === calledBy && (
                     <span className="called" title={`${s.id === room.me ? 'You' : s.name} called Nertz`}>
                       Nertz!
                     </span>

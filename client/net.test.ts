@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { roomWith, send as told, startRound } from '../server/testkit';
-import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, refused, startCountdown } from '../shared/engine';
+import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
 import { inPlay, lcg, roomOf, toPlay, withPile } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
@@ -278,7 +278,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     const game = predict(sync)!.game!;
     expect(game.players[0]!.holding).toBeNull();
-    expect(game.grace).toEqual([]);
+    expect(inGrace(game)).toEqual([]);
   });
 
   it('predicts through the grace window: the held card may still land, and only it', () => {
@@ -289,8 +289,8 @@ describe('prediction', () => {
     sync = send(sync, { k: 'hold', cardId: ace.id });
     s.apply(0, sync.pending[0]!.intent, sync.seq);
     s.apply(1, { k: 'nertz' }); // we were holding a playable card: we are in grace
-    sync = onSnapshot(sync, { ...s.snapshot(), room: { ...s.snapshot().room, graceMs: 4000 } });
-    expect(predict(sync)!.game!.grace).toEqual([0]);
+    sync = onSnapshot(sync, { ...s.snapshot(), room: { ...s.snapshot().room, timerMs: 4000 } });
+    expect(inGrace(predict(sync)!.game!)).toEqual([0]);
 
     // A flip is refused locally-replayed too; the held card's move is predicted and empties grace.
     sync = send(sync, { k: 'flip' });
@@ -298,7 +298,7 @@ describe('prediction', () => {
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     const game = predict(sync)!.game!;
     expect(game.slots[0]!.cards.map((c) => c.id)).toEqual([ace.id]);
-    expect(game.grace).toEqual([]);
+    expect(inGrace(game)).toEqual([]);
     expect(game.players[0]!.holding).toBeNull();
     expect(checkInvariants(game)).toBeNull();
   });
