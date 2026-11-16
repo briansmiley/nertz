@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { CHAT_MAX_LENGTH, SIGNAL_MAX_LENGTH } from '../shared/chat';
-import { MAX_MESSAGE_BYTES, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { Social, SIGNAL_BURST_BYTES, type Member } from './chat';
 import { startServer, type NertzServer } from './index';
 
 const candidate = (i: number, type: 'host' | 'srflx' | 'relay', proto: 'udp' | 'tcp'): string =>
@@ -110,5 +111,65 @@ describe('signalling over real sockets', () => {
     expect(b.got.signals).toEqual(sent.map((data) => ({ t: 'signal', from: a.got.me, data })));
     expect(a.got.errors).toEqual([]);
     expect(a.ws.readyState).toBe(WebSocket.OPEN);
+  });
+});
+
+describe('the signal budget', () => {
+  /** A table of `n`, all in voice, each recording what it is relayed. */
+  function table(n: number) {
+    const social = new Social();
+    const got: string[][] = [];
+    const members: Member[] = Array.from({ length: n }, (_, id) => {
+      got.push([]);
+      return { id, seat: id < MAX_PLAYERS ? id : null, name: `P${id}`, conn: { send: (m: ServerMsg) => m.t === 'signal' && got[id]!.push(m.data), close: () => {} } as unknown as Member['conn'] };
+    });
+    for (const m of members) social.handle(m, members, false, { t: 'voice', on: true, muted: false });
+    return { social, members, got };
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it('holds a whole table, watchers and all, joining voice at once', () => {
+    vi.useFakeTimers();
+    const { social, members, got } = table(MAX_PLAYERS + MAX_WATCHERS);
+    // To each other one an offer (or answer) and the candidates of a dozen-odd paths (the test's dozen, and again for the relay ones).
+    for (const from of members) {
+      for (const to of members) {
+        if (to === from) continue;
+        social.handle(from, members, false, { t: 'signal', to: to.id, data: OFFER });
+        for (let i = 0; i < 16; i++) social.handle(from, members, false, { t: 'signal', to: to.id, data: ICE });
+      }
+    }
+    for (const [id, signals] of got.entries()) expect(signals, `P${id}`).toHaveLength(17 * (members.length - 1));
+  });
+
+  it('cuts a flood off and lets signals through again as it refills', () => {
+    vi.useFakeTimers();
+    const { social, members, got } = table(2);
+    const [a, b] = members as [Member, Member];
+    const big = 'x'.repeat(SIGNAL_MAX_LENGTH);
+    for (let i = 0; i < 1000; i++) social.handle(a, members, false, { t: 'signal', to: b.id, data: big });
+    expect(got[1]!.length * SIGNAL_MAX_LENGTH).toBeLessThanOrEqual(SIGNAL_BURST_BYTES);
+    expect(got[1]!.length).toBeGreaterThan(0);
+    const before = got[1]!.length;
+    vi.advanceTimersByTime(5000);
+    social.handle(a, members, false, { t: 'signal', to: b.id, data: big });
+    expect(got[1]).toHaveLength(before + 1);
+    // Nothing is taken from anyone else's budget.
+    social.handle(b, members, false, { t: 'signal', to: a.id, data: OFFER });
+    expect(got[0]).toEqual([OFFER]);
+  });
+
+  it('counts a signal as it is relayed, escaped, so one of control characters or quotes cannot get past the burst', () => {
+    vi.useFakeTimers();
+    for (const ch of ['\u0001', '"']) {
+      const { social, members, got } = table(2);
+      const [a, b] = members as [Member, Member];
+      const data = ch.repeat(SIGNAL_MAX_LENGTH);
+      for (let i = 0; i < 1000; i++) social.handle(a, members, false, { t: 'signal', to: b.id, data });
+      const relayed = got[1]!.reduce((n, d) => n + Buffer.byteLength(JSON.stringify({ t: 'signal', from: a.id, data: d })), 0);
+      expect(got[1]!.length).toBeGreaterThan(0);
+      expect(relayed).toBeLessThanOrEqual(SIGNAL_BURST_BYTES + got[1]!.length * 64); // the envelope's few bytes aside
+    }
   });
 });
