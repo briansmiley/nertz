@@ -181,7 +181,8 @@ export class Room {
   join(conn: Conn, name: string, token: string, sit = false): string | null {
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
-    let player = this.players.find((p) => p.token === token && p.out !== 'kicked');
+    // Whoever left is gone for good: back, they are someone new, there to watch. (Only someone away comes back to their seat.)
+    let player = this.players.find((p) => p.token === token && !p.out);
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
@@ -195,7 +196,6 @@ export class Room {
       this.letGo(player); // whatever the old socket was dragging is not in this one's hand
     }
     Object.assign(player, { name, conn, ack: -1 });
-    delete player.out; // (left in the middle of a round, and back in it)
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
     if (sit && fresh) player.queued = ++this.queue;
@@ -702,7 +702,7 @@ export class Room {
 
   /**
    * `p` is gone for good: they left, or were sent away. With cards in a round that is not over they stay on the list,
-   * marked, until it is (`sendOff`): the seat is not to be had while its cards are in play. Otherwise they are off it now.
+   * marked, until it is (`sendOff`): their cards lie where they are, but the seat is free now. Otherwise they are off it now.
    */
   private gone(p: Player, how: 'left' | 'kicked'): void {
     if (this.inRound(p)) {

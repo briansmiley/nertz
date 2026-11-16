@@ -255,4 +255,41 @@ describe('the seats at a table', () => {
     expect(room.game!.players).toHaveLength(4);
     expect(host.room.seats).toEqual({ of: 4, taken: 4 });
   });
+
+  it('given to the queue are not taken back: whoever left comes back to watch, and the table is never over its seats', () => {
+    const { room, conns } = roomWith(2, { rng: lcg(3) });
+    const [host, second] = conns as [FakeConn, FakeConn];
+    tap(room, host, -1, MAX_PLAYERS - 2);
+    const late = new FakeConn();
+    room.join(late, 'Late', 'tok-late', true);
+    room.handle(host, { t: 'start' });
+    room.disconnect(host); // away, not gone: too few here to deal again once the seat is taken
+    room.handle(second, { t: 'leave' }); // before Start
+    room.flush();
+    expect(late.room.seat).not.toBeNull();
+
+    const back = new FakeConn();
+    expect(room.join(back, 'P1', 'tok-0001')).toBeNull();
+    room.flush();
+    expect(back.room.seat).toBeNull();
+    expect(back.room.seats).toEqual({ of: 2, taken: 2 });
+    expect(back.room.me).not.toBe(1); // someone new: the seat with P1's cards in it is their dead hand, not theirs
+  });
+
+  it('are not taken back even while free: whoever left mid-round comes back to watch, their cards still lying where they were', () => {
+    const { room, conns } = roomWith(3, { rng: lcg(3) });
+    const [host, , third] = conns as [FakeConn, FakeConn, FakeConn];
+    room.handle(host, { t: 'start' });
+    room.flush();
+    room.handle(third, { t: 'leave' });
+    room.flush();
+    expect(host.room.seats).toEqual({ of: MAX_PLAYERS, taken: 2 });
+
+    const back = new FakeConn();
+    expect(room.join(back, 'P2', 'tok-0002')).toBeNull();
+    room.flush();
+    expect(back.room.seat).toBeNull();
+    expect(back.room.me).not.toBe(2);
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]); // the round goes on with their cards in it
+  });
 });
