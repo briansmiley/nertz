@@ -6,7 +6,7 @@ import { checkInvariants, deal, finishDeal, isHidden, openPlay, startCountdown, 
 import { PLAIN_LOOK } from './protocol';
 import { DEFAULT_SETTINGS } from './settings';
 import { openPlace, type Spot } from './table';
-import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, RoomView, Suit } from './types';
+import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, RoomView, Suit, WorkPile } from './types';
 
 // ---------------------------------------------------------------- seeded generators
 // Three, because the tests' seeds were picked against each: a seed found for one is just another seed for the others.
@@ -57,16 +57,16 @@ export function rig(g: GameState, hand: { work: [Face, Face, Face, Face]; waste?
   return {
     ...g,
     players: g.players.map((p) => {
-      const cards = [...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste] as Card[];
+      const cards = [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock, ...p.waste] as Card[];
       const take = (face: Face) => {
         const i = cards.findIndex(is(face));
         if (i < 0) throw new Error(`rig: no ${face} left in seat ${p.seat}'s hand`);
         return cards.splice(i, 1)[0]!;
       };
-      const work = hand.work.map((f) => [take(f)]);
+      const work = hand.work.map((f): WorkPile => ({ cards: [take(f)], down: 0 }));
       const waste = (hand.waste ?? []).map(take);
       const nertz = hand.emptyNertz?.includes(p.seat) ? [] : cards.splice(0, 13);
-      return { ...p, work, down: [0, 0, 0, 0], nertz, stock: cards, waste, dealt: 0, holding: null };
+      return { ...p, work, nertz, stock: cards, waste, dealt: 0, holding: null };
     }),
   };
 }
@@ -75,12 +75,12 @@ export function rig(g: GameState, hand: { work: [Face, Face, Face, Face]; waste?
 export function withPile(g: GameState, i: number, owner: number, suit: Suit, upTo: number, at: Spot = { x: 0, y: 0, r: 0 }): GameState {
   const p = g.players.find((q) => q.seat === owner)!;
   const mine = (c: AnyCard): c is Card => !isHidden(c) && c.suit === suit && c.rank <= upTo;
-  const cards = [...p.nertz, ...p.work.flat(), ...p.waste, ...p.stock].filter(mine).sort((a, b) => a.rank - b.rank);
+  const cards = [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.waste, ...p.stock].filter(mine).sort((a, b) => a.rank - b.rank);
   expect(cards).toHaveLength(upTo);
   const rest = <T extends AnyCard>(pile: T[]) => pile.filter((c) => !mine(c));
   return {
     ...g,
-    players: g.players.map((q) => (q === p ? { ...q, nertz: rest(q.nertz), work: q.work.map(rest), waste: rest(q.waste), stock: rest(q.stock) } : q)),
+    players: g.players.map((q) => (q === p ? { ...q, nertz: rest(q.nertz), work: q.work.map((w) => ({ ...w, cards: rest(w.cards) })), waste: rest(q.waste), stock: rest(q.stock) } : q)),
     slots: g.slots.map((s, k) => (k === i ? { cards: [cards[0]!, ...cards.slice(1)], at } : s)),
   };
 }
@@ -106,13 +106,16 @@ export const cards = (faces: string | readonly string[] = [], owner = 0): Card[]
 /** A pile for the middle: `owner`'s Ace of the suit of `top`, up to `top`. */
 export const pile = (top: string, owner = 0): Card[] => Array.from({ length: card(top).rank }, (_, r) => card(`${top[0]}${r + 1}`, owner));
 
+/** Cards named by face, bottom first: 'C9 H6', or ['C9', 'H6']. */
+type Faces = string | readonly string[];
+/** A work pile by its cards, all face-up; or by its face-down cards and the face-up run on them. */
+type WorkFaces = Faces | { down: Faces; up: Faces };
 /** One seat at a table built by hand: each pile named bottom first. The cards not named go where `rest` says (under the stock by default). */
 export interface Hand {
-  nertz?: string | readonly string[];
-  work?: readonly (string | readonly string[])[];
-  down?: readonly number[];
-  stock?: string | readonly string[];
-  waste?: string | readonly string[];
+  nertz?: Faces;
+  work?: readonly WorkFaces[];
+  stock?: Faces;
+  waste?: Faces;
   stuck?: boolean;
   /** Where the cards not named lie: under the stock (the default), or face-down under work pile `i` (one with cards named in it). */
   rest?: 'stock' | number;
@@ -138,25 +141,34 @@ export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra 
   });
   const middle = new Set([...laid.flatMap((p) => p?.cards ?? []), ...tray.flat()].map((c) => c.id));
   const players = hands.map((h, seat): PlayerState => {
-    const p = { nertz: cards(h.nertz, seat), work: [0, 1, 2, 3].map((i) => cards(h.work?.[i], seat)), stock: cards(h.stock, seat), waste: cards(h.waste, seat) };
-    const named = new Set([...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste].map((c) => c.id));
+    const workPile = (w: WorkFaces = []): WorkPile => {
+      if (typeof w === 'string' || !('up' in w)) return { cards: cards(w, seat), down: 0 };
+      const under = cards(w.down, seat);
+      return { cards: [...under, ...cards(w.up, seat)], down: under.length };
+    };
+    const p = { nertz: cards(h.nertz, seat), work: [0, 1, 2, 3].map((i) => workPile(h.work?.[i])), stock: cards(h.stock, seat), waste: cards(h.waste, seat) };
+    const named = new Set([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock, ...p.waste].map((c) => c.id));
     const left = SUITS.flatMap((s) => pile(`${s}13`, seat)).filter((c) => !named.has(c.id) && !middle.has(c.id));
-    const down = [0, 1, 2, 3].map((i) => h.down?.[i] ?? 0);
     const under = h.rest ?? 'stock';
     if (under === 'stock') p.stock.unshift(...left);
     else {
-      p.work[under]!.unshift(...left);
-      down[under] = down[under]! + left.length;
+      const w = p.work[under]!;
+      p.work[under] = { cards: [...left, ...w.cards], down: w.down + left.length };
     }
-    return { seat, ...p, down, dealt: 0, stuck: h.stuck ?? false, holding: null };
+    return { seat, ...p, dealt: 0, stuck: h.stuck ?? false, holding: null };
   });
   const state: GameState = { players, status: { at: 'play' }, slots: laid, tray: tray.map((t) => [...t]), ...extra };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }
 
+/** Work piles of these cards, every one face-up. */
+export const upWork = (piles: readonly AnyCard[][]): WorkPile[] => piles.map((cards) => ({ cards, down: 0 }));
+/** How many face-down cards each of `p`'s work piles has. */
+export const downs = (p: PlayerState): number[] => p.work.map((w) => w.down);
+
 /** The top card of `seat`'s work pile `i`. */
-export const workTop = (g: GameState, seat: number, i: number) => g.players.find((p) => p.seat === seat)!.work[i]!.at(-1)!.id;
+export const workTop = (g: GameState, seat: number, i: number) => g.players.find((p) => p.seat === seat)!.work[i]!.cards.at(-1)!.id;
 
 // ---------------------------------------------------------------- intents
 

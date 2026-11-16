@@ -7,7 +7,7 @@ import WebSocket from 'ws';
 import { calledBy, checkInvariants, endVote, finishDeal, grab, inGrace, isComplete, isHidden, legalDrops, mustClear, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
-import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
+import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, upWork, wire, withPile, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
@@ -29,7 +29,7 @@ const filled = (g: GameState) => g.slots.flatMap((pile) => (pile ? [pile.cards.m
 function botIntent(view: GameState, seat: number, rnd: Rng): Intent {
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
   const me = view.players.find((p) => p.seat === seat)!;
-  const mine = [...me.nertz.slice(-1), ...me.waste.slice(-1), ...me.work.flat()];
+  const mine = [...me.nertz.slice(-1), ...me.waste.slice(-1), ...me.work.flatMap((w) => w.cards)];
   const roll = rnd();
   if (roll < 0.45) {
     const legal = mine.flatMap((c) => legalDrops(view, seat, c.id).map((to) => move(c.id, to, grab(view, seat, c.id)!.cards.length)));
@@ -48,7 +48,7 @@ function botIntent(view: GameState, seat: number, rnd: Rng): Intent {
     return { k: 'clear', slot: full.length > 0 ? pick(full) : Math.floor(rnd() * 24) };
   }
   // Anyone's card, anywhere, to anywhere: almost always illegal.
-  const everything = [...view.players.flatMap((p) => [...p.nertz, ...p.waste, ...p.stock, ...p.work.flat()]), ...view.slots.flatMap((pile) => pile?.cards ?? []), ...view.tray.flat()];
+  const everything = [...view.players.flatMap((p) => [...p.nertz, ...p.waste, ...p.stock, ...p.work.flatMap((w) => w.cards)]), ...view.slots.flatMap((pile) => pile?.cards ?? []), ...view.tray.flat()];
   const targets: PileRef[] = [...[0, 1, 2, 3].map((i): PileRef => ({ k: 'work', i })), ...view.slots.map((_, i) => slot(i)), slot(23)];
   return move(rnd() < 0.1 ? 'no-such-card' : pick(everything).id, pick(targets));
 }
@@ -855,7 +855,7 @@ describe('Room', () => {
     const g = withPile(rigged([0, 1], [0]), 0, 1, 'S', 12);
     const pile = g.slots[0]!.cards;
     const king = (g.players[0]!.stock as Card[]).find((c) => c.suit === 'S' && c.rank === 13)!;
-    room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, stock: p.stock.filter((c) => c !== king), work: [[king], ...p.work.slice(1)], waste: [p.work[0]![0]!] } : p)) };
+    room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, stock: p.stock.filter((c) => c !== king), work: [...upWork([[king]]), ...p.work.slice(1)], waste: [p.work[0]!.cards[0]!] } : p)) };
     expect(checkInvariants(room.game)).toBeNull();
     sendIntent(room, a, 0, move(king.id, slot(0)));
     sendIntent(room, b, 0, { k: 'clear', slot: 0 }); // not theirs to clear
@@ -890,7 +890,7 @@ describe('Room', () => {
   describe('the deal', () => {
     const faces = (msg: StateMsg) => /"suit"|"rank"/.test(JSON.stringify(msg));
     const nertzFaces = (msg: StateMsg) => msg.room.game!.players.flatMap((p) => p.nertz).filter((c) => !isHidden(c)).length;
-    const cardIds = (g: GameState) => g.players.flatMap((p) => [...p.nertz, ...p.work.flat(), ...p.stock, ...p.waste].map((c) => c.id));
+    const cardIds = (g: GameState) => g.players.flatMap((p) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock, ...p.waste].map((c) => c.id));
     function table() {
       vi.useFakeTimers();
       const { room, conns } = roomWith(3);
@@ -915,7 +915,7 @@ describe('Room', () => {
       for (const [seat, conn] of conns.entries()) {
         const p = dealt.players[seat]!;
         const top = p.nertz.at(-1)!.id;
-        const tries: Intent[] = [{ k: 'stuck', on: true }, { k: 'flip' }, hold(top), move(top, { k: 'work', i: 0 }), move(p.work[0]![0]!.id, felt(0, 0)), { k: 'release' }, { k: 'nertz' }, { k: 'clear', slot: 0 }];
+        const tries: Intent[] = [{ k: 'stuck', on: true }, { k: 'flip' }, hold(top), move(top, { k: 'work', i: 0 }), move(p.work[0]!.cards[0]!.id, felt(0, 0)), { k: 'release' }, { k: 'nertz' }, { k: 'clear', slot: 0 }];
         const others = conns.filter((x) => x !== conn).map((x) => x.states.length);
         tries.forEach((intent, seq) => sendIntent(room, conn, seq, intent));
         room.flush();
@@ -1031,11 +1031,11 @@ describe('Room', () => {
 
   describe('the start: the table waits for the dealer, then "1, 2, 3, NERTZ!"', () => {
     const nertzFaces = (msg: StateMsg) => msg.room.game!.players.flatMap((p) => p.nertz).filter((c) => !isHidden(c)).length;
-    const workFaces = (msg: StateMsg) => msg.room.game!.players.flatMap((p) => p.work.flat()).filter((c) => !isHidden(c)).length;
+    const workFaces = (msg: StateMsg) => msg.room.game!.players.flatMap((p) => p.work.flatMap((w) => w.cards)).filter((c) => !isHidden(c)).length;
     const everything = (g: GameState, seat: number): Intent[] => {
       const p = g.players[seat]!;
       const top = p.nertz.at(-1)!.id;
-      return [{ k: 'stuck', on: true }, { k: 'flip' }, hold(top), hold(p.work[0]![0]!.id), move(top, { k: 'work', i: 0 }), move(p.work[0]![0]!.id, felt(0, 0)), { k: 'release' }, { k: 'nertz' }, { k: 'clear', slot: 0 }];
+      return [{ k: 'stuck', on: true }, { k: 'flip' }, hold(top), hold(p.work[0]!.cards[0]!.id), move(top, { k: 'work', i: 0 }), move(p.work[0]!.cards[0]!.id, felt(0, 0)), { k: 'release' }, { k: 'nertz' }, { k: 'clear', slot: 0 }];
     };
     /** Three players, the cards dealt: the table is ready and waiting. */
     function ready(n = 3) {
@@ -1416,9 +1416,9 @@ describe('Room', () => {
       const pool = [...me.nertz, ...me.stock] as Card[];
       const [twoH, threeC] = [pool.find((x) => x.suit === 'H' && x.rank === 2)!, pool.find((x) => x.suit === 'C' && x.rank === 3)!];
       const rest = (pile: readonly unknown[]) => (pile as Card[]).filter((x) => x !== twoH && x !== threeC);
-      const ace = me.work[0]![0]!;
+      const ace = me.work[0]!.cards[0]!;
       // Seat 0: Ace of spades on the 2 of hearts in pile 0, the 3 of clubs alone in pile 1.
-      room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest(p.nertz), stock: [...rest(p.stock), p.work[1]![0]!], work: [[twoH, ace], [threeC], p.work[2]!, p.work[3]!] } : p)) };
+      room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest(p.nertz), stock: [...rest(p.stock), p.work[1]!.cards[0]!], work: [...upWork([[twoH, ace], [threeC]]), p.work[2]!, p.work[3]!] } : p)) };
       expect(checkInvariants(room.game)).toBeNull();
 
       sendIntent(room, c, 0, move(C.aceS, felt(0, 0))); // seat 2 takes the place first
@@ -1427,11 +1427,11 @@ describe('Room', () => {
       sendIntent(room, a, 1, move(A.aceS, felt(0, 0)));
       sendIntent(room, a, 2, hold(twoH.id));
       sendIntent(room, a, 3, move(twoH.id, { k: 'work', i: 1 })); // "one card", but two lie there now
-      const work = room.game.players[0]!.work.map((pile) => pile.map((x) => x.id));
+      const work = room.game.players[0]!.work.map((pile) => pile.cards.map((x) => x.id));
       expect(work.slice(0, 2)).toEqual([[twoH.id, A.aceS], [threeC.id]]); // both are back where they came from
       expect(room.game.players[0]!.holding).toBeNull();
       sendIntent(room, a, 4, move(twoH.id, { k: 'work', i: 1 }, 2)); // lifting both on purpose is an ordinary run move
-      expect(room.game.players[0]!.work[1]!.map((x) => x.id)).toEqual([threeC.id, twoH.id, A.aceS]);
+      expect(room.game.players[0]!.work[1]!.cards.map((x) => x.id)).toEqual([threeC.id, twoH.id, A.aceS]);
       expect(checkInvariants(room.game)).toBeNull();
     });
 
@@ -1558,7 +1558,7 @@ describe('Room', () => {
     room.flush();
     expect(accepted).toBeGreaterThan(1000);
     expect(filled(room.game!).length + room.game!.tray.length).toBeGreaterThan(4); // these bots often play every last card out
-    expect(room.game!.players.some((p) => p.down.some((n, i) => n < i))).toBe(true); // face-down work cards were turned over
+    expect(room.game!.players.some((p) => p.work.some((w, i) => w.down < i))).toBe(true); // face-down work cards were turned over
     conns.forEach((conn, seat) => {
       expect(conn.last.ack).toBe(seqs[seat]! - 1);
       expect(conn.last.room.game).toEqual(wire(viewFor(room.game!, seat)));
@@ -1693,11 +1693,11 @@ describe('server over real sockets', () => {
     expect(pile).toHaveLength(2);
     expect(twos).toContain(pile[1]);
     const loser = twos.find((id) => id !== pile[1])!;
-    expect(room.game.players.some((p) => p.work[1]!.at(-1)?.id === loser)).toBe(true); // still where it was
+    expect(room.game.players.some((p) => p.work[1]!.cards.at(-1)?.id === loser)).toBe(true); // still where it was
     const red = room.game.slots[1]!.cards.map((c) => c.id);
     expect(red).toHaveLength(1);
     expect(hearts).toContain(red[0]);
-    expect(room.game.players.some((p) => p.work[2]!.at(-1)?.id === hearts.find((id) => id !== red[0]))).toBe(true);
+    expect(room.game.players.some((p) => p.work[2]!.cards.at(-1)?.id === hearts.find((id) => id !== red[0]))).toBe(true);
     expect(filled(room.game)).toHaveLength(2); // nothing was rerouted anywhere else
     expect(checkInvariants(room.game)).toBeNull();
     await vi.waitFor(() => {

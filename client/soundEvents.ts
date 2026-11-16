@@ -79,7 +79,7 @@ function places(game: GameState): Map<string, Place> {
     for (const c of p.nertz) at.set(c.id, { pile: 'nertz', seat: p.seat, i: 0 });
     for (const c of p.stock) at.set(c.id, { pile: 'stock', seat: p.seat, i: 0 });
     for (const c of p.waste) at.set(c.id, { pile: 'waste', seat: p.seat, i: 0 });
-    p.work.forEach((w, i) => w.forEach((c) => at.set(c.id, { pile: 'work', seat: p.seat, i })));
+    p.work.forEach((w, i) => w.cards.forEach((c) => at.set(c.id, { pile: 'work', seat: p.seat, i })));
   }
   game.slots.forEach((s, i) => s?.cards.forEach((c) => at.set(c.id, { pile: 'slot', seat: -1, i })));
   game.tray.forEach((s, i) => s.forEach((c) => at.set(c.id, { pile: 'tray', seat: -1, i })));
@@ -94,7 +94,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   if (a.round !== b.round) {
     if (b.phase !== 'playing' || !b.game) return [];
     const hand = b.game.players.find((p) => p.seat === b.seat) ?? b.game.players[0];
-    return [{ k: 'deal', work: hand?.work.flat().length ?? 10 }];
+    return [{ k: 'deal', work: hand?.work.flatMap((w) => w.cards).length ?? 10 }];
   }
   if (!a.game || !b.game || a.phase !== 'playing') return []; // nothing moves on a table that was already scored
   const you = b.seat;

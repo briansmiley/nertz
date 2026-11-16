@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { roomWith, send as told, startRound } from '../server/testkit';
 import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
-import { inPlay, lcg, roomOf, toPlay, withPile } from '../shared/testkit';
+import { inPlay, lcg, roomOf, toPlay, upWork, withPile } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
 
@@ -29,7 +29,7 @@ function server(game: GameState, you: number) {
 function dealWithAces(): GameState {
   for (let seed = 1; seed < 20000; seed++) {
     const g = inPlay([0, 1], lcg(seed));
-    if (g.players.every((p) => (p.work[0]![0] as Card).rank === 1)) return g;
+    if (g.players.every((p) => (p.work[0]!.cards[0] as Card).rank === 1)) return g;
   }
   throw new Error('no suitable deal');
 }
@@ -42,7 +42,7 @@ describe('prediction', () => {
     const s = server(dealt, 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     expect(predict(sync)).toBe(sync.server);
-    expect(sync.server!.game!.players.flatMap((p) => [...p.nertz, ...p.work.flat(), ...p.stock]).every(isHidden)).toBe(true);
+    expect(sync.server!.game!.players.flatMap((p) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock]).every(isHidden)).toBe(true);
     // What `net.send` asks before sending anything: every intent is refused on the dealing view, so nothing goes out.
     const intents: Intent[] = [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'hold', cardId: dealt.players[0]!.nertz.at(-1)!.id }, { k: 'nertz' }];
     for (const intent of intents) expect(applyIntent(sync.server!.game!, 0, intent).ok).toBe(false);
@@ -59,8 +59,8 @@ describe('prediction', () => {
       sync = onSnapshot({ ...sync, rev: -1 }, w.snapshot());
       const me = sync.server!.game!.players[0]!;
       expect(me.nertz.every(isHidden)).toBe(true);
-      expect(me.work.map((pile) => isHidden(pile.at(-1)!))).toEqual([false, false, false, false]);
-      const tries: Intent[] = [...intents, { k: 'hold', cardId: me.work[0]!.at(-1)!.id }, { k: 'move', cardId: me.work[0]!.at(-1)!.id, count: 1, to: { k: 'felt', x: 0, y: 0 } }];
+      expect(me.work.map((pile) => isHidden(pile.cards.at(-1)!))).toEqual([false, false, false, false]);
+      const tries: Intent[] = [...intents, { k: 'hold', cardId: me.work[0]!.cards.at(-1)!.id }, { k: 'move', cardId: me.work[0]!.cards.at(-1)!.id, count: 1, to: { k: 'felt', x: 0, y: 0 } }];
       for (const intent of tries) {
         expect(applyIntent(sync.server!.game!, 0, intent).ok).toBe(false);
         sync = send(sync, intent);
@@ -81,12 +81,12 @@ describe('prediction', () => {
   it('clear-first is predicted too: after my King nothing else of mine applies until the pile is in the tray; a King that lost its race holds nothing up', () => {
     // Seat 0's spades up to the Queen are a centre pile; its King of spades is the top of work pile 0.
     const g = withPile(inPlay([0, 1], lcg(4)), 0, 0, 'S', 12);
-    const cards = g.players[0]!.nertz.concat(g.players[0]!.work.flat(), g.players[0]!.stock) as Card[];
+    const cards = g.players[0]!.nertz.concat(g.players[0]!.work.flatMap((w) => w.cards), g.players[0]!.stock) as Card[];
     const king = cards.find((c) => c.suit === 'S')!;
     const rest = cards.filter((c) => c !== king);
     const rigged: GameState = {
       ...g,
-      players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest.slice(0, 3), work: [[king], [], [], []], down: [0, 0, 0, 0], stock: rest.slice(3), waste: [] } : p)),
+      players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest.slice(0, 3), work: upWork([[king], [], [], []]), stock: rest.slice(3), waste: [] } : p)),
     };
     expect(checkInvariants(rigged)).toBeNull();
     const kingMove: Intent = { k: 'move', cardId: king.id, count: 1, to: { k: 'slot', i: 0 } };
@@ -164,7 +164,7 @@ describe('prediction', () => {
   it('keeps unacknowledged intents applied over a snapshot that does not include them yet', () => {
     const s = server(dealWithAces(), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
-    const ace = s.game.players[0]!.work[0]![0]!;
+    const ace = s.game.players[0]!.work[0]!.cards[0]!;
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     sync = send(sync, { k: 'flip' });
     expect(sync.pending.map((p) => p.seq)).toEqual([1, 2]);
@@ -191,21 +191,21 @@ describe('prediction', () => {
   it('a lost race falls out of the replay: the card is simply back where the server says', () => {
     const base = dealWithAces();
     // Hand-build a race: one centre pile at its Ace, and both players hold that suit's 2 on a work pile.
-    const suit = (base.players[0]!.work[0]![0] as Card).suit;
+    const suit = (base.players[0]!.work[0]!.cards[0] as Card).suit;
     const rig = (g: GameState): GameState => ({
       ...g,
       players: g.players.map((p) => {
-        const all = [...p.nertz, ...p.stock, ...p.work.flat()] as Card[];
+        const all = [...p.nertz, ...p.stock, ...p.work.flatMap((w) => w.cards)] as Card[];
         const two = all.find((c) => c.suit === suit && c.rank === 2)!;
         const ace = all.find((c) => c.suit === suit && c.rank === 1)!;
         const rest = all.filter((c) => c !== two && c !== ace);
-        return { ...p, nertz: rest.slice(0, 13), work: [[ace], [two], [rest[13]!], [rest[14]!]], down: [0, 0, 0, 0], stock: rest.slice(15), waste: [] };
+        return { ...p, nertz: rest.slice(0, 13), work: upWork([[ace], [two], [rest[13]!], [rest[14]!]]), stock: rest.slice(15), waste: [] };
       }),
     });
     const s = server(rig(base), 0);
     expect(checkInvariants(s.game)).toBeNull();
-    const [mine, theirs] = s.game.players.map((p) => p.work[1]![0]!) as [Card, Card];
-    const myAce = s.game.players[0]!.work[0]![0]!;
+    const [mine, theirs] = s.game.players.map((p) => p.work[1]!.cards[0]!) as [Card, Card];
+    const myAce = s.game.players[0]!.work[0]!.cards[0]!;
     s.apply(0, { k: 'move', cardId: myAce.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
 
     let sync = onSnapshot(freshSync, s.snapshot());
@@ -220,21 +220,21 @@ describe('prediction', () => {
     expect(sync.pending).toHaveLength(1);
     let game = predict(sync)!.game!;
     expect(game.slots[0]!.cards.at(-1)!.id).toBe(theirs.id);
-    expect(game.players[0]!.work[1]!.map((c) => c.id)).toEqual([mine.id]);
+    expect(game.players[0]!.work[1]!.cards.map((c) => c.id)).toEqual([mine.id]);
 
     // The server rejects ours; ack still advances and pending empties.
     expect(s.apply(0, sync.pending[0]!.intent, 1)).toBe(false);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
     game = predict(sync)!.game!;
-    expect(game.players[0]!.work[1]!.map((c) => c.id)).toEqual([mine.id]);
+    expect(game.players[0]!.work[1]!.cards.map((c) => c.id)).toEqual([mine.id]);
     expect(checkInvariants(game)).toBeNull();
   });
 
   it('a drag is two intents: hold is predicted at once, and release (or a move) puts the hand down again', () => {
     const s = server(dealWithAces(), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
-    const ace = s.game.players[0]!.work[0]![0]!;
+    const ace = s.game.players[0]!.work[0]!.cards[0]!;
     const me = () => predict(sync)!.game!.players[0]!;
 
     sync = send(sync, { k: 'hold', cardId: ace.id });
@@ -269,7 +269,7 @@ describe('prediction', () => {
     // Seat 1 is about to go out.
     const s = server({ ...base, players: base.players.map((p) => (p.seat === 1 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) }, 0);
     let sync = onSnapshot(freshSync, s.snapshot());
-    const ace = s.game.players[0]!.work[0]![0]!;
+    const ace = s.game.players[0]!.work[0]!.cards[0]!;
     sync = send(sync, { k: 'hold', cardId: ace.id });
     expect(predict(sync)!.game!.players[0]!.holding).toBe(ace.id);
 
@@ -285,7 +285,7 @@ describe('prediction', () => {
     const base = dealWithAces();
     const s = server({ ...base, players: base.players.map((p) => (p.seat === 1 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) }, 0);
     let sync = onSnapshot(freshSync, s.snapshot());
-    const ace = s.game.players[0]!.work[0]![0]!;
+    const ace = s.game.players[0]!.work[0]!.cards[0]!;
     sync = send(sync, { k: 'hold', cardId: ace.id });
     s.apply(0, sync.pending[0]!.intent, sync.seq);
     s.apply(1, { k: 'nertz' }); // we were holding a playable card: we are in grace
@@ -310,8 +310,8 @@ describe('prediction', () => {
       ...base,
       players: base.players.map((p) => {
         if (p.seat !== 0) return p;
-        const rest = [...p.nertz, ...p.work.flat(), ...p.stock] as Card[];
-        return { ...p, nertz: rest.slice(0, 13), work: [[rest[13]!], [rest[14]!], [rest[15]!], [rest[16]!]], down: [0, 0, 0, 0], stock: rest.slice(17) };
+        const rest = [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock] as Card[];
+        return { ...p, nertz: rest.slice(0, 13), work: upWork([[rest[13]!], [rest[14]!], [rest[15]!], [rest[16]!]]), stock: rest.slice(17) };
       }),
     };
     expect(checkInvariants(rigged)).toBeNull();
@@ -370,7 +370,7 @@ describe('prediction', () => {
 describe('a refused drop in the replay', () => {
   it('ends the hold, as it will on the server: the predicted hand is empty once the race is known to be lost', () => {
     const s = server(dealWithAces(), 0);
-    const [mine, theirs] = s.game.players.map((p) => p.work[0]![0]!) as [Card, Card];
+    const [mine, theirs] = s.game.players.map((p) => p.work[0]!.cards[0]!) as [Card, Card];
     const to = { k: 'felt', x: 0, y: 0 } as const;
     let sync = onSnapshot(freshSync, s.snapshot());
     sync = send(sync, { k: 'hold', cardId: mine.id });
@@ -384,7 +384,7 @@ describe('a refused drop in the replay', () => {
     expect(sync.server!.game!.players[0]!.holding).toBe(mine.id); // the server still thinks we hold it...
     const game = predict(sync)!.game!;
     expect(game.players[0]!.holding).toBeNull(); // ...the replay already knows the drop will put it down
-    expect(game.players[0]!.work[0]!.map((c) => c.id)).toEqual([mine.id]);
+    expect(game.players[0]!.work[0]!.cards.map((c) => c.id)).toEqual([mine.id]);
 
     // And the server agrees when it gets there.
     expect(s.apply(0, { k: 'move', cardId: mine.id, count: 1, to }, 2)).toBe(false);

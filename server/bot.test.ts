@@ -91,12 +91,12 @@ describe('chooseIntent', () => {
 
   it('f. moves a whole face-up run to turn over a face-down card or to empty a pile, uncovering first', () => {
     // Pile 1: one face-down card under 8-7. Pile 2 is a lone 8. Both fit on the 9 in pile 0.
-    const state = table({ nertz: ['S13'], work: [['C13', 'H12', 'S11', 'D10', 'S9'], ['C2', 'H8', 'C7'], ['D8'], ['H13']], down: [0, 1, 0, 0] });
+    const state = table({ nertz: ['S13'], work: [['C13', 'H12', 'S11', 'D10', 'S9'], { down: ['C2'], up: ['H8', 'C7'] }, ['D8'], ['H13']] });
     expect(look(state)?.intent).toEqual(move('H8', work(0), 2));
     const emptying = table({ nertz: ['S13'], work: [['C13', 'H12', 'S11', 'D10', 'S9'], ['D13'], ['D8'], ['H13']] });
     expect(look(emptying)?.intent).toEqual(move('D8', work(0)));
     // To an empty pile only when that uncovers something. (It takes missing the nertz move to get there: the first roll is a miss.)
-    const toEmpty = table({ nertz: ['S9'], work: [[], ['C2', 'H8'], ['D13'], ['H13']], down: [0, 1, 0, 0] });
+    const toEmpty = table({ nertz: ['S9'], work: [[], { down: ['C2'], up: ['H8'] }, ['D13'], ['H13']] });
     const rolls = [0.99, 0, 0, 0];
     expect(look(toEmpty, freshMemory(), 0.9, () => rolls.shift()!)?.intent).toEqual(move('H8', work(0)));
   });
@@ -215,7 +215,7 @@ describe('chooseIntent', () => {
     expect(look({ ...state, status: { at: 'over', end: { by: 'vote' } } })).toBeNull();
     expect(chooseIntent(viewFor(state, 5), 5, freshMemory(), always)).toBeNull();
     const hide = (c: { id: string; owner: number }) => ({ id: c.id, owner: c.owner, hidden: true as const });
-    const dark: GameState = { ...state, players: state.players.map((p) => ({ ...p, nertz: p.nertz.map(hide), work: p.work.map((w) => w.map(hide)), waste: p.waste.map(hide), stock: p.stock.map(hide) })) };
+    const dark: GameState = { ...state, players: state.players.map((p) => ({ ...p, nertz: p.nertz.map(hide), work: p.work.map((w) => ({ ...w, cards: w.cards.map(hide) })), waste: p.waste.map(hide), stock: p.stock.map(hide) })) };
     expect(chooseIntent(dark, 0, freshMemory(), always)).toBeNull();
   });
 

@@ -29,17 +29,8 @@ export interface PlayerState {
   seat: number;
   /** Up to 13 cards; only the top (last) one is face-up. */
   nertz: AnyCard[];
-  /**
-   * Always exactly 4 piles. In pile i the bottom `down[i]` cards are face-down;
-   * everything above them is a face-up descending alternating-colour run.
-   */
-  work: AnyCard[][];
-  /**
-   * How many cards at the bottom of each work pile are still face-down. A
-   * non-empty pile always has a face-up top: when the face-up cards leave, the
-   * next card turns over (down[i] drops by one).
-   */
-  down: number[];
+  /** Always exactly 4 piles. */
+  work: WorkPile[];
   /** Face-down. */
   stock: AnyCard[];
   /** Face-up, except the top `dealt` cards; only the top is playable, and only when `dealt` is 0. */
@@ -59,6 +50,17 @@ export interface PlayerState {
    * lifted run), or null. Always a card they could pick up. Visible to everyone.
    */
   holding: string | null;
+}
+
+/**
+ * One of a player's work piles: its cards, and how many of them, from the bottom,
+ * are still face-down. Everything above those is a face-up descending
+ * alternating-colour run. A non-empty pile always has a face-up top: when the
+ * face-up cards leave, the next card turns over (`down` drops by one).
+ */
+export interface WorkPile {
+  cards: AnyCard[];
+  down: number;
 }
 
 /**

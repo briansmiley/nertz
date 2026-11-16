@@ -566,7 +566,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     for (const p of game.players) {
       const hand = p.seat === you ? L.me : L.opponents.find((o) => o.seat === p.seat);
       if (!hand) continue;
-      const work = p.work.flat();
+      const work = p.work.flatMap((w) => w.cards);
       const out = [...work, ...p.nertz];
       out.forEach((c, i) => {
         const wait = dealWait(i, dealMs, work.length);

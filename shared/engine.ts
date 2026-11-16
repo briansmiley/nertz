@@ -6,7 +6,7 @@
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
-import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit } from './types';
+import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
@@ -50,6 +50,8 @@ export const inGrace = (state: GameState): number[] => (state.status.at === 'gra
 export const mustClear = (state: GameState, seat: number): boolean => isLive(state) && state.slots.some((pile) => completedBy(pile) === seat);
 export const CLEAR_FIRST = 'Move your finished pile to the tray first';
 const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
+/** The face-up run of a work pile, bottom first: what can be picked up off it. */
+export const faceUp = (pile: WorkPile): AnyCard[] => pile.cards.slice(pile.down);
 
 // ---------------------------------------------------------------- dealing
 
@@ -86,9 +88,8 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
     }
     const nertz = deck.splice(0, NERTZ_SIZE);
-    const down = faceDown(seats.length).slice(0, WORK_PILES);
-    const work = down.map((n) => deck.splice(0, n + 1));
-    return { seat, nertz, work, down, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
+    const work = faceDown(seats.length).slice(0, WORK_PILES).map((down): WorkPile => ({ cards: deck.splice(0, down + 1), down }));
+    return { seat, nertz, work, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
   return { players, status: { at: 'dealing' }, slots, tray: [] };
@@ -130,8 +131,8 @@ export function grab(state: GameState, seat: number, cardId: string): Grab | nul
   if (top(p.nertz)?.id === cardId) return lift({ k: 'nertz' }, p.nertz.slice(-1));
   if (top(p.waste)?.id === cardId) return p.dealt > 0 ? null : lift({ k: 'waste' }, p.waste.slice(-1));
   for (const [i, pile] of p.work.entries()) {
-    const at = pile.findIndex((c) => c.id === cardId);
-    if (at >= 0) return at >= p.down[i]! ? lift({ k: 'work', i }, pile.slice(at)) : null;
+    const at = pile.cards.findIndex((c) => c.id === cardId);
+    if (at >= 0) return at >= pile.down ? lift({ k: 'work', i }, pile.cards.slice(at)) : null;
   }
   return null;
 }
@@ -164,10 +165,10 @@ function planMove(state: GameState, seat: number, cardId: string, to: PileRef, c
   if (!pile) return 'No such pile';
   if (g.from.k === 'work') {
     if (g.from.i === to.i) return 'Already there';
-    const whole = me.work[g.from.i]!.length === g.cards.length;
-    if (whole && pile.length === 0) return 'Pointless move';
+    const whole = me.work[g.from.i]!.cards.length === g.cards.length;
+    if (whole && pile.cards.length === 0) return 'Pointless move';
   }
-  return stacksOn(card, top(pile)) ? g : 'Does not fit there';
+  return stacksOn(card, top(pile.cards)) ? g : 'Does not fit there';
 }
 
 /**
@@ -204,6 +205,14 @@ export function canDrop(state: GameState, seat: number, cardId: string, to: Pile
 
 const fail = (reason: string): Result => ({ ok: false, reason });
 
+/** The top `n` cards lifted off a work pile. If that leaves only face-down cards, the top one of them turns over. */
+function liftOff(pile: WorkPile, n: number): WorkPile {
+  const cards = pile.cards.slice(0, pile.cards.length - n);
+  return { cards, down: pile.down > 0 && cards.length === pile.down ? pile.down - 1 : pile.down };
+}
+/** Cards put on a work pile: face-up, on top. */
+const putOn = (pile: WorkPile, cards: readonly Card[]): WorkPile => ({ ...pile, cards: [...pile.cards, ...cards] });
+
 /**
  * One intent from the player at `index`, by the ordinary rules of play (the
  * caller has already dealt with the round being over or in grace). Returns the
@@ -215,8 +224,7 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
   const me: PlayerState = {
     ...old,
     nertz: [...old.nertz],
-    work: old.work.map((w) => [...w]),
-    down: [...old.down],
+    work: [...old.work],
     stock: [...old.stock],
     waste: [...old.waste],
   };
@@ -277,19 +285,13 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
       const g = planMove(state, seat, intent.cardId, intent.to, intent.count);
       if (typeof g === 'string') return g;
       const { from, cards } = g;
-      if (from.k === 'work') {
-        const pile = me.work[from.i]!;
-        pile.splice(-cards.length);
-        // The face-up cards are gone: the next face-down card turns over. (On a redacted view its face stays unknown until the next snapshot.)
-        const down = me.down[from.i]!;
-        if (down > 0 && pile.length === down) me.down[from.i] = down - 1;
-      } else {
-        me[from.k].pop();
-      }
+      // (A card turned over on a redacted view keeps its face unknown until the next snapshot.)
+      if (from.k === 'work') me.work[from.i] = liftOff(me.work[from.i]!, cards.length);
+      else me[from.k].pop();
       me.stuck = false;
       me.holding = null;
       const to = intent.to;
-      if (to.k === 'work') me.work[to.i]!.push(...cards);
+      if (to.k === 'work') me.work[to.i] = putOn(me.work[to.i]!, cards);
       else if (to.k === 'slot') next = { ...state, slots: state.slots.map((s, i): CentrePile | null => (s && i === to.i ? { ...s, cards: [...s.cards, cards[0]!] } : s)) };
       else {
         // A new pile, in the first slot nobody is using, at the very place the Ace was put down.
@@ -453,16 +455,16 @@ export function canProgress(state: GameState, seat: number): boolean {
   if (nertzTop && !isHidden(nertzTop) && legalDrops(state, seat, nertzTop.id).length > 0) return true;
   if ([...p.stock, ...p.waste].some((c) => !isHidden(c) && stockCardMoves(state, seat, c))) return true;
   return p.work.some((pile, i) => {
-    const down = p.down[i]!;
-    const last = top(pile);
+    const { cards, down } = pile;
+    const last = top(cards);
     if (last && !isHidden(last) && legalDrops(state, seat, last.id).some((to) => to.k !== 'work')) return true;
     // A run onto another work pile: the whole face-up part (turning up a face-down card, or emptying the pile), or
     // part of it when the card it uncovers can then go to the middle.
-    return pile.some((c, j) => {
+    return cards.some((c, j) => {
       if (j < down || isHidden(c) || !legalDrops(state, seat, c.id).some((to) => to.k === 'work')) return false;
       if (j === down) return true;
-      const under = pile[j - 1]!;
-      const trial: GameState = { ...state, players: state.players.map((q) => (q.seat === seat ? { ...q, work: q.work.map((w, k) => (k === i ? w.slice(0, j) : w)) } : q)) };
+      const under = cards[j - 1]!;
+      const trial: GameState = { ...state, players: state.players.map((q) => (q.seat === seat ? { ...q, work: q.work.map((w, k) => (k === i ? liftOff(pile, cards.length - j) : w)) } : q)) };
       return legalDrops(trial, seat, under.id).some((to) => to.k !== 'work');
     });
   });
@@ -541,7 +543,7 @@ export function viewFor(state: GameState, _seat: number): GameState {
     players: state.players.map((p) => ({
       ...p,
       nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && opened ? c : hide(c))),
-      work: p.work.map((w, i) => w.map((c, j) => (j < p.down[i]! || dealing ? hide(c) : c))),
+      work: p.work.map(({ cards, down }) => ({ cards: cards.map((c, j) => (j < down || dealing ? hide(c) : c)), down })),
       stock: p.stock.map(hide),
       waste: p.waste.map((c, i) => (dealing || i >= p.waste.length - p.dealt ? hide(c) : c)),
     })),
@@ -584,10 +586,10 @@ export function checkInvariants(state: GameState): string | null {
   };
   for (const p of state.players) {
     const at = `seat ${p.seat}`;
-    if (p.work.length !== WORK_PILES || p.down.length !== WORK_PILES) return `${at}: expected ${WORK_PILES} work piles`;
+    if (p.work.length !== WORK_PILES) return `${at}: expected ${WORK_PILES} work piles`;
     if (p.nertz.length > NERTZ_SIZE) return `${at}: nertz pile too big`;
     const piles: [string, AnyCard[]][] = [['nertz', p.nertz], ['stock', p.stock], ['waste', p.waste]];
-    p.work.forEach((w, i) => piles.push([`work ${i}`, w]));
+    p.work.forEach((w, i) => piles.push([`work ${i}`, w.cards]));
     for (const [name, pile] of piles) {
       for (const c of pile) {
         const bad = count(c, `${at} ${name}`);
@@ -595,8 +597,7 @@ export function checkInvariants(state: GameState): string | null {
         if (c.owner !== p.seat) return `${at} ${name}: holds a card owned by seat ${c.owner}`;
       }
     }
-    for (const [i, w] of p.work.entries()) {
-      const down = p.down[i]!;
+    for (const [i, { cards: w, down }] of p.work.entries()) {
       if (!Number.isInteger(down) || down < 0 || down > Math.max(0, w.length - 1)) return `${at} work ${i}: no face-up card on top`;
       // The face-up part must be a run. (A lone top card may be hidden in a predicted view: just turned over, face not yet sent.)
       for (let j = down + 1; j < w.length; j++) {

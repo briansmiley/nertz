@@ -34,7 +34,7 @@ function source(state: GameState, seat: number, cardId: string): number | null {
   if (!p) return null;
   if (p.nertz.at(-1)?.id === cardId) return rowX('nertz');
   if (p.waste.at(-1)?.id === cardId) return rowX('waste');
-  const i = p.work.findIndex((w) => w.some((c) => c.id === cardId));
+  const i = p.work.findIndex((w) => w.cards.some((c) => c.id === cardId));
   return i < 0 ? null : rowX('work', i);
 }
 

@@ -28,7 +28,7 @@ function leaks(g: GameState): string[] {
     const at = `${g.status.at} seat ${p.seat}`;
     p.stock.forEach((c) => faceUp(c) && out.push(`${at}: stock card with a face`));
     p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && out.push(`${at}: nertz card ${i} with a face`));
-    p.work.forEach((w, k) => w.forEach((c, i) => faceUp(c) && (i < p.down[k]! || g.status.at === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
+    p.work.forEach((w, k) => w.cards.forEach((c, i) => faceUp(c) && (i < w.down || g.status.at === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
     p.waste.forEach((c, i) => faceUp(c) && (i >= p.waste.length - p.dealt || shut) && out.push(`${at}: waste card ${i} with a face`));
   }
   return out;
@@ -98,19 +98,19 @@ describe('a hostile client over real sockets', () => {
     expect(piles(room.game!)).toHaveLength(1);
     const at = room.game!.slots.findIndex((s) => s?.cards.length === 1);
     const winner = room.game!.slots[at]!.cards[0].owner;
-    for (const p of players) expect(me(room.game!, p.seat).work[0]!.length).toBe(p.seat === winner ? 0 : 1); // the losers' Aces lie where they lay
+    for (const p of players) expect(me(room.game!, p.seat).work[0]!.cards.length).toBe(p.seat === winner ? 0 : 1); // the losers' Aces lie where they lay
     // Three twos of spades for that one pile.
     const twos = players.map((p) => p.intent(move(workTop(room.game!, p.seat, 1), slot(at))));
     await vi.waitFor(() => players.forEach((p, i) => expect(p.last.ack).toBe(twos[i])));
     expect(room.game!.slots[at]!.cards.map((c) => c.rank)).toEqual([1, 2]);
-    expect(players.filter((p) => me(room.game!, p.seat).work[1]!.length === 1)).toHaveLength(2);
+    expect(players.filter((p) => me(room.game!, p.seat).work[1]!.cards.length === 1)).toHaveLength(2);
     // Overlapping, not identical, patches of felt: still one. A patch well clear of it: both.
     const [a, b] = players as [Client, Client, Client];
     const hearts = [a, b].map((p) => workTop(room.game!, p.seat, 2));
     const s = [a.intent(move(hearts[0]!, felt(-0.5, -0.2))), b.intent(move(hearts[1]!, felt(-0.47, -0.18)))];
     await vi.waitFor(() => [a, b].forEach((p, i) => expect(p.last.ack).toBe(s[i])));
     expect(piles(room.game!)).toHaveLength(2);
-    const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.length === 1)!;
+    const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.cards.length === 1)!;
     await loser.did(move(workTop(room.game!, loser.seat, 2), felt(1.2, -0.2)));
     expect(piles(room.game!)).toHaveLength(3);
     // Off the table, on another pile, or not an Ace: refused.
@@ -224,12 +224,12 @@ describe('a hostile client over real sockets', () => {
     const { room, players } = await dealt(3);
     const [a, b, c] = players as [Client, Client, Client];
     const truth = room.game!;
-    const faceUp = (p: Client) => p.game.players.flatMap((q) => [...q.nertz, ...q.work.flat(), ...q.stock, ...q.waste]).filter((x) => !isHidden(x)).length;
+    const faceUp = (p: Client) => p.game.players.flatMap((q) => [...q.nertz, ...q.work.flatMap((w) => w.cards), ...q.stock, ...q.waste]).filter((x) => !isHidden(x)).length;
     /** Everything a client can send, about every card of its own and somebody else's top cards. */
     const everything = async (p: Client) => {
       const mine = me(truth, p.seat);
       const other = me(truth, (p.seat + 1) % 3);
-      const ids = [mine.nertz.at(-1)!.id, ...mine.work.map((w) => w.at(-1)!.id), mine.stock.at(-1)!.id, other.work[0]!.at(-1)!.id];
+      const ids = [mine.nertz.at(-1)!.id, ...mine.work.map((w) => w.cards.at(-1)!.id), mine.stock.at(-1)!.id, other.work[0]!.cards.at(-1)!.id];
       for (const id of ids) {
         p.intent({ k: 'hold', cardId: id });
         p.drag(id);
@@ -307,7 +307,7 @@ describe('a hostile client over real sockets', () => {
     await a.synced();
     const waiting = room.game!;
     expect(waiting.slots[3]!.cards).toHaveLength(13);
-    expect(me(waiting, a.seat)).toMatchObject({ holding: null, stuck: false, waste: [], work: [{ length: 1 }, { length: 1 }, { length: 1 }, []] });
+    expect(me(waiting, a.seat)).toMatchObject({ holding: null, stuck: false, waste: [], work: [{ cards: { length: 1 } }, { cards: { length: 1 } }, { cards: { length: 1 } }, { cards: [] }] });
     expect(calledBy(waiting)).toBeNull();
     expect(piles(waiting)).toHaveLength(1);
     expect(b.drags).toEqual([]);
@@ -343,7 +343,7 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => expect(a.closeCode).toBe(CLOSE_OVER));
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBeNull());
     expect(me(a2.game, a.seat).holding).toBeNull();
-    expect(me(a2.game, a.seat).work[0]!.at(-1)!.id).toBe(ace);
+    expect(me(a2.game, a.seat).work[0]!.cards.at(-1)!.id).toBe(ace);
     a2.drag(ace); // not held by this socket's player any more
     await a2.synced();
     await b.synced();
@@ -370,7 +370,7 @@ describe('a hostile client over real sockets', () => {
 function swarmIntent(view: GameState, seat: number, rnd: Rng): Intent {
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
   const p = me(view, seat);
-  const mine = [...p.nertz.slice(-1), ...p.waste.slice(-1), ...p.work.flat()];
+  const mine = [...p.nertz.slice(-1), ...p.waste.slice(-1), ...p.work.flatMap((w) => w.cards)];
   const roll = rnd();
   if (roll < 0.5) {
     const legal = mine.flatMap((c) => legalDrops(view, seat, c.id).map((to) => move(c.id, to, grab(view, seat, c.id)!.cards.length)));
@@ -385,7 +385,7 @@ function swarmIntent(view: GameState, seat: number, rnd: Rng): Intent {
   if (roll < 0.86) return { k: 'release' };
   if (roll < 0.93) return { k: 'clear', slot: Math.floor(rnd() * view.slots.length) };
   if (roll < 0.97 && mine.length > 0) return move(pick(mine).id, felt(Math.round((rnd() * 2 - 1) * 1000) / 1000, Math.round((rnd() * 2 - 1) * 1000) / 1000));
-  const all = view.players.flatMap((q) => [...q.nertz, ...q.waste, ...q.stock, ...q.work.flat()]);
+  const all = view.players.flatMap((q) => [...q.nertz, ...q.waste, ...q.stock, ...q.work.flatMap((w) => w.cards)]);
   return move(pick(all).id, pick([slot(Math.floor(rnd() * 24)), { k: 'work', i: Math.floor(rnd() * 4) } as PileRef]));
 }
 
