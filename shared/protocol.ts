@@ -2,7 +2,7 @@
 import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isPlayerId } from './chat';
 import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
-import type { BotLevel, Intent, PileRef, PlayerView, RoomView } from './types';
+import type { BotLevel, Intent, PileRef, PlayerView, RoomView, Seats } from './types';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
@@ -167,6 +167,8 @@ export type ClientMsg =
   | { t: 'ready'; on: boolean }
   /** Host only, between rounds: change some table settings. They apply from the next deal. */
   | { t: 'settings'; patch: Partial<TableSettings> }
+  /** Host only, between rounds: one seat more (1) or fewer (-1). The server keeps the number within `fewestSeats` and `MAX_PLAYERS`, so taps sent faster than the snapshots come back each count. */
+  | { t: 'seats'; step: 1 | -1 }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
   /** Whoever deals, between rounds: start over. Everyone's score goes back to nothing and the table to its lobby, as before the first deal. */
@@ -261,6 +263,10 @@ export const MAX_WATCHERS = 20;
 export type SeatedView = PlayerView & { seat: number };
 export const hasSeat = (p: PlayerView): p is SeatedView => p.seat !== null;
 export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
+/** How many seats are still to be had: none when as many are taken as the table has (or more, if it was lowered while they were). */
+export const freeSeats = (s: Seats): number => Math.max(0, s.of - s.taken);
+/** The fewest seats the table may be set to: never fewer than are taken (nobody is stood up), nor than a round needs. */
+export const fewestSeats = (s: Seats): number => Math.max(MIN_PLAYERS, s.taken);
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
 export const SLOTS_PER_PLAYER = 4;
@@ -451,6 +457,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'seat':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
+    case 'seats':
+      return v.step === 1 || v.step === -1 ? { t: 'seats', step: v.step } : null;
     case 'settings': {
       const patch = parseSettings(v.patch);
       return patch ? { t: 'settings', patch } : null;
