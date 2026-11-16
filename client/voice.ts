@@ -127,6 +127,12 @@ export function setMuted(muted: boolean): void {
   if (state.status === 'on') post({ t: 'voice', on: true, muted });
 }
 
+/** Mute yourself if you are not, unmute if you are, from the store as it is now (not as last rendered); answers whether you are now muted. */
+export function toggleMuted(): boolean {
+  setMuted(!state.muted);
+  return state.muted;
+}
+
 // ---------------------------------------------------------------- the mesh
 
 /** How loud the others' voices play: the voice chat's level (the game's mute is not for it). */

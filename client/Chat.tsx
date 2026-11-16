@@ -9,7 +9,7 @@ import { SaidWord, Slash, useHotkey } from './hotkey';
 import { hotkeyName, usePrefs } from './prefs';
 import { kick, takeSeat } from './net';
 import { PASSING_MS, say, setOpen, useSocial, type SocialState } from './social';
-import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
+import { joinVoice, leaveVoice, toggleMuted, useVoice } from './voice';
 
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
@@ -159,17 +159,12 @@ export function Chat({ room }: { room: RoomView }) {
   // The key that mutes your microphone, from anywhere but a text field, while you are in voice; it says so on the button.
   const said = useHotkey(
     prefs.voiceKey,
-    inVoice
-      ? () => {
-          setMuted(!voice.muted);
-          return voice.muted ? 'Unmuted' : 'Muted';
-        }
-      : null,
+    inVoice ? () => (toggleMuted() ? 'Muted' : 'Unmuted') : null,
   );
 
   /** Mute yourself: in the bar, a microphone (yellow, with a line through it, while muted). */
   const mute = inVoice && (
-    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
+    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
       {mic(voice.muted)}
       <SaidWord said={said} />
     </button>
@@ -287,7 +282,7 @@ export function Chat({ room }: { room: RoomView }) {
                   {name(m.id)}
                   {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
                   {me ? (
-                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
+                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
                       {mic(off)}
                     </button>
                   ) : (
