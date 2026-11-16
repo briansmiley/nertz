@@ -9,7 +9,7 @@ import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CA
 import type { TableSummary } from '../shared/types';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
-import { Room, type Conn } from './room';
+import { Room, type Conn, type RoomOptions } from './room';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
 const LOBBY_TTL_MS = 60_000; // ...unless it never dealt a round: an abandoned lobby holds nothing worth keeping
@@ -60,6 +60,8 @@ export interface ServerOptions {
   rate?: number;
   /** Least time between two cards one person deals off their stock (ms). Defaults to a little under the client's pace. */
   flipMs?: number;
+  /** How every table deals a round (see `RoomOptions.deal`): the engine's, unless a test rigs the hands. */
+  deal?: RoomOptions['deal'];
   /** Where bug reports go (server/feedback.ts). Defaults to what the environment says. */
   feedback?: FeedbackOptions;
 }
@@ -207,7 +209,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
             if (!target) return over(`Table ${msg.room} not found.`);
           } else {
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
-            target = new Room(freshCode(), { flipMs });
+            target = new Room(freshCode(), { flipMs, deal: options.deal });
           }
           const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create'); // (whoever opens a table sits down at it; whoever comes to one watches until they ask for a seat)
           if (refusal) return over(refusal);

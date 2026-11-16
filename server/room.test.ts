@@ -4,25 +4,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { calledBy, checkInvariants, endVote, finishDeal, grab, inGrace, isComplete, isHidden, legalDrops, mustClear, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, deal, endVote, finishDeal, grab, inGrace, isComplete, isHidden, legalDrops, mustClear, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
-import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
+import { felt, hold, move, nertzOf, rig, run, seeded, slot, toPlay, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
-import { Client, FakeConn, opening, roomWith, send, startRound, type StateMsg } from './testkit';
+import { Client, FakeConn, opening, roomWith, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
 const sendIntent = (room: Room, conn: Conn, seq: number, intent: Intent) => room.handle(conn, { t: 'intent', seq, intent });
 
 /**
- * A deal where every player's work piles are single face-up cards: A-spades,
- * 2-spades, A-hearts and 5-diamonds (the 5 has nowhere legal to go). Dealt
- * afresh to `seats` from seed 7, whatever the room itself dealt.
+ * A deal (the room's `deal`) where every player's work piles are single face-up cards: A-spades, 2-spades, A-hearts
+ * and 5-diamonds (the 5 has nowhere legal to go). The seats in `emptyNertz` have no nertz pile: they can call.
  */
-const rigged = (seats: number[], emptyNertz: number[] = []): GameState => rig(inPlay(seats, seeded(7)), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz });
+const rigged = (emptyNertz: readonly number[] = []) => (seats: readonly number[], rng: Rng): GameState => rig(deal(seats, rng), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz });
 const filled = (g: GameState) => g.slots.flatMap((pile) => (pile ? [pile.cards.map((c) => c.id)] : []));
 
 /** What a bot does next, given its (possibly stale) view: a mix of legal moves, drags, flips, wrong moves and nonsense. */
@@ -78,11 +77,10 @@ describe('Room', () => {
   });
 
   it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
-    room.game = rigged([0, 1], [0]);
-    const [aceA, aceB, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 1, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)]; // spades
+    startRound(room, a);
+    const [aceA, aceB, twoA, twoB] = [workTop(room.game!, 0, 0), workTop(room.game!, 1, 0), workTop(room.game!, 0, 1), workTop(room.game!, 1, 1)]; // spades
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, b, 0, move(aceB, felt(0, 0))); // an Ace beaten to a place is no snipe: it has others
     sendIntent(room, a, 1, move(twoA, slot(0)));
@@ -97,13 +95,12 @@ describe('Room', () => {
   });
 
   it('tells everyone in the room of a snipe, once: the one who did it, the one it was done to, and whoever watches', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
     const c = new FakeConn();
     room.join(c, 'Cy', 'tok-cccc'); // only watching
-    room.handle(a, { t: 'start' });
-    room.game = rigged([0, 1], [0]);
-    const [aceA, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
+    startRound(room, a);
+    const [aceA, twoA, twoB] = [workTop(room.game!, 0, 0), workTop(room.game!, 0, 1), workTop(room.game!, 1, 1)];
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, b, 0, hold(twoB)); // b takes their two up while the Ace is the top
     sendIntent(room, a, 1, move(twoA, slot(0)));
@@ -117,11 +114,10 @@ describe('Room', () => {
   });
 
   it('a card let go where it never had a race to lose is no snipe', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
-    room.game = rigged([0, 1], [0]);
-    const [aceA, twoA, twoB, aceHB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1), workTop(room.game, 1, 2)];
+    startRound(room, a);
+    const [aceA, twoA, twoB, aceHB] = [workTop(room.game!, 0, 0), workTop(room.game!, 0, 1), workTop(room.game!, 1, 1), workTop(room.game!, 1, 2)];
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, a, 1, move(twoA, slot(0)));
     room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: twoA }); // a's two lay there already when b took theirs up
@@ -134,12 +130,11 @@ describe('Room', () => {
   });
 
   it('with text chat switched off a snipe still flashes for everyone, and there is no line of it where the chat is', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
     room.handle(a, { t: 'social', text: false });
-    room.handle(a, { t: 'start' });
-    room.game = rigged([0, 1], [0]);
-    const [aceA, twoA, twoB] = [workTop(room.game, 0, 0), workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
+    startRound(room, a);
+    const [aceA, twoA, twoB] = [workTop(room.game!, 0, 0), workTop(room.game!, 0, 1), workTop(room.game!, 1, 1)];
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, a, 1, move(twoA, slot(0)));
     sendIntent(room, b, 0, move(twoB, slot(0))); // too late
@@ -150,7 +145,7 @@ describe('Room', () => {
   });
 
   it('tells the table where the chat is of a round started, of how it went with the score sheet\'s numbers, and of the table started over', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged([0, 1]) });
     const [a, b] = conns as [FakeConn, FakeConn];
     const got: ServerMsg[] = [];
     room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc'); // only watching
@@ -164,12 +159,11 @@ describe('Room', () => {
     expect(room.game).not.toBe(first);
     opening(room, a);
     expect(told(got).filter((l) => l.k === 'started')).toEqual([{ k: 'started', round: 1 }]);
-    room.game = rigged([0, 1], [0, 1]);
-    sendIntent(room, a, 0, move(workTop(room.game, 0, 0), felt(-0.6, 0)));
-    sendIntent(room, a, 1, move(workTop(room.game, 0, 1), slot(0)));
-    sendIntent(room, b, 0, move(workTop(room.game, 1, 0), felt(0.6, 0)));
-    sendIntent(room, b, 1, move(workTop(room.game, 1, 1), slot(1)));
-    sendIntent(room, b, 2, move(workTop(room.game, 1, 2), felt(1.5, 0)));
+    sendIntent(room, a, 0, move(workTop(room.game!, 0, 0), felt(-0.6, 0)));
+    sendIntent(room, a, 1, move(workTop(room.game!, 0, 1), slot(0)));
+    sendIntent(room, b, 0, move(workTop(room.game!, 1, 0), felt(0.6, 0)));
+    sendIntent(room, b, 1, move(workTop(room.game!, 1, 1), slot(1)));
+    sendIntent(room, b, 2, move(workTop(room.game!, 1, 2), felt(1.5, 0)));
     sendIntent(room, a, 2, { k: 'nertz' }); // called by a, with fewer cards played than b
     expect(room.phase).toBe('results');
     expect(room.lastRound!.scores.map((s) => s.delta)).toEqual([2, 3]);
@@ -203,7 +197,7 @@ describe('Room', () => {
   const standUp = (room: Room, conn: Conn, id?: number) => room.handle(conn, { t: 'sit', on: false, ...(id === undefined ? {} : { id }) });
 
   it('whoever comes to a table watches until they ask for a seat; whoever opens it sits down', () => {
-    const { room } = roomWith(0);
+    const { room } = roomWith(0, { deal: rigged([0]) });
     const [a, b, c] = [new FakeConn(), new FakeConn(), new FakeConn()];
     room.join(a, 'A', 'tok-aaaa', true); // (as the server does for `create`)
     room.join(b, 'B', 'tok-bbbb');
@@ -228,7 +222,6 @@ describe('Room', () => {
     standUp(room, c);
     expect(whereAll(room, a)).toEqual(['A@0', 'B@1', 'C:w']);
     sitDown(room, c);
-    room.game = rigged([0, 1], [0]);
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(whereAll(room, a)).toEqual(['A@0', 'B@1', 'C@2']);
     room.handle(a, { t: 'start' });
@@ -310,13 +303,12 @@ describe('Room', () => {
   });
 
   it('someone sent away is gone at once, also from the score sheet; someone who stands up watches until they ask for a seat again', () => {
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: rigged([0]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     standUp(room, c);
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
-    room.handle(a, { t: 'start' });
+    startRound(room, a);
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]); // not dealt in, though seats are free
-    room.game = rigged([0, 1], [0]);
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']); // nor seated when the round ends: they chose to watch
     sitDown(room, b, 2); // not theirs to seat
@@ -366,7 +358,8 @@ describe('Room', () => {
   });
 
   it('deals in whoever sits down after the deal but before Start; and deals nothing over to one player and someone watching', () => {
-    const { room, conns } = roomWith(3);
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(3, { deal: rigged([0, 1]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     standUp(room, c);
     room.handle(a, { t: 'start' });
@@ -376,7 +369,7 @@ describe('Room', () => {
     expect(room.game!.status.at).toBe('dealing');
     standUp(room, c); // (not out of a round they hold cards in: so, on the next score sheet)
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2']);
-    room.game = rigged([0, 1, 2], [0]);
+    opening(room, a);
     sendIntent(room, a, 0, { k: 'nertz' });
     standUp(room, c);
     startRound(room, a);
@@ -388,7 +381,6 @@ describe('Room', () => {
     room.disconnect(a);
     sitDown(room, c); // mid-round: waits
     room.join(b, 'P1', 'tok-0001');
-    room.game = rigged([0, 1], [1]);
     sendIntent(room, b, 0, { k: 'nertz' });
     room.handle(b, { t: 'start' }); // (the dealer while the host is away)
     room.disconnect(b);
@@ -401,12 +393,10 @@ describe('Room', () => {
   });
 
   it('a line of the score sheet is its player\'s, not its seat\'s: whoever has the seat next is not shown as them, and they are back in it if it is free', () => {
-    const { room, conns } = roomWith(MAX_PLAYERS);
-    const all = Array.from({ length: MAX_PLAYERS }, (_, i) => i);
+    const { room, conns } = roomWith(MAX_PLAYERS, { deal: rigged([0]) });
     const w = new FakeConn();
     room.join(w, 'W', 'tok-wwww', true);
     startRound(room, conns[0]!);
-    room.game = rigged(all, [0]);
     sendIntent(room, conns[0]!, 0, { k: 'nertz' });
     standUp(room, conns[3]!);
     room.flush();
@@ -433,7 +423,7 @@ describe('Room', () => {
   });
 
   it('someone sent away while their cards are in a round is gone when it ends: off the sheet, not back by their token, the table handed on', () => {
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: rigged([1]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     startRound(room, a);
     room.disconnect(a); // the host is away: B deals, and sends the host away
@@ -444,7 +434,6 @@ describe('Room', () => {
     room.flush();
     expect(back.last.room).toMatchObject({ me: 3, seat: null });
     room.handle(back, { t: 'leave' });
-    room.game = rigged([0, 1, 2], [1]);
     sendIntent(room, b, 0, { k: 'nertz' });
     room.flush();
     expect(room.phase).toBe('results');
@@ -460,7 +449,7 @@ describe('Room', () => {
   });
 
   it('whoever leaves in the middle of a round is gone for good: their cards lie there until it is over, back they are someone new; after it they are off the list, their line staying', () => {
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: rigged([0]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     const late = new FakeConn();
     startRound(room, a);
@@ -473,7 +462,6 @@ describe('Room', () => {
     room.flush();
     expect(again.last.room).toMatchObject({ me: 4, seat: null });
     room.handle(again, { t: 'leave' }); // (and off again: a watcher goes at once)
-    room.game = rigged([0, 1, 2], [0]);
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'Late@2']); // the round is over: gone, and the seat is the next one's
     expect(a.last.room.lastRound!.scores.find((s) => s.seat === 2)).toMatchObject({ id: 2, name: 'P2', delta: -26, total: -26 });
@@ -488,15 +476,14 @@ describe('Room', () => {
   });
 
   it('a host who stands up still hosts, unless they hand the table on: to a person at it, who has it for good', () => {
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: rigged([1]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     const host = () => (room.flush(), c.last.room.players.find((p) => p.isHost)!.name);
     room.handle(a, { t: 'addBot', level: 'slow' }); // (id 3)
     standUp(room, a);
     expect(host()).toBe('P0'); // watching, and still the one who deals
-    room.handle(a, { t: 'start' });
+    startRound(room, a);
     expect(room.game!.players.map((p) => p.seat)).toEqual([1, 2, 3]);
-    room.game = rigged([1, 2, 3], [1]);
     sendIntent(room, b, 0, { k: 'nertz' });
     room.handle(b, { t: 'host', id: 1 }); // not theirs to hand on
     room.handle(a, { t: 'host', id: 3 }); // not to a bot
@@ -567,44 +554,42 @@ describe('Room', () => {
   });
 
   it('linearises a race for one pile: first arrival lands, the loser is rejected and its card stays put', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged() });
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
-    room.game = rigged([0, 1]);
-    const [aceA, aceB] = [workTop(room.game, 0, 0), workTop(room.game, 1, 0)];
+    startRound(room, a);
+    const [aceA, aceB] = [workTop(room.game!, 0, 0), workTop(room.game!, 1, 0)];
     sendIntent(room, a, 0, move(aceA, felt(-0.5, 0)));
     sendIntent(room, b, 0, move(aceB, felt(0.5, 0)));
     // Both players aim their 2 of spades at a's ace before either has heard about the other.
-    const [twoA, twoB] = [workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
+    const [twoA, twoB] = [workTop(room.game!, 0, 1), workTop(room.game!, 1, 1)];
     sendIntent(room, b, 1, move(twoB, slot(0)));
     sendIntent(room, a, 1, move(twoA, slot(0)));
     room.flush();
     // No fallback: a's 2 would fit b's ace in slot 1, but it was dropped on slot 0, so it goes home.
-    expect(room.game.slots[0]!.cards.map((c) => c.id)).toEqual([aceA, twoB]);
-    expect(room.game.slots[1]!.cards.map((c) => c.id)).toEqual([aceB]);
-    expect(filled(room.game)).toHaveLength(2);
-    expect(workTop(room.game, 0, 1)).toBe(twoA); // a's card never left its pile
+    expect(room.game!.slots[0]!.cards.map((c) => c.id)).toEqual([aceA, twoB]);
+    expect(room.game!.slots[1]!.cards.map((c) => c.id)).toEqual([aceB]);
+    expect(filled(room.game!)).toHaveLength(2);
+    expect(workTop(room.game!, 0, 1)).toBe(twoA); // a's card never left its pile
     expect(a.last.ack).toBe(1);
     expect(b.last.ack).toBe(1);
     expect(a.last.room.game).toEqual(b.last.room.game);
-    expect(checkInvariants(room.game)).toBeNull();
+    expect(checkInvariants(room.game!)).toBeNull();
   });
 
   it('linearises two aces racing for one patch of felt: first wins, the other returns', () => {
-    const { room, conns } = roomWith(2);
+    const { room, conns } = roomWith(2, { deal: rigged() });
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
-    room.game = rigged([0, 1]);
-    const [aceA, aceB] = [workTop(room.game, 0, 2), workTop(room.game, 1, 2)]; // both hearts
+    startRound(room, a);
+    const [aceA, aceB] = [workTop(room.game!, 0, 2), workTop(room.game!, 1, 2)]; // both hearts
     sendIntent(room, b, 0, move(aceB, felt(0, 0)));
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     room.flush();
-    expect(filled(room.game)).toEqual([[aceB]]);
-    expect(workTop(room.game, 0, 2)).toBe(aceA);
+    expect(filled(room.game!)).toEqual([[aceB]]);
+    expect(workTop(room.game!, 0, 2)).toBe(aceA);
     expect([a.last.ack, b.last.ack]).toEqual([0, 0]);
     sendIntent(room, a, 1, move(aceA, felt(0.6, 0))); // a deliberate second drop on clear felt is fine
-    expect(room.game.slots.slice(0, 2).map((pile) => pile!.cards.map((c) => c.id))).toEqual([[aceB], [aceA]]);
-    expect(checkInvariants(room.game)).toBeNull();
+    expect(room.game!.slots.slice(0, 2).map((pile) => pile!.cards.map((c) => c.id))).toEqual([[aceB], [aceA]]);
+    expect(checkInvariants(room.game!)).toBeNull();
   });
 
   it('resumes the same seat and hand on reconnect, seats a stranger mid-round only to watch, and lets the newest socket win', () => {
@@ -740,6 +725,28 @@ describe('Room', () => {
     expect(checkInvariants(room.game!)).toBeNull();
   });
 
+  it('the round clock starts on the word, stands still while the round is paused, and stops when it is over', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2, { deal: rigged([0]) });
+    const [a, b] = conns as [FakeConn, FakeConn];
+    const clock = () => (room.flush(), b.last.room.clock); // (as the latest snapshot says it: one is sent on every change)
+    expect(clock()).toBeNull(); // the lobby
+    room.handle(a, { t: 'start' });
+    expect(clock()).toEqual({ ms: 0, running: false }); // the deal
+    opening(room, a);
+    expect(clock()).toEqual({ ms: 0, running: true }); // "...NERTZ!"
+    vi.advanceTimersByTime(4000);
+    room.handle(b, { t: 'pause', on: true });
+    expect(clock()).toEqual({ ms: 4000, running: false });
+    vi.advanceTimersByTime(60_000);
+    room.handle(b, { t: 'pause', on: false });
+    expect(clock()).toEqual({ ms: 4000, running: true });
+    vi.advanceTimersByTime(1000);
+    sendIntent(room, a, 0, { k: 'nertz' });
+    expect(room.phase).toBe('results');
+    expect(clock()).toEqual({ ms: 5000, running: false });
+  });
+
   it('ends the round where it stands when every connected person votes to end it, without a caller', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
@@ -755,16 +762,20 @@ describe('Room', () => {
   });
 
   it('a round ended by vote is over on the final table like any other: no card is left in a hand, no finished pile left to clear', () => {
-    const { room, conns } = roomWith(2);
+    // Seat 1 is dealt its spades from 3 to the King as its nertz pile, the Ace and 2 on its work piles: it plays them all out, and has not carried them to the tray.
+    const { room, conns } = roomWith(2, { deal: (seats, rng) => nertzOf(rigged()(seats, rng), 1, run('S', 13, 3)) });
     const [a, b] = conns as [FakeConn, FakeConn];
     startRound(room, a);
-    room.game = withPile(rigged([0, 1]), 0, 1, 'S', 13); // seat 1 finished the spades, and has not carried them to the tray
-    sendIntent(room, a, 0, hold(workTop(room.game, 0, 2)));
+    sendIntent(room, b, 0, move(workTop(room.game!, 1, 0), felt(0, 0)));
+    sendIntent(room, b, 1, move(workTop(room.game!, 1, 1), slot(0)));
+    for (let seq = 2; seq <= 12; seq++) sendIntent(room, b, seq, move(room.game!.players[1]!.nertz.at(-1)!.id, slot(0)));
+    expect(room.game!.slots[0]!.cards).toHaveLength(13);
+    sendIntent(room, a, 0, hold(workTop(room.game!, 0, 2)));
     sendIntent(room, a, 1, { k: 'end', on: true });
     room.flush();
-    expect(b.last.room.game!.players.map((p) => p.holding)).toEqual([workTop(room.game, 0, 2), null]);
+    expect(b.last.room.game!.players.map((p) => p.holding)).toEqual([workTop(room.game!, 0, 2), null]);
     expect(mustClear(b.last.room.game!, 1)).toBe(true);
-    sendIntent(room, b, 0, { k: 'end', on: true }); // (the vote is the one thing a finished pile does not hold up)
+    sendIntent(room, b, 13, { k: 'end', on: true }); // (the vote is the one thing a finished pile does not hold up)
     room.flush();
     for (const conn of [a, b]) {
       const { phase, game } = conn.last.room;
@@ -796,15 +807,14 @@ describe('Room', () => {
 
   it('ends the round on "Nertz!" (at once when nobody holds a card), scores it, and deals the next round without players who left', () => {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: rigged([1]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     startRound(room, a);
     sendIntent(room, a, 0, { k: 'nertz' }); // 13 cards left: refused
     expect(room.phase).toBe('playing');
-    room.game = rigged([0, 1, 2], [1]);
-    sendIntent(room, a, 1, move(workTop(room.game, 0, 0), felt(-0.6, 0)));
-    sendIntent(room, b, 0, move(workTop(room.game, 1, 0), felt(0.6, 0)));
-    sendIntent(room, b, 1, move(workTop(room.game, 1, 2), felt(1.5, 0)));
+    sendIntent(room, a, 1, move(workTop(room.game!, 0, 0), felt(-0.6, 0)));
+    sendIntent(room, b, 0, move(workTop(room.game!, 1, 0), felt(0.6, 0)));
+    sendIntent(room, b, 1, move(workTop(room.game!, 1, 2), felt(1.5, 0)));
     room.flush();
     expect(a.last.room.timerMs).toBeNull();
     sendIntent(room, b, 2, { k: 'nertz' });
@@ -849,43 +859,46 @@ describe('Room', () => {
   });
 
   it('counts cleared piles in the tray, only lets the player who placed the King clear, and lets them do nothing else first', () => {
-    const { room, conns } = roomWith(2);
+    // Seat 1 plays its spades, Ace to Queen, out of its nertz pile into slot 0; seat 0 has the King on a work pile, and an Ace for a nertz pile.
+    const kingUp = (seats: readonly number[], rng: Rng): GameState =>
+      nertzOf(nertzOf(rig(deal(seats, rng), { work: ['S13', 'H2', 'H1', 'D5'] }), 0, ['S1']), 1, run('S', 12, 1));
+    const { room, conns } = roomWith(2, { deal: kingUp });
     const [a, b] = conns as [FakeConn, FakeConn];
-    room.handle(a, { t: 'start' });
-    // Seat 1's spades, Ace to Queen, are already out in slot 0; seat 0 holds the King on a work pile.
-    const g = withPile(rigged([0, 1], [0]), 0, 1, 'S', 12);
-    const pile = g.slots[0]!.cards;
-    const king = (g.players[0]!.stock as Card[]).find((c) => c.suit === 'S' && c.rank === 13)!;
-    room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, stock: p.stock.filter((c) => c !== king), work: [[king], ...p.work.slice(1)], waste: [p.work[0]![0]!] } : p)) };
-    expect(checkInvariants(room.game)).toBeNull();
+    startRound(room, a);
+    sendIntent(room, b, 0, move(room.game!.players[1]!.nertz.at(-1)!.id, felt(0, 0)));
+    for (let seq = 1; seq < 12; seq++) sendIntent(room, b, seq, move(room.game!.players[1]!.nertz.at(-1)!.id, slot(0)));
+    const pile = room.game!.slots[0]!.cards;
+    expect(pile).toHaveLength(12);
+    const king = room.game!.players[0]!.work[0]![0] as Card;
+    expect(checkInvariants(room.game!)).toBeNull();
     sendIntent(room, a, 0, move(king.id, slot(0)));
-    sendIntent(room, b, 0, { k: 'clear', slot: 0 }); // not theirs to clear
-    expect(room.game.tray).toHaveLength(0);
+    sendIntent(room, b, 12, { k: 'clear', slot: 0 }); // not theirs to clear
+    expect(room.game!.tray).toHaveLength(0);
     // Clear-first: until the pile is in the tray everything else from seat 0 is refused (and acked), the Nertz call included; seat 1 plays on.
-    const waiting = room.game;
-    const tries: Intent[] = [{ k: 'flip' }, { k: 'stuck', on: true }, hold(waiting.players[0]!.waste[0]!.id), move(waiting.players[0]!.waste[0]!.id, felt(0.8, 0)), { k: 'nertz' }];
+    const waiting = room.game!;
+    const tries: Intent[] = [{ k: 'flip' }, { k: 'stuck', on: true }, hold(waiting.players[0]!.nertz[0]!.id), move(waiting.players[0]!.nertz[0]!.id, felt(0.8, 0)), { k: 'nertz' }];
     tries.forEach((intent, i) => sendIntent(room, a, 1 + i, intent));
     expect(room.game).toBe(waiting);
     expect(room.phase).toBe('playing');
     room.flush();
     expect(a.last.ack).toBe(tries.length);
-    sendIntent(room, b, 1, { k: 'flip' });
-    expect(room.game.players[1]!.waste).toHaveLength(1);
+    sendIntent(room, b, 13, { k: 'flip' });
+    expect(room.game!.players[1]!.waste).toHaveLength(1);
     sendIntent(room, a, 10, { k: 'clear', slot: 0 });
     room.flush();
     expect(b.last.room.game!.tray).toEqual([wire([...pile, king])]);
     expect(b.last.room.game!.slots[0]).toBeNull();
-    const ace = room.game.players[0]!.waste[0]!.id;
+    const ace = room.game!.players[0]!.nertz[0]!.id;
     sendIntent(room, a, 11, move(ace, felt(0, 0))); // the freed slot, and the felt it lay on, take a new Ace
-    expect(room.game.slots[0]!.cards.map((c) => c.id)).toEqual([ace]);
+    expect(room.game!.slots[0]!.cards.map((c) => c.id)).toEqual([ace]);
     sendIntent(room, a, 12, { k: 'nertz' });
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
       { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, look: PLAIN_LOOK },
-      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length, look: PLAIN_LOOK },
+      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game!.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game!.players[1]!.nertz.length, total: 12 - 2 * room.game!.players[1]!.nertz.length, look: PLAIN_LOOK },
     ]);
     expect(a.last.room.game!.tray).toHaveLength(1); // still there for the end-of-round sequence
-    expect(checkInvariants(room.game)).toBeNull();
+    expect(checkInvariants(room.game!)).toBeNull();
   });
 
   describe('the deal', () => {
@@ -1012,10 +1025,9 @@ describe('Room', () => {
       expect(room.game!.status.at).toBe('dealing'); // nothing fired on a forgotten room
 
       // A second round on a live room: scored round 1, then a fresh deal with its own timer.
-      const next = roomWith(2);
+      const next = roomWith(2, { deal: rigged([0]) });
       const [x, y] = next.conns as [FakeConn, FakeConn];
       startRound(next.room, x);
-      next.room.game = rigged([0, 1], [0]);
       sendIntent(next.room, x, 0, { k: 'nertz' });
       expect(next.room.phase).toBe('results');
       expect(vi.getTimerCount()).toBe(0);
@@ -1134,7 +1146,7 @@ describe('Room', () => {
 
     it('is ignored in the lobby, while the cards are being dealt, during play and on the score sheet', () => {
       vi.useFakeTimers();
-      const { room, conns } = roomWith(2);
+      const { room, conns } = roomWith(2, { deal: rigged([0]) });
       const [a] = conns as [FakeConn, FakeConn];
       room.handle(a, { t: 'go' });
       expect(room.phase).toBe('lobby');
@@ -1147,7 +1159,7 @@ describe('Room', () => {
       vi.advanceTimersByTime(1);
       room.handle(a, { t: 'go' });
       vi.advanceTimersByTime(START_MS);
-      const open = (room.game = rigged([0, 1], [0]));
+      const open = room.game;
       room.handle(a, { t: 'go' });
       expect(room.game).toBe(open);
       sendIntent(room, a, 0, { k: 'nertz' });
@@ -1246,10 +1258,9 @@ describe('Room', () => {
       vi.advanceTimersByTime(START_MS * 3);
       expect(room.game!.status.at).toBe('countdown'); // nothing fired on a forgotten room
 
-      const next = roomWith(2);
+      const next = roomWith(2, { deal: rigged([0]) });
       const [x, y] = next.conns as [FakeConn, FakeConn];
       startRound(next.room, x);
-      next.room.game = rigged([0, 1], [0]);
       sendIntent(next.room, x, 0, { k: 'nertz' });
       next.room.handle(x, { t: 'start' });
       vi.advanceTimersByTime(DEAL_MS);
@@ -1263,14 +1274,13 @@ describe('Room', () => {
   });
 
   describe('held-card grace', () => {
-    /** Three players on the rigged deal; seat 1's nertz pile is empty, so `b` can call. */
-    function table() {
+    /** Three players on the rigged deal, and then `also`; seat 1's nertz pile is empty, so `b` can call. */
+    function table(also = (g: GameState) => g) {
       vi.useFakeTimers();
-      const { room, conns } = roomWith(3);
+      const { room, conns } = roomWith(3, { deal: (seats, rng) => also(rigged([1])(seats, rng)) });
       const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
       startRound(room, a);
-      room.game = rigged([0, 1, 2], [1]);
-      const g = room.game;
+      const g = room.game!;
       const cards = (seat: number) => ({ aceS: workTop(g, seat, 0), twoS: workTop(g, seat, 1), aceH: workTop(g, seat, 2), fiveD: workTop(g, seat, 3) });
       return { room, a, b, c, A: cards(0), C: cards(2) };
     }
@@ -1411,16 +1421,16 @@ describe('Room', () => {
     // Regression (R1): a move used to lift whatever lay on the named card NOW. A client that had predicted its top
     // card gone and dragged the card beneath it would carry the refused card along to a pile it was never dropped on.
     it('a move says how many cards were lifted: a refused card is not carried along by a drag of the card under it', () => {
-      const { room, a, c, A, C } = table();
-      const g = room.game!;
-      const me = g.players[0]!;
-      const pool = [...me.nertz, ...me.stock] as Card[];
-      const [twoH, threeC] = [pool.find((x) => x.suit === 'H' && x.rank === 2)!, pool.find((x) => x.suit === 'C' && x.rank === 3)!];
-      const rest = (pile: readonly unknown[]) => (pile as Card[]).filter((x) => x !== twoH && x !== threeC);
-      const ace = me.work[0]![0]!;
       // Seat 0: Ace of spades on the 2 of hearts in pile 0, the 3 of clubs alone in pile 1.
-      room.game = { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest(p.nertz), stock: [...rest(p.stock), p.work[1]![0]!], work: [[twoH, ace], [threeC], p.work[2]!, p.work[3]!] } : p)) };
-      expect(checkInvariants(room.game)).toBeNull();
+      const { room, a, c, A, C } = table((g) => {
+        const me = g.players[0]!;
+        const pool = [...me.nertz, ...me.stock] as Card[];
+        const [twoH, threeC] = [pool.find((x) => x.suit === 'H' && x.rank === 2)!, pool.find((x) => x.suit === 'C' && x.rank === 3)!];
+        const rest = (pile: readonly unknown[]) => (pile as Card[]).filter((x) => x !== twoH && x !== threeC);
+        return { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, nertz: rest(p.nertz), stock: [...rest(p.stock), p.work[1]![0]!], work: [[twoH, p.work[0]![0]!], [threeC], p.work[2]!, p.work[3]!] } : p)) };
+      });
+      const [twoH, threeC] = [room.game!.players[0]!.work[0]![0] as Card, room.game!.players[0]!.work[1]![0] as Card];
+      expect(checkInvariants(room.game!)).toBeNull();
 
       sendIntent(room, c, 0, move(C.aceS, felt(0, 0))); // seat 2 takes the place first
       // Seat 0, still looking at the bare felt: drops the Ace there, then at once drags the 2 it uncovered to the 3.
@@ -1428,12 +1438,12 @@ describe('Room', () => {
       sendIntent(room, a, 1, move(A.aceS, felt(0, 0)));
       sendIntent(room, a, 2, hold(twoH.id));
       sendIntent(room, a, 3, move(twoH.id, { k: 'work', i: 1 })); // "one card", but two lie there now
-      const work = room.game.players[0]!.work.map((pile) => pile.map((x) => x.id));
+      const work = room.game!.players[0]!.work.map((pile) => pile.map((x) => x.id));
       expect(work.slice(0, 2)).toEqual([[twoH.id, A.aceS], [threeC.id]]); // both are back where they came from
-      expect(room.game.players[0]!.holding).toBeNull();
+      expect(room.game!.players[0]!.holding).toBeNull();
       sendIntent(room, a, 4, move(twoH.id, { k: 'work', i: 1 }, 2)); // lifting both on purpose is an ordinary run move
-      expect(room.game.players[0]!.work[1]!.map((x) => x.id)).toEqual([threeC.id, twoH.id, A.aceS]);
-      expect(checkInvariants(room.game)).toBeNull();
+      expect(room.game!.players[0]!.work[1]!.map((x) => x.id)).toEqual([threeC.id, twoH.id, A.aceS]);
+      expect(checkInvariants(room.game!)).toBeNull();
     });
 
     it('the window closes by itself after 4 seconds: the card goes back and the round is scored without it', () => {
@@ -1581,22 +1591,23 @@ describe('server over real sockets', () => {
     clients.push(c);
     return c;
   };
-  /** A new table with `n` players, round started. */
-  const table = async (n: number): Promise<{ room: Room; code: string; players: Client[] }> => {
+  /** How the server deals the next table's round (`table`). */
+  let dealing: typeof deal = deal;
+  /** A new table with `n` players, its round dealt (`how`) and walked to play. */
+  const table = async (n: number, how: typeof deal = deal): Promise<{ room: Room; code: string; players: Client[] }> => {
     const players = [await open(null, 'P0')];
     const code = players[0]!.code;
     for (let i = 1; i < n; i++) players.push(await open(code, `P${i}`));
-    players[0]!.send({ t: 'start' });
-    await vi.waitFor(() => players.forEach((p) => expect(p.last.room.phase).toBe('playing')));
     const room = server.rooms.get(code)!;
-    room.game = toPlay(room.game!); // these tests are about play: skip the deal and the start (the deal timer then finds nothing to do)
+    dealing = how;
+    await startOver(room, players[0]!, players);
     return { room, code, players };
   };
 
   beforeAll(async () => {
     dist = mkdtempSync(join(tmpdir(), 'nertz-dist-'));
     writeFileSync(join(dist, 'index.html'), '<!doctype html><title>nertz test</title>');
-    server = await startServer({ port: 0, dist, rate: 1e9, flipMs: 0 }); // the swarm test floods on purpose, stock included
+    server = await startServer({ port: 0, dist, rate: 1e9, flipMs: 0, deal: (seats, rng) => dealing(seats, rng) }); // the swarm test floods on purpose, stock included
   });
   afterAll(async () => {
     await server.close();
@@ -1673,15 +1684,14 @@ describe('server over real sockets', () => {
   });
 
   it('(a) two clients racing the same rank onto one pile, and two aces onto one patch of felt: exactly one lands, both are acked, the loser stays put', async () => {
-    const { room, players } = await table(2);
+    const { room, players } = await table(2, rigged());
     const [a, b] = players as [Client, Client];
-    room.game = rigged([0, 1]);
-    const ace = workTop(room.game, a.seat, 0);
-    const twos = [workTop(room.game, 0, 1), workTop(room.game, 1, 1)];
+    const ace = workTop(room.game!, a.seat, 0);
+    const twos = [workTop(room.game!, 0, 1), workTop(room.game!, 1, 1)];
     a.intent(move(ace, felt(-0.6, 0)));
     await vi.waitFor(() => expect(a.last.ack).toBe(0));
     // Same tick, both sockets: whichever frame the server reads first wins. Two red aces race for one place as well.
-    const hearts = [workTop(room.game, 0, 2), workTop(room.game, 1, 2)];
+    const hearts = [workTop(room.game!, 0, 2), workTop(room.game!, 1, 2)];
     a.intent(move(twos[0]!, slot(0)));
     b.intent(move(twos[1]!, slot(0)));
     const seqA = a.intent(move(hearts[0]!, felt(0.6, 0)));
@@ -1690,27 +1700,26 @@ describe('server over real sockets', () => {
       expect(a.last.ack).toBe(seqA);
       expect(b.last.ack).toBe(seqB);
     });
-    const pile = room.game.slots[0]!.cards.map((c) => c.id);
+    const pile = room.game!.slots[0]!.cards.map((c) => c.id);
     expect(pile).toHaveLength(2);
     expect(twos).toContain(pile[1]);
     const loser = twos.find((id) => id !== pile[1])!;
-    expect(room.game.players.some((p) => p.work[1]!.at(-1)?.id === loser)).toBe(true); // still where it was
-    const red = room.game.slots[1]!.cards.map((c) => c.id);
+    expect(room.game!.players.some((p) => p.work[1]!.at(-1)?.id === loser)).toBe(true); // still where it was
+    const red = room.game!.slots[1]!.cards.map((c) => c.id);
     expect(red).toHaveLength(1);
     expect(hearts).toContain(red[0]);
-    expect(room.game.players.some((p) => p.work[2]!.at(-1)?.id === hearts.find((id) => id !== red[0]))).toBe(true);
-    expect(filled(room.game)).toHaveLength(2); // nothing was rerouted anywhere else
-    expect(checkInvariants(room.game)).toBeNull();
+    expect(room.game!.players.some((p) => p.work[2]!.at(-1)?.id === hearts.find((id) => id !== red[0]))).toBe(true);
+    expect(filled(room.game!)).toHaveLength(2); // nothing was rerouted anywhere else
+    expect(checkInvariants(room.game!)).toBeNull();
     await vi.waitFor(() => {
       for (const c of [a, b]) expect(c.last.room.game).toEqual(wire(viewFor(room.game!, c.seat)));
     });
   });
 
   it('held-card grace over the wire: hold, call, countdown duration, one last move, then results with the final table', async () => {
-    const { room, players } = await table(3);
+    const { room, players } = await table(3, rigged([1]));
     const [a, b, c] = players as [Client, Client, Client];
-    room.game = rigged([0, 1, 2], [1]);
-    const [aceA, aceC] = [workTop(room.game, 0, 0), workTop(room.game, 2, 0)];
+    const [aceA, aceC] = [workTop(room.game!, 0, 0), workTop(room.game!, 2, 0)];
     a.intent({ k: 'hold', cardId: aceA });
     c.intent({ k: 'hold', cardId: aceC });
     await vi.waitFor(() => expect(b.last.room.game!.players.map((p) => p.holding)).toEqual([aceA, null, aceC]));
@@ -1879,11 +1888,9 @@ describe('server over real sockets', () => {
     try {
       const a = await Client.open(paced.port, null, 'P0');
       const b = await Client.open(paced.port, a.code, 'P1');
-      a.send({ t: 'start' });
-      await vi.waitFor(() => expect(b.last.room.phase).toBe('playing'));
       const room = paced.rooms.get(a.code)!;
-      room.game = toPlay(room.game!);
-      const stock = room.game.players[1]!.stock.length;
+      await startOver(room, a, [a, b]);
+      const stock = room.game!.players[1]!.stock.length;
       let last = 0;
       for (let i = 0; i < 6; i++) last = b.intent({ k: 'flip' });
       await vi.waitFor(() => expect(b.last.ack).toBe(last)); // every one is answered...
@@ -1905,14 +1912,12 @@ describe('server over real sockets', () => {
     try {
       const a = await Client.open(limited.port, null, 'P0');
       const b = await Client.open(limited.port, a.code, 'P1');
-      a.send({ t: 'start' });
-      await vi.waitFor(() => expect(b.last.room.phase).toBe('playing'));
       const room = limited.rooms.get(a.code)!;
-      room.game = toPlay(room.game!);
-      const stock = room.game.players[1]!.stock.length;
+      await startOver(room, a, [a, b]);
+      const stock = room.game!.players[1]!.stock.length;
       // Nobody deals faster than a few cards a second; this is a lap of the stock (a flip per card, and one to turn the
       // waste over) three times over, sent in the same instant, with a drag started and dropped between the laps.
-      const top = room.game.players[1]!.nertz.at(-1)!.id;
+      const top = room.game!.players[1]!.nertz.at(-1)!.id;
       let last = 0;
       for (let lap = 0; lap < 3; lap++) {
         for (let i = 0; i <= stock; i++) last = b.intent({ k: 'flip' });
