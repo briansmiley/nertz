@@ -295,6 +295,7 @@ describe('Room', () => {
     expect(said()).toEqual(['hello', 'still here']);
     room.handle(conns[0]!, { t: 'social', watchText: false, watchVoice: false });
     expect(inVoice()).toEqual([2]); // put out of voice at once
+    expect(got.filter((m) => m.t === 'social').at(-1)).toMatchObject({ text: true, voice: true, watchText: false, watchVoice: false });
     room.handle(w, { t: 'chat', text: 'anyone?' });
     room.handle(w, { t: 'voice', on: true, muted: false });
     room.handle(conns[1]!, { t: 'chat', text: 'seated people still can' });

@@ -103,8 +103,8 @@ export function Chat({ room }: { room: RoomView }) {
   /** Those without a seat (waiting for one, or just watching), and whether you are one: the host may keep them out of the chat, or of voice. */
   const watchers = room.players.filter((p) => p.seat === null);
   const watching = room.seat === null;
-  const mayText = social.text && (!watching || social.watchText !== false);
-  const mayVoice = social.voice && (!watching || social.watchVoice !== false);
+  const mayText = social.text && (!watching || social.watchText);
+  const mayVoice = social.voice && (!watching || social.watchVoice);
   const typing = open === 'chat' && mayText;
   // Stood up while in voice, at a table where those watching are kept out of it: out, and the microphone released.
   useEffect(() => {

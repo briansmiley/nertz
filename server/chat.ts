@@ -158,7 +158,7 @@ export class Social {
   }
 
   private state(): SocialServerMsg {
-    return { t: 'social', text: this.text, voice: this.voice, ...(this.watchText ? {} : { watchText: false }), ...(this.watchVoice ? {} : { watchVoice: false }), inVoice: [...this.inVoice].map(([m, muted]) => ({ id: m.id, muted })), ...(ICE ? { ice: ICE } : {}) };
+    return { t: 'social', text: this.text, voice: this.voice, watchText: this.watchText, watchVoice: this.watchVoice, inVoice: [...this.inVoice].map(([m, muted]) => ({ id: m.id, muted })), ...(ICE ? { ice: ICE } : {}) };
   }
 
   private announce(members: readonly Member[]): void {
