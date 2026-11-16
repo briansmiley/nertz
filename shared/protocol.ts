@@ -154,6 +154,14 @@ export function backGroups(): { name: string; backs: Back[] }[] {
   return [...BACK_GROUPS.map((g) => ({ name: g.name, backs: [...g.backs] })), ...(rest.length ? [{ name: 'Other', backs: rest }] : [])];
 }
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
+/**
+ * A back drawn by chance from `pool` (all of them, unless a lot is given), never `had` while the pool has another:
+ * what a card turned over shows (the hand on the home page), and a player's draw from their lot. `roll` is in [0, 1).
+ */
+export function anotherBack(had: Back | undefined, pool: readonly Back[] = Object.keys(CARD_BACKS) as Back[], roll: number = Math.random()): Back {
+  const others = pool.length > 1 ? pool.filter((b) => b !== had) : pool;
+  return others[Math.min(others.length - 1, Math.floor(roll * others.length))]!;
+}
 
 export type ClientMsg =
   /** Open a new table, and sit down at it; the server picks the code and answers with the first snapshot (`room.code`). */

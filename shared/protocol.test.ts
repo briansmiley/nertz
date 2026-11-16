@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, DRAG_HZ, DRAG_RATE, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, PLAIN_LOOK, randomRoomCode } from './protocol';
+import { anotherBack, CARD_BACKS, cleanName, DRAG_HZ, DRAG_RATE, isBack, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, PLAIN_LOOK, randomRoomCode } from './protocol';
 import { TABLE } from './table';
 
 const TOKEN = 'abcDEF123_-xyz';
@@ -149,5 +149,17 @@ describe('small helpers', () => {
     expect(isRoomCode(randomRoomCode(() => 1))).toBe(true);
     expect(isRoomCode('abcd')).toBe(false);
     expect(isRoomCode('ABCDE')).toBe(false);
+  });
+
+  it('anotherBack is any back but the one the card had', () => {
+    const all = Object.keys(CARD_BACKS) as (keyof typeof CARD_BACKS)[];
+    for (const had of all) {
+      const seen = new Set([0, 0.25, 0.5, 0.75, 0.999999, 1].map((roll) => anotherBack(had, undefined, roll)));
+      for (const b of seen) expect(isBack(b) && b !== had).toBe(true);
+    }
+    const reached = new Set(Array.from({ length: all.length - 1 }, (_, i) => anotherBack('plain', undefined, (i + 0.5) / (all.length - 1))));
+    expect(reached.size).toBe(all.length - 1); // every other back can come up
+    expect(anotherBack('plain', ['plain'], 0.5)).toBe('plain'); // a lot of one: that one
+    expect(anotherBack('plain', ['plain', all[1]!], 0)).toBe(all[1]); // never the one it had while there is another
   });
 });

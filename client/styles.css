@@ -2023,6 +2023,17 @@ button {
   animation-delay: calc(var(--i) * 55ms);
 }
 
+/* A back of the fan, pressed, turns over about its own middle. */
+.spread .turn {
+  position: absolute;
+  inset: 0;
+}
+
+.spread .mini:has(.turn) {
+  perspective: 500px;
+  cursor: pointer;
+}
+
 @keyframes deal {
   from {
     rotate: 0deg;
