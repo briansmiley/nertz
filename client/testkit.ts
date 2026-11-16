@@ -12,7 +12,7 @@ import { roomOf } from '../shared/testkit';
 import type { GameState, Intent, RoomView } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 import { waitingPile } from './clearFirst';
-import { decide, EMPTY, reporter, sight, type Effect, type Gesture, type Grasp, type Hand, type Scene, type Sight } from './hand';
+import { cardDue, decide, EMPTY, reporter, sight, type Effect, type Gesture, type Grasp, type Hand, type Scene, type Sight } from './hand';
 import { computeLayout, inside, type Layout, type Placed, type Rect } from './layout';
 
 /** `seatAt`: a player at their window. */
@@ -24,6 +24,8 @@ export interface Seated {
   readonly hand: Hand | null;
   /** What there is to show of the hand: null if nothing is in it. */
   readonly sight: Sight | null;
+  /** The next card of a group coming off the stock is due (hand.ts `cardDue`). */
+  readonly cardDue: boolean;
   /** Every intent this window sent, in order. */
   sent: Intent[];
   /** Everything else hand.ts asked for: a snipe to be judged, a deal off the stock, a nag, a pile fanned out. */
@@ -102,6 +104,9 @@ export function seatAt(game: GameState, { you = 0, W = 1440, H = 900, touch = fa
     get sight() {
       const d = grasp.hand;
       return d && d.phase !== 'pressed' ? sight(d, look()) : null;
+    },
+    get cardDue() {
+      return cardDue(look());
     },
     sent: [],
     did: [],

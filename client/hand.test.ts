@@ -4,11 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { legalDrops } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
 import type { Pt } from '../shared/table';
-import { hold, move, pile, slot, table, work } from '../shared/testkit';
+import { hold, move, pile, roomOf, slot, table, work } from '../shared/testkit';
 import type { GameState, Intent } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 import { reporter } from './hand';
 import { toScreen, toTable, type Rect } from './layout';
+import { freshSync, onSend, onSnapshot, predict } from './net';
 import { seatAt, type Seated } from './testkit';
 
 /**
@@ -444,6 +445,49 @@ describe('a finished pile of yours', () => {
     t.tap(t.slot(0));
     expect(t.hand).toBeNull();
     expect(t.did).toEqual([]);
+  });
+});
+
+describe('a group coming off the stock', () => {
+  const FLIP: Intent = { k: 'flip' };
+  /** Seat 0 with its King for the Queen of spades in the middle, and one card of a group off the stock. */
+  const dealing = () => {
+    const t = seatAt(table([{ nertz: 'C3', work: ['C5', 'H4', 'DA', 'SK'], stock: 'H7 H8 H9' }, {}], { slots: [pile('S12', 0)] }));
+    t.plays(0, FLIP);
+    return t;
+  };
+
+  it('the next card is due until the group is all dealt; none while nothing can be started, nor with no group begun', () => {
+    expect(seatAt(game()).cardDue).toBe(false);
+    expect(seatAt(dealing().game, { scene: { frozen: true } }).cardDue).toBe(false);
+    const t = dealing();
+    expect(t.cardDue).toBe(true);
+    t.plays(0, FLIP);
+    expect(t.cardDue).toBe(true);
+    t.plays(0, FLIP);
+    expect(t.game.players[0]!.waste).toHaveLength(3);
+    expect(t.cardDue).toBe(false);
+  });
+
+  it('a King put on the middle while the group comes off: no card is due until the pile is in the tray, then the group goes on', () => {
+    const t = dealing();
+    t.drag(t.at('0:SK'), t.slot(0));
+    expect(t.sent).toEqual([hold('0:SK'), move('0:SK', slot(0))]);
+    expect(t.cardDue).toBe(false);
+    t.drag(t.slot(0), by({ x: t.L.trayHit.x, y: t.L.trayHit.y }, 20, 20));
+    expect(t.sent.at(-1)).toEqual({ k: 'clear', slot: 0 });
+    expect(t.cardDue).toBe(true);
+  });
+
+  it('a card the server refuses (it came too soon after the last) is undone by its snapshot: the stock is as it was, and the card is due again', () => {
+    const t = dealing();
+    const at = onSnapshot(freshSync, { rev: 1, ack: 0, room: roomOf(t.game, 0) });
+    const sent = onSend(at, FLIP);
+    expect(predict(sent)!.game!.players[0]).toMatchObject({ dealt: 2, waste: { length: 2 } });
+    expect(seatAt(predict(sent)!.game!).cardDue).toBe(true);
+    const answered = onSnapshot(sent, { rev: 2, ack: sent.seq, room: roomOf(t.game, 0) });
+    expect(predict(answered)!.game!.players[0]).toMatchObject({ dealt: 1, waste: { length: 1 } });
+    expect(seatAt(predict(answered)!.game!).cardDue).toBe(true);
   });
 });
 

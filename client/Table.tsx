@@ -13,15 +13,15 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, inGrace, isHidden, isLive } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
-import type { RoomView, Suit } from '../shared/types';
+import type { Intent, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
-import { decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
+import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
-import { onDrag, onSnipe, pause, playable, post } from './net';
+import { onDrag, onSnipe, pause, playable, post, send as play } from './net';
 import { canResume } from './Settings';
 import { calm, lookOf, usePrefs } from './prefs';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
@@ -606,25 +606,27 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   /** The table rule for moving a card without dragging it: tap (or click) it, then where it goes. */
   const tapToMove = room.settings.tapToMove;
+  const scene: Scene = { game, you, L, byId, live: stage === 'live', playingOut, frozen, tapToMove, waiting: must.slot, plays: playable };
 
   // Dealing off the stock takes time. One click (or Space) starts a group of three; the cards then come off one at a
   // time, STOCK_CARD_MS apart, and the next group cannot start sooner than that after the last card. The server
   // holds everyone to the same pace, so there is nothing to gain by clicking faster.
+  /** When the last card that went came off the stock. */
   const flipped = useRef(0);
-  const dealNow = useCallback(() => {
-    flipped.current = performance.now();
-    return send({ k: 'flip' });
+  const dealNow = useCallback((by: (intent: Intent) => boolean) => {
+    if (by({ k: 'flip' })) flipped.current = performance.now();
   }, []);
   /** A click on the stock, or Space: starts a group (or turns the waste back over), unless one is still coming off. */
   const dealGroup = useCallback(() => {
-    if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow();
+    if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow(send);
   }, [dealNow]);
-  const midGroup = !frozen && (mine?.dealt ?? 0) > 0 && (mine?.stock.length ?? 0) > 0;
+  const due = cardDue(scene);
+  // (A flip the server refuses is undone by its snapshot: the stock is as it was again, and this runs again.)
   useEffect(() => {
-    if (!midGroup) return;
-    const t = setTimeout(dealNow, Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
+    if (!due) return;
+    const t = setTimeout(() => dealNow(play), Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
     return () => clearTimeout(t);
-  }, [midGroup, mine?.dealt, mine?.stock.length, dealNow]);
+  }, [due, mine?.dealt, mine?.stock.length, dealNow]);
   useEffect(() => {
     if (frozen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -638,7 +640,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
-  const scene: Scene = { game, you, L, byId, live: stage === 'live', playingOut, frozen, tapToMove, waiting: must.slot, plays: playable };
   /** At most DRAG_HZ a second, and never once the hand is open or the table gone. */
   const telling = useMemo(() => reporter((at) => post({ t: 'drag', ...at })), []);
   useEffect(() => telling.stop, [telling]);
