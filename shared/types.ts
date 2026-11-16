@@ -231,21 +231,12 @@ export interface RoomView {
    */
   game: GameState | null;
   /**
-   * Milliseconds left in the held-card grace window at the moment this
-   * snapshot was sent; null when no grace window is running. A duration, not
-   * a timestamp: count it down locally from when the snapshot arrives.
+   * Milliseconds left of the round's timed status when this snapshot was sent, which `game.status` names: the deal
+   * (`dealing`), the "1, 2, 3" (`countdown`: play opens, on the word NERTZ!, when it reaches 0) or the held-card
+   * window (`grace`). Null in any other status. A duration, not a timestamp: count it down locally from when the
+   * snapshot arrives.
    */
-  graceMs: number | null;
-  /**
-   * Milliseconds of the deal left when this snapshot was sent (`game.status` is
-   * `dealing`); null otherwise. Like `graceMs`, a duration to count down locally.
-   */
-  dealMs: number | null;
-  /**
-   * Milliseconds of the "1, 2, 3" left when this snapshot was sent (`game.status`
-   * is `countdown`): play opens, on the word NERTZ!, when it reaches 0. Null otherwise.
-   */
-  startMs: number | null;
+  timerMs: number | null;
   /**
    * The round's clock: how long it had been played when this snapshot was sent (from the word NERTZ!, not counting
    * time paused), and whether it is running: count on locally while it is. It stops when the round ends, and stays

@@ -289,7 +289,7 @@ describe('prediction', () => {
     sync = send(sync, { k: 'hold', cardId: ace.id });
     s.apply(0, sync.pending[0]!.intent, sync.seq);
     s.apply(1, { k: 'nertz' }); // we were holding a playable card: we are in grace
-    sync = onSnapshot(sync, { ...s.snapshot(), room: { ...s.snapshot().room, graceMs: 4000 } });
+    sync = onSnapshot(sync, { ...s.snapshot(), room: { ...s.snapshot().room, timerMs: 4000 } });
     expect(inGrace(predict(sync)!.game!)).toEqual([0]);
 
     // A flip is refused locally-replayed too; the held card's move is predicted and empties grace.

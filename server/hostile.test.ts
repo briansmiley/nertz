@@ -263,14 +263,14 @@ describe('a hostile client over real sockets', () => {
     b.send({ t: 'go' }); // only the dealer starts, and only once the cards are down
     a.send({ t: 'go' });
     await closed('ready', 3 * 4); // the work tops, and no nertz top
-    expect(a.last.room.startMs).toBeNull();
+    expect(a.last.room.timerMs).toBeNull();
     b.send({ t: 'go' });
     await b.synced();
     expect(room.game!.status.at).toBe('ready');
     a.send({ t: 'go' });
     await closed('countdown', 3 * 4);
-    expect(players[2]!.last.room.startMs).toBeGreaterThan(0);
-    expect(players[2]!.last.room.startMs).toBeLessThanOrEqual(START_MS);
+    expect(players[2]!.last.room.timerMs).toBeGreaterThan(0);
+    expect(players[2]!.last.room.timerMs).toBeLessThanOrEqual(START_MS);
     // The word: every nertz top turns over, for everyone, and now the same messages count.
     await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe('play')), { timeout: START_MS + 1000 });
     for (const p of players) expect(faceUp(p)).toBe(3 * 5);
