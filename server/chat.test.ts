@@ -124,7 +124,7 @@ describe('how a round went', () => {
   const line = (id: number, seat: number, delta: number, gone = false): RoundLine => ({ id, seat, name: `P${id}`, played: delta, nertzLeft: 0, delta, total: delta, rounds: 1, ...(gone ? { gone } : {}) });
 
   it('names who called, and who scored most in it: all of them on a tie, and not one the score sheet no longer shows', () => {
-    expect(roundOver(4, { calledBy: 1, scores: [line(0, 0, 9), line(1, 1, 5), line(2, 2, 9), line(3, 3, 12, true)] })).toEqual({
+    expect(roundOver(4, { end: { by: 'nertz', seat: 1 }, scores: [line(0, 0, 9), line(1, 1, 5), line(2, 2, 9), line(3, 3, 12, true)] })).toEqual({
       k: 'over',
       round: 4,
       end: { who: 1, name: 'P1', points: 5 },
@@ -133,8 +133,8 @@ describe('how a round went', () => {
   });
 
   it('says how it ended when nobody called', () => {
-    expect(roundOver(2, { calledBy: null, ended: 'jam', scores: [line(0, 0, -4), line(1, 1, -6)] })).toMatchObject({ end: 'jam', best: [{ who: 0, points: -4 }] });
-    expect(roundOver(2, { calledBy: null, ended: 'vote', scores: [line(0, 0, 1)] }).end).toBe('vote');
+    expect(roundOver(2, { end: { by: 'jam' }, scores: [line(0, 0, -4), line(1, 1, -6)] })).toMatchObject({ end: 'jam', best: [{ who: 0, points: -4 }] });
+    expect(roundOver(2, { end: { by: 'vote' }, scores: [line(0, 0, 1)] }).end).toBe('vote');
   });
 });
 

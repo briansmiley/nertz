@@ -8,7 +8,7 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, deal, expireGrace, finishDeal, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -132,10 +132,10 @@ export class Room {
   /** Running while a called round waits for held cards to land; `graceEndsAt` is its deadline (ms epoch). */
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private graceEndsAt = 0;
-  /** Running while a new round is being dealt out (stage `dealing`); `dealEndsAt` is its deadline (ms epoch). */
+  /** Running while a new round is being dealt out (status `dealing`); `dealEndsAt` is its deadline (ms epoch). */
   private dealTimer: ReturnType<typeof setTimeout> | null = null;
   private dealEndsAt = 0;
-  /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
+  /** Running through the dealer's "1, 2, 3" (status `countdown`); `startEndsAt` is its deadline (ms epoch). */
   private startTimer: ReturnType<typeof setTimeout> | null = null;
   /** The last round whose start the chat was told of. */
   private startTold = 0;
@@ -210,7 +210,7 @@ export class Room {
       case 'go':
         return this.go(player);
       case 'ready': {
-        const stage = this.phase === 'playing' ? this.game?.stage : undefined;
+        const stage = this.game?.status.at;
         if ((stage !== 'dealing' && stage !== 'ready') || !this.inRound(player) || !!player.ready === msg.on) return;
         player.ready = msg.on;
         return this.changed();
@@ -419,7 +419,7 @@ export class Room {
 
   /** Whoever may deal says "1, 2, 3...": only once the cards are dealt and the table is waiting. Anyone else, any other time, is ignored. */
   private go(player: Player): void {
-    if (player !== this.dealer || this.phase !== 'playing' || this.game?.stage !== 'ready') return;
+    if (player !== this.dealer || this.game?.status.at !== 'ready') return;
     this.game = startCountdown(this.game);
     this.startEndsAt = Date.now() + START_MS;
     this.startTimer = this.later(START_MS, () => this.opened());
@@ -511,19 +511,18 @@ export class Room {
   /**
    * After anything that can end the round or complete an "everyone is stuck"
    * vote. Once Nertz is called the round waits (at most GRACE_MS) for the
-   * players the engine left in grace, then is scored.
+   * players the engine left in grace; once it is over, however it ended, it is scored.
    */
   private settle(): void {
     if (this.phase !== 'playing' || !this.game) return;
     this.game = resolveEndVote(resolveStuck(this.game, this.connectedSeats()), this.table.filter((p) => p.conn && !p.bot).map((p) => p.seat));
-    // A round ended without a call (a jammed table, or everyone voted to end it) ends at once: nobody is in grace.
-    if (this.game.nertzCalledBy === null && !this.game.ended) return;
-    if (!this.game.ended && !isOver(this.game)) {
-      if (this.graceTimer) return;
+    const { status } = this.game;
+    if (status.at === 'grace' && !this.graceTimer) {
       this.graceEndsAt = Date.now() + GRACE_MS;
       this.graceTimer = this.later(GRACE_MS, () => this.graceExpired());
-      return;
     }
+    // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
+    if (status.at !== 'over') return;
     if (this.graceTimer) clearTimeout(this.graceTimer);
     this.graceTimer = null;
     const scores = scoreRound(this.game).map((s) => {
@@ -541,7 +540,7 @@ export class Room {
       pairs.set(`${s.by}>${s.of}`, pair);
     }
     const snipes = [...pairs.values()].sort((a, b) => b.n - a.n || a.by - b.by || a.of - b.of);
-    this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}), ...(snipes.length ? { snipes } : {}) };
+    this.lastRound = { end: status.end, scores, ...(snipes.length ? { snipes } : {}) };
     this.phase = 'results';
     this.stopClock();
     this.pausedBy = null;
@@ -558,7 +557,7 @@ export class Room {
   private pause(player: Player, on: boolean): void {
     if (!this.game || !this.inRound(player)) return;
     if (on) {
-      if (this.pausedBy || this.game.stage !== 'play' || this.game.nertzCalledBy !== null || this.game.ended) return;
+      if (this.pausedBy || !isLive(this.game)) return;
       this.pausedBy = player;
       this.stopClock();
       for (const p of this.players) this.letGo(p);
@@ -626,8 +625,8 @@ export class Room {
 
   /** Is a round being played (the count, and play)? Not: the lobby, the score sheet, or cards dealt that nobody has played yet. */
   private get roundOn(): boolean {
-    const stage = this.phase === 'playing' ? this.game?.stage : undefined;
-    return stage === 'countdown' || stage === 'play';
+    const stage = this.game?.status.at;
+    return stage === 'countdown' || stage === 'play' || stage === 'grace';
   }
 
   /** Is there room for one more without a seat? If not, someone without one whose window is long gone gives up their place (never the host). */
@@ -888,7 +887,7 @@ export class Room {
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
   private debugBotOut(by: Player): void {
-    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || this.phase !== 'playing' || !this.game || this.game.stage !== 'play' || this.game.nertzCalledBy !== null) return;
+    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || !this.game || !isLive(this.game)) return;
     const bot = this.players.find((p) => p.bot && this.game!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -931,7 +930,7 @@ export class Room {
     const game = this.game && viewFor(this.game, at(you));
     const dealer = this.dealer;
     const hand = (p: Player) => (this.inRound(p) ? game?.players.find((g) => g.seat === p.seat) : undefined);
-    const dealt = this.phase === 'playing' && (game?.stage === 'dealing' || game?.stage === 'ready');
+    const dealt = game?.status.at === 'dealing' || game?.status.at === 'ready';
     return {
       code: this.code,
       phase: this.phase,

@@ -635,7 +635,10 @@ function Results({ room }: { room: RoomView }) {
   const host = room.players.find((p) => p.isHost);
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
-  const caller = rows.find((s) => s.seat === round?.calledBy);
+  const end = round?.end;
+  const calledBy = end?.by === 'nertz' ? end.seat : null;
+  // (Not found among the rows if they were sent away since: a bot that called, then removed.)
+  const caller = rows.find((s) => s.seat === calledBy);
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
   /** Whose line of the round this is, if they are still in the room: a line goes by who played it, not by who has its seat now. */
   const of = (s: { id: number }) => room.players.find((p) => p.id === s.id);
@@ -659,7 +662,7 @@ function Results({ room }: { room: RoomView }) {
       <Pad wide>
         <h2>Round {room.round}</h2>
         {/* Who called it is said in their own line of the sheet, with the stamp; only a round that ended some other way gets a sentence. */}
-        {!caller && <p className="lead">{round?.ended === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : round?.ended === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
+        {!caller && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
         <table className="scores">
           <thead>
             <tr>
@@ -679,7 +682,7 @@ function Results({ room }: { room: RoomView }) {
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
                   <span className="nm">{me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}</span>
-                  {s.seat === round?.calledBy && (
+                  {s.seat === calledBy && (
                     <span className="called" title={`${s.id === room.me ? 'You' : s.name} called Nertz`}>
                       Nertz!
                     </span>

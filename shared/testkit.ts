@@ -149,7 +149,7 @@ export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra 
     }
     return { seat, ...p, down, dealt: 0, stuck: h.stuck ?? false, holding: null };
   });
-  const state: GameState = { players, stage: 'play', slots: laid, tray: tray.map((t) => [...t]), nertzCalledBy: null, grace: [], ...extra };
+  const state: GameState = { players, status: { at: 'play' }, slots: laid, tray: tray.map((t) => [...t]), ...extra };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }

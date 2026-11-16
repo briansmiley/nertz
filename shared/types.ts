@@ -51,7 +51,7 @@ export interface PlayerState {
    */
   dealt: number;
   stuck: boolean;
-  /** Has voted to end the round where it stands (see `GameState.ended`). */
+  /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
   /**
    * Id of the card this player is dragging right now (the bottom card of the
@@ -78,14 +78,8 @@ export interface CentrePile {
 /** One round. The server holds it with every card known; clients get it via `viewFor`. */
 export interface GameState {
   players: PlayerState[];
-  /**
-   * How far the opening of the round has got. Only `play` accepts intents.
-   * - `dealing`: the cards are being dealt out; no face is shown to anyone. Until the server's deal timer (`finishDeal`).
-   * - `ready`: the work piles' tops are face-up, every nertz top is still face-down. Waits, without limit, for the dealer (`startCountdown`).
-   * - `countdown`: "1, 2, 3": as `ready`, until the server's start timer (`openPlay`).
-   * - `play`: the nertz tops are turned over and the round is on.
-   */
-  stage: RoundStage;
+  /** Where the round is: the one field that says so. */
+  status: RoundStatus;
   /**
    * The shared middle: 4 x players slots, each holding one centre pile or
    * nothing (null). A pile takes the first empty slot when its Ace is put
@@ -95,23 +89,25 @@ export interface GameState {
   slots: (CentrePile | null)[];
   /** Completed piles cleared off the table, oldest first. Each has 13 cards, King on top. Still scores. */
   tray: Card[][];
-  /** Seat that called "Nertz!", or null while the round is in full swing. */
-  nertzCalledBy: number | null;
-  /**
-   * Set when the round ended without a Nertz call, scored as it stands: 'jam' when everyone said they were stuck and
-   * no card could move anywhere, at any shift of any stock; 'vote' when every connected person voted to end it.
-   */
-  ended?: 'jam' | 'vote';
-  /**
-   * Held-card grace. Empty until Nertz is called. From then on: the seats that
-   * were holding a playable card at the call and may still make exactly one
-   * move with it. Everyone else is frozen. The round is over once Nertz has
-   * been called and this is empty again (`isOver`).
-   */
-  grace: number[];
 }
 
-export type RoundStage = 'dealing' | 'ready' | 'countdown' | 'play';
+/**
+ * How far a round has got. Only `play` takes every intent; `grace` takes one move of a card already in hand.
+ * - `dealing`: the cards are being dealt out; no face is shown to anyone. Until the server's deal timer (`finishDeal`).
+ * - `ready`: the work piles' tops are face-up, every nertz top is still face-down. Waits, without limit, for the dealer (`startCountdown`).
+ * - `countdown`: "1, 2, 3": as `ready`, until the server's start timer (`openPlay`).
+ * - `play`: the nertz tops are turned over and the round is on.
+ * - `grace`: `calledBy` called "Nertz!". Everyone is frozen but those who were holding a playable card at the call:
+ *   each may still make exactly one move with it. Who they are is not kept here: exactly the seats holding a card (`inGrace`).
+ * - `over`: nothing can change any more; `end` says how it came to that.
+ */
+export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | { at: 'grace'; calledBy: number } | { at: 'over'; end: RoundEnd };
+
+/**
+ * How a round ended: a seat called Nertz; or without a call, scored as it stands: a 'jam' when everyone said they were
+ * stuck and no card could move anywhere, at any shift of any stock; a 'vote' when every connected person voted to end it.
+ */
+export type RoundEnd = { by: 'nertz'; seat: number } | { by: 'jam' } | { by: 'vote' };
 
 /**
  * Where a card can be dropped: one of your own work piles, one specific centre
@@ -172,9 +168,8 @@ export interface RoundLine extends RoundScore {
 }
 
 export interface RoundResult {
-  /** Who called Nertz; null if the round ended without a call (`ended` says how). */
-  calledBy: number | null;
-  ended?: 'jam' | 'vote';
+  /** How the round ended: what its `status` came to. */
+  end: RoundEnd;
   scores: RoundLine[];
   /** Who beat whom to a pile in the middle with the very card the other was about to put there, and how often (`n`): most first. Absent if nobody did. */
   snipes?: { by: number; of: number; n: number }[];
@@ -242,12 +237,12 @@ export interface RoomView {
    */
   graceMs: number | null;
   /**
-   * Milliseconds of the deal left when this snapshot was sent (`game.stage` is
+   * Milliseconds of the deal left when this snapshot was sent (`game.status` is
    * `dealing`); null otherwise. Like `graceMs`, a duration to count down locally.
    */
   dealMs: number | null;
   /**
-   * Milliseconds of the "1, 2, 3" left when this snapshot was sent (`game.stage`
+   * Milliseconds of the "1, 2, 3" left when this snapshot was sent (`game.status`
    * is `countdown`): play opens, on the word NERTZ!, when it reaches 0. Null otherwise.
    */
   startMs: number | null;

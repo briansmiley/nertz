@@ -38,8 +38,9 @@ export function roundOver(round: number, result: RoundResult): Extract<ChatEvent
   const scored = (l: RoundLine): Scored => ({ who: l.id, name: l.name, points: l.delta });
   const shown = result.scores.filter((l) => !l.gone);
   const most = Math.max(...shown.map((l) => l.delta));
-  const caller = result.scores.find((l) => l.seat === result.calledBy);
-  return { k: 'over', round, end: caller ? scored(caller) : result.ended!, best: shown.filter((l) => l.delta === most).map(scored) };
+  const { end } = result;
+  // (Whoever called was dealt in, so the round has a line for them.)
+  return { k: 'over', round, end: end.by === 'nertz' ? scored(result.scores.find((l) => l.seat === end.seat)!) : end.by, best: shown.filter((l) => l.delta === most).map(scored) };
 }
 
 /**
