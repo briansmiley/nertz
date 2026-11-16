@@ -90,6 +90,26 @@ export function startRound(room: Room, dealer: Conn): void {
   expect(room.game!.status.at).toBe('play');
 }
 
+/**
+ * Over the wire: `dealer` starts a round at `room` and it is walked to play, as `startRound` does, with only the room's
+ * timers faked (the sockets keep real time). Every one of `players` has seen play open.
+ */
+export async function startOver(room: Room, dealer: Client, players: readonly Client[]): Promise<void> {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    dealer.send({ t: 'start' });
+    await vi.waitFor(() => expect(room.phase).toBe('playing'));
+    vi.advanceTimersByTime(DEAL_MS);
+    dealer.send({ t: 'go' });
+    await vi.waitFor(() => expect(room.game!.status.at).not.toBe('ready'));
+    vi.advanceTimersByTime(START_MS);
+    expect(room.game!.status.at).toBe('play');
+    await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe('play')));
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 /** A websocket client of the real server that records everything it is sent. */
 export class Client {
   states: StateMsg[] = [];

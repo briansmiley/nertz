@@ -71,6 +71,30 @@ export function rig(g: GameState, hand: { work: [Face, Face, Face, Face]; waste?
   };
 }
 
+/** `suit` from rank `from` to rank `to`, one by one, as faces: run('S', 13, 1) is the spades from the King down to the Ace. */
+export const run = (suit: Suit, from: number, to: number): Face[] =>
+  Array.from({ length: Math.abs(from - to) + 1 }, (_, i) => `${suit}${from + (to < from ? -i : i)}` as Face);
+
+/**
+ * `g` with `seat`'s nertz pile exactly `faces`, bottom first (the last is its top), taken from its nertz pile and
+ * stock; whatever else was in its nertz pile goes under its stock. A deal that leaves a run to be played out.
+ */
+export function nertzOf(g: GameState, seat: number, faces: readonly Face[]): GameState {
+  return {
+    ...g,
+    players: g.players.map((p) => {
+      if (p.seat !== seat) return p;
+      const cards = [...p.nertz, ...p.stock] as Card[];
+      const nertz = faces.map((face) => {
+        const i = cards.findIndex(is(face));
+        if (i < 0) throw new Error(`nertzOf: no ${face} in seat ${seat}'s nertz pile or stock`);
+        return cards.splice(i, 1)[0]!;
+      });
+      return { ...p, nertz, stock: cards };
+    }),
+  };
+}
+
 /** `g` with `owner`'s `suit`, Ace up to `upTo`, taken from wherever it lies in their hand and lying in slot `i`. */
 export function withPile(g: GameState, i: number, owner: number, suit: Suit, upTo: number, at: Spot = { x: 0, y: 0, r: 0 }): GameState {
   const p = g.players.find((q) => q.seat === owner)!;

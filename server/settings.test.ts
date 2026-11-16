@@ -1,11 +1,14 @@
 // Table settings end to end: the wire message, who may change them and when,
 // and what the small-table rule does to the deal.
-import { describe, expect, it } from 'vitest';
-import { checkInvariants, deal } from '../shared/engine';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { checkInvariants, deal, type Rng } from '../shared/engine';
 import { parseClientMsg } from '../shared/protocol';
 import { DEFAULT_SETTINGS, parseSettings } from '../shared/settings';
-import { lcg, seats, toPlay } from '../shared/testkit';
-import { FakeConn, roomWith } from './testkit';
+import { lcg, seats } from '../shared/testkit';
+import type { GameState } from '../shared/types';
+import { FakeConn, opening, roomWith, startRound } from './testkit';
+
+afterEach(() => void vi.useRealTimers());
 
 describe('the small-table deal', () => {
   it('deals no face-down cards at two players, 0/0/1/2 at three and 0/1/2/3 from four up; the nertz pile is 13 either way', () => {
@@ -86,7 +89,13 @@ describe('table settings in a room', () => {
   });
 
   it('moving without dragging is the host\'s to turn off and on between rounds', () => {
-    const { room, conns } = roomWith(2, { rng: lcg(3) });
+    vi.useFakeTimers();
+    // Seat 0 is dealt no nertz pile, so its player can call.
+    const outFirst = (seats: readonly number[], rng: Rng): GameState => {
+      const g = deal(seats, rng);
+      return { ...g, players: g.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) };
+    };
+    const { room, conns } = roomWith(2, { rng: lcg(3), deal: outFirst });
     const [host, guest] = conns as [FakeConn, FakeConn];
     room.handle(guest, { t: 'settings', patch: { tapToMove: false } });
     expect(room.settings.tapToMove).toBe(true);
@@ -99,8 +108,7 @@ describe('table settings in a room', () => {
     room.flush();
     for (const c of conns) expect(c.room).toMatchObject({ phase: 'playing', settings: { tapToMove: false } });
 
-    const game = room.game!;
-    room.game = toPlay({ ...game, players: game.players.map((p) => (p.seat === 0 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) });
+    opening(room, host);
     room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
     room.handle(host, { t: 'settings', patch: { tapToMove: true } });
@@ -111,11 +119,10 @@ describe('table settings in a room', () => {
   it('a flip is one card off the stock: a client that sends flips on its own gains nothing', () => {
     const { room, conns } = roomWith(2, { rng: lcg(3) });
     const [host, guest] = conns as [FakeConn, FakeConn];
-    room.handle(host, { t: 'start' });
-    room.game = toPlay(room.game!);
+    startRound(room, host);
     for (let seq = 0; seq < 4; seq++) room.handle(guest, { t: 'intent', seq, intent: { k: 'flip' } });
-    expect(room.game.players[1]).toMatchObject({ waste: { length: 4 }, dealt: 1 });
-    expect(checkInvariants(room.game)).toBeNull();
+    expect(room.game!.players[1]).toMatchObject({ waste: { length: 4 }, dealt: 1 });
+    expect(checkInvariants(room.game!)).toBeNull();
   });
 
   it('follows the dealing role: while the host is away the first connected player may change them', () => {
