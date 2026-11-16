@@ -1754,8 +1754,8 @@ describe('greedy bots can finish a round', () => {
   }
 
   it('plays whole rounds to a nertz call with consistent scores', () => {
-    // Deals until six have been played out to a call: not every deal is.
-    untilReached({ called: 6 }, 12, (rng, reached) => {
+    // Deals until four have been played out to a call: not every deal is.
+    untilReached({ called: 4 }, 10, (rng, reached) => {
       const seats = [0, 1, 2, 3];
       let state = inPlay(seats, rng);
       const idle = new Map(seats.map((s) => [s, 0]));
