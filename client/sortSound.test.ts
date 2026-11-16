@@ -1,9 +1,8 @@
-// The sound of each player's cards sorted out to them at the end of a round: one shot per card up to a cap, none for
-// none, timed by the very schedule the canvas draws the cards' flights to.
+// The sound of each player's cards sorted out to them at the end of a round: one whisper per card as it lands (none
+// for none), timed by the very schedule the canvas draws the cards' flights to.
 import { describe, expect, it } from 'vitest';
 import type { Card, GameState, RoundScore } from '../shared/types';
 import { frameAt, gatherOrder, LAND_MS, sortAt, sortings, TIMING, type Mover, type Plan } from './Finale';
-import { ALLOTMENT_CAP, allotment, RIFFLE_GAP_MS } from './soundEvents';
 
 const card = (owner: number, i: number): Card => ({ id: `${owner}.${i}`, owner, suit: 'S', rank: (i % 13) + 1 });
 const cards = (owner: number, n: number): Card[] => Array.from({ length: n }, (_, i) => card(owner, i));
@@ -49,30 +48,5 @@ describe('the sorting schedule', () => {
       expect(frameAt(plan, 'sort', t - 1, 0, [2]).landed[0]).toBe(k);
       expect(frameAt(plan, 'sort', t, 0, [2]).landed[0]).toBe(k + 1);
     });
-  });
-});
-
-describe("the sound of a player's cards arriving", () => {
-  const [nine, two, none] = sortings(game, scores, false).map((s) => s.lands);
-
-  it('is one shot per card, up to the cap, and nothing for no cards', () => {
-    for (const how of ['landings', 'riffle', 'swish'] as const) {
-      expect(allotment(nine!, how)).toHaveLength(ALLOTMENT_CAP);
-      expect(allotment(two!, how)).toHaveLength(2);
-      expect(allotment(none!, how)).toEqual([]);
-    }
-  });
-
-  it('lands with the cards: every card while there are few, the first and the last and between them evenly when there are more', () => {
-    expect(allotment(two!, 'landings')).toEqual(two);
-    const shots = allotment(nine!, 'landings');
-    expect(shots[0]).toBe(nine![0]);
-    expect(shots.at(-1)).toBe(nine!.at(-1));
-    for (const t of shots) expect(nine).toContain(t);
-    expect(allotment(nine!, 'swish')).toEqual(shots);
-  });
-
-  it('as a riffle, starts as the first card lands', () => {
-    expect(allotment(nine!, 'riffle')).toEqual(Array.from({ length: ALLOTMENT_CAP }, (_, i) => nine![0]! + i * RIFFLE_GAP_MS));
   });
 });

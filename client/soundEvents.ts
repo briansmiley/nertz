@@ -145,27 +145,5 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   return [...cues.values()];
 }
 
-/**
- * How a player's cards sound as they are sorted out to them at the end of a round (client/sound.ts `wash`), each
- * shot one card's worth, never more than ALLOTMENT_CAP of them:
- * - 'landings': a flick as a card lands, the cards it is timed to spread evenly over the pile (its first and last);
- * - 'riffle': the flicks one on another, a quick riffle as the first card lands;
- * - 'swish': as 'landings', but a soft slide of a card across the cloth instead of a flick.
- */
-export type SortSound = 'landings' | 'riffle' | 'swish';
-export const SORT_SOUND: SortSound = 'landings';
-export const ALLOTMENT_CAP = 6;
-/** Between the flicks of a riffle, ms. */
-export const RIFFLE_GAP_MS = 45;
-
-/** When each shot of one player's cards arriving sounds, ms on the finale's clock, given when each card lands (`Sorting.lands`): none for no cards. */
-export function allotment(lands: readonly number[], how: SortSound = SORT_SOUND, cap = ALLOTMENT_CAP): number[] {
-  const n = Math.min(lands.length, cap);
-  if (n === 0) return [];
-  if (how === 'riffle') return Array.from({ length: n }, (_, i) => lands[0]! + i * RIFFLE_GAP_MS);
-  if (n === 1) return [lands[0]!];
-  return Array.from({ length: n }, (_, i) => lands[Math.round((i * (lands.length - 1)) / (n - 1))]!);
-}
-
 /** The grace countdown ticks only for someone who still has a card to put down. */
 export const graceTicking = (room: RoomView | null): boolean => !!room?.game && room.seat !== null && inGrace(room.game).includes(room.seat);

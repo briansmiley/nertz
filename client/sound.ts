@@ -12,7 +12,7 @@ import type { RoomView } from '../shared/types';
 import type { Sorting } from './Finale';
 import { dealTimes, type Stage } from './layout';
 import { getPrefs, loudness, watchPrefs } from './prefs';
-import { allotment, graceTicking, SORT_SOUND, soundCues, type Cue, type Frame, type SortSound, type Who } from './soundEvents';
+import { graceTicking, soundCues, type Cue, type Frame, type Who } from './soundEvents';
 import { Voices, type Voice } from './voices';
 
 const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '?url', import: 'default' });
@@ -225,7 +225,6 @@ const DULL = [[1, 1], [2, 0.12]] as const;
 const FLICKS = ['flick-1', 'flick-2', 'flick-3'];
 const PLACES = ['place-1', 'place-2', 'place-3'];
 const TAPS = ['tap-1', 'tap-2'];
-const SLIDES = ['slide-1', 'slide-2'];
 
 // ---------------------------------------------------------------- the cues
 
@@ -247,9 +246,14 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
-/** One card counted off the stock: a faint papery whisper, thinned and eased in so there is no knock in it. */
+/** One card's faint papery whisper, thinned and eased in so there is no knock in it: never twice quite the same. */
+function whisper(o: Shot = {}): Stop {
+  return hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, ...o });
+}
+
+/** One card counted off the stock. */
 export function stockCard(who: Who = 'me'): void {
-  hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, who });
+  whisper({ who });
 }
 
 /** A hand opened out (the decks page): one soft sweep of cards (the start of the fanning sound, quick and quiet), not a run of clicks. */
@@ -387,21 +391,15 @@ function hush(): void {
   for (const stop of finale.splice(0)) stop();
 }
 
-/** One card's worth of a player's cards arriving at their pile, `delay` seconds from now. */
-function arrival(how: SortSound, delay: number): Stop {
-  if (how === 'swish') return hit(pick(SLIDES), { gain: rand(0.28, 0.36), rate: rand(1.5, 1.8), thin: 900, attack: 0.02, delay });
-  return hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay });
-}
-
 /**
- * The wash: a riffle while the cards are mixed up, then each player's cards as they are sorted out to them, on the
- * canvas's own schedule (`sortings`, ms from now: the finale's clock starts as the wash does). A player whose cards
+ * The wash: a riffle while the cards are mixed up, then a whisper for each card as it lands on its owner's pile, on
+ * the canvas's own schedule (`sortings`, ms from now: the finale's clock starts as the wash does). A player whose cards
  * never reached the middle is silent. The table's sound, like the wash: on your own channel, whoever's cards they are.
  */
-export function wash(sorts: readonly Sorting[], how: SortSound = SORT_SOUND): void {
+export function wash(sorts: readonly Sorting[]): void {
   hush();
   finale.push(hit('shuffle', { gain: 0.5 }));
-  for (const { lands } of sorts) for (const at of allotment(lands, how)) finale.push(arrival(how, at / 1000));
+  for (const { lands } of sorts) for (const at of lands) finale.push(whisper({ delay: at / 1000 }));
 }
 
 /** The score sheet is up. */
