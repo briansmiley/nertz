@@ -1,7 +1,7 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
+import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH } from '../shared/protocol';
 import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
@@ -52,7 +52,7 @@ export function App() {
   const me = room.players.find((p) => p.id === room.me);
   // Without a seat: watching, whatever the table is doing: by choice, until they ask for one; or having asked, until there is one (the table is full, or a round is on). With one, but come in the middle of a round: watching until the next.
   const nextRound = 'Spectating - You can join next round';
-  const free = room.settings.seats - room.players.filter(hasSeat).length;
+  const free = freeSeats(room.seats);
   /** How many are before you in the queue for a seat (the list is in the order they will be seated). */
   const ahead = room.players.filter((p) => p.queued && p.connected).findIndex((p) => p.id === room.me);
   const spectating = !me
@@ -119,7 +119,7 @@ function Mini({ seat, suit, rank, style, back }: { seat?: number; suit?: 'S' | '
 /** For whoever deals, between rounds: a robot button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const full = room.players.filter(hasSeat).length >= room.settings.seats;
+  const full = freeSeats(room.seats) === 0;
   return (
     <Pop icon={<Robot />} label="Add a bot">
       <h3>Add a bot</h3>
@@ -556,7 +556,7 @@ function Lobby({ room }: { room: RoomView }) {
         {/* Whoever has just come in is watching: a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
           <button className="go" onClick={() => takeSeat(true)}>
-            {room.players.filter(hasSeat).length < room.settings.seats ? 'Take a seat' : 'Join the queue for a seat'}
+            {freeSeats(room.seats) > 0 ? 'Take a seat' : 'Join the queue for a seat'}
           </button>
         )}
         {me?.isHost ? (

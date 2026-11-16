@@ -12,17 +12,9 @@ export interface TableSettings {
    * a drag (the same `hold` and `move`), so this only chooses gestures.
    */
   tapToMove: boolean;
-  /**
-   * How many may sit at the table: from `MIN_PLAYERS` to `MAX_PLAYERS`. Never fewer than are seated (the room keeps
-   * it so): lowered, it sends nobody away, it only leaves fewer seats to be had.
-   */
-  seats: number;
 }
 
-export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
-
-export const DEFAULT_SETTINGS: TableSettings = { tapToMove: true, seats: MAX_PLAYERS };
+export const DEFAULT_SETTINGS: TableSettings = { tapToMove: true };
 
 /**
  * How many face-down cards lie under the face-up one in each of the four work piles, by how many are dealt into the
@@ -43,10 +35,6 @@ export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if ('tapToMove' in v) {
     if (typeof v.tapToMove !== 'boolean') return null;
     patch.tapToMove = v.tapToMove;
-  }
-  if ('seats' in v) {
-    if (!Number.isInteger(v.seats) || (v.seats as number) < MIN_PLAYERS || (v.seats as number) > MAX_PLAYERS) return null;
-    patch.seats = v.seats as number;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 }

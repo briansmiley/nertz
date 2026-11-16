@@ -1,8 +1,8 @@
 // Wire protocol (JSON over one websocket) and inbound validation.
 import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isPlayerId } from './chat';
-import { MAX_PLAYERS, MIN_PLAYERS, parseSettings, type TableSettings } from './settings';
+import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
-import type { BotLevel, Intent, PileRef, PlayerView, RoomView } from './types';
+import type { BotLevel, Intent, PileRef, PlayerView, RoomView, Seats } from './types';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
@@ -154,6 +154,8 @@ export type ClientMsg =
   | { t: 'ready'; on: boolean }
   /** Host only, between rounds: change some table settings. They apply from the next deal. */
   | { t: 'settings'; patch: Partial<TableSettings> }
+  /** Host only, between rounds: one seat more (1) or fewer (-1). The server keeps the number within `fewestSeats` and `MAX_PLAYERS`, so taps sent faster than the snapshots come back each count. */
+  | { t: 'seats'; step: 1 | -1 }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
   /** Whoever deals, between rounds: start over. Everyone's score goes back to nothing and the table to its lobby, as before the first deal. */
@@ -241,12 +243,17 @@ export const DRAG_BURST = 12;
 /** The largest frame a client may send. Each message is bounded field by field in `parseClientMsg`; this is room for a voice offer in one message. */
 export const MAX_MESSAGE_BYTES = 16_384;
 export const MAX_NAME_LENGTH = 20;
+export const MIN_PLAYERS = 2;
 /** Beyond the seats, this many more may be in the room to watch (and wait for a seat). */
 export const MAX_WATCHERS = 20;
 /** Someone with a seat at the table (not: waiting for one, or just watching). */
 export type SeatedView = PlayerView & { seat: number };
 export const hasSeat = (p: PlayerView): p is SeatedView => p.seat !== null;
-export { MAX_PLAYERS, MIN_PLAYERS }; // (the bounds of `TableSettings.seats`: MAX_PLAYERS is what a message may name)
+export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
+/** How many seats are still to be had: none when as many are taken as the table has (or more, if it was lowered while they were). */
+export const freeSeats = (s: Seats): number => Math.max(0, s.of - s.taken);
+/** The fewest seats the table may be set to: never fewer than are taken (nobody is stood up), nor than a round needs. */
+export const fewestSeats = (s: Seats): number => Math.max(MIN_PLAYERS, s.taken);
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
 export const SLOTS_PER_PLAYER = 4;
@@ -420,6 +427,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isIndex(v.seat, MAX_PLAYERS) && (isBack(v.back) || v.lot === null || isLot(v.lot)) ? { t: 'botBack', seat: v.seat, ...(isBack(v.back) ? { back: v.back } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
     case 'seat':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
+    case 'seats':
+      return v.step === 1 || v.step === -1 ? { t: 'seats', step: v.step } : null;
     case 'settings': {
       const patch = parseSettings(v.patch);
       return patch ? { t: 'settings', patch } : null;

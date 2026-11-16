@@ -4,6 +4,7 @@
 import { expect } from 'vitest';
 import { checkInvariants, deal, finishDeal, isHidden, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
 import { DEFAULT_SETTINGS } from './settings';
+import { MAX_PLAYERS } from './protocol';
 import { openPlace, type Spot } from './table';
 import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, RoomView, Suit } from './types';
 
@@ -180,6 +181,7 @@ export const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = 
   seat: you,
   players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0 })),
   settings: DEFAULT_SETTINGS,
+  seats: { of: MAX_PLAYERS, taken: game.players.length },
   game: viewFor(game, you),
   graceMs: null,
   dealMs: null,

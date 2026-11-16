@@ -215,6 +215,17 @@ export interface PlayerView {
   lot?: string;
 }
 
+/**
+ * The seats at a table: how many it has (`of`: the host's to set, between rounds, from `MIN_PLAYERS` to `MAX_PLAYERS`)
+ * and how many of them are taken. Taken is held by someone at the table, but not by anyone gone whose cards are still in
+ * the round (they keep only those). Not a house rule: what it may be set to, and who sits down when it changes, depend
+ * on who is at the table. See `freeSeats` and `fewestSeats`.
+ */
+export interface Seats {
+  of: number;
+  taken: number;
+}
+
 /** Everything one client needs to render, personalised for the player `me`. */
 export interface RoomView {
   code: string;
@@ -229,6 +240,7 @@ export interface RoomView {
   players: PlayerView[];
   /** The table's house rules. Only the host changes them, between rounds. */
   settings: TableSettings;
+  seats: Seats;
   /**
    * Redacted current round; null in the lobby. Kept through 'results' as the
    * final table (centre slots, tray, hands), so the client can play the

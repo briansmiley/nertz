@@ -9,8 +9,8 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
-import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
+import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
+import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -36,6 +36,7 @@ export interface Conn {
  *   in the queue   `queued` is a number: waiting for a seat, first come first
  *   watching       neither: no seat, and not asking for one
  * It changes only in `fill` (queue to table), on `sit` (asking for a seat, giving it up) and in `remove`.
+ * Someone at the table takes one of its seats (`Room.seats`), unless they are `out`.
  *
  * Apart from that: here or away (`conn`); and gone but for their cards (`out`).
  */
@@ -82,6 +83,8 @@ interface Player {
 
 type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
+/** Takes one of the table's seats: at it, and not gone (whoever is gone holds their seat only for their cards). */
+const taking = (p: Player): p is Seated => seated(p) && !p.out;
 /** The seat to ask the engine about for `p`: theirs, or one that no hand has. */
 const at = (p: Player): number => p.seat ?? -1;
 /** `p` as a line of the chat names them. */
@@ -116,6 +119,8 @@ export class Room {
   lastRound: RoundResult | null = null;
   /** House rules: they change only between rounds. */
   settings: TableSettings = { ...DEFAULT_SETTINGS };
+  /** How many seats the table has: the host's to set, between rounds (`resize`). See `seats`. */
+  private capacity = MAX_PLAYERS;
   /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
   readonly social = new Social();
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
@@ -217,6 +222,8 @@ export class Room {
       }
       case 'settings':
         return this.configure(player, msg.patch);
+      case 'seats':
+        return this.resize(player, msg.step);
       case 'intent':
         return this.intent(player, msg.seq, msg.intent);
       case 'drag':
@@ -275,7 +282,7 @@ export class Room {
         if (player !== this.dealer || this.phase !== 'playing' || !this.game) return;
         {
           // Enough to deal to? Those at the table who are here, and those waiting for whom it has a seat. (Counted before anyone is moved: a deal refused changes nothing.)
-          const open = this.settings.seats - this.table.filter((p) => !p.out).length;
+          const open = freeSeats(this.seats);
           const waiting = this.players.filter((p) => p.queued !== null && p.conn).length;
           if (this.present + Math.min(open, waiting) < MIN_PLAYERS) return;
         }
@@ -349,8 +356,8 @@ export class Room {
   summary(): TableSummary {
     return {
       code: this.code,
-      names: this.table.filter((p) => !p.out).map((p) => p.name), // (whoever is gone holds their seat only for their cards)
-      seats: this.settings.seats,
+      names: this.table.filter(taking).map((p) => p.name),
+      seats: this.capacity,
       watching: this.players.filter((p) => !seated(p) && p.conn).length,
       round: this.round,
       playing: this.phase === 'playing',
@@ -368,16 +375,24 @@ export class Room {
     return this.host?.conn ? this.host : (this.table.find((p) => p.conn && !p.bot) ?? this.host);
   }
 
-  /**
-   * Table settings belong to whoever may deal, and stand still while a round is on. Anyone else is ignored. The seats
-   * are never fewer than are taken: lowered past them, they stop at how many are seated (nobody is stood up);
-   * raised, the queue sits down.
-   */
+  /** Table settings belong to whoever may deal, and stand still while a round is on. Anyone else is ignored. */
   private configure(player: Player, patch: Partial<TableSettings>): void {
     if (player !== this.dealer || this.phase === 'playing') return;
     this.settings = { ...this.settings, ...patch };
-    this.settings.seats = Math.max(this.settings.seats, this.table.length);
-    this.fill(); // more seats: the queue has them
+    this.changed();
+  }
+
+  /**
+   * One seat more or fewer, for whoever may deal and between rounds, like the settings. Never fewer than are taken
+   * (nobody is stood up: lowered, it only leaves fewer to be had), nor than a round needs, nor more than the table
+   * seats; raised, the queue sits down.
+   */
+  private resize(player: Player, step: 1 | -1): void {
+    if (player !== this.dealer || this.phase === 'playing') return;
+    const to = Math.min(MAX_PLAYERS, Math.max(fewestSeats(this.seats), this.capacity + step));
+    if (to === this.capacity) return;
+    this.capacity = to;
+    this.fill();
     this.changed();
   }
 
@@ -620,6 +635,11 @@ export class Room {
     return this.players.filter(seated).sort((a, b) => a.seat - b.seat);
   }
 
+  /** The table's seats, and how many are taken: the one count every way of sitting down goes by (`seatFor`, a deal over, `resize`). */
+  private get seats(): Seats {
+    return { of: this.capacity, taken: this.players.filter(taking).length };
+  }
+
   /** Those at the table who are here: who a deal would give cards to. */
   private get present(): number {
     return this.table.filter((p) => p.conn).length;
@@ -646,10 +666,10 @@ export class Room {
 
   /**
    * The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or
-   * else the lowest free one; null when the table is full (as many seated as it has seats). A bot, new, has no last round.
+   * else the lowest free one; null when the table is full (no seat of `seats` free). A bot, new, has no last round.
    */
   private seatFor(p?: Player): number | null {
-    if (this.table.length >= this.settings.seats) return null;
+    if (freeSeats(this.seats) === 0) return null;
     const free = (seat: number) => !this.players.some((q) => q.seat === seat);
     const own = p && this.lastRound?.scores.find((l) => l.id === p.id)?.seat;
     if (own !== undefined && free(own)) return own;
@@ -965,6 +985,7 @@ export class Room {
         ...(p.lot ? { lot: p.lot } : {}),
       })),
       settings: this.settings,
+      seats: this.seats,
       game,
       graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
       dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,

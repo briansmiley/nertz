@@ -311,6 +311,9 @@ export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
 export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });
 
+/** Host only, between rounds: one seat more or fewer. A step, not a number, so that taps quicker than the snapshots each count. */
+export const setSeats = (step: 1 | -1): void => void post({ t: 'seats', step });
+
 /** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
 export function setTableSettings(patch: Partial<TableSettings>): void {
   post({ t: 'settings', patch });
