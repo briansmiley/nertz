@@ -490,7 +490,8 @@ export class Room {
     if (next === this.game) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)
     const called = next.status.at === 'grace' && this.game.status.at !== 'grace';
     this.game = next;
-    // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace.
+    // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace. This is the one way
+    // into grace (bots and debugBotOut call Nertz through `intent` too), so the grace window is timed here and nowhere else.
     if (called) this.timeRound(GRACE_MS, () => this.graceExpired());
     this.settle();
     this.changed();
