@@ -9,10 +9,10 @@
 // first click or key press: browsers do not let a page start audio by itself.
 import { useEffect, useRef } from 'react';
 import type { RoomView } from '../shared/types';
-import { TIMING } from './Finale';
+import type { Sorting } from './Finale';
 import { dealTimes, type Stage } from './layout';
 import { getPrefs, loudness, watchPrefs } from './prefs';
-import { graceTicking, soundCues, type Cue, type Frame, type Who } from './soundEvents';
+import { allotment, graceTicking, SORT_SOUND, soundCues, type Cue, type Frame, type SortSound, type Who } from './soundEvents';
 import { Voices, type Voice } from './voices';
 
 const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '?url', import: 'default' });
@@ -20,7 +20,6 @@ const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '
 const MAX_VOICES = 18;
 /** Other players' cards at "100%" are still well under your own. */
 const OTHERS = 0.7;
-const { sortEach: SORT_MS } = TIMING; // flicks while the first couple of piles are gathered
 
 interface Sample {
   buffer: AudioBuffer;
@@ -226,6 +225,7 @@ const DULL = [[1, 1], [2, 0.12]] as const;
 const FLICKS = ['flick-1', 'flick-2', 'flick-3'];
 const PLACES = ['place-1', 'place-2', 'place-3'];
 const TAPS = ['tap-1', 'tap-2'];
+const SLIDES = ['slide-1', 'slide-2'];
 
 // ---------------------------------------------------------------- the cues
 
@@ -387,14 +387,21 @@ function hush(): void {
   for (const stop of finale.splice(0)) stop();
 }
 
-/** The wash: a riffle while the cards swirl, then quick flicks as they sort into their piles. */
-export function wash(sortIn: number): void {
+/** One card's worth of a player's cards arriving at their pile, `delay` seconds from now. */
+function arrival(how: SortSound, delay: number): Stop {
+  if (how === 'swish') return hit(pick(SLIDES), { gain: rand(0.28, 0.36), rate: rand(1.5, 1.8), thin: 900, attack: 0.02, delay });
+  return hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay });
+}
+
+/**
+ * The wash: a riffle while the cards are mixed up, then each player's cards as they are sorted out to them, on the
+ * canvas's own schedule (`sortings`, ms from now: the finale's clock starts as the wash does). A player whose cards
+ * never reached the middle is silent. The table's sound, like the wash: on your own channel, whoever's cards they are.
+ */
+export function wash(sorts: readonly Sorting[], how: SortSound = SORT_SOUND): void {
   hush();
   finale.push(hit('shuffle', { gain: 0.5 }));
-  const flicks = 16;
-  for (let i = 0; i < flicks; i++) {
-    finale.push(hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay: (sortIn + (i / flicks) * SORT_MS * 2) / 1000 + rand(0, 0.03) }));
-  }
+  for (const { lands } of sorts) for (const at of allotment(lands, how)) finale.push(arrival(how, at / 1000));
 }
 
 /** The score sheet is up. */
@@ -405,9 +412,9 @@ export function flourish(): void {
 }
 
 /** The end-of-round sequence moved on (Table.tsx calls this as its stage changes). */
-export function stage(from: Stage, to: Stage, sortIn: number): void {
+export function stage(from: Stage, to: Stage, sorts: readonly Sorting[]): void {
   if (from === to) return;
-  if (to === 'spread') wash(sortIn);
+  if (to === 'spread') wash(sorts);
   else if (to === 'sheet') flourish();
   else if (to === 'live') hush();
 }

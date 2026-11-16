@@ -15,7 +15,7 @@ import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type De
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
-import { Finale, sortAt, sortMs, TIMING, washedAt } from './Finale';
+import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
@@ -325,7 +325,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [playingOut]);
   const stageWas = useRef(stage);
   useEffect(() => {
-    stageSound(stageWas.current, stage, sortAt(game.tray.length, clears)); // the riffle of the wash, the flourish of the score sheet
+    // The riffle of the wash and each player's cards arriving, on the canvas's schedule; the flourish of the score sheet.
+    stageSound(stageWas.current, stage, sortings(game, room.lastRound?.scores ?? [], clears));
     stageWas.current = stage;
   }, [stage]);
   /** Your work pile that is being looked at (fanned out in full): the mouse rested on it, or it was tapped. */
