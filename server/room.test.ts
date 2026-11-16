@@ -816,9 +816,9 @@ describe('Room', () => {
     expect(a.last.room.lastRound).toEqual({
       end: { by: 'nertz', seat: 1 },
       scores: [
-        { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, delta: -25, total: -25 },
-        { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2 }, // no bonus for going out
-        { seat: 2, id: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, delta: -26, total: -26 },
+        { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, delta: -25, total: -25, back: 'plain' },
+        { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, back: 'plain' }, // no bonus for going out
+        { seat: 2, id: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, delta: -26, total: -26, back: 'plain' },
       ],
     });
     expect(a.last.room.players.map((p) => p.score)).toEqual([-25, 2, -26]);
@@ -880,8 +880,8 @@ describe('Room', () => {
     sendIntent(room, a, 12, { k: 'nertz' });
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
-      { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2 },
-      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length },
+      { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, back: 'plain' },
+      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length, back: 'plain' },
     ]);
     expect(a.last.room.game!.tray).toHaveLength(1); // still there for the end-of-round sequence
     expect(checkInvariants(room.game)).toBeNull();

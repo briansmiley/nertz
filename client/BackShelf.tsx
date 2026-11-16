@@ -21,7 +21,7 @@ export function BackShelf({ colour, bare, back, random, onPick, onRandom }: { co
   /** The kind of back that is dealt out (one at a time; none, if its pile was put back): to begin with, the one the choice is in. */
   const [open, setOpen] = useState<string | null>(() => (groups.find((g) => (random && random !== 'all' ? g.name === random : g.backs.includes(back))) ?? groups[0]!).name);
   const shown = groups.find((g) => g.name === open);
-  const named = (b: Back): string => backNamed(b, bare)!;
+  const named = (b: Back): string => backNamed(b, bare);
   return (
     <>
       <div className="shelf" style={{ '--piles': groups.length } as CSSProperties}>

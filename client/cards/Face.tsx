@@ -3,6 +3,7 @@
 // "mini" face for cards shown too small for pips to read (opponents' piles),
 // which is just a big rank and suit.
 import { memo, type CSSProperties, type ReactElement } from 'react';
+import { ANY_BACK } from '../../shared/protocol';
 import type { Suit } from '../../shared/types';
 import { getPrefs, watchPrefs } from '../prefs';
 import { drawnBack, isDrawn } from './backArt';
@@ -34,7 +35,7 @@ const SMALL: Record<string, number> = { 'carpet-tint': 1.8, waterlily: 1.2, lily
  */
 export function backArt(named: string | undefined, small = false): { src: string; zoom: number; edge: boolean } | null {
   const [back, bare] = bareOf(named);
-  if (back === 'plain') return null;
+  if (back === 'plain' || back === ANY_BACK) return null; // a back by lot not drawn yet has no picture
   if (isDrawn(back)) return { src: drawnBack(back, small, bare).slice(5, -2), zoom: 1, edge: false };
   const zoom = small ? (SMALL[back] ?? 1.8) : 1;
   return { src: `/cards/backs/${back}.png?v=${ART}`, zoom, edge: !bare };
@@ -49,7 +50,7 @@ export const bareOf = (named: string | undefined): [back: string, bare: boolean]
 /** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
 export function backOf(colour: string, back: string | undefined, small = false): { className: string; style: CSSProperties } {
   const vars = { '--back': colour } as CSSProperties;
-  if (back === 'any') return { className: 'back any', style: vars }; // a back by lot, not drawn yet: a question mark (the stylesheet's)
+  if (back === ANY_BACK) return { className: 'back any', style: vars }; // a back by lot, not drawn yet: a question mark (the stylesheet's)
   const art = backArt(back, small);
   if (!art) return { className: `back${bareOf(back)[1] ? ' bare' : ''}`, style: vars };
   return {

@@ -112,7 +112,7 @@ export type Back = keyof typeof CARD_BACKS;
  */
 /** A deck as it is named for drawing: its name, with `:night` after it for the dark one. */
 export const deckNamed = (deck: Deck, night: boolean | undefined): string => `${deck}${night ? ':night' : ''}`;
-export const backNamed = (back: Back | undefined, bare: boolean | undefined): string | undefined => (bare ? `${back ?? 'plain'}:bare` : back);
+export const backNamed = (back: Back, bare: boolean | undefined): string => (bare ? `${back}:bare` : back);
 /** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
 export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
   { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life'] },
@@ -129,8 +129,9 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
  * otherwise the name of a kind (a group above, or "Other" if there are backs in none: `backGroups`). Until it is drawn, such a player's back is shown as `ANY_BACK`: a
  * card with a question mark.
  */
-export const isLot = (v: unknown): v is string => typeof v === 'string' && (v === 'all' || backGroups().some((g) => g.name === v));
-export const backPool = (lot: string): readonly Back[] => backGroups().find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
+export type Lot = string;
+export const isLot = (v: unknown): v is Lot => typeof v === 'string' && (v === 'all' || backGroups().some((g) => g.name === v));
+export const backPool = (lot: Lot): readonly Back[] => backGroups().find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
 /** What a back not yet drawn is called where backs are named for drawing. */
 export const ANY_BACK = 'any';
 

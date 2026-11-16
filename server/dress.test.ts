@@ -1,52 +1,142 @@
 // What a player's cards look like, and the seat they sit in, as the table keeps them: the back drawn by lot stays
 // drawn, a message that says nothing of lots changes none, and what goes by seat (chat, voice) follows a change of seat.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEAL_MS, parseClientMsg } from '../shared/protocol';
-import { lehmer } from '../shared/testkit';
+import { backPool, DEAL_MS, isBack, parseClientMsg } from '../shared/protocol';
+import { inPlay, lehmer, rig, seeded } from '../shared/testkit';
+import type { PlayerView } from '../shared/types';
 import type { Room } from './room';
 import { FakeConn, roomWith as seated, send } from './testkit';
 
-interface Kept {
-  seat: number;
-  back?: string;
-  lot?: string;
-  night?: boolean;
+function roomWith(n: number): { room: Room; conns: FakeConn[]; kept: (i: number) => { seat: number }; shown: (seat: number) => PlayerView } {
+  const { room, conns } = seated(n, { rng: lehmer(7) });
+  const kept = (i: number) => (room as unknown as { players: { name: string; seat: number }[] }).players.find((p) => p.name === `P${i}`)!;
+  /** Whoever is in `seat`, as the table shows them to everyone. */
+  const shown = (seat: number): PlayerView => {
+    room.flush();
+    return conns[0]!.room.players.find((p) => p.seat === seat)!;
+  };
+  return { room, conns, kept, shown };
 }
 
-function roomWith(n: number): { room: Room; conns: FakeConn[]; kept: (i: number) => Kept } {
-  const { room, conns } = seated(n, { rng: lehmer(7) });
-  const kept = (i: number): Kept => (room as unknown as { players: (Kept & { name: string })[] }).players.find((p) => p.name === `P${i}`)!;
-  return { room, conns, kept };
+/** Ends the round: seat 0 has no nertz pile left, and says so. */
+function callNertz(room: Room, conn: FakeConn): void {
+  room.game = rig(inPlay(room.game!.players.map((p) => p.seat), seeded(7)), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz: [0] });
+  room.handle(conn, { t: 'intent', seq: 1000, intent: { k: 'nertz' } });
+  expect(room.phase).toBe('results');
 }
+
+/** Their back is one drawn from `lot`. */
+const inLot = (lot: string) => (v: PlayerView) => (backPool(lot) as readonly string[]).includes(v.back!.replace(/:bare$/, ''));
 
 afterEach(() => void vi.useRealTimers());
 
 describe('a back by lot', () => {
   it('stays as drawn when the player says the rest again (a reconnect, or another setting changed)', () => {
-    const { room, conns, kept } = roomWith(2);
+    const { room, conns, shown } = roomWith(2);
     const [a] = conns as [FakeConn, FakeConn];
     send(room, a, { t: 'deck', deck: 'modern', back: 'plain', lot: 'all' });
     send(room, a, { t: 'start' });
-    const drawn = kept(0).back;
-    expect(drawn).not.toBe('plain');
+    const drawn = shown(0).back;
+    expect(isBack(drawn)).toBe(true);
     send(room, a, { t: 'deck', deck: 'modern', back: 'plain', lot: 'all' }); // the same again
     send(room, a, { t: 'deck', deck: 'modern', back: 'plain', night: true, lot: 'all' }); // dark cards switched on
-    expect(kept(0)).toMatchObject({ back: drawn, lot: 'all', night: true });
+    expect(shown(0)).toMatchObject({ back: drawn, lot: 'all', deck: 'modern:night' });
     send(room, a, { t: 'deck', deck: 'modern', back: 'fern', lot: null }); // no lot any more: their own choice
-    expect(kept(0).back).toBe('fern');
-    expect(kept(0).lot).toBeUndefined();
+    expect(shown(0).back).toBe('fern');
+    expect(shown(0).lot).toBeUndefined();
   });
 
   it('is left alone by a message that names no lot, or one this table does not know', () => {
-    const { room, conns, kept } = roomWith(2);
+    const { room, conns, shown } = roomWith(2);
     const [a] = conns as [FakeConn, FakeConn];
     expect(parseClientMsg({ t: 'deck', deck: 'modern' })).toEqual({ t: 'deck', deck: 'modern' });
     expect(parseClientMsg({ t: 'deck', deck: 'modern', lot: 'No such kind' })).toEqual({ t: 'deck', deck: 'modern' });
     expect(parseClientMsg({ t: 'deck', deck: 'modern', lot: null })).toEqual({ t: 'deck', deck: 'modern', lot: null });
     send(room, a, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Plants' });
-    send(room, a, { t: 'deck', deck: 'classic' });
+    send(room, a, { t: 'deck', deck: 'classic', back: 'fern' });
     send(room, a, { t: 'deck', deck: 'classic', lot: 'No such kind' });
-    expect(kept(0).lot).toBe('Plants');
+    expect(shown(0)).toMatchObject({ back: 'any', lot: 'Plants', deck: 'classic' });
+  });
+
+  it('is not drawn until a round is dealt, and is drawn again when the table is started over', () => {
+    vi.useFakeTimers();
+    const { room, conns, shown } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    send(room, b, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Plants' });
+    expect(shown(1).back).toBe('any');
+    send(room, a, { t: 'start' });
+    const drawn = shown(1).back;
+    expect(shown(1)).toSatisfy(inLot('Plants'));
+    vi.advanceTimersByTime(DEAL_MS);
+    callNertz(room, a);
+    expect(shown(1).back).toBe(drawn); // kept to the end of the round, and on its finished table
+    send(room, a, { t: 'reset' });
+    expect(shown(1)).toMatchObject({ back: 'any', lot: 'Plants' });
+    send(room, a, { t: 'start' });
+    expect(shown(1)).toSatisfy(inLot('Plants'));
+  });
+
+  it('chosen between rounds is not drawn until the next deal; chosen while a round is on, it is drawn at once', () => {
+    vi.useFakeTimers();
+    const { room, conns, shown } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    send(room, a, { t: 'start' });
+    send(room, b, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Emblems' });
+    expect(shown(1)).toSatisfy(inLot('Emblems'));
+    vi.advanceTimersByTime(DEAL_MS);
+    callNertz(room, a);
+    send(room, b, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Celestial' });
+    expect(shown(1)).toMatchObject({ back: 'any', lot: 'Celestial' });
+    send(room, a, { t: 'start' });
+    expect(shown(1)).toSatisfy(inLot('Celestial'));
+  });
+
+  it('is drawn at the deal for someone at the table who is away, and is theirs when they come back', () => {
+    const { room, conns, shown } = roomWith(3);
+    const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
+    send(room, c, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Maths' });
+    room.disconnect(c);
+    send(room, a, { t: 'start' });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    const drawn = shown(2).back;
+    expect(shown(2)).toSatisfy(inLot('Maths'));
+    expect(room.join(c, 'P2', 'tok-0002')).toBeNull();
+    expect(shown(2).back).toBe(drawn);
+  });
+
+  it('is shown without its white edge for whoever has backs so; not drawn, it is the one with a question mark', () => {
+    const { room, conns, shown } = roomWith(2);
+    const [a] = conns as [FakeConn, FakeConn];
+    send(room, a, { t: 'deck', deck: 'modern', back: 'fern', bare: true, lot: null });
+    expect(shown(0).back).toBe('fern:bare');
+    send(room, a, { t: 'deck', deck: 'modern', back: 'fern', bare: true, lot: 'Tilings' });
+    expect(shown(0).back).toBe('any');
+    send(room, a, { t: 'start' });
+    expect(shown(0).back).toMatch(/^[a-z-]+:bare$/);
+    expect(shown(0)).toSatisfy(inLot('Tilings'));
+  });
+});
+
+describe("a bot's back", () => {
+  it('is for whoever deals to choose, or to have drawn by lot: and a back drawn stays, whatever else is said with no word of the lot', () => {
+    const { room, conns, shown } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    send(room, a, { t: 'addBot', level: 'slow' });
+    expect(shown(2).back).toBe('plain');
+    send(room, b, { t: 'botBack', seat: 2, lot: 'Emblems' }); // not theirs to say
+    expect(shown(2).lot).toBeUndefined();
+    send(room, a, { t: 'botBack', seat: 2, lot: 'Emblems' });
+    expect(shown(2)).toMatchObject({ back: 'any', lot: 'Emblems' });
+    send(room, a, { t: 'start' });
+    const drawn = shown(2).back;
+    expect(shown(2)).toSatisfy(inLot('Emblems'));
+    send(room, a, { t: 'botBack', seat: 2, back: 'fern' }); // a back, with nothing said of the lot
+    expect(shown(2)).toMatchObject({ back: drawn, lot: 'Emblems' });
+    send(room, a, { t: 'botBack', seat: 2, back: 'fern', lot: null });
+    expect(shown(2)).toMatchObject({ back: 'fern' });
+    expect(shown(2).lot).toBeUndefined();
+    send(room, a, { t: 'botBack', seat: 2, lot: 'all' }); // in the middle of a round: drawn at once
+    expect(isBack(shown(2).back)).toBe(true);
   });
 });
 
