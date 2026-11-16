@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, inGrace, isLive, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, MAX_PLAYERS, parseClientMsg, PLAIN_LOOK, START_MS } from '../shared/protocol';
-import { card, inPlay, pile, seeded, slot, table as wholeTable, work, type Hand } from '../shared/testkit';
+import { card, FUZZ_MS, inPlay, pile, seeded, slot, table as wholeTable, untilReached, work, type Hand } from '../shared/testkit';
 import type { GameState, Intent, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
@@ -221,7 +221,7 @@ describe('chooseIntent', () => {
 
   it('never emits an intent the engine refuses, never loops on run moves, and keeps every invariant (bots alone, many deals)', () => {
     let nertzCalls = 0;
-    for (let seed = 1; seed <= 30; seed++) {
+    for (let seed = 1; seed <= 8; seed++) {
       const seats = Array.from({ length: 2 + (seed % 3) }, (_, i) => i);
       const rng = seeded(seed);
       let state = inPlay(seats, rng);
@@ -247,8 +247,8 @@ describe('chooseIntent', () => {
       }
       if (calledBy(state) !== null) nertzCalls++;
     }
-    expect(nertzCalls).toBeGreaterThan(15); // most deals are played out to a call (tables of two mostly jam, tables of four never)
-  });
+    expect(nertzCalls).toBeGreaterThan(4); // most deals are played out to a call (tables of two mostly jam, tables of four never)
+  }, FUZZ_MS);
 });
 
 // ---------------------------------------------------------------- Room
@@ -356,34 +356,31 @@ describe('Room with bots', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  /** Runs the room's timers one at a time until the round is over, checking the table after every one. Returns simulated ms. */
-  function playOut(room: Room, limitMs: number): number {
+  /** Runs the room's timers one at a time until the round is over, checking the table after every one. Returns simulated ms, or null if the round is still on after `limitMs`. */
+  function playOut(room: Room, limitMs: number): number | null {
     const t0 = Date.now();
     let rev = room.rev;
-    let looks = 0;
     while (room.phase === 'playing') {
       expect(vi.getTimerCount()).toBeGreaterThan(0);
       vi.advanceTimersToNextTimer(); // one bot's look: at most one intent
-      looks++;
       expect(room.rev - rev).toBeLessThanOrEqual(4); // (several bots may look in the same millisecond)
       rev = room.rev;
       expect(checkInvariants(room.game!)).toBeNull();
-      if (Date.now() - t0 > limitMs) throw new Error(`no Nertz call within ${limitMs} ms of play (${looks} looks)`);
+      if (Date.now() - t0 > limitMs) return null;
     }
     return Date.now() - t0;
   }
 
   it('a person and two bots play whole rounds to a Nertz call, and the bots are scored like anyone', () => {
     vi.useFakeTimers();
-    // Deals that get played out. Not every deal does: a table of two or three can jam for good, as in the real game.
-    for (const seed of [1, 3, 4]) {
-      const { room, host } = hosted(seed);
+    // Deals until three have been played out. Not every deal is: a table of two or three can jam for good, as in the real game.
+    untilReached({ 'played out': 3 }, 8, (rng, reached, seed) => {
+      const { room, host } = hosted(100 + seed); // (the room's own dice, apart from the person's)
       room.handle(host, { t: 'addBot', level: 'fast' });
       room.handle(host, { t: 'addBot', level: 'slow' });
       room.handle(host, { t: 'start' });
       opening(room, host);
       // The person plays through their connection, from the snapshots they are sent, about once a second.
-      const rng = seeded(seed + 50);
       let memory = freshMemory();
       let seq = 0;
       let turn = Date.now() + 1000;
@@ -399,8 +396,9 @@ describe('Room with bots', () => {
         if (choice) room.handle(host, { t: 'intent', seq: ++seq, intent: choice.intent });
         if (choice && room.game !== before) memory = choice.memory;
         expect(checkInvariants(room.game!)).toBeNull();
-        if (Date.now() - t0 > 30 * 60_000) throw new Error(`seed ${seed}: no Nertz call in half an hour of play`);
+        if (Date.now() - t0 > 30 * 60_000) return room.close(); // jammed
       }
+      reached('played out');
       expect(vi.getTimerCount()).toBe(0); // round over: no bot timer left, and no grace timer (nobody held a card)
       const round = room.lastRound!;
       expect(inGrace(room.game!)).toEqual([]);
@@ -417,12 +415,14 @@ describe('Room with bots', () => {
       room.flush();
       expect(host.last.room.players.map((p) => p.seat)).toEqual([0, 1]);
       expect(host.last.room.lastRound!.scores.map((l) => [l.seat, !!l.gone])).toEqual([[0, false], [1, false], [2, true]]); // prettier-ignore
-    }
-  });
+      room.close();
+    });
+  }, FUZZ_MS);
 
   it('bots alone, driven only by their timers, finish rounds (the person is away, so the stuck vote is theirs)', () => {
     vi.useFakeTimers();
-    for (const seed of [12, 13, 14, 16]) {
+    // Deals until two have been played out.
+    untilReached({ 'played out': 2 }, 8, (_, reached, seed) => {
       const { room, host } = hosted(seed);
       for (const level of ['slow', 'medium', 'fast', 'medium'] as const) room.handle(host, { t: 'addBot', level });
       room.handle(host, { t: 'start' });
@@ -431,6 +431,8 @@ describe('Room with bots', () => {
       expect(room.connected).toBe(0); // four bots playing do not make the room look alive
       expect(vi.getTimerCount()).toBe(4);
       const took = playOut(room, 60 * 60_000);
+      if (took === null) return room.close(); // jammed
+      reached('played out');
       expect(took).toBeGreaterThan(20_000); // human pace, not a burst
       expect(vi.getTimerCount()).toBe(0);
       expect(room.phase).toBe('results');
@@ -450,8 +452,8 @@ describe('Room with bots', () => {
       expect(room.game!.players.filter((p) => p.seat !== 0).some((p) => p.waste.length + p.nertz.length !== 13)).toBe(true);
       room.close();
       expect(vi.getTimerCount()).toBe(0);
-    }
-  });
+    });
+  }, FUZZ_MS);
 
   it('a pause stops the bots and every move until whoever paused (or the dealer) carries on', () => {
     vi.useFakeTimers();

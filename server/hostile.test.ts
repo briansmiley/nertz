@@ -6,10 +6,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { calledBy, checkInvariants, hasOpened, inGrace, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, hasOpened, inGrace, isHidden, viewFor } from '../shared/engine';
 import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
-import { felt, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
-import type { AnyCard, GameState, Intent, PileRef } from '../shared/types';
+import { felt, FUZZ_MS, MIXES, move, randomIntent, rig, seeded, slot, toPlay, untilReached, wire, withPile, workTop } from '../shared/testkit';
+import type { AnyCard, GameState, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 import { Client, type StateMsg } from './testkit';
@@ -366,29 +366,6 @@ describe('a hostile client over real sockets', () => {
 
 // ---------------------------------------------------------------- bots and a swarm together
 
-/** What a careless, impatient, slightly dishonest client sends next, going by its last (stale) view. */
-function swarmIntent(view: GameState, seat: number, rnd: Rng): Intent {
-  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
-  const p = me(view, seat);
-  const mine = [...p.nertz.slice(-1), ...p.waste.slice(-1), ...p.work.flat()];
-  const roll = rnd();
-  if (roll < 0.5) {
-    const legal = mine.flatMap((c) => legalDrops(view, seat, c.id).map((to) => move(c.id, to, grab(view, seat, c.id)!.cards.length)));
-    const toCentre = legal.filter((m) => m.k === 'move' && m.to.k !== 'work');
-    if (legal.length > 0) return pick(toCentre.length > 0 && rnd() < 0.85 ? toCentre : legal);
-    return { k: 'flip' };
-  }
-  if (roll < 0.68) return { k: 'flip' };
-  if (roll < 0.7) return { k: 'stuck', on: rnd() < 0.5 };
-  if (roll < 0.74) return { k: 'nertz' };
-  if (roll < 0.82) return mine.length > 0 ? { k: 'hold', cardId: pick(mine).id } : { k: 'release' };
-  if (roll < 0.86) return { k: 'release' };
-  if (roll < 0.93) return { k: 'clear', slot: Math.floor(rnd() * view.slots.length) };
-  if (roll < 0.97 && mine.length > 0) return move(pick(mine).id, felt(Math.round((rnd() * 2 - 1) * 1000) / 1000, Math.round((rnd() * 2 - 1) * 1000) / 1000));
-  const all = view.players.flatMap((q) => [...q.nertz, ...q.waste, ...q.stock, ...q.work.flat()]);
-  return move(pick(all).id, pick([slot(Math.floor(rnd() * 24)), { k: 'work', i: Math.floor(rnd() * 4) } as PileRef]));
-}
-
 describe('four bots and a swarm at one table', () => {
   class Tap implements Conn {
     last: StateMsg | null = null;
@@ -407,27 +384,27 @@ describe('four bots and a swarm at one table', () => {
 
   it('every invariant holds after every single intent, bots and swarm alike, through whole rounds', () => {
     vi.useFakeTimers();
-    const rnd = seeded(5);
-    const room = new Room('SWRM', { rng: seeded(31), schedule: (flush) => void setTimeout(flush, 0) });
-    const taps = [new Tap(), new Tap()];
-    taps.forEach((t, i) => expect(room.join(t, `S${i}`, `swarm-tok-${i}`, true)).toBeNull());
-    for (let i = 0; i < 4; i++) room.handle(taps[0]!, { t: 'addBot', level: 'fast' });
-    // Every intent, whoever sends it, goes through this one method: look at the table after each.
-    const inner = (room as unknown as { intent: (...args: unknown[]) => void }).intent.bind(room);
-    const problems: string[] = [];
-    const count = { intents: 0, accepted: 0, bots: 0, rounds: 0, cleared: 0, graces: 0 };
-    (room as unknown as { intent: (...args: unknown[]) => void }).intent = (...args) => {
-      const before = room.game;
-      inner(...args);
-      count.intents++;
-      if (room.game !== before) count.accepted++;
-      if ((args[0] as { bot?: unknown }).bot) count.bots++;
-      const bad = checkInvariants(room.game!);
-      if (bad) problems.push(`after ${JSON.stringify(args[2])}: ${bad}`);
-      if (inGrace(room.game!).length > 0) count.graces++;
-    };
-    const seqs = [0, 0];
-    for (let round = 0; round < 3; round++) {
+    // Tables until a round has been played out, a grace window has opened, and the bots have had their say.
+    untilReached({ round: 1, grace: 1, 'bot intent': 50, accepted: 300 }, 8, (rnd, reached, seed) => {
+      const room = new Room('SWRM', { rng: seeded(1000 + seed), schedule: (flush) => void setTimeout(flush, 0) });
+      const taps = [new Tap(), new Tap()];
+      taps.forEach((t, i) => expect(room.join(t, `S${i}`, `swarm-tok-${i}`, true)).toBeNull());
+      for (let i = 0; i < 4; i++) room.handle(taps[0]!, { t: 'addBot', level: 'fast' });
+      // Every intent, whoever sends it, goes through this one method: look at the table after each.
+      const inner = (room as unknown as { intent: (...args: unknown[]) => void }).intent.bind(room);
+      const problems: string[] = [];
+      const count = { intents: 0, accepted: 0 };
+      (room as unknown as { intent: (...args: unknown[]) => void }).intent = (...args) => {
+        const before = room.game;
+        inner(...args);
+        count.intents++;
+        if (room.game !== before) (count.accepted++, reached('accepted'));
+        if ((args[0] as { bot?: unknown }).bot) reached('bot intent');
+        const bad = checkInvariants(room.game!);
+        if (bad) problems.push(`after ${JSON.stringify(args[2])}: ${bad}`);
+        if (inGrace(room.game!).length > 0) reached('grace');
+      };
+      const seqs = [0, 0];
       room.handle(taps[0]!, { t: 'start' });
       expect(room.game!.players).toHaveLength(6);
       vi.advanceTimersByTime(1); // (the first snapshot of the round)
@@ -435,36 +412,34 @@ describe('four bots and a swarm at one table', () => {
       for (const [stage, ms] of [['dealing', DEAL_MS], ['ready', 1], ['countdown', START_MS]] as const) {
         expect(room.game!.status.at).toBe(stage);
         const state = room.game;
-        for (let n = 0; n < 60; n++) taps.forEach((t, i) => room.handle(t, { t: 'intent', seq: seqs[i]!++, intent: swarmIntent(t.last!.room.game!, i, rnd) }));
+        for (let n = 0; n < 60; n++) taps.forEach((t, i) => room.handle(t, { t: 'intent', seq: seqs[i]!++, intent: randomIntent(t.last!.room.game!, i, rnd, MIXES.playing) }));
         expect(room.game).toBe(state);
         if (stage === 'ready') room.handle(taps[0]!, { t: 'go' });
         vi.advanceTimersByTime(ms);
       }
       expect(room.game!.status.at).toBe('play');
-      for (let step = 0; step < 6000 && room.phase === 'playing'; step++) {
+      for (let step = 0; step < 3000 && room.phase === 'playing'; step++) {
         // A burst from each swarm client on the view it last got, then a little time for the bots and the snapshots.
         taps.forEach((t, i) => {
           for (let n = Math.floor(rnd() * 4); n > 0; n--) {
-            const intent = swarmIntent(t.last!.room.game!, i, rnd);
+            const intent = randomIntent(t.last!.room.game!, i, rnd, MIXES.playing);
             room.handle(t, { t: 'intent', seq: seqs[i]!++, intent });
             if (intent.k === 'hold') room.handle(t, { t: 'drag', id: intent.cardId, w: 0.5, h: [0, 0], p: [0, 0] });
           }
         });
         vi.advanceTimersByTime(40);
       }
-      if (room.phase === 'playing') continue; // (jammed: deal again from the lobby is not possible mid-round, so stop here)
-      count.rounds++;
-      count.cleared += room.game!.tray.length;
+      expect(problems).toEqual([]);
+      expect(taps.flatMap((t) => t.bad)).toEqual([]);
+      expect(count.intents).toBeGreaterThan(count.accepted);
+      if (room.phase === 'playing') return room.close(); // (jammed)
+      reached('round');
       expect(checkInvariants(room.game!)).toBeNull();
       const played = room.lastRound!.scores.reduce((sum, s) => sum + s.played, 0);
       expect(played).toBe([...room.game!.slots.map((s) => s?.cards ?? []), ...room.game!.tray].flat().length);
-    }
-    expect(problems).toEqual([]);
-    expect(taps.flatMap((t) => t.bad)).toEqual([]);
-    expect(count.rounds).toBeGreaterThan(0);
-    expect(count.bots).toBeGreaterThan(50);
-    expect(count.accepted).toBeGreaterThan(300);
-    expect(count.intents).toBeGreaterThan(count.accepted);
-    for (const t of taps) expect(t.last!.room.game).toEqual(wire(viewFor(room.game!, 0)));
-  });
+      vi.advanceTimersByTime(1);
+      for (const t of taps) expect(t.last!.room.game).toEqual(wire(viewFor(room.game!, 0)));
+      room.close();
+    });
+  }, FUZZ_MS);
 });

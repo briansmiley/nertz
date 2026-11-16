@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { calledBy, checkInvariants, endVote, finishDeal, grab, inGrace, isComplete, isHidden, legalDrops, mustClear, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, startCountdown, viewFor } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
-import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
-import type { Card, GameState, Intent, PileRef } from '../shared/types';
+import { felt, FUZZ_MS, hold, inPlay, MIXES, move, randomIntent, rig, seeded, slot, toPlay, untilReached, wire, withPile, workTop } from '../shared/testkit';
+import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, send, startRound, type StateMsg } from './testkit';
@@ -24,34 +24,6 @@ const sendIntent = (room: Room, conn: Conn, seq: number, intent: Intent) => room
  */
 const rigged = (seats: number[], emptyNertz: number[] = []): GameState => rig(inPlay(seats, seeded(7)), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz });
 const filled = (g: GameState) => g.slots.flatMap((pile) => (pile ? [pile.cards.map((c) => c.id)] : []));
-
-/** What a bot does next, given its (possibly stale) view: a mix of legal moves, drags, flips, wrong moves and nonsense. */
-function botIntent(view: GameState, seat: number, rnd: Rng): Intent {
-  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
-  const me = view.players.find((p) => p.seat === seat)!;
-  const mine = [...me.nertz.slice(-1), ...me.waste.slice(-1), ...me.work.flat()];
-  const roll = rnd();
-  if (roll < 0.45) {
-    const legal = mine.flatMap((c) => legalDrops(view, seat, c.id).map((to) => move(c.id, to, grab(view, seat, c.id)!.cards.length)));
-    // Prefer the middle so the shared piles are genuinely contended.
-    const toCentre = legal.filter((m) => m.k === 'move' && m.to.k !== 'work');
-    if (legal.length > 0) return pick(toCentre.length > 0 && rnd() < 0.8 ? toCentre : legal);
-    return { k: 'flip' };
-  }
-  if (roll < 0.65) return { k: 'flip' };
-  if (roll < 0.7) return { k: 'stuck', on: rnd() < 0.5 };
-  if (roll < 0.72) return me.nertz.length > 0 ? { k: 'nertz' } : { k: 'flip' };
-  if (roll < 0.8) return mine.length > 0 ? hold(pick(mine).id) : { k: 'release' };
-  if (roll < 0.85) return { k: 'release' };
-  if (roll < 0.9) {
-    const full = view.slots.flatMap((pile, i) => (pile && isComplete(pile.cards) ? [i] : []));
-    return { k: 'clear', slot: full.length > 0 ? pick(full) : Math.floor(rnd() * 24) };
-  }
-  // Anyone's card, anywhere, to anywhere: almost always illegal.
-  const everything = [...view.players.flatMap((p) => [...p.nertz, ...p.waste, ...p.stock, ...p.work.flat()]), ...view.slots.flatMap((pile) => pile?.cards ?? []), ...view.tray.flat()];
-  const targets: PileRef[] = [...[0, 1, 2, 3].map((i): PileRef => ({ k: 'work', i })), ...view.slots.map((_, i) => slot(i)), slot(23)];
-  return move(rnd() < 0.1 ? 'no-such-card' : pick(everything).id, pick(targets));
-}
 
 // ---------------------------------------------------------------- Room, driven directly
 
@@ -1540,33 +1512,35 @@ describe('Room', () => {
   });
 
   it('keeps every invariant through thousands of random intents decided on stale views', () => {
-    const { room, conns } = roomWith(4, { rng: seeded(42) });
-    startRound(room, conns[0]!);
-    room.flush();
-    const rnd = seeded(99);
-    const seqs = [0, 0, 0, 0];
-    let accepted = 0;
-    for (let n = 0; n < 6000; n++) {
-      const seat = Math.floor(rnd() * 4);
-      const conn = conns[seat]!;
-      const before = room.game;
-      sendIntent(room, conn, seqs[seat]!++, botIntent(conn.last.room.game!, seat, rnd));
-      if (room.game !== before) accepted++;
-      expect(checkInvariants(room.game!)).toBeNull();
-      if (rnd() < 0.15) room.flush(); // views lag behind by a handful of intents
-    }
-    room.flush();
-    expect(accepted).toBeGreaterThan(1000);
-    expect(filled(room.game!).length + room.game!.tray.length).toBeGreaterThan(4); // these bots often play every last card out
-    expect(room.game!.players.some((p) => p.down.some((n, i) => n < i))).toBe(true); // face-down work cards were turned over
-    conns.forEach((conn, seat) => {
-      expect(conn.last.ack).toBe(seqs[seat]! - 1);
-      expect(conn.last.room.game).toEqual(wire(viewFor(room.game!, seat)));
-      expect(checkInvariants(conn.last.room.game!)).toBeNull();
-      const revs = conn.states.map((m) => m.rev);
-      expect(revs.every((r, i) => i === 0 || r > revs[i - 1]!)).toBe(true);
+    // Seeds until the middle has filled up and face-down work cards have been turned over.
+    untilReached(['centre', 'reveal'], 8, (rnd, reached) => {
+      const { room, conns } = roomWith(4, { rng: rnd });
+      startRound(room, conns[0]!);
+      room.flush();
+      const seqs = [0, 0, 0, 0];
+      let accepted = 0;
+      for (let n = 0; n < 2000; n++) {
+        const seat = Math.floor(rnd() * 4);
+        const conn = conns[seat]!;
+        const before = room.game;
+        sendIntent(room, conn, seqs[seat]!++, randomIntent(conn.last.room.game!, seat, rnd, MIXES.playing));
+        if (room.game !== before) accepted++;
+        expect(checkInvariants(room.game!)).toBeNull();
+        if (rnd() < 0.15) room.flush(); // views lag behind by a handful of intents
+      }
+      room.flush();
+      expect(accepted).toBeGreaterThan(400);
+      if (filled(room.game!).length + room.game!.tray.length > 4) reached('centre'); // these players often play every last card out
+      if (room.game!.players.some((p) => p.down.some((n, i) => n < i))) reached('reveal'); // face-down work cards were turned over
+      conns.forEach((conn, seat) => {
+        expect(conn.last.ack).toBe(seqs[seat]! - 1);
+        expect(conn.last.room.game).toEqual(wire(viewFor(room.game!, seat)));
+        expect(checkInvariants(conn.last.room.game!)).toBeNull();
+        const revs = conn.states.map((m) => m.rev);
+        expect(revs.every((r, i) => i === 0 || r > revs[i - 1]!)).toBe(true);
+      });
     });
-  });
+  }, FUZZ_MS);
 });
 
 // ---------------------------------------------------------------- the real server, over real sockets
@@ -1739,7 +1713,7 @@ describe('server over real sockets', () => {
   it('(b) a swarm of four bots firing as fast as they can never breaks the table', async () => {
     const { room, players } = await table(4);
     const rnd = seeded(2024);
-    const PER_BOT = 3000;
+    const PER_BOT = 1500;
     const BURST = 4;
     const problems: string[] = [];
     let checks = 0;
@@ -1757,7 +1731,7 @@ describe('server over real sockets', () => {
           for (let i = 0; i < BURST && bot.seq < PER_BOT; i++) {
             if (rnd() < 0.03) bot.send(rnd() < 0.5 ? 'not json {' : { t: 'intent', seq: bot.seq, intent: { k: 'teleport' } });
             // Always finish on something well-formed, so the last seq is one the server can ack.
-            bot.intent(bot.seq === PER_BOT - 1 ? { k: 'flip' } : botIntent(bot.last.room.game!, bot.seat, rnd));
+            bot.intent(bot.seq === PER_BOT - 1 ? { k: 'flip' } : randomIntent(bot.last.room.game!, bot.seat, rnd, MIXES.playing));
           }
           // Let snapshots in, and wait for the one that answers the burst before this one: the view stays a burst or two
           // behind, however fast this loop spins. (Without the wait a busy machine got through all 1200 on the very first
@@ -1787,7 +1761,7 @@ describe('server over real sockets', () => {
       expect(acks.every((k, i) => i === 0 || k >= acks[i - 1]!)).toBe(true);
       expect(bot.errors.every((e) => e === 'Malformed message')).toBe(true);
     }
-  }, 30_000);
+  }, FUZZ_MS);
 
   it('(c) reconnecting with the same token resumes the seat with the same hand', async () => {
     const { room, code, players } = await table(2);

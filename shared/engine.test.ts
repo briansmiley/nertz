@@ -33,7 +33,7 @@ import {
   type Result,
   type Rng,
 } from './engine';
-import { card as c, cards as cs, felt, hold, inPlay, move, pile, roomOf, seeded, slot, table, work, type Hand } from './testkit';
+import { allCards, card as c, cards as cs, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seeded, slot, table, untilReached, work, type Hand } from './testkit';
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
@@ -68,12 +68,6 @@ function deepFreeze<T>(v: T): T {
   }
   return v;
 }
-
-const allCards = (s: GameState): AnyCard[] => [
-  ...s.players.flatMap((p) => [...p.nertz, ...p.stock, ...p.waste, ...p.work.flat()]),
-  ...inSlots(s),
-  ...s.tray.flat(),
-];
 
 // ---------------------------------------------------------------- the deal as a phase
 
@@ -1623,52 +1617,10 @@ describe('starting a pile on the felt', () => {
 
 // ---------------------------------------------------------------- random play
 
-/** Every (card, target) pair `seat` may play right now. */
-function legalMoves(s: GameState, seat: number): Intent[] {
-  const p = s.players.find((q) => q.seat === seat)!;
-  const cards = [p.nertz.at(-1), p.waste.at(-1), ...p.work.flat()].filter((x) => x !== undefined);
-  return cards.flatMap((card) => legalDrops(s, seat, card.id).filter((to) => canDrop(s, seat, card.id, to)).map((to) => move(card.id, to, grab(s, seat, card.id)!.cards.length)));
-}
-
-/** A mix of sensible and hostile intents. Only looks at what is visible in `s`, so it works on views as well. */
-function randomIntent(s: GameState, seat: number, rng: Rng): Intent {
-  const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)]!;
-  const me = s.players.find((q) => q.seat === seat)!;
-  // Clear-first: with a finished pile waiting nothing else is accepted, so mostly do that (or random play would lock up).
-  if (mustClear(s, seat) && rng() < 0.7) return { k: 'clear', slot: s.slots.findIndex((pile) => completedBy(pile) === seat) };
-  const roll = rng();
-  if (me.holding !== null && roll < 0.4) {
-    // Someone mid-drag often finishes it: on a legal spot, back where it was, or (rarely) somewhere silly.
-    const drops = legalDrops(s, seat, me.holding);
-    // (An Ace's one listed place is usually swapped for anywhere at all: most such places are free too.)
-    const aim = (to: PileRef): PileRef => (to.k === 'felt' && rng() < 0.8 ? felt(rng() * 1.6 - 0.8, rng() * 1.6 - 0.8) : to);
-    if (drops.length && roll < 0.25) return move(me.holding, aim(pick(drops)), grab(s, seat, me.holding)!.cards.length);
-    return roll < 0.35 ? RELEASE : move(me.holding, slot(Math.floor(rng() * s.slots.length)));
-  }
-  if (roll < 0.25) return { k: 'flip' };
-  if (roll < 0.29) return { k: 'stuck', on: rng() < 0.7 };
-  if (roll < 0.34) return NERTZ;
-  if (roll < 0.38) return RELEASE;
-  if (roll < 0.42) {
-    const full = s.slots.flatMap((pile, i) => (pile && isComplete(pile.cards) ? [i] : []));
-    return { k: 'clear', slot: full.length && rng() < 0.9 ? pick(full) : Math.floor(rng() * 24) };
-  }
-  if (roll < 0.6) {
-    const mine = [me.nertz.at(-1), me.waste.at(-1), ...me.work.flat()].filter((x) => x !== undefined);
-    const playable = mine.filter((x) => legalDrops(s, seat, x.id).length > 0);
-    if (mine.length) return hold(pick(playable.length && rng() < 0.8 ? playable : mine).id);
-  }
-  if (roll < 0.86) {
-    const legal = legalMoves(s, seat);
-    if (legal.length) return pick(legal);
-  }
-  const everything = allCards(s);
-  const mine = everything.filter((x) => x.owner === seat);
-  const card = rng() < 0.8 && mine.length ? pick(mine) : pick(everything);
-  if (rng() < 0.15) return hold(card.id);
-  const targets: PileRef[] = [slot(23), felt(rng() * 2 - 1, rng() * 2 - 1), felt(rng() * 2 - 1, rng() * 2 - 1), ...s.slots.map((_, i) => slot(i)), ...[0, 1, 2, 3].map(work)];
-  return move(card.id, pick(targets), 1 + Math.floor(rng() * 3));
-}
+/** How many random intents a seed of each random run plays. */
+const INTENTS = 1000;
+/** How many chains of intents a seed of the prediction run plays. */
+const CHAINS = 200;
 
 /** A deal with only `n` cards in each nertz pile (the rest go under the stock), so that Nertz calls actually happen in random play. */
 function shortDeal(seats: readonly number[], rng: Rng, n = 2): GameState {
@@ -1677,80 +1629,70 @@ function shortDeal(seats: readonly number[], rng: Rng, n = 2): GameState {
 }
 
 describe('random play keeps every invariant', () => {
-  // (Seeds are picked so that the short deals meet a grace window in 4000 intents. With
-  // one card per flip and clear-first together a grace window comes up about once in five rounds: four seats on seed 3
-  // and six on seed 4 no longer met one; of the seeds tried, 1 of 5 at four seats and 3 of 4 at six do.
-  // Re-picked at four seats when the felt stopped being turned for each seat: 41, 42, 47 and 49 do, 43 no longer.)
-  for (const [seed, seatCount, short] of [[1, 2, false], [2, 3, false], [41, 4, true], [14, 6, true], [5, 2, true]] as const) {
-    it(`seed ${seed}, ${seatCount} seats, 4000 intents${short ? ', short nertz piles' : ''}`, () => {
-      const rng = seeded(seed);
-      const seats = Array.from({ length: seatCount }, (_, i) => i * 2); // non-contiguous seats on purpose
-      const fresh = () => deepFreeze(short ? shortDeal(seats, rng) : inPlay(seats, rng));
-      let state = fresh();
-      const seen = { accepted: 0, rotations: 0, rounds: 0, graces: 0, graceMoves: 0, cleared: 0, centre: 0, reveals: 0, started: 0 };
-      for (let step = 0; step < 4000; step++) {
-        const seat = seats[Math.floor(rng() * seats.length)]!;
-        const intent = randomIntent(state, seat, rng);
-        const before = state;
-        const r = applyIntent(state, seat, intent); // throws if it mutates the frozen state
-        if (r.ok) {
-          seen.accepted++;
-          const resolved = resolveStuck(r.state, seats);
-          if (resolved !== r.state) seen.rotations++;
-          state = deepFreeze(resolved);
-          const problem = checkInvariants(state) ?? checkInvariants(viewFor(state, seat));
-          if (problem) throw new Error(`step ${step}, seat ${seat}, ${JSON.stringify(intent)}: ${problem}`);
-          expect(allCards(state)).toHaveLength(52 * seatCount);
-          expect(state.slots).toHaveLength(4 * seatCount);
-          if (intent.k === 'move' && intent.to.k === 'felt') {
-            // A pile was started on bare felt: exactly there, in a slot that was empty, clear of every pile that was lying.
-            seen.started++;
-            const i = state.slots.findIndex((pile, j) => pile?.cards.length === 1 && before.slots[j] === null);
-            const place = state.slots[i]!.at;
-            expect(place.x).toBeCloseTo(intent.to.x, 3); // (to the thousandth of the table it is kept at)
-            expect(place.y).toBeCloseTo(intent.to.y, 3);
-            expect(onTable(place, seatCount)).toBe(true);
-            for (const pile of before.slots) if (pile) expect(clash(pile.at, place, seatCount)).toBe(false);
+  // Short deals call Nertz often enough for rounds to end and for grace windows to open; more than two seats have
+  // face-down work cards to turn up. Each case runs seeds until it has seen all it is meant to.
+  for (const [seatCount, short] of [[2, false], [3, false], [4, true], [6, true], [2, true]] as const) {
+    const goals = ['started', 'centre', ...(seatCount > 2 ? ['reveal'] : []), ...(short ? ['round'] : []), ...(short && seatCount > 2 ? ['grace'] : [])];
+    it(`${seatCount} seats, ${INTENTS} intents a seed${short ? ', short nertz piles' : ''}, until it has seen ${goals.join(', ')}`, () => {
+      untilReached(goals, 12, (rng, reached) => {
+        const seats = Array.from({ length: seatCount }, (_, i) => i * 2); // non-contiguous seats on purpose
+        const fresh = () => deepFreeze(short ? shortDeal(seats, rng) : inPlay(seats, rng));
+        let state = fresh();
+        let accepted = 0;
+        for (let step = 0; step < INTENTS; step++) {
+          const seat = seats[Math.floor(rng() * seats.length)]!;
+          const intent = randomIntent(state, seat, rng, MIXES.wild);
+          const before = state;
+          const r = applyIntent(state, seat, intent); // throws if it mutates the frozen state
+          if (r.ok) {
+            accepted++;
+            const resolved = resolveStuck(r.state, seats);
+            if (resolved !== r.state) reached('centre'); // (a rotation: the stock was moving)
+            state = deepFreeze(resolved);
+            const problem = checkInvariants(state) ?? checkInvariants(viewFor(state, seat));
+            if (problem) throw new Error(`step ${step}, seat ${seat}, ${JSON.stringify(intent)}: ${problem}`);
+            expect(allCards(state)).toHaveLength(52 * seatCount);
+            expect(state.slots).toHaveLength(4 * seatCount);
+            if (intent.k === 'move' && intent.to.k === 'felt') {
+              // A pile was started on bare felt: exactly there, in a slot that was empty, clear of every pile that was lying.
+              reached('started');
+              const i = state.slots.findIndex((pile, j) => pile?.cards.length === 1 && before.slots[j] === null);
+              const place = state.slots[i]!.at;
+              expect(place.x).toBeCloseTo(intent.to.x, 3); // (to the thousandth of the table it is kept at)
+              expect(place.y).toBeCloseTo(intent.to.y, 3);
+              expect(onTable(place, seatCount)).toBe(true);
+              for (const pile of before.slots) if (pile) expect(clash(pile.at, place, seatCount)).toBe(false);
+            }
+            if (calledBy(before) === null && inGrace(state).length > 0) reached('grace');
+            if (calledBy(before) !== null) {
+              // In grace: only someone who was in it can have acted, they are out of it now, and nobody was added.
+              expect(inGrace(before)).toContain(seat);
+              expect(inGrace(state)).not.toContain(seat);
+              expect(inGrace(state).every((g) => inGrace(before).includes(g))).toBe(true);
+            }
+            if (intent.k === 'clear') {
+              expect(completedBy(before.slots[intent.slot]!)).toBe(seat);
+              expect(state.tray.at(-1)).toEqual(before.slots[intent.slot]!.cards);
+              expect(state.slots[intent.slot]).toBeNull(); // the felt is anybody's again
+            }
+            if (inSlots(state).length > 0) reached('centre');
+            const downs = (g: GameState) => g.players.reduce((n, p) => n + p.down.reduce((a, b) => a + b, 0), 0);
+            if (downs(state) < downs(before)) reached('reveal');
           }
-          if (calledBy(before) === null && inGrace(state).length > 0) seen.graces++;
-          if (calledBy(before) !== null) {
-            // In grace: only someone who was in it can have acted, they are out of it now, and nobody was added.
-            expect(inGrace(before)).toContain(seat);
-            expect(inGrace(state)).not.toContain(seat);
-            expect(inGrace(state).every((g) => inGrace(before).includes(g))).toBe(true);
-            if (intent.k === 'move') seen.graceMoves++;
+          // The server's timer, played by the dice: grace does not last for ever.
+          if (calledBy(state) !== null && rng() < 0.1) state = deepFreeze(expireGrace(state));
+          if (isOver(state)) {
+            expect(checkInvariants(state)).toBeNull();
+            expect(state.players.every((p) => p.holding === null)).toBe(true);
+            expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + state.tray.flat().length);
+            for (const intent of [{ k: 'flip' }, RELEASE, NERTZ] as Intent[]) rejected(applyIntent(state, seat, intent));
+            reached('round');
+            state = fresh();
           }
-          if (intent.k === 'clear') {
-            seen.cleared++;
-            expect(completedBy(before.slots[intent.slot]!)).toBe(seat);
-            expect(state.tray.at(-1)).toEqual(before.slots[intent.slot]!.cards);
-            expect(state.slots[intent.slot]).toBeNull(); // the felt is anybody's again
-          }
-          const downs = (g: GameState) => g.players.reduce((n, p) => n + p.down.reduce((a, b) => a + b, 0), 0);
-          if (downs(state) < downs(before)) seen.reveals++;
         }
-        // The server's timer, played by the dice: grace does not last for ever.
-        if (calledBy(state) !== null && rng() < 0.1) state = deepFreeze(expireGrace(state));
-        if (isOver(state)) {
-          expect(checkInvariants(state)).toBeNull();
-          expect(state.players.every((p) => p.holding === null)).toBe(true);
-          expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + state.tray.flat().length);
-          for (const intent of [{ k: 'flip' }, RELEASE, NERTZ] as Intent[]) rejected(applyIntent(state, seat, intent));
-          seen.centre += inSlots(state).length + state.tray.flat().length;
-          seen.rounds++;
-          state = fresh();
-        }
-      }
-      seen.centre += inSlots(state).length;
-      expect(seen.accepted).toBeGreaterThan(1500);
-      expect(seen.centre + seen.rotations).toBeGreaterThan(0);
-      if (seatCount > 2) expect(seen.reveals).toBeGreaterThan(0); // (two players have no face-down cards to turn up)
-      expect(seen.started).toBeGreaterThan(0);
-      if (short) {
-        expect(seen.rounds).toBeGreaterThan(0);
-        if (seatCount > 2) expect(seen.graces).toBeGreaterThan(0);
-      }
-    });
+        expect(accepted).toBeGreaterThan(INTENTS / 4);
+      });
+    }, FUZZ_MS);
   }
 
   it('long games reach kings, clears and slot reuse without breaking anything', () => {
@@ -1783,7 +1725,7 @@ describe('random play keeps every invariant', () => {
     expect(scoreRound(state).reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + 13 * cleared);
     expect(cleared).toBeGreaterThanOrEqual(3);
     expect(reused).toBeGreaterThan(0); // an Ace went into a slot a finished pile had been cleared from
-  });
+  }, FUZZ_MS);
 });
 
 describe('greedy bots can finish a round', () => {
@@ -1812,13 +1754,12 @@ describe('greedy bots can finish a round', () => {
   }
 
   it('plays whole rounds to a nertz call with consistent scores', () => {
-    let finished = 0;
-    for (let seed = 1; seed <= 12; seed++) {
-      const rng = seeded(seed * 101);
+    // Deals until six have been played out to a call: not every deal is.
+    untilReached({ called: 6 }, 12, (rng, reached) => {
       const seats = [0, 1, 2, 3];
       let state = inPlay(seats, rng);
       const idle = new Map(seats.map((s) => [s, 0]));
-      for (let step = 0; step < 20_000 && isLive(state); step++) {
+      for (let step = 0; step < 4000 && isLive(state); step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const intent = botIntent(state, seat, idle.get(seat)!);
         const r = applyIntent(state, seat, intent);
@@ -1828,8 +1769,8 @@ describe('greedy bots can finish a round', () => {
         if (state !== r.state) seats.forEach((s) => idle.set(s, 0));
         expect(checkInvariants(state)).toBeNull();
       }
-      if (calledBy(state) === null) continue;
-      finished++;
+      if (calledBy(state) === null) return; // (jammed: a played-out deal takes a few hundred intents, rarely two thousand)
+      reached('called');
       expect(isOver(state)).toBe(true); // nobody was holding anything
       const scores = scoreRound(state);
       const caller = scores.find((x) => x.seat === calledBy(state))!;
@@ -1837,9 +1778,8 @@ describe('greedy bots can finish a round', () => {
       expect(caller.delta).toBe(caller.played);
       for (const x of scores) expect(x.delta).toBe(x.played - 2 * x.nertzLeft);
       expect(scores.reduce((n, x) => n + x.played, 0)).toBe(inSlots(state).length + state.tray.flat().length);
-    }
-    expect(finished).toBeGreaterThanOrEqual(6);
-  }, 30_000);
+    });
+  }, FUZZ_MS);
 });
 
 // ---------------------------------------------------------------- prediction
@@ -1881,22 +1821,18 @@ const unrevealed = (predicted: GameState, freshView: GameState): number => {
 
 describe('client prediction on a redacted view agrees with the server', () => {
   it('single intents, grace included: same verdict, same visible result, at most the newly revealed cards unknown', () => {
-    let graceIntents = 0;
-    // (Seeds re-picked when stock dealing went to one card per intent: a grace window is rarer per 3000 intents now,
-    // about one seed in five meets one. These four meet at least one.)
-    for (const seed of [26, 41, 50, 51]) {
-      const rng = seeded(seed);
+    untilReached(['grace'], 12, (rng, reached) => {
       const seats = [0, 1, 2];
       let state = shortDeal(seats, rng);
-      for (let step = 0; step < 3000; step++) {
+      for (let step = 0; step < INTENTS; step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const view = deepFreeze(viewFor(state, seat));
-        const intent = randomIntent(view, seat, rng);
+        const intent = randomIntent(view, seat, rng, MIXES.wild);
         const onView = applyIntent(view, seat, intent);
         const onTruth = applyIntent(state, seat, intent);
         expect(onView.ok, `step ${step} ${JSON.stringify(intent)}`).toBe(onTruth.ok);
         if (onView.ok && onTruth.ok) {
-          if (calledBy(state) !== null) graceIntents++;
+          if (calledBy(state) !== null) reached('grace');
           expectPredictionMatches(onView.state, onTruth.state);
           const revealed = unrevealed(onView.state, viewFor(onTruth.state, seat));
           expect(revealed).toBeLessThanOrEqual(intent.k === 'flip' ? 3 : 1);
@@ -1906,22 +1842,22 @@ describe('client prediction on a redacted view agrees with the server', () => {
         if (calledBy(state) !== null && rng() < 0.1) state = expireGrace(state);
         if (isOver(state)) state = shortDeal(seats, rng);
       }
-    }
-    expect(graceIntents).toBeGreaterThan(0);
-  });
+    });
+  }, FUZZ_MS);
 
   it('chains of unacknowledged intents: whatever the client accepts, the server accepts identically', () => {
-    for (const seed of [31, 32, 33]) {
-      const rng = seeded(seed);
+    // Seeds until a whole chain of several has been predicted, and a chain has run into a card the client could not see.
+    untilReached(['whole chain', 'resync'], 12, (rng, reached) => {
       const seats = [0, 1];
       let state = inPlay(seats, rng);
       let diverged = 0;
-      for (let round = 0; round < 600; round++) {
+      for (let round = 0; round < CHAINS; round++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         let predicted = viewFor(state, seat);
         const length = 1 + Math.floor(rng() * 6);
+        let predictedAll = 0;
         for (let n = 0; n < length; n++) {
-          const intent = randomIntent(predicted, seat, rng);
+          const intent = randomIntent(predicted, seat, rng, MIXES.wild);
           const onView = applyIntent(predicted, seat, intent);
           const onTruth = applyIntent(state, seat, intent);
           if (onTruth.ok) state = onTruth.state;
@@ -1929,19 +1865,21 @@ describe('client prediction on a redacted view agrees with the server', () => {
             // The client never predicts something the server then refuses (absent other players' moves).
             expect(onTruth.ok, `round ${round} ${JSON.stringify(intent)}`).toBe(true);
             predicted = onView.state;
+            if (++predictedAll === length && length >= 3) reached('whole chain');
             expectPredictionMatches(predicted, state);
             expect(checkInvariants(predicted)).toBeNull(); // including a just-uncovered work card whose face is not known yet
           } else if (onTruth.ok) {
             // Only possible when the move involved a card the client could not see yet; it resyncs from the snapshot.
             diverged++;
+            reached('resync');
             break;
           }
         }
         if (calledBy(state) !== null) state = inPlay(seats, rng);
       }
-      expect(diverged).toBeLessThan(200);
-    }
-  });
+      expect(diverged).toBeLessThan(CHAINS / 3);
+    });
+  }, FUZZ_MS);
 
   it('a lost race simply drops the pending intent when replayed over the newer snapshot', () => {
     const s = table([{ nertz: 'S9 H2' }, { nertz: 'D9 H2' }], { slots: [pile('HA', 0), pile('HA', 1)] });

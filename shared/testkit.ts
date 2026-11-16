@@ -2,7 +2,7 @@
 // whole table built by hand, the intents, and a room as one window sees it. For tests only: imported by *.test.ts files
 // and server/testkit.ts.
 import { expect } from 'vitest';
-import { checkInvariants, deal, finishDeal, isHidden, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
+import { canDrop, checkInvariants, completedBy, deal, finishDeal, grab, isComplete, isHidden, legalDrops, mustClear, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
 import { PLAIN_LOOK } from './protocol';
 import { DEFAULT_SETTINGS } from './settings';
 import { openPlace, type Spot } from './table';
@@ -166,6 +166,116 @@ export const slot = (i: number): PileRef => ({ k: 'slot', i });
 export const work = (i: number): PileRef => ({ k: 'work', i });
 export const felt = (x: number, y: number): Extract<PileRef, { k: 'felt' }> => ({ k: 'felt', x, y });
 export const hold = (cardId: string): Intent => ({ k: 'hold', cardId });
+
+// ---------------------------------------------------------------- random play
+
+/** Every card in `s`, wherever it lies (hidden ones included). */
+export const allCards = (s: GameState): AnyCard[] => [
+  ...s.players.flatMap((p) => [...p.nertz, ...p.stock, ...p.waste, ...p.work.flat()]),
+  ...s.slots.flatMap((pile) => pile?.cards ?? []),
+  ...s.tray.flat(),
+];
+
+/** Every move `seat` may make right now, each card with the run on top of it to every place it may go. */
+export function legalMoves(s: GameState, seat: number): Intent[] {
+  const p = s.players.find((q) => q.seat === seat)!;
+  const lifts = [p.nertz.at(-1), p.waste.at(-1), ...p.work.flat()].flatMap((card) => {
+    const lift = card && grab(s, seat, card.id);
+    return lift ? [{ id: card.id, count: lift.cards.length }] : [];
+  });
+  return lifts.flatMap(({ id, count }) => legalDrops(s, seat, id).filter((to) => canDrop(s, seat, id, to)).map((to) => move(id, to, count)));
+}
+
+/**
+ * How often `randomIntent` sends each kind of intent, as weights. `legal` is a move the view says is legal (to the
+ * middle mostly), `felt` one of one's own cards to a random point of the felt, `nonsense` any card at all to anywhere
+ * (or a drag of it): almost always refused.
+ */
+export type Mix = Readonly<Record<'legal' | 'felt' | 'nonsense' | 'hold' | 'release' | 'flip' | 'stuck' | 'end' | 'nertz' | 'clear', number>>;
+
+export const MIXES = {
+  /** For the rules: as many drags, wrong moves and nonsense as plays. */
+  wild: { legal: 26, felt: 3, nonsense: 14, hold: 18, release: 4, flip: 25, stuck: 4, end: 1, nertz: 5, clear: 4 },
+  /** For a table: mostly play, so that rounds move on and the piles in the middle are fought over. No votes to end the round. */
+  playing: { legal: 48, felt: 3, nonsense: 6, hold: 8, release: 4, flip: 20, stuck: 3, end: 0, nertz: 3, clear: 5 },
+} as const satisfies Record<string, Mix>;
+
+/**
+ * What a careless, impatient, slightly dishonest player sends next, going by `view` (theirs, maybe stale, or the whole
+ * state): an intent of a kind drawn from `mix`. Whatever the mix, someone with a finished pile waiting mostly clears it
+ * (or play would lock up on clear-first), and someone mid-drag often finishes it first. Only looks at what is visible.
+ */
+export function randomIntent(view: GameState, seat: number, rng: Rng, mix: Mix): Intent {
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)]!;
+  const point = () => Math.round((rng() * 2 - 1) * 1000) / 1000;
+  const me = view.players.find((q) => q.seat === seat)!;
+  if (mustClear(view, seat) && rng() < 0.7) return { k: 'clear', slot: view.slots.findIndex((pile) => completedBy(pile) === seat) };
+  if (me.holding !== null && rng() < 0.4) {
+    // On a legal spot (an Ace's one listed place mostly swapped for any point of the felt), back where it was, or on a pile at random.
+    const drops = legalDrops(view, seat, me.holding);
+    const roll = rng();
+    if (drops.length && roll < 0.6) {
+      const to = pick(drops);
+      return move(me.holding, to.k === 'felt' && rng() < 0.8 ? felt(point(), point()) : to, grab(view, seat, me.holding)!.cards.length);
+    }
+    return roll < 0.85 ? { k: 'release' } : move(me.holding, slot(Math.floor(rng() * view.slots.length)));
+  }
+  const mine = [me.nertz.at(-1), me.waste.at(-1), ...me.work.flat()].filter((x) => x !== undefined);
+  let roll = rng() * Object.values(mix).reduce((a, b) => a + b, 0);
+  const kind = (Object.keys(mix) as (keyof Mix)[]).find((k) => (roll -= mix[k]) < 0) ?? 'flip';
+  switch (kind) {
+    case 'legal': {
+      const legal = legalMoves(view, seat);
+      const toCentre = legal.filter((m) => m.k === 'move' && m.to.k !== 'work');
+      return legal.length ? pick(toCentre.length && rng() < 0.8 ? toCentre : legal) : { k: 'flip' };
+    }
+    case 'felt':
+      return mine.length ? move(pick(mine).id, felt(point(), point())) : { k: 'flip' };
+    case 'hold': {
+      const playable = mine.filter((x) => grab(view, seat, x.id) && legalDrops(view, seat, x.id).length > 0);
+      return mine.length ? hold(pick(playable.length && rng() < 0.8 ? playable : mine).id) : { k: 'release' };
+    }
+    case 'clear': {
+      const full = view.slots.flatMap((pile, i) => (pile && isComplete(pile.cards) ? [i] : []));
+      return { k: 'clear', slot: full.length && rng() < 0.9 ? pick(full) : Math.floor(rng() * 24) }; // (24: past every table's last slot)
+    }
+    case 'stuck':
+    case 'end':
+      return { k: kind, on: rng() < 0.6 };
+    case 'release':
+    case 'flip':
+    case 'nertz':
+      return { k: kind };
+    case 'nonsense': {
+      const everything = allCards(view);
+      const own = everything.filter((x) => x.owner === seat);
+      const card = rng() < 0.1 ? 'no-such-card' : pick(rng() < 0.8 && own.length ? own : everything).id;
+      if (rng() < 0.15) return hold(card);
+      const targets: PileRef[] = [slot(23), felt(point(), point()), ...view.slots.map((_, i) => slot(i)), ...[0, 1, 2, 3].map(work)];
+      return move(card, pick(targets), 1 + Math.floor(rng() * 3));
+    }
+  }
+}
+
+/** The timeout of a long random run. Each is sized to take a few seconds on one slow core; this is room for a slower one, or a busy one. */
+export const FUZZ_MS = 60_000;
+
+/**
+ * Runs `trial` on seeds 1, 2, 3, … until, between them, each goal has been reached as many times as `goals` says
+ * (a list stands for once each), so that what a random run is meant to cover does not hang on a seed picked by hand.
+ * Fails if the first `tries` seeds never get there. Each trial checks what it checks as it goes, and says what it
+ * reached through `reached`.
+ */
+export function untilReached<G extends string>(goals: readonly G[] | Readonly<Record<G, number>>, tries: number, trial: (rng: Rng, reached: (goal: G) => void, seed: number) => void): void {
+  const wanted = (Array.isArray(goals) ? Object.fromEntries(goals.map((g) => [g, 1])) : goals) as Record<G, number>;
+  const seen = new Map<G, number>();
+  const short = () => (Object.keys(wanted) as G[]).filter((g) => (seen.get(g) ?? 0) < wanted[g]);
+  for (let seed = 1; seed <= tries; seed++) {
+    trial(seeded(seed), (goal) => void seen.set(goal, (seen.get(goal) ?? 0) + 1), seed);
+    if (short().length === 0) return;
+  }
+  expect(short(), `not reached in ${tries} seeds`).toEqual([]);
+}
 
 // ---------------------------------------------------------------- the wire
 
