@@ -42,11 +42,9 @@ onSocial((msg) => {
   } else if (msg.t === 'social') {
     setIce(msg.ice);
     set({ text: msg.text, voice: msg.voice, watchText: msg.watchText, watchVoice: msg.watchVoice, inVoice: msg.inVoice });
-    // (Voice switched off for those watching, and we are one of them: out, like when it is switched off for all.)
-    const me = current().room;
-    const shut = !msg.watchVoice && !!me && me.seat === null;
-    if (msg.voice && !shut) sync(msg.inVoice);
-    else outOfVoice(false); // the host switched voice off: the microphone is released at once
+    sync(msg.inVoice);
+  } else if (msg.t === 'outOfVoice') {
+    outOfVoice(false); // the host's switches keep us out: the microphone is released at once
   } else {
     void onSignal(msg.from, msg.data);
   }

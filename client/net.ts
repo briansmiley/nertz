@@ -237,6 +237,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
   chat: social,
   social,
   signal: social,
+  outOfVoice: social,
 };
 
 function connect(): void {
