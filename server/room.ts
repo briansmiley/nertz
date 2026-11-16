@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
+import { anotherBack, ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -764,9 +764,7 @@ export class Room {
 
   /** Draws a back for a player from their lot: not the one they had, if there is another to be had. */
   private drawBack(player: Player): void {
-    const pool = backPool(player.lot!);
-    const fresh = pool.length > 1 ? pool.filter((b) => b !== player.back) : pool;
-    player.back = fresh[Math.floor(this.rng() * fresh.length)]!;
+    player.back = anotherBack(player.back, backPool(player.lot!), this.rng());
     player.drew = true;
   }
 

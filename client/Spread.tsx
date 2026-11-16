@@ -33,10 +33,15 @@ function Card({ seat }: { seat: number }) {
     deal();
     turning.current = true;
     const still = calm(); // reduced motion: the new back, without the turn
-    await Promise.all([loaded(next), still || animate(scope.current, { rotateY: 90 }, { duration: HALF, ease: 'easeIn' })]);
-    setBack(next);
-    if (!still) await animate(scope.current, { rotateY: [-90, 0] }, { duration: HALF, ease: 'easeOut' });
-    turning.current = false;
+    try {
+      await Promise.all([loaded(next), still || animate(scope.current, { rotateY: 90 }, { duration: HALF, ease: 'easeIn' })]);
+      setBack(next);
+      if (!still && scope.current) await animate(scope.current, { rotateY: [-90, 0] }, { duration: HALF, ease: 'easeOut' });
+    } catch {
+      setBack(next); // (a turn cut short, e.g. the page left mid-turn: the card still lands as its new back)
+    } finally {
+      turning.current = false;
+    }
   };
 
   return (
