@@ -175,7 +175,8 @@ describe('the seats at a table', () => {
     expect(fourth.room.players.at(-1)).toMatchObject({ name: 'D', queued: true });
     expect(room.summary()).toMatchObject({ names: ['P0', 'P1', 'C'], seats: 3 });
     room.handle(host, { t: 'addBot', level: 'medium' }); // no seat for a bot either
-    expect(room.players.some((p) => p.bot)).toBe(false);
+    room.flush();
+    expect(sitting(host)).toEqual(['P0', 'P1', 'C']);
 
     room.handle(host, { t: 'start' });
     expect(room.game!.players).toHaveLength(3); // the three seated, not the one waiting
