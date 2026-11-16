@@ -653,12 +653,12 @@ interface Props {
   /** How far the end of the round has got: which piles the table has let go of, and at 'sheet' the finished picture at once (skipped, reduced motion, or arriving after the fact). */
   stage: Stage;
   /** How each player's cards look. */
-  looks?: (seat: number) => Look | undefined;
+  looks: (seat: number) => Look | undefined;
 }
 
 /** The back `seat`'s cards are drawn with here, and whether without its white edge: a back by lot not drawn yet is the plain one. */
 const backFor = (looks: Props['looks'], seat: number): [back: Back | null, bare: boolean] => {
-  const look = looks?.(seat) ?? PLAIN_LOOK;
+  const look = looks(seat) ?? PLAIN_LOOK;
   const back = shownBack(look.backs);
   return [back, back !== null && look.bare];
 };
