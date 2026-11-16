@@ -1,10 +1,7 @@
 // The table: every card on one absolutely-positioned layer (see layout.ts),
-// plus drag and drop. All game logic is in shared/engine; this file only asks
-// it "what would I pick up?" and "may I drop here?", and sends intents.
-//
-// Placement is exact. A dragged card lands only if it is released on one
-// specific pile (the one under the pointer, else the one under the card's
-// centre) and fits there; there is no click-to-play and nothing is rerouted.
+// plus the hand. All game logic is in shared/engine, and what a press, a move,
+// a release or a tap does is decided in hand.ts; this file listens to the
+// pointer, sends the intents and moves the card elements.
 //
 // Other players' cards move here too, while they are still in their hands:
 // each dragging client reports where its card is (`drag` messages, about 18 a
@@ -13,19 +10,20 @@
 import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { canDrop, completedBy, DEAL_MS, GRACE_MS, grab, isHidden } from '../shared/engine';
-import { backNamed, DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
-import { cardSize, offFelt, TABLE } from '../shared/table';
-import type { PileRef, RoomView, Suit } from '../shared/types';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, inGrace, isHidden, isLive } from '../shared/engine';
+import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
+import { offFelt, TABLE } from '../shared/table';
+import type { Intent, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortMs, TIMING, washedAt } from './Finale';
-import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, keepOut, landingAt, MINI_BELOW, onCanvas, TAG_H, toScreen, toTable, type Placed, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
+import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
-import { onDrag, onSnipe, pause, post } from './net';
+import { onDrag, onSnipe, pause, playable, post, send as play } from './net';
 import { canResume } from './Settings';
-import { calm, deckOf, usePrefs } from './prefs';
+import { calm, lookOf, usePrefs } from './prefs';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -37,18 +35,12 @@ const Z_FLYING = 10000;
 /** Someone else's card in the air: over every card of the layout, lying still or flying (in play none lies higher than 7500), and under the one in your own hand. */
 const Z_ALOFT = Z_FLYING + 7500;
 const Z_HELD = 30000;
-const DRAG_SLOP = 6; // px of travel before a press becomes a drag
-/** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
-const TOUCH_RISE_PX = 44;
-const TOUCH_CLEAR_PX = 10;
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
 const ALOFT = 0.58;
 /** Your own card while it is over the felt: the pile underneath shows through. */
 const OVER_FELT = 0.74;
-/** An Ace on its way to start a pile shrinks to the size of a pile in the middle over the last few px before the felt. */
-const SHRINK_PX = 14;
 /**
  * Someone else's card that has no pile to go to (an Ace above all) is drawn where it really is once it has been
  * over the felt, going slowly, for about this long (ms); "slowly" is under SLOW table units a millisecond.
@@ -60,7 +52,6 @@ const GLIDE_MS = 70;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 // ---------------------------------------------------------------- one card
 
@@ -106,10 +97,12 @@ interface CardProps {
   mine: boolean;
   up: boolean;
   mini: boolean;
-  /** The faces of the deck this card came from: its owner's choice. */
-  deck: string;
-  /** And its backs. */
-  back: string | undefined;
+  /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
+  deck: Deck;
+  night: boolean;
+  /** And its backs: null for a back by lot not drawn yet. */
+  back: Back | null;
+  bare: boolean;
   slow: boolean;
   /** Travels at its own level, not above everything: a card coming up under the ones already held. */
   low: boolean;
@@ -118,6 +111,9 @@ interface CardProps {
   /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
   deal: Dealt | undefined;
 }
+
+/** A card's props for how it looks, each a value of its own: a snapshot brings new looks, and a card is drawn again only if its own has changed. */
+const drawn = (look: Look): Pick<CardProps, 'deck' | 'night' | 'back' | 'bare'> => ({ deck: look.deck, night: look.night, back: shownBack(look.backs), bare: look.bare });
 
 const CardView = memo(function CardView(p: CardProps) {
   const dealt = useRef(p.deal).current;
@@ -220,8 +216,8 @@ const CardView = memo(function CardView(p: CardProps) {
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
-        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} /> : null}</div>
-        <div {...backOf(backColour(p.owner), p.back, p.mini)} />
+        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} night={p.night} /> : null}</div>
+        <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini)} />
       </motion.div>
     </motion.div>
   );
@@ -286,14 +282,6 @@ function Countdown({ ms, text, label, top }: { ms: number; text: string; label: 
 
 // ---------------------------------------------------------------- the table
 
-/** Somewhere the thing in hand may be put down. `hit` is where it has to be released. */
-interface Target {
-  key: string;
-  to: PileRef | 'tray';
-  rect: Rect & { rot?: number };
-  hit: Rect;
-}
-
 /** Another player's card on its way, as this window draws it: the lifted cards, and where the lifted one is now. */
 interface Flight {
   id: string;
@@ -304,38 +292,6 @@ interface Flight {
   /** How long it has been over the felt going slowly, as a share of DWELL_MS: at 1 it is drawn where it really is. */
   dwell: number;
 }
-
-/**
- * What is in hand: one of your cards (with any run on top of it), or a finished centre pile on its way to the tray.
- * `ace`: it is an Ace, which may start a pile wherever there is room.
- */
-type Held = { k: 'card'; id: string; ace: boolean } | { k: 'pile'; slot: number };
-
-interface Drag {
-  pointer: number;
-  held: Held;
-  /** The elements that move, and the one that was grabbed. */
-  ids: string[];
-  lead: string;
-  /** Where the pointer went down, and where it is now. */
-  sx: number;
-  sy: number;
-  px: number;
-  py: number;
-  base: { x: number; y: number }[];
-  /** A finger, not a mouse: the card is carried above it, where it can be seen, and is aimed by its own middle. */
-  touch: boolean;
-  active: boolean;
-  /** Not carried but tapped (or clicked): it stands lifted where it was, in your hand all the same, until the next tap says where it goes. */
-  tapped?: boolean;
-  /** The last report of where it is, when one was last sent, and the timer for one that is waiting its turn. */
-  report: ({ t: 'drag' } & DragAt) | null;
-  sent: number;
-  timer: ReturnType<typeof setTimeout> | undefined;
-  /** The card on top of every pile in the middle when this one was picked up (its id; none for an empty place): what has been played since is what there was a race for. */
-  tops: (string | undefined)[];
-}
-
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
@@ -352,8 +308,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [W, H] = useViewport();
   const prefs = usePrefs();
   // Whatever decks are at the table are fetched before their cards are turned up.
-  const decks = room.players.map((p) => p.deck ?? '').join();
-  useEffect(() => room.players.forEach((p) => p.deck && warm(p.deck)), [decks]);
+  const decks = room.players.map((p) => p.look.deck).join();
+  useEffect(() => room.players.forEach((p) => warm(p.look.deck)), [decks]);
   /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
   const clears = isTall(W, H) || isLow(W, H);
   const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
@@ -429,11 +385,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     return () => seen.disconnect();
   }, []);
   const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
-  const drag = useRef<Drag | null>(null);
-  /** Set by a tap (or click) that put a tapped card down (or back): the card it was, so that the same tap does not take it up again or fan a pile out. */
-  const untap = useRef<string | null>(null);
+  /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
+  const grasp = useRef<Grasp>(EMPTY);
   const [held, setHeld] = useState<Held | null>(null);
-  const [hot, setHot] = useState<string | null>(null);
+  /** The finished pile in hand is over the tray. */
+  const [hot, setHot] = useState(false);
   /** The last snipe the server told of that you were in, and the last between two others: who beat whom to a pile (and a count, so that the same names flash again). Kept apart so that one does not put out the other. */
   const [snipe, setSnipe] = useState<{ by: number; of: number; n: number } | null>(null);
   const [aside, setAside] = useState<{ by: number; of: number; n: number } | null>(null);
@@ -566,7 +522,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   });
 
   const mine = game.players.find((p) => p.seat === you);
-  const called = game.nertzCalledBy !== null;
+  const caller = calledBy(game);
+  const called = caller !== null;
   // Development aid: Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
   const [replay, setReplay] = useState(0);
   const [replaying, setReplaying] = useState(false);
@@ -588,21 +545,21 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = setTimeout(() => setReplaying(false), DEAL_MS);
     return () => clearTimeout(t);
   }, [replay, replaying]);
-  const dealing = game.stage === 'dealing' || replaying;
-  /** Nothing can be started: the cards are still being dealt, play has not opened, or Nertz has been called. (A card already in hand may still land during grace.) */
+  const dealing = game.status.at === 'dealing' || replaying;
+  /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over). (A card already in hand may still land during grace.) */
   const paused = !!room.paused && !results;
-  const frozen = dealing || game.stage !== 'play' || called || results || paused;
+  const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
   useEffect(() => {
     if (stage !== 'live' || frozen) setPeek(null);
   }, [stage, frozen]);
   /** Clear-first: with a finished pile of yours waiting, anything but carrying it to the tray is answered with a nudge (clearFirst.tsx). */
-  const must = useClearFirst(game, you);
+  const must = useClearFirst(room);
 
   // The deal. Every player's cards start as one deck where their stock lies, and the nertz pile and the work piles
-  // are dealt off it one card after another, everyone's at once. `dealMs` says how far along the server is: in a
+  // are dealt off it one card after another, everyone's at once. `timerMs` says how far along the server is: in a
   // window that arrives late (a reload) the cards already dealt are simply in place and the rest follow on time.
-  const dealMs = replaying ? DEAL_MS : room.dealMs;
+  const dealMs = replaying ? DEAL_MS : room.timerMs;
   const deck = useMemo(() => {
     const plan = new Map<string, Dealt>();
     if (!dealing || dealMs === null || calm()) return plan;
@@ -619,23 +576,23 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     }
     return plan;
   }, [dealing, dealMs, game.players, L, you]);
-  const inGrace = called && !results && game.grace.length > 0;
+  const grace = inGrace(game);
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
-  /** My own faces. */
-  const own = deckOf(prefs);
-  /** My own backs, as they are named for drawing: my choice, shown at once; or, if they are by lot, the one the table drew for me (it comes with the deal). */
-  const myBack = prefs.random ? info(you)?.back : backNamed(prefs.back, prefs.bare);
+  /** My own faces and backs: my choice, shown at once; or, if my backs are by lot, the one the table drew for me (it comes with the deal). */
+  const chosen = lookOf(prefs);
+  const myLook: Look = chosen.backs.k === 'lot' ? { ...chosen, backs: info(you)?.look.backs ?? chosen.backs } : chosen;
   /** This seat's line of the round just scored. The finished table goes by it: whoever played the round may have left since. */
   const line = (seat: number) => (results ? room.lastRound?.scores.find((s) => s.seat === seat) : undefined);
   /**
-   * Whose faces and backs the cards from `seat` have: the player's who sits there, as they have them now; but on the
+   * Whose faces and backs the cards from `seat` have: yours, if it is yours; the player's who sits there, as they have them now; but on the
    * finished table, if whoever played the round has left (the seat is empty, or someone else's by now), as they were
    * when the round ended.
    */
-  const dress = (seat: number): { deck?: string; back?: string } | undefined => {
+  const dress = (seat: number): Look | undefined => {
+    if (seat === you) return myLook;
     const l = line(seat);
     const p = info(seat);
-    return p && (!l || p.id === l.id) ? p : l;
+    return p && (!l || p.id === l.id) ? p.look : l?.look;
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
@@ -643,30 +600,33 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const l = line(seat);
     return l ? l.total - (stage === 'sheet' ? 0 : l.delta) : (info(seat)?.score ?? 0);
   };
-  /** Finished piles waiting for you to carry them to the tray. */
-  const toClear = (slot: number) => !frozen && completedBy(game.slots[slot]) === you;
+  /** The finished pile waiting for you to carry it to the tray. */
+  const toClear = (slot: number) => slot === must.slot;
+  const finished = (slot: number) => completedBy(game.slots[slot]) !== null;
 
   /** The table rule for moving a card without dragging it: tap (or click) it, then where it goes. */
   const tapToMove = room.settings.tapToMove;
+  const scene: Scene = { game, you, L, byId, live: stage === 'live', playingOut, frozen, tapToMove, waiting: must.slot, plays: playable };
 
   // Dealing off the stock takes time. One click (or Space) starts a group of three; the cards then come off one at a
   // time, STOCK_CARD_MS apart, and the next group cannot start sooner than that after the last card. The server
   // holds everyone to the same pace, so there is nothing to gain by clicking faster.
+  /** When the last card that went came off the stock. */
   const flipped = useRef(0);
-  const dealNow = useCallback(() => {
-    flipped.current = performance.now();
-    return send({ k: 'flip' });
+  const dealNow = useCallback((by: (intent: Intent) => boolean) => {
+    if (by({ k: 'flip' })) flipped.current = performance.now();
   }, []);
   /** A click on the stock, or Space: starts a group (or turns the waste back over), unless one is still coming off. */
   const dealGroup = useCallback(() => {
-    if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow();
+    if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow(send);
   }, [dealNow]);
-  const midGroup = !frozen && (mine?.dealt ?? 0) > 0 && (mine?.stock.length ?? 0) > 0;
+  const due = cardDue(scene);
+  // (A flip the server refuses is undone by its snapshot: the stock is as it was again, and this runs again.)
   useEffect(() => {
-    if (!midGroup) return;
-    const t = setTimeout(dealNow, Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
+    if (!due) return;
+    const t = setTimeout(() => dealNow(play), Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
     return () => clearTimeout(t);
-  }, [midGroup, mine?.dealt, mine?.stock.length, dealNow]);
+  }, [due, mine?.dealt, mine?.stock.length, dealNow]);
   useEffect(() => {
     if (frozen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -680,143 +640,79 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
-  /** Exactly the piles that would take what is in hand right now. */
-  const targetsFor = (h: Held): Target[] => {
-    if (h.k === 'pile') return [{ key: 'tray', to: 'tray', rect: trayOpen, hit: L.trayHit }];
-    const out: Target[] = [];
-    L.me?.work.forEach((rect, i) => {
-      if (canDrop(game, you, h.id, { k: 'work', i })) out.push({ key: `w${i}`, to: { k: 'work', i }, rect, hit: L.me!.workHit[i]! });
-    });
-    L.slots.forEach((rect, i) => {
-      if (rect && canDrop(game, you, h.id, { k: 'slot', i })) out.push({ key: `s${i}`, to: { k: 'slot', i }, rect, hit: L.slotHit[i]! });
-    });
-    return out;
-  };
-  const targets = useMemo(() => (held && held.k !== 'card' ? targetsFor(held) : []), [held, L, game, you]); // for the outlines; drops ask again
+  /** At most DRAG_HZ a second, and never once the hand is open or the table gone. */
+  const telling = useMemo(() => reporter((at) => post({ t: 'drag', ...at })), []);
+  useEffect(() => telling.stop, [telling]);
 
-  /**
-   * The one target the hand is over: the drop area under the pointer, and
-   * only if the pointer is over none, the one under the centre of the grabbed
-   * card. (A card held by its corner is aimed with the pointer, not with a
-   * centre that is half a card away.) Drop areas never overlap, so between
-   * two piles is neither.
-   */
-  const centreOf = (d: Drag): { x: number; y: number } | null => {
-    const h = reg.handles.get(d.lead);
-    const c = byId.get(d.lead);
-    return h && c ? { x: h.x.get() + (h.s.get() * CARD_W) / 2, y: h.y.get() + (h.s.get() * CARD_H) / 2 } : null;
-  };
-  /** What a drag points with: the pointer, or under a finger (which hides what is beneath it) the middle of the card it carries. */
-  const pointOf = (d: Drag, centre: { x: number; y: number } | null): { x: number; y: number } => (d.touch && centre ? centre : { x: d.px, y: d.py });
-  /**
-   * An Ace that is over no pile of yours aims at the felt under its own
-   * centre: that very point, nothing snaps. Returned as soon as any of the
-   * card is over the felt, whether or not a pile may start there (`ok`), for
-   * the outline.
-   */
-  const feltUnder = (d: Drag, centre: { x: number; y: number } | null): (Target & { ok: boolean }) | undefined => {
-    if (d.held.k !== 'card' || !d.held.ace || !centre) return undefined;
-    const at = toTable(L.felt, centre.x, centre.y);
-    if (offFelt(at, game.players.length) > cardSize(game.players.length).h / 2) return undefined;
-    const to: PileRef = { k: 'felt', x: round3(at.x), y: round3(at.y) };
-    const rect = landingAt(L, centre);
-    return { key: 'felt', to, rect, hit: rect, ok: canDrop(game, you, d.held.id, to) };
-  };
-  /** How far from a pile a finger may let go and still be taken to mean it: about half a card of the middle, and never less than a fingertip. */
-  const reachOf = (d: Pick<Drag, 'touch' | 'held'>): number => (d.touch && d.held.k === 'card' ? Math.max(26, L.fs * CARD_W * 0.55) : 0);
-  const targetUnder = (d: Drag): Target | undefined => {
-    const centre = centreOf(d);
-    const pile = dropTarget(targetsFor(d.held), pointOf(d, centre), centre, reachOf(d));
-    if (pile) return pile;
-    const felt = feltUnder(d, centre);
-    return felt?.ok ? felt : undefined;
-  };
-
-  /**
-   * Tells the others where the card in hand is: its centre as a distance from
-   * its pile (along your row, and towards the middle) in cards of your hand,
-   * and as a point of the table, with how far it has come of the way to a pile
-   * in the middle that would take it (`piles`; nothing if there is none). At
-   * most DRAG_HZ a second; the last position always goes out, late if need be.
-   */
-  const report = (d: Drag, centre: { x: number; y: number }, piles: readonly Target[]) => {
-    const c = byId.get(d.lead);
-    if (d.held.k !== 'card' || !c) return;
-    const hw = c.s * CARD_W;
-    const home = { x: d.base[0]!.x + hw / 2, y: d.base[0]!.y + (c.s * CARD_H) / 2 };
-    const at = toTable(L.felt, centre.x, centre.y);
-    // Within a third of a card of the pile's middle it has arrived.
-    const there = L.fs * CARD_W * 0.35;
-    let come = 0;
-    for (const t of piles) {
-      const to = { x: t.rect.x + t.rect.w / 2, y: t.rect.y + t.rect.h / 2 };
-      come = Math.max(come, 1 - (Math.hypot(to.x - centre.x, to.y - centre.y) - there) / Math.max(1, Math.hypot(to.x - home.x, to.y - home.y) - there));
-    }
-    d.report = {
-      t: 'drag',
-      id: d.held.id,
-      w: round3(clamp(come, 0, 1)),
-      h: [round3(clamp((centre.x - home.x) / hw, -60, 60)), round3(clamp((home.y - centre.y) / hw, -60, 60))],
-      p: [round3(clamp(at.x, -8, 8)), round3(clamp(at.y, -8, 8))],
-    };
-    const wait = d.sent + 1000 / DRAG_HZ - performance.now();
-    const go = () => {
-      d.timer = undefined;
-      d.sent = performance.now();
-      if (drag.current === d && d.report) post(d.report);
-    };
-    if (wait <= 0) go();
-    else d.timer ??= setTimeout(go, wait);
-  };
-
-  /** After every movement of the hand: which pile it is over, whether the card should let the middle show through, and the report. */
-  const aim = (d: Drag) => {
-    const centre = centreOf(d);
-    const over = !!centre && offFelt(toTable(L.felt, centre.x, centre.y), game.players.length) < 0;
-    for (const id of d.ids) reg.handles.get(id)?.o.set(over ? OVER_FELT : 1);
-    const targets = targetsFor(d.held);
-    if (centre) report(d, centre, targets.filter((t) => typeof t.to === 'object' && t.to.k === 'slot'));
-    const pile = d.tapped ? undefined : dropTarget(targets, pointOf(d, centre), centre, reachOf(d));
-    const felt = pile || d.tapped ? undefined : feltUnder(d, centre);
-    if (d.held.k !== 'card') setHot(pile?.key ?? null); // (no pile is outlined for a card)
+  /** After every movement of the hand, and whenever the table changes under it: whether the card lets the middle show through, the report to the others, the tray's outline for a pile, and where an Ace would start one. */
+  const aim = (d: InHand) => {
+    const see = sight(d, scene);
+    for (const id of d.ids) reg.handles.get(id)?.o.set(see.over ? OVER_FELT : 1);
+    if (see.report) telling.tell(see.report);
+    setHot(see.tray);
     const el = preview.current;
     if (el) {
-      el.hidden = !felt;
-      if (felt) Object.assign(el.style, { left: `${felt.rect.x}px`, top: `${felt.rect.y}px`, width: `${felt.rect.w}px`, height: `${felt.rect.h}px` });
-      el.classList.toggle('no', !felt?.ok);
+      el.hidden = !see.felt;
+      if (see.felt) Object.assign(el.style, { left: `${see.felt.rect.x}px`, top: `${see.felt.rect.y}px`, width: `${see.felt.rect.w}px`, height: `${see.felt.rect.h}px` });
+      el.classList.toggle('no', !see.felt?.ok);
     }
   };
 
   /** The hand opens: whatever was in it goes to wherever the layout now wants it (its new pile, or back home). */
-  const letGo = (d: Drag) => {
-    drag.current = null;
-    clearTimeout(d.timer);
+  const letGo = (d: Hand) => {
+    telling.stop();
     for (const id of d.ids) {
       reg.held.delete(id);
       reg.handles.get(id)?.settle();
     }
     if (preview.current) preview.current.hidden = true;
     setHeld(null);
-    setHot(null);
+    setHot(false);
   };
 
-  // The server can take a card out of your hand: Nertz was called and it has
-  // nowhere to go, the grace window closed, or the card was buried. Then the
-  // drag is over and the card goes home.
-  useEffect(() => {
-    const d = drag.current;
-    if (!d?.active) return;
-    const gone = d.held.k === 'card' ? mine?.holding !== d.held.id : !toClear(d.held.slot);
-    if (gone) letGo(d);
-  });
-  // Escape puts what was tapped (or clicked) back, as a tap anywhere else would.
+  /** Carries out what hand.ts decides about a gesture: what is sent, and the cards taken up, moved with the hand, or let go. */
+  const act = (g: Gesture): Hand | null => {
+    const was = grasp.current.hand;
+    const { effects, ...next } = decide(grasp.current, g, scene);
+    grasp.current = next;
+    for (const fx of effects) {
+      if (fx.k === 'send') send(fx.intent);
+      else if (fx.k === 'tried') post({ t: 'tried', card: fx.card, slot: fx.slot, seen: fx.seen });
+      else if (fx.k === 'deal') dealGroup();
+      else if (fx.k === 'nag') nag();
+      else {
+        // On a touch screen a tap on one of your work piles fans it out in full, and another tap (anywhere) closes it.
+        const i = columnAt(fx.x, fx.y);
+        setPeek(i === peek ? null : i);
+      }
+    }
+    const d = next.hand;
+    if (d === was) return d;
+    if (d && d.phase !== 'pressed') {
+      if (!was || was.phase === 'pressed') {
+        stopPeek();
+        for (const id of d.ids) reg.held.add(id);
+        setHeld(d.held);
+      }
+      d.ids.forEach((id, i) => {
+        const h = reg.handles.get(id);
+        const at = drawnAt(d, i);
+        h?.x.set(at.x);
+        h?.y.set(at.y);
+        h?.z.set(Z_HELD + i);
+        if (d.held.k === 'card' && d.held.ace) h?.s.set(d.s);
+      });
+      if (d.phase === 'carried') aim(d);
+    } else if (was && was.phase !== 'pressed') letGo(was);
+    return d;
+  };
+
+  // The server can take a card out of your hand (hand.ts, 'table'): then the drag is over and the card goes home.
+  useEffect(() => void act({ k: 'table' }));
   useEffect(() => {
     if (!held) return;
     const onKey = (e: KeyboardEvent) => {
-      const d = drag.current;
-      if (e.code !== 'Escape' || !d?.tapped) return;
-      if (d.held.k === 'card') send({ k: 'release' });
-      letGo(d);
+      if (e.code === 'Escape') act({ k: 'escape' });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -824,73 +720,15 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // The table can change under a hand that is holding still: someone starts a pile right where your Ace was about
   // to go. What the outline says is worked out again there and then, not only when the hand next moves.
   useEffect(() => {
-    const d = drag.current;
-    if (d?.active) aim(d);
+    const d = grasp.current.hand;
+    if (d && d.phase !== 'pressed') aim(d);
   }, [game, L]);
 
-  /** One card let go over the pile at `slot`, which would not take it: the server says whether that was a snipe. */
-  const tried = (d: Drag, slot: number) => {
-    if (d.held.k === 'card') post({ t: 'tried', card: d.held.id, slot, seen: d.tops[slot] ?? null });
-  };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (playingOut) return; // the end of a round plays out; only Escape skips it
     const el = (e.target as Element).closest('[data-id],[data-stock]');
-    // What was tapped (or clicked) is in your hand, and this tap says where it goes: for a card a pile that takes it
-    // (the nearest, if the finger is a little off), or for an Ace that very spot of the felt; for a finished pile the
-    // tray. A tap anywhere else puts it back and does nothing more, exactly as letting go of it there would: it does
-    // not deal from the stock, nor take up another card.
-    const sel = drag.current?.tapped ? drag.current : null;
-    if (sel && e.button === 0) {
-      const at = { x: e.clientX, y: e.clientY };
-      if (sel.held.k === 'pile') {
-        if (dropTarget(targetsFor(sel.held), at, null, reachOf(sel))) send({ k: 'clear', slot: sel.held.slot });
-        letGo(sel);
-        return void (untap.current = sel.lead);
-      }
-      const felt = feltUnder(sel, at);
-      const t = dropTarget(targetsFor(sel.held), at, null, reachOf(sel)) ?? (felt?.ok ? felt : undefined);
-      const moved = !!t && typeof t.to === 'object' && send({ k: 'move', cardId: sel.held.id, count: sel.ids.length, to: t.to });
-      if (!moved) {
-        const over = sel.ids.length === 1 ? L.slotHit.findIndex((r) => r && inside(r, at.x, at.y)) : -1;
-        if (over >= 0) tried(sel, over);
-        send({ k: 'release' });
-      }
-      letGo(sel);
-      return void (untap.current = sel.lead);
-    }
-    if (frozen || drag.current || e.button !== 0) return;
-    if (!el) return;
-    const id = el.getAttribute('data-id');
-    const placed = id ? byId.get(id) : undefined;
-    if (must.blocked && (!id || placed?.mine)) return nag();
-    let pick: Pick<Drag, 'held' | 'ids' | 'lead'> | null = null;
-    if (!id || (placed?.mine && placed.pile === 'stock')) {
-      // The stock: a click deals a group off it, or (empty) turns the waste back over.
-      return void dealGroup();
-    } else if (placed?.pile === 'slot' && toClear(placed.at)) {
-      const ids = L.cards.filter((c) => c.pile === 'slot' && c.at === placed.at).map((c) => c.card.id);
-      pick = { held: { k: 'pile', slot: placed.at }, ids, lead: ids[ids.length - 1]! };
-    } else if (placed?.mine) {
-      const g = grab(game, you, id);
-      if (g) pick = { held: { k: 'card', id, ace: g.cards.length === 1 && g.cards[0]!.rank === 1 }, ids: g.cards.map((c) => c.id), lead: id };
-    }
-    if (!pick) return;
-    drag.current = {
-      ...pick,
-      pointer: e.pointerId,
-      sx: e.clientX,
-      sy: e.clientY,
-      px: e.clientX,
-      py: e.clientY,
-      base: pick.ids.map((i) => ({ x: byId.get(i)!.x, y: byId.get(i)!.y })),
-      touch: e.pointerType !== 'mouse',
-      active: false,
-      report: null,
-      tops: game.slots.map((pile) => pile?.cards.at(-1)?.id),
-      sent: 0,
-      timer: undefined,
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    const id = el?.getAttribute('data-id');
+    const d = act({ k: 'down', pointer: e.pointerId, x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse', main: e.button === 0, on: !el ? null : id ? { card: id } : 'stock' });
+    if (d?.phase === 'pressed' && d.pointer === e.pointerId) e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   /** Which of your work piles is at (x, y): its column, and while it is fanned out in full, all of it. */
@@ -928,101 +766,17 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   };
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || !d.active) hover(e);
-    if (!d || e.pointerId !== d.pointer) return;
-    [d.px, d.py] = [e.clientX, e.clientY];
-    const dx = e.clientX - d.sx;
-    const dy = e.clientY - d.sy;
-    if (!d.active) {
-      if (Math.hypot(dx, dy) < DRAG_SLOP) return;
-      // The drag starts here, and the server is told: who holds what decides the grace window.
-      if (d.held.k === 'card' && !send({ k: 'hold', cardId: d.held.id })) return void (drag.current = null);
-      d.active = true;
-      stopPeek();
-      for (const id of d.ids) reg.held.add(id);
-      setHeld(d.held);
-    }
-    // An Ace that may start a pile comes down to the size of a pile in the middle as it reaches the felt, about the
-    // point it is held by: what you carry over the felt is exactly what would lie there.
-    const home = byId.get(d.lead)?.s ?? 1;
-    // Under a finger the card comes up as it is carried off, until its lower edge is just above the fingertip: you
-    // see the whole of it and what it is over. (Not a pile on its way to the tray: that is not a precision job.)
-    const grip = d.sy - d.base[0]!.y; // how far down the grabbed card it was taken
-    const rise = d.touch && d.held.k !== 'pile' ? clamp(Math.hypot(dx, dy) / TOUCH_RISE_PX, 0, 1) * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX - grip) : 0;
-    const near = d.held.k === 'card' && d.held.ace ? clamp(1 - (offFelt(toTable(L.felt, d.px, d.py - rise - (d.touch ? (home * CARD_H) / 2 : 0)), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
-    const k = 1 + (L.fs / home - 1) * near;
-    d.ids.forEach((id, i) => {
-      const h = reg.handles.get(id);
-      h?.x.set(d.px - (d.sx - d.base[i]!.x) * k);
-      h?.y.set(d.py - rise * k - (d.sy - d.base[i]!.y) * k);
-      h?.z.set(Z_HELD + i);
-      if (d.held.k === 'card' && d.held.ace) h?.s.set(home * k);
-    });
-    aim(d);
+    const d = grasp.current.hand;
+    if (!d || d.phase === 'pressed') hover(e);
+    act({ k: 'move', pointer: e.pointerId, x: e.clientX, y: e.clientY });
   };
-
-  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    // On a touch screen a tap on one of your work piles fans it out in full, and another tap (anywhere) closes it.
-    const again = untap.current;
-    untap.current = null;
-    // Where the table allows it, a tap or a click on a card of yours (or a run of them, or a pile you finished) takes
-    // it up without carrying it: it stands lifted where it was, and the next tap or click puts it down (see
-    // `onPointerDown`). The server is told of a card as of any card in hand (a finished pile is not held: nobody
-    // else can move it).
-    if (d && !d.active && e.pointerId === d.pointer && stage === 'live') {
-      if (tapToMove && again === null && (d.held.k === 'pile' || (d.held.k === 'card' && send({ k: 'hold', cardId: d.held.id })))) {
-        d.active = true;
-        d.tapped = true;
-        d.pointer = -1;
-        stopPeek();
-        const up = (byId.get(d.lead)?.s ?? 1) * CARD_H * 0.16;
-        d.ids.forEach((id, i) => {
-          reg.held.add(id);
-          const h = reg.handles.get(id);
-          h?.y.set(d.base[i]!.y - up);
-          h?.z.set(Z_HELD + i);
-        });
-        setHeld(d.held);
-        return;
-      }
-    }
-    if (e.pointerType !== 'mouse' && (!d || !d.active) && stage === 'live' && again === null) {
-      const i = columnAt(e.clientX, e.clientY);
-      setPeek(i === peek ? null : i);
-    }
-    if (!d || e.pointerId !== d.pointer) return;
-    if (!d.active) return void (drag.current = null);
-    // A drop. Only the pile it was released on counts; anywhere else the card is put back. If the move is
-    // refused by the server a moment later (someone got there first) the card animates home just the same,
-    // and the server takes it out of our hand by itself.
-    [d.px, d.py] = [e.clientX, e.clientY];
-    const t = targetUnder(d);
-    if (d.held.k === 'pile') {
-      if (t) send({ k: 'clear', slot: d.held.slot });
-    } else if (!t || t.to === 'tray' || !send({ k: 'move', cardId: d.held.id, count: d.ids.length, to: t.to })) {
-      // Let go over a pile in the middle that will not take it: perhaps someone else's same card got there first.
-      const c = centreOf(d);
-      const over = d.ids.length === 1 && !t ? L.slotHit.findIndex((r) => r && (inside(r, d.px, d.py) || (c && inside(r, c.x, c.y)))) : -1;
-      if (over >= 0) tried(d, over);
-      send({ k: 'release' });
-    }
-    letGo(d);
-  };
-
-  const onPointerCancel = (e: PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || e.pointerId !== d.pointer) return;
-    if (!d.active) return void (drag.current = null);
-    if (d.active && d.held.k === 'card') send({ k: 'release' });
-    letGo(d);
-  };
+  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => void act({ k: 'up', pointer: e.pointerId, x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' });
+  const onPointerCancel = (e: PointerEvent<HTMLDivElement>) => void act({ k: 'cancel', pointer: e.pointerId });
 
   const cardClass = (c: Placed): string => {
     let cls = dealing && calm() ? 'card dealt' : 'card';
     if (c.pile !== 'slot' && c.pile !== 'tray') cls += ' hand';
-    if (c.pile === 'slot' && game.slots[c.at]?.cards.length === 13) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
+    if (c.pile === 'slot' && finished(c.at)) cls += toClear(c.at) ? ` grab${must.cls}` : stage === 'live' ? ' done' : '';
     if (aloft.has(c.card.id)) cls += ' aloft';
     if (c.mine && !frozen && !must.blocked) {
       if (c.pile === 'stock') cls += ' tap';
@@ -1035,12 +789,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const active = game.players.filter((p) => info(p.seat)?.connected);
   const waitingOn = active.filter((p) => !p.stuck).length;
   const oh = me ? me.nertz.h : 0;
-  const waiting = game.slots.some((_, i) => toClear(i));
   /** Upright: the room between your nertz pile and your stock, for your name. (The stuck button is a small pill in the top bar, after Chat.) */
   const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
   // The NERTZ! stamp comes down on the place the caller's nertz pile stood (now empty), not across their whole hand:
   // large enough to read at any seat, and kept inside the window.
-  const callerPile = called ? (game.nertzCalledBy === you ? me?.nertz : L.opponents.find((o) => o.seat === game.nertzCalledBy)?.nertz) : undefined;
+  const callerPile = called ? (caller === you ? me?.nertz : L.opponents.find((o) => o.seat === caller)?.nertz) : undefined;
   const stampSize = callerPile ? Math.max(22, Math.min(callerPile.w * 0.78, 60)) : 0;
   const callerBox = callerPile && {
     x: clamp(callerPile.x + callerPile.w / 2 - stampSize * 2, 4, Math.max(4, W - stampSize * 4 - 4)),
@@ -1063,19 +816,19 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      onPointerLeave={(e) => e.pointerType === 'mouse' && !drag.current && stopPeek()}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && !grasp.current.hand && stopPeek()}
     >
       <div className={`felt${placing ? ' placing' : ''}`} style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, borderRadius: TABLE.corner * L.felt.u }} />
       {L.slots.map((slot, i) => {
         if (!slot) return null;
-        const full = game.slots[i]?.cards.length === 13 && stage === 'live' && !(held?.k === 'pile' && held.slot === i);
+        const full = finished(i) && stage === 'live' && !(held?.k === 'pile' && held.slot === i);
         return (
           <div key={i} className={`slot centre${full ? (toClear(i) ? ' yours' : ' done') : ''}`} style={box(slot)}>
             {full && toClear(i) && <em>Drag to tray</em>}
           </div>
         );
       })}
-      <div className={`tray${held?.k === 'pile' ? ' open' : waiting ? ' wanted' : ''}${hot === 'tray' ? ' hot' : ''}${finale ? ' gone' : ''}${must.cls}`} style={box(held?.k === 'pile' ? trayOpen : L.tray)} />
+      <div className={`tray${held?.k === 'pile' ? ' open' : must.blocked ? ' wanted' : ''}${hot ? ' hot' : ''}${finale ? ' gone' : ''}${must.cls}`} style={box(held?.k === 'pile' ? trayOpen : L.tray)} />
 
       {L.opponents.map((o) => {
         const p = info(o.seat);
@@ -1187,9 +940,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
       {/* Where a card in hand may go is for the player to see for themselves: no pile is outlined for it, nor when it is
           over one. (Only the tray, for a finished pile: that says nothing.) */}
-      {targets.map((t) => (
-        <div key={t.key} className={`ring${t.key === hot ? ' hot' : ''}`} style={box(t.rect)} />
-      ))}
+      {held?.k === 'pile' && <div className={`ring${hot ? ' hot' : ''}`} style={box(trayOpen)} />}
       {/* An Ace is in hand that may go anywhere there is room: what is not room. Around every pile, the gap the rules
           keep (shared/table.ts `clash`); the edge of the felt is the other limit, and is drawn up while this lasts. */}
       {placing && L.slots.map((slot, i) => slot && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}
@@ -1213,8 +964,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             up={c.up && !replaying}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
-            deck={c.card.owner === you ? own : (dress(c.card.owner)?.deck ?? 'modern')}
-            back={c.card.owner === you ? myBack : dress(c.card.owner)?.back}
+            {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
             cls={cardClass(c)}
@@ -1231,7 +981,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
       {called && stage !== 'sheet' && (
         <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
-          <span>{game.nertzCalledBy === you ? 'You' : name(game.nertzCalledBy!)} got Nertz!</span>
+          <span>{caller === you ? 'You' : name(caller)} got Nertz!</span>
         </div>
       )}
       {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
@@ -1254,16 +1004,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         </div>
       )}
 
-      {inGrace && room.graceMs !== null && (
+      {grace.length > 0 && room.timerMs !== null && (
         <Countdown
-          ms={room.graceMs}
+          ms={room.timerMs}
           top={countdownTop(L, W)}
-          text={game.grace.includes(you) ? 'Put it down!' : name(game.grace[0]!) + (game.grace.length > 1 ? ` +${game.grace.length - 1}` : '')}
-          label={game.grace.includes(you) ? 'Put your card down' : `Waiting for ${game.grace.map(name).join(' and ')} to put a card down`}
+          text={grace.includes(you) ? 'Put it down!' : name(grace[0]!) + (grace.length > 1 ? ` +${grace.length - 1}` : '')}
+          label={grace.includes(you) ? 'Put your card down' : `Waiting for ${grace.map(name).join(' and ')} to put a card down`}
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} looks={dress} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // (On a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the sound and settings buttons on its side.)

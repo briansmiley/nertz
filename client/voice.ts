@@ -79,25 +79,30 @@ export async function joinVoice(): Promise<void> {
   if (state.status !== 'off') return;
   set({ status: 'asking', error: null });
   const ask = ++asks;
-  // Made inside the click, so the browser lets it (and the audio elements later) play.
-  const made = new AudioContext();
+  // Made inside the click, so the browser lets it (and the audio elements later) play. It only tells who is speaking: voice goes on without one.
+  let made: AudioContext | null = null;
+  try {
+    made = new AudioContext();
+  } catch {
+    // the browser has none to give
+  }
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   } catch {
-    void made.close();
+    void made?.close();
     if (ask === asks && status() === 'asking') set({ status: 'off', error: 'No microphone: check the browser permission.' });
     return;
   }
   if (ask !== asks || status() !== 'asking') {
-    // Left the table, or voice was switched off, while the browser was asking.
+    // Left the table while the browser was asking.
     for (const t of stream.getTracks()) t.stop();
-    void made.close();
+    void made?.close();
     return;
   }
   mic = stream;
   ctx = made;
-  void ctx.resume();
+  void ctx?.resume();
   for (const t of mic.getAudioTracks()) t.enabled = !state.muted;
   const id = myId();
   if (id !== undefined) meter(id, mic);
@@ -145,7 +150,7 @@ export function sync(members: readonly VoiceMember[]): void {
   const me = myId();
   if (state.status !== 'on' || me === undefined) return;
   if (!members.some((m) => m.id === me)) {
-    // The server does not have us (this is a new socket after a reconnect): start over and say so.
+    // The server does not have us (a new socket after a reconnect, or our join is still on its way): say so. Were we kept out, it says that instead ({ t: 'outOfVoice' }).
     hangUp();
     post({ t: 'voice', on: true, muted: state.muted });
     return;

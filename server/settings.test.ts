@@ -242,7 +242,7 @@ describe('the seats at a table', () => {
     const late = new FakeConn();
     room.join(late, 'Late', 'tok-late', true);
     room.handle(host, { t: 'start' });
-    expect(room.game!.stage).toBe('dealing');
+    expect(room.game!.status.at).toBe('dealing');
     expect(room.game!.players).toHaveLength(4);
     room.flush();
     expect(late.room.seat).toBeNull();

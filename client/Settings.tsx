@@ -6,7 +6,7 @@
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { endVote, seatedPeople } from '../shared/engine';
+import { endVote, isLive, seatedPeople } from '../shared/engine';
 import type { TableSettings } from '../shared/settings';
 import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
@@ -141,10 +141,10 @@ function PauseIcon() {
   );
 }
 
-/** Can you pause the round right now? While it is being played, before anyone calls Nertz, if you were dealt in. */
+/** Can you pause the round right now? While it is live, if you were dealt in. */
 export function canPause(room: RoomView | null | undefined): boolean {
   const g = room?.game;
-  return !!room && room.phase === 'playing' && !room.paused && !!g && g.stage === 'play' && g.nertzCalledBy === null && !g.ended && g.players.some((p) => p.seat === room.seat);
+  return !!room && !room.paused && !!g && isLive(g) && g.players.some((p) => p.seat === room.seat);
 }
 
 /** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
@@ -212,12 +212,12 @@ function Volume({ prefs }: { prefs: Prefs }) {
 
 /**
  * Ending the round where it stands, for a round that drags on (everyone voting: bots go along). Shown while a round
- * is in play and you are in it.
+ * is live and you are in it.
  */
 function EndVote({ room }: { room: RoomView }) {
   const game = room.game;
   const me = game?.players.find((p) => p.seat === room.seat);
-  if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
+  if (!game || !isLive(game) || !me) return null;
   const { voters, voted } = endVote(game, seatedPeople(room.players));
   return (
     <div className="end-vote">
@@ -337,8 +337,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   }, [open]);
 
   /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
-  const stage = room?.phase === 'playing' ? room.game?.stage : undefined;
-  const styling = stage !== 'countdown' && stage !== 'play';
+  const stage = room?.game?.status.at;
+  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
@@ -440,14 +440,14 @@ export function Corner({ room }: { room?: RoomView | null }) {
                   <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
                   <span>Allow text chat</span>
                 </label>
-                <Specs on={social.text && social.watchText !== false} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+                <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
               </div>
               <div className="allow">
                 <label className="check">
                   <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
                   <span>Allow voice chat</span>
                 </label>
-                <Specs on={social.voice && social.watchVoice !== false} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+                <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
               </div>
             </div>
           )}

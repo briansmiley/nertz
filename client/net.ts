@@ -7,11 +7,11 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
-import { getPrefs, watchPrefs } from './prefs';
+import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, isRoomCode, type Back, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, isRoomCode, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
@@ -135,9 +135,9 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 let toldDeck: string | null = null;
 /** Tells the table my cards' faces and backs, if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
 function tell(): void {
-  const { deck, night, bare, back, random } = getPrefs();
-  const now = `${deck} ${back} ${night} ${bare} ${random}`;
-  if (now !== toldDeck && post({ t: 'deck', deck, back, night, bare, lot: random })) toldDeck = now;
+  const look = lookOf(getPrefs());
+  const now = JSON.stringify(look);
+  if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
 
@@ -212,6 +212,34 @@ async function renew(): Promise<void> {
 }
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void renew());
 
+const social = (msg: SocialServerMsg): void => {
+  for (const fn of socialListeners) fn(msg);
+};
+
+/** What each message from the server does, by its type: one that is in `ServerMsg` and not here does not compile. */
+const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => void } = {
+  state: (msg) => {
+    attempts = 0;
+    if (session && !state.room) {
+      session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
+      keep({ room: session.room, name: session.name });
+    }
+    sync = onSnapshot(sync, msg);
+    set({ status: 'online', room: predict(sync), error: null });
+  },
+  error: (msg) => set({ error: msg.message }),
+  snipe: (msg) => {
+    for (const fn of snipeListeners) fn(msg);
+  },
+  drag: (msg) => {
+    for (const fn of dragListeners) fn(msg);
+  },
+  chat: social,
+  social,
+  signal: social,
+  outOfVoice: social,
+};
+
 function connect(): void {
   if (!session) return;
   const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
@@ -232,23 +260,7 @@ function connect(): void {
     } catch {
       return;
     }
-    if (msg.t === 'state') {
-      attempts = 0;
-      if (session && !state.room) {
-        session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
-        keep({ room: session.room, name: session.name });
-      }
-      sync = onSnapshot(sync, msg);
-      set({ status: 'online', room: predict(sync), error: null });
-    } else if (msg.t === 'error') {
-      set({ error: msg.message });
-    } else if (msg.t === 'snipe') {
-      for (const fn of snipeListeners) fn(msg);
-    } else if (msg.t === 'drag') {
-      for (const fn of dragListeners) fn(msg);
-    } else {
-      for (const fn of socialListeners) fn(msg);
-    }
+    if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
   };
   ws.onclose = (e) => {
     if (socket !== ws) return;
@@ -309,7 +321,7 @@ export const redeal = (): void => void post({ t: 'redeal' });
 /** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
-export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });
+export const botBack = (seat: number, backs: Backs): void => void post({ t: 'botBack', seat, backs });
 
 /** Host only, between rounds: one seat more or fewer. A step, not a number, so that taps quicker than the snapshots each count. */
 export const setSeats = (step: 1 | -1): void => void post({ t: 'seats', step });
@@ -320,16 +332,24 @@ export function setTableSettings(patch: Partial<TableSettings>): void {
 }
 
 /**
- * Plays an intent: applied locally at once, sent to the server, reconciled
- * when its ack comes back. Returns false (and sends nothing) if it is not
- * legal in the state we are looking at, or if this connection has not had its
- * first snapshot yet (just reconnected: what is on screen is the table as it
- * was before the drop, and there is nothing to predict over).
+ * Would `send` play this intent right now? Not if it is not legal in the state
+ * we are looking at, or if this connection has not had its first snapshot yet
+ * (just reconnected: what is on screen is the table as it was before the drop,
+ * and there is nothing to predict over).
  */
-export function send(intent: Intent): boolean {
+export function playable(intent: Intent): boolean {
   const room = state.room;
   if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
-  if (room.seat === null || !applyIntent(room.game, room.seat, intent).ok) return false;
+  return room.seat !== null && applyIntent(room.game, room.seat, intent).ok;
+}
+
+/**
+ * Plays an intent: applied locally at once, sent to the server, reconciled
+ * when its ack comes back. Returns false (and sends nothing) if it is not
+ * `playable`.
+ */
+export function send(intent: Intent): boolean {
+  if (!playable(intent)) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });
   set({ room: predict(sync) });
