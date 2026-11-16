@@ -204,7 +204,7 @@ export interface PlayerView {
   bot?: BotLevel;
   /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */
   deck?: string;
-  /** The backs of this player's cards (`CARD_BACKS`, with `:bare` after it for one without its white edge), for everyone likewise. Absent: the plain one. */
+  /** The backs of this player's cards (`CARD_BACKS`, with `:bare` after it for one without its white edge), for everyone likewise. Always sent by the room: 'any' while a lot is not drawn yet. */
   back?: string;
   /** Set if their back is drawn by lot (once for the table, at its first deal after the lot was chosen): the lot ('all', or a kind of back). `back` is then 'any' until it is drawn. */
   lot?: string;

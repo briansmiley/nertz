@@ -552,8 +552,7 @@ export class Room {
       if (p) p.score += s.delta;
       if (p) p.rounds = (p.rounds ?? 0) + 1;
       const deck = p?.deck && deckNamed(p.deck, p.night);
-      const back = p && shownBack(p);
-      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(deck ? { deck } : {}), ...(back ? { back } : {}) };
+      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(deck ? { deck } : {}), ...(p ? { back: shownBack(p) } : {}) };
     });
     const pairs = new Map<string, { by: number; of: number; n: number }>();
     for (const s of this.snipes) {
