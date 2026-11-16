@@ -87,7 +87,7 @@ export function startRound(room: Room, dealer: Conn): void {
   room.handle(dealer, { t: 'start' });
   opening(room, dealer);
   if (!faked) vi.useRealTimers();
-  expect(room.game!.stage).toBe('play');
+  expect(room.game!.status.at).toBe('play');
 }
 
 /** A websocket client of the real server that records everything it is sent. */

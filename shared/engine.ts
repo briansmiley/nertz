@@ -6,7 +6,7 @@
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
-import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundScore, Suit } from './types';
+import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
@@ -33,14 +33,22 @@ export const isRed = (suit: Suit): boolean => suit === 'H' || suit === 'D';
 export const isComplete = (pile: readonly Card[]): boolean => pile.length === KING;
 /** The seat that placed the King of a complete centre pile (the only one who may clear it), else null. (Null too for a slot with no pile in it.) */
 export const completedBy = (pile: CentrePile | null | undefined): number | null => (pile && isComplete(pile.cards) ? pile.cards[KING - 1]!.owner : null);
+/** The round is live: play is open and nobody has ended it. Only then can a card be picked up, a pile cleared, a vote taken or the round paused. */
+export const isLive = (state: GameState): boolean => state.status.at === 'play';
+/** Play has opened, whether or not it is over since: the nertz tops are turned up. */
+export const hasOpened = (state: GameState): boolean => state.status.at === 'play' || state.status.at === 'grace' || state.status.at === 'over';
+/** The round is over, however it ended: nothing can change any more. */
+export const isOver = (state: GameState): boolean => state.status.at === 'over';
+/** The seat that called Nertz, while cards in hand may still land and once the round is over by that call; null if nobody has (yet, or at all). */
+export const calledBy = ({ status }: GameState): number | null => (status.at === 'grace' ? status.calledBy : status.at === 'over' && status.end.by === 'nertz' ? status.end.seat : null);
+/** The seats in the held-card grace window: after a call everyone else's hand is emptied, so exactly those still holding a card. */
+export const inGrace = (state: GameState): number[] => (state.status.at === 'grace' ? state.players.filter((p) => p.holding !== null).map((p) => p.seat) : []);
 /**
  * Clear-first: `seat` put a King on a centre pile and has not carried the pile to the tray yet. Until they do,
- * `applyIntent` refuses everything else from them. (While the round is on: once Nertz is called nothing can be cleared.)
+ * `applyIntent` refuses everything else from them. (While the round is live: once it is called or over nothing can be cleared.)
  */
-export const mustClear = (state: GameState, seat: number): boolean => state.nertzCalledBy === null && state.slots.some((pile) => completedBy(pile) === seat);
+export const mustClear = (state: GameState, seat: number): boolean => isLive(state) && state.slots.some((pile) => completedBy(pile) === seat);
 export const CLEAR_FIRST = 'Move your finished pile to the tray first';
-/** Nertz has been called and nobody is left in the held-card grace window: nothing can change any more. */
-export const isOver = (state: GameState): boolean => state.nertzCalledBy !== null && state.grace.length === 0;
 const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
 
 // ---------------------------------------------------------------- dealing
@@ -49,8 +57,8 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * Deals a fresh round: one shuffled 52-card deck per seat, with opaque random
  * card ids. Per seat: 13 in the nertz pile, work piles of 1, 2, 3 and 4 cards
  * (0 to 3 face-down under one face-up), and the other 29 as stock. The middle
- * gets 4 empty slots per seat. The round starts out in
- * stage `dealing`: closed to every intent and fully redacted until
+ * gets 4 empty slots per seat. The round starts out
+ * `dealing`: closed to every intent and fully redacted until
  * `finishDeal`; see `openPlay`.
  *
  * A small table buries fewer cards (`faceDown` in settings.ts): with two seats
@@ -83,7 +91,7 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
     return { seat, nertz, work, down, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
-  return { players, stage: 'dealing', slots, tray: [], nertzCalledBy: null, grace: [] };
+  return { players, status: { at: 'dealing' }, slots, tray: [] };
 }
 
 // ---------------------------------------------------------------- legality
@@ -240,7 +248,7 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
     case 'nertz': {
       if (me.nertz.length > 0) return 'Your nertz pile is not empty';
       me.holding = null; // the caller pressed a button, they are not dragging: the caller is never in grace
-      next = { ...state, nertzCalledBy: seat };
+      next = { ...state, status: { at: 'grace', calledBy: seat } };
       break;
     }
     case 'hold': {
@@ -298,34 +306,38 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
   return next;
 }
 
-/**
- * Narrows the grace list to those of `candidates` who are holding a card that
- * still has somewhere legal to go, and takes the card out of everyone else's
- * hand (their drag is cancelled).
- */
-function settleGrace(state: GameState, candidates: readonly number[]): GameState {
-  const grace = state.players
-    .filter((p) => candidates.includes(p.seat) && p.holding !== null && legalDrops(state, p.seat, p.holding).length > 0)
-    .map((p) => p.seat);
-  return { ...state, grace, players: state.players.map((p) => (grace.includes(p.seat) || p.holding === null ? p : { ...p, holding: null })) };
+/** The round is over, in the one way every round ends: whatever is in anyone's hand goes back, and nothing changes after. */
+function endRound(state: GameState, end: RoundEnd): GameState {
+  return { ...state, status: { at: 'over', end }, players: state.players.map((p) => (p.holding === null ? p : { ...p, holding: null })) };
 }
 
-// The opening of a round is one small state machine: dealing -> ready -> countdown -> play. Each step is taken by
+/**
+ * After a Nertz call, and after each thing done in grace: whoever holds a card that has nowhere legal to go has it
+ * taken out of their hand (their drag is cancelled), which leaves in grace those still holding one. With nobody left
+ * in it the round is over: the one way out of grace.
+ */
+function settleGrace(state: GameState): GameState {
+  if (state.status.at !== 'grace') return state;
+  const players = state.players.map((p) => (p.holding === null || legalDrops(state, p.seat, p.holding).length > 0 ? p : { ...p, holding: null }));
+  return players.some((p) => p.holding !== null) ? { ...state, players } : endRound(state, { by: 'nertz', seat: state.status.calledBy });
+}
+
+// The opening of a round is the first steps of its status: dealing -> ready -> countdown -> play. Each step is taken by
 // the server (two timers and the dealer's button); each function returns the same object when it is not its turn.
 
 /** The deal is over (the server's deal timer fired): the work piles show their tops and the table waits for the dealer. */
 export function finishDeal(state: GameState): GameState {
-  return state.stage === 'dealing' ? { ...state, stage: 'ready' } : state;
+  return state.status.at === 'dealing' ? { ...state, status: { at: 'ready' } } : state;
 }
 
 /** The dealer pressed Start: "1, 2, 3...". */
 export function startCountdown(state: GameState): GameState {
-  return state.stage === 'ready' ? { ...state, stage: 'countdown' } : state;
+  return state.status.at === 'ready' ? { ...state, status: { at: 'countdown' } } : state;
 }
 
 /** "...NERTZ!" (the server's start timer fired): the nertz tops turn over and play opens, for everyone at once. */
 export function openPlay(state: GameState): GameState {
-  return state.stage === 'countdown' ? { ...state, stage: 'play' } : state;
+  return state.status.at === 'countdown' ? { ...state, status: { at: 'play' } } : state;
 }
 
 const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for the dealer to start', countdown: 'Wait for it' } as const;
@@ -335,13 +347,15 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  * never mutates `state`. Works on redacted views too: face-down cards can be
  * dealt, recycled or uncovered, but can never be the subject or target of a move.
  *
+ * What is taken goes by `state.status`, and by nothing else. Before play opens
+ * everything is rejected, and once the round is over.
+ *
  * Held-card grace: a `nertz` call freezes the table except for the seats that
- * are holding a card with at least one legal destination (`state.grace`).
+ * are holding a card with at least one legal destination (`inGrace`).
  * Each of them may make exactly one more intent: a `move` of the held card, or
  * a `release`. Either takes them out of grace (a refused move too, see `refused`), and anyone else in grace whose
- * card now has nowhere to go is cut off with them. When `grace` is empty the
- * round is over and everything is rejected. Before play opens (`state.stage`)
- * everything is rejected too.
+ * card now has nowhere to go is cut off with them. When nobody is left in it the
+ * round is over.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
  * (`mustClear`) may only `clear` it; every other intent is refused until it has.
@@ -355,20 +369,24 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent): 
   if (!intent) return fail('Malformed intent');
   const index = state.players.findIndex((p) => p.seat === seat);
   if (index < 0) return fail('Not playing in this round');
-  if (state.stage !== 'play') return fail(CLOSED[state.stage]);
-  if (state.ended) return fail('The round is over');
-  const called = state.nertzCalledBy !== null;
-  if (called) {
-    if (!state.grace.includes(seat)) return fail('The round is over');
-    const held = state.players[index]!.holding;
-    if (intent.k !== 'release' && !(intent.k === 'move' && intent.cardId === held)) return fail('Only the held card may be played');
+  switch (state.status.at) {
+    case 'dealing':
+    case 'ready':
+    case 'countdown':
+      return fail(CLOSED[state.status.at]);
+    case 'over':
+      return fail('The round is over');
+    case 'grace': {
+      const held = state.players[index]!.holding;
+      if (held === null) return fail('The round is over');
+      if (intent.k !== 'release' && !(intent.k === 'move' && intent.cardId === held)) return fail('Only the held card may be played');
+      break;
+    }
+    case 'play':
+      if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   }
-  if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   const next = play(state, index, intent);
-  if (typeof next === 'string') return fail(next);
-  if (called) return { ok: true, state: settleGrace(next, state.grace) };
-  if (next.nertzCalledBy !== null) return { ok: true, state: settleGrace(next, next.players.map((p) => p.seat)) };
-  return { ok: true, state: next };
+  return typeof next === 'string' ? fail(next) : { ok: true, state: settleGrace(next) };
 }
 
 /**
@@ -406,9 +424,9 @@ export function snipedBy(state: GameState, seat: number, cardId: string, slot: n
   return { by: top.owner, card: top.id };
 }
 
-/** Ends the grace window (the server's 4-second timer fired): everyone still in it is cut off. Same object if there is none. */
+/** Ends the grace window (the server's 4-second timer fired): everyone still in it is cut off, and the round is over. Same object if there is none. */
 export function expireGrace(state: GameState): GameState {
-  return state.grace.length === 0 ? state : settleGrace(state, []);
+  return state.status.at === 'grace' ? endRound(state, { by: 'nertz', seat: state.status.calledBy }) : state;
 }
 
 // ---------------------------------------------------------------- stuck
@@ -453,18 +471,18 @@ export function canProgress(state: GameState, seat: number): boolean {
 /**
  * If every seat in `activeSeats` (the connected players) has flagged "stuck":
  * - when nobody at the table can make a move that gets anywhere (`canProgress`), the table is jammed: the round ends
- *   there (`jammed`), to be scored as it stands;
+ *   there (over by a `jam`), to be scored as it stands;
  * - otherwise every player's waste is turned back onto their stock (restoring the original order; a half-dealt group
  *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently, and
  *   all flags clear.
- * Returns the SAME state object when nothing happens (always, once Nertz has been called).
+ * Returns the SAME state object when nothing happens (always, unless the round is live).
  */
 export function resolveStuck(state: GameState, activeSeats: Iterable<number>): GameState {
-  if (state.nertzCalledBy !== null || state.ended) return state;
+  if (!isLive(state)) return state;
   const active = new Set(activeSeats);
   const voters = state.players.filter((p) => active.has(p.seat));
   if (voters.length === 0 || !voters.every((p) => p.stuck)) return state;
-  if (!state.players.some((p) => canProgress(state, p.seat))) return { ...state, ended: 'jam', players: state.players.map((p) => ({ ...p, stuck: false })) };
+  if (!state.players.some((p) => canProgress(state, p.seat))) return endRound({ ...state, players: state.players.map((p) => ({ ...p, stuck: false })) }, { by: 'jam' });
   const players = state.players.map((p): PlayerState => {
     const stock = [...p.stock, ...p.waste.toReversed()];
     // The top card goes to the bottom, so the next pass of threes brings up different cards (and the one after that
@@ -492,13 +510,13 @@ export const seatedPeople = (players: readonly PlayerView[]): number[] => player
 
 /**
  * If everyone with a say in the `endVote` has voted to end the round, it ends there, to be scored as it stands
- * (`ended: 'vote'`). Same state object otherwise.
+ * (over by a `vote`). Same state object otherwise.
  */
 export function resolveEndVote(state: GameState, people: Iterable<number>): GameState {
-  if (state.nertzCalledBy !== null || state.ended || state.stage !== 'play') return state;
+  if (!isLive(state)) return state;
   const { voters, voted } = endVote(state, people);
   if (voters === 0 || voted < voters) return state;
-  return { ...state, ended: 'vote' };
+  return endRound(state, { by: 'vote' });
 }
 
 // ---------------------------------------------------------------- views, scoring, invariants
@@ -516,12 +534,13 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
  * is kept so that can change without touching callers.
  */
 export function viewFor(state: GameState, _seat: number): GameState {
-  const dealing = state.stage === 'dealing';
+  const dealing = state.status.at === 'dealing';
+  const opened = hasOpened(state);
   return {
     ...state,
     players: state.players.map((p) => ({
       ...p,
-      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && state.stage === 'play' ? c : hide(c))),
+      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && opened ? c : hide(c))),
       work: p.work.map((w, i) => w.map((c, j) => (j < p.down[i]! || dealing ? hide(c) : c))),
       stock: p.stock.map(hide),
       waste: p.waste.map((c, i) => (dealing || i >= p.waste.length - p.dealt ? hide(c) : c)),
@@ -607,22 +626,18 @@ export function checkInvariants(state: GameState): string | null {
   for (const seat of seats) {
     if (perOwner.get(seat) !== DECK_SIZE) return `seat ${seat}: has ${perOwner.get(seat) ?? 0} cards, expected ${DECK_SIZE}`;
   }
-  if (state.nertzCalledBy !== null) {
-    const caller = state.players.find((p) => p.seat === state.nertzCalledBy);
-    if (!caller || caller.nertz.length > 0) return 'nertz called by a seat with cards left';
-  }
-  if (state.stage !== 'play' && (state.nertzCalledBy !== null || middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
+  const caller = calledBy(state);
+  if (caller !== null && state.players.find((p) => p.seat === caller)?.nertz.length !== 0) return 'nertz called by a seat with cards left';
+  if (!hasOpened(state) && (middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
     return 'play began before the round was open';
   }
   if (state.players.some((p) => p.holding !== null && mustClear(state, p.seat))) return 'holding a card with a finished pile still to clear';
-  if (new Set(state.grace).size !== state.grace.length) return 'duplicate seat in grace';
-  if (state.grace.length > 0 && state.nertzCalledBy === null) return 'grace without a nertz call';
-  for (const seat of state.grace) {
-    const p = state.players.find((p) => p.seat === seat);
-    if (!p || p.holding === null || legalDrops(state, seat, p.holding).length === 0) return `seat ${seat}: in grace without a playable held card`;
+  if (state.status.at === 'grace') {
+    if (inGrace(state).length === 0) return 'grace with nobody holding a card';
+    for (const p of state.players) {
+      if (p.holding !== null && legalDrops(state, p.seat, p.holding).length === 0) return `seat ${p.seat}: in grace without a playable held card`;
+    }
   }
-  if (state.nertzCalledBy !== null && state.players.some((p) => p.holding !== null && !state.grace.includes(p.seat))) {
-    return 'a frozen player is holding a card';
-  }
+  if (isOver(state) && state.players.some((p) => p.holding !== null)) return 'a frozen player is holding a card';
   return null;
 }

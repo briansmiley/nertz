@@ -44,7 +44,7 @@ describe('a room', () => {
     room.handle(host, { t: 'redeal' });
     vi.advanceTimersByTime(DEAL_MS);
     room.flush();
-    expect(host.states.at(-1)?.room.game?.stage).toBe('ready');
+    expect(host.states.at(-1)?.room.game?.status.at).toBe('ready');
   });
 
   it('sends everyone else their snapshot when one of them cannot be sent', () => {

@@ -8,9 +8,9 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, finishDeal, isOver, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type ServerMsg } from '../shared/protocol';
-import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
+import { applyIntent, deal, expireGrace, finishDeal, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
+import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -36,6 +36,7 @@ export interface Conn {
  *   in the queue   `queued` is a number: waiting for a seat, first come first
  *   watching       neither: no seat, and not asking for one
  * It changes only in `fill` (queue to table), on `sit` (asking for a seat, giving it up) and in `remove`.
+ * Someone at the table takes one of its seats (`Room.seats`), unless they are `out`.
  *
  * Apart from that: here or away (`conn`); and gone but for their cards (`out`).
  */
@@ -61,15 +62,8 @@ interface Player {
   dirty: boolean;
   /** How many rounds their score is the sum of: those they were dealt into. */
   rounds?: number;
-  /** The card faces this player chose; everyone sees their cards drawn so. */
-  deck?: Deck;
-  back?: Back;
-  night?: boolean;
-  /** Their backs without the white edge. */
-  bare?: boolean;
-  /** Their back is drawn from this lot (`backPool`: 'all', or a kind of back) once for the table: at the first deal after it was chosen. `drew`: that has been done. */
-  lot?: string;
-  drew?: boolean;
+  /** The faces and backs this player chose; everyone sees their cards drawn so. */
+  look: Look;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
   /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
@@ -80,8 +74,19 @@ interface Player {
   bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null; pending: { intent: Intent; memory: BotMemory } | null };
 }
 
+/**
+ * What `was` becomes when the player (or, for a bot, whoever deals) says `to`; `was` itself if that changes nothing.
+ * A back drawn by lot is the table's to keep: the same lot said again keeps what was drawn from it.
+ */
+function rechosen(was: Backs, to: Backs): Backs {
+  if (to.k === 'lot') return was.k === 'lot' && was.lot === to.lot ? was : { k: 'lot', lot: to.lot, drawn: null };
+  return was.k === 'own' && was.back === to.back ? was : to;
+}
+
 type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
+/** Takes one of the table's seats: at it, and not gone (whoever is gone holds their seat only for their cards). */
+const taking = (p: Player): p is Seated => seated(p) && !p.out;
 /** The seat to ask the engine about for `p`: theirs, or one that no hand has. */
 const at = (p: Player): number => p.seat ?? -1;
 /** `p` as a line of the chat names them. */
@@ -116,6 +121,8 @@ export class Room {
   lastRound: RoundResult | null = null;
   /** House rules: they change only between rounds. */
   settings: TableSettings = { ...DEFAULT_SETTINGS };
+  /** How many seats the table has: the host's to set, between rounds (`resize`). See `seats`. */
+  private capacity = MAX_PLAYERS;
   /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
   readonly social = new Social();
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
@@ -129,17 +136,15 @@ export class Room {
   /** Whoever opened the room. See `dealer` for who may actually start a round. */
   private host: Player | null = null;
   private flushScheduled = false;
-  /** Running while a called round waits for held cards to land; `graceEndsAt` is its deadline (ms epoch). */
-  private graceTimer: ReturnType<typeof setTimeout> | null = null;
-  private graceEndsAt = 0;
-  /** Running while a new round is being dealt out (stage `dealing`); `dealEndsAt` is its deadline (ms epoch). */
-  private dealTimer: ReturnType<typeof setTimeout> | null = null;
-  private dealEndsAt = 0;
-  /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
-  private startTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The timer of the round's timed status, while one runs, and when it is up (ms epoch): the deal (`dealing`), the
+   * "1, 2, 3" (`countdown`) or the wait for held cards once Nertz is called (`grace`); the status says which. Each is
+   * set on the way into its status (`timeRound`, which calls off whatever ran before) and is gone on the way out: it
+   * fired, or the round was dealt anew or is over.
+   */
+  private roundTimer: { handle: ReturnType<typeof setTimeout>; endsAt: number } | null = null;
   /** The last round whose start the chat was told of. */
   private startTold = 0;
-  private startEndsAt = 0;
   /** Who paused the round in play, if it is paused. */
   private pausedBy: Player | null = null;
   /** The round's clock: what it had run up before it was last stopped, and since when it is running now (ms epoch; null while it is not). */
@@ -176,11 +181,12 @@ export class Room {
   join(conn: Conn, name: string, token: string, sit = false): string | null {
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
-    let player = this.players.find((p) => p.token === token && p.out !== 'kicked');
+    // Whoever left is gone for good: back, they are someone new, there to watch. (Only someone away comes back to their seat.)
+    let player = this.players.find((p) => p.token === token && !p.out);
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
-      player = { id: this.ids++, token, name, seat: null, queued: null, score: 0, conn: null, ack: -1, dirty: false };
+      player = { id: this.ids++, token, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
     } else if (player.conn) {
       // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
@@ -190,7 +196,6 @@ export class Room {
       this.letGo(player); // whatever the old socket was dragging is not in this one's hand
     }
     Object.assign(player, { name, conn, ack: -1 });
-    delete player.out; // (left in the middle of a round, and back in it)
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
     if (sit && fresh) player.queued = ++this.queue;
@@ -210,13 +215,15 @@ export class Room {
       case 'go':
         return this.go(player);
       case 'ready': {
-        const stage = this.phase === 'playing' ? this.game?.stage : undefined;
+        const stage = this.game?.status.at;
         if ((stage !== 'dealing' && stage !== 'ready') || !this.inRound(player) || !!player.ready === msg.on) return;
         player.ready = msg.on;
         return this.changed();
       }
       case 'settings':
         return this.configure(player, msg.patch);
+      case 'seats':
+        return this.resize(player, msg.step);
       case 'intent':
         return this.intent(player, msg.seq, msg.intent);
       case 'drag':
@@ -275,7 +282,7 @@ export class Room {
         if (player !== this.dealer || this.phase !== 'playing' || !this.game) return;
         {
           // Enough to deal to? Those at the table who are here, and those waiting for whom it has a seat. (Counted before anyone is moved: a deal refused changes nothing.)
-          const open = MAX_PLAYERS - this.table.filter((p) => !p.out).length;
+          const open = freeSeats(this.seats);
           const waiting = this.players.filter((p) => p.queued !== null && p.conn).length;
           if (this.present + Math.min(open, waiting) < MIN_PLAYERS) return;
         }
@@ -295,8 +302,7 @@ export class Room {
         // Whoever deals dresses the bots: any time, since it changes nothing but how their cards look.
         const bot = this.players.find((p) => p.seat === msg.seat);
         if (player !== this.dealer || !bot?.bot) return;
-        if (msg.back) bot.back = msg.back;
-        if (msg.lot !== undefined) this.setLot(bot, msg.lot);
+        if (!this.dress(bot, { ...bot.look, backs: msg.backs })) return;
         return this.changed();
       }
       case 'pause':
@@ -307,18 +313,9 @@ export class Room {
         if (this.phase !== 'lobby' || !seated(player) || this.players.some((p) => p.seat === msg.seat)) return;
         player.seat = msg.seat;
         return this.changed();
-      case 'deck': {
-        // A back drawn by lot is the table's to keep: the back sent along (their own choice, for when there is no lot) is not taken in its place.
-        const lot = msg.lot === undefined ? (player.lot ?? null) : msg.lot;
-        const back = lot !== null && lot === player.lot && player.drew ? player.back : (msg.back ?? player.back);
-        if (player.deck === msg.deck && player.back === back && !!player.night === (msg.night ?? !!player.night) && !!player.bare === (msg.bare ?? !!player.bare) && (player.lot ?? null) === lot) return;
-        player.deck = msg.deck;
-        player.back = back;
-        player.night = msg.night ?? player.night;
-        player.bare = msg.bare ?? player.bare;
-        this.setLot(player, lot);
+      case 'deck':
+        if (!this.dress(player, msg.look)) return;
         return this.changed();
-      }
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
     }
@@ -331,7 +328,7 @@ export class Room {
 
   /** The room is being forgotten: stops its timers and its bots. */
   close(): void {
-    this.stopTimers();
+    this.stopRoundTimer();
     this.stopBots();
   }
 
@@ -349,8 +346,8 @@ export class Room {
   summary(): TableSummary {
     return {
       code: this.code,
-      names: this.table.filter((p) => !p.out).map((p) => p.name), // (whoever is gone holds their seat only for their cards)
-      seats: MAX_PLAYERS,
+      names: this.table.filter(taking).map((p) => p.name),
+      seats: this.capacity,
       watching: this.players.filter((p) => !seated(p) && p.conn).length,
       round: this.round,
       playing: this.phase === 'playing',
@@ -375,6 +372,20 @@ export class Room {
     this.changed();
   }
 
+  /**
+   * One seat more or fewer, for whoever may deal and between rounds, like the settings. Never fewer than are taken
+   * (nobody is stood up: lowered, it only leaves fewer to be had), nor than a round needs, nor more than the table
+   * seats; raised, the queue sits down.
+   */
+  private resize(player: Player, step: 1 | -1): void {
+    if (player !== this.dealer || this.phase === 'playing') return;
+    const to = Math.min(MAX_PLAYERS, Math.max(fewestSeats(this.seats), this.capacity + step));
+    if (to === this.capacity) return;
+    this.capacity = to;
+    this.fill();
+    this.changed();
+  }
+
   private start(player: Player): void {
     // Only people who are here get cards. Someone away keeps their seat and score and sits the round out.
     if (player !== this.dealer || this.phase === 'playing' || this.present < MIN_PLAYERS) return;
@@ -396,22 +407,19 @@ export class Room {
     const dealt = this.table.filter((p) => p.conn);
     this.snipes = [];
     for (const p of this.players) delete p.ready;
-    for (const p of dealt) if (p.lot && !p.drew) this.drawBack(p); // a back by lot is drawn now: once, and kept for every round at this table
+    for (const p of this.players) this.draw(p); // (whoever is on a lot with nothing drawn: dealt in or not, here or away)
     this.game = deal(dealt.map((p) => p.seat), this.rng);
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!
     this.playingSince = null;
     // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
-    this.stopTimers();
-    this.dealEndsAt = Date.now() + DEAL_MS;
-    this.dealTimer = this.later(DEAL_MS, () => this.dealt());
+    this.timeRound(DEAL_MS, () => this.dealt());
     this.changed();
   }
 
   /** The deal timer fired: the work piles show their tops, and the table waits (for as long as it takes) for the dealer to press Start. */
   private dealt(): void {
-    this.dealTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = finishDeal(this.game);
     this.changed();
@@ -419,16 +427,14 @@ export class Room {
 
   /** Whoever may deal says "1, 2, 3...": only once the cards are dealt and the table is waiting. Anyone else, any other time, is ignored. */
   private go(player: Player): void {
-    if (player !== this.dealer || this.phase !== 'playing' || this.game?.stage !== 'ready') return;
+    if (player !== this.dealer || this.game?.status.at !== 'ready') return;
     this.game = startCountdown(this.game);
-    this.startEndsAt = Date.now() + START_MS;
-    this.startTimer = this.later(START_MS, () => this.opened());
+    this.timeRound(START_MS, () => this.opened());
     this.changed();
   }
 
   /** "...NERTZ!": play opens, and everyone's next snapshot (one flush) shows the nertz tops. */
   private opened(): void {
-    this.startTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = openPlay(this.game);
     // Told once a round, where the chat is: not again if the round is dealt over and started anew.
@@ -464,9 +470,21 @@ export class Room {
     return timer;
   }
 
-  private stopTimers(): void {
-    for (const timer of [this.dealTimer, this.startTimer, this.graceTimer]) if (timer) clearTimeout(timer);
-    this.dealTimer = this.startTimer = this.graceTimer = null;
+  /** The round's timed status lasts `ms`, then `fn` moves it on. Whatever was timed before is called off. */
+  private timeRound(ms: number, fn: () => void): void {
+    this.stopRoundTimer();
+    this.roundTimer = {
+      endsAt: Date.now() + ms,
+      handle: this.later(ms, () => {
+        this.roundTimer = null; // (a timer called off never fires: one that fires is this one)
+        fn();
+      }),
+    };
+  }
+
+  private stopRoundTimer(): void {
+    if (this.roundTimer) clearTimeout(this.roundTimer.handle);
+    this.roundTimer = null;
   }
 
   private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
@@ -483,7 +501,11 @@ export class Room {
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.game, at(player), intent);
     if (next === this.game) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)
+    const called = next.status.at === 'grace' && this.game.status.at !== 'grace';
     this.game = next;
+    // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace. This is the one way
+    // into grace (bots and debugBotOut call Nertz through `intent` too), so the grace window is timed here and nowhere else.
+    if (called) this.timeRound(GRACE_MS, () => this.graceExpired());
     this.settle();
     this.changed();
   }
@@ -510,29 +532,20 @@ export class Room {
 
   /**
    * After anything that can end the round or complete an "everyone is stuck"
-   * vote. Once Nertz is called the round waits (at most GRACE_MS) for the
-   * players the engine left in grace, then is scored.
+   * vote. Once it is over, however it ended, it is scored.
    */
   private settle(): void {
     if (this.phase !== 'playing' || !this.game) return;
     this.game = resolveEndVote(resolveStuck(this.game, this.connectedSeats()), this.table.filter((p) => p.conn && !p.bot).map((p) => p.seat));
-    // A round ended without a call (a jammed table, or everyone voted to end it) ends at once: nobody is in grace.
-    if (this.game.nertzCalledBy === null && !this.game.ended) return;
-    if (!this.game.ended && !isOver(this.game)) {
-      if (this.graceTimer) return;
-      this.graceEndsAt = Date.now() + GRACE_MS;
-      this.graceTimer = this.later(GRACE_MS, () => this.graceExpired());
-      return;
-    }
-    if (this.graceTimer) clearTimeout(this.graceTimer);
-    this.graceTimer = null;
+    const { status } = this.game;
+    // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
+    if (status.at !== 'over') return;
+    this.stopRoundTimer();
     const scores = scoreRound(this.game).map((s) => {
       const p = this.players.find((p) => p.seat === s.seat);
       if (p) p.score += s.delta;
       if (p) p.rounds = (p.rounds ?? 0) + 1;
-      const deck = p?.deck && deckNamed(p.deck, p.night);
-      const back = p && backNamed(p.back, p.bare);
-      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(deck ? { deck } : {}), ...(back ? { back } : {}) };
+      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(p ? { look: p.look } : {}) };
     });
     const pairs = new Map<string, { by: number; of: number; n: number }>();
     for (const s of this.snipes) {
@@ -541,7 +554,7 @@ export class Room {
       pairs.set(`${s.by}>${s.of}`, pair);
     }
     const snipes = [...pairs.values()].sort((a, b) => b.n - a.n || a.by - b.by || a.of - b.of);
-    this.lastRound = { calledBy: this.game.nertzCalledBy, scores, ...(this.game.ended ? { ended: this.game.ended } : {}), ...(snipes.length ? { snipes } : {}) };
+    this.lastRound = { end: status.end, scores, ...(snipes.length ? { snipes } : {}) };
     this.phase = 'results';
     this.stopClock();
     this.pausedBy = null;
@@ -558,7 +571,7 @@ export class Room {
   private pause(player: Player, on: boolean): void {
     if (!this.game || !this.inRound(player)) return;
     if (on) {
-      if (this.pausedBy || this.game.stage !== 'play' || this.game.nertzCalledBy !== null || this.game.ended) return;
+      if (this.pausedBy || !isLive(this.game)) return;
       this.pausedBy = player;
       this.stopClock();
       for (const p of this.players) this.letGo(p);
@@ -580,7 +593,6 @@ export class Room {
   }
 
   private graceExpired(): void {
-    this.graceTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = expireGrace(this.game);
     this.settle();
@@ -614,6 +626,11 @@ export class Room {
     return this.players.filter(seated).sort((a, b) => a.seat - b.seat);
   }
 
+  /** The table's seats, and how many are taken: the one count every way of sitting down goes by (`seatFor`, a deal over, `resize`). */
+  private get seats(): Seats {
+    return { of: this.capacity, taken: this.players.filter(taking).length };
+  }
+
   /** Those at the table who are here: who a deal would give cards to. */
   private get present(): number {
     return this.table.filter((p) => p.conn).length;
@@ -626,8 +643,8 @@ export class Room {
 
   /** Is a round being played (the count, and play)? Not: the lobby, the score sheet, or cards dealt that nobody has played yet. */
   private get roundOn(): boolean {
-    const stage = this.phase === 'playing' ? this.game?.stage : undefined;
-    return stage === 'countdown' || stage === 'play';
+    const stage = this.game?.status.at;
+    return stage === 'countdown' || stage === 'play' || stage === 'grace';
   }
 
   /** Is there room for one more without a seat? If not, someone without one whose window is long gone gives up their place (never the host). */
@@ -638,10 +655,14 @@ export class Room {
     return !!away;
   }
 
-  /** The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or else the lowest free one; null when the table is full. */
-  private seatFor(p: Player): number | null {
+  /**
+   * The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or
+   * else the lowest free one; null when the table is full (no seat of `seats` free). A bot, new, has no last round.
+   */
+  private seatFor(p?: Player): number | null {
+    if (freeSeats(this.seats) === 0) return null;
     const free = (seat: number) => !this.players.some((q) => q.seat === seat);
-    const own = this.lastRound?.scores.find((l) => l.id === p.id)?.seat;
+    const own = p && this.lastRound?.scores.find((l) => l.id === p.id)?.seat;
     if (own !== undefined && free(own)) return own;
     for (let seat = 0; seat < MAX_PLAYERS; seat++) if (free(seat)) return seat;
     return null;
@@ -672,7 +693,7 @@ export class Room {
 
   /**
    * `p` is gone for good: they left, or were sent away. With cards in a round that is not over they stay on the list,
-   * marked, until it is (`sendOff`): the seat is not to be had while its cards are in play. Otherwise they are off it now.
+   * marked, until it is (`sendOff`): their cards lie where they are, but the seat is free now. Otherwise they are off it now.
    */
   private gone(p: Player, how: 'left' | 'kicked'): void {
     if (this.inRound(p)) {
@@ -718,12 +739,12 @@ export class Room {
 
   private addBot(by: Player, level: BotLevel): void {
     if (by !== this.dealer || this.phase === 'playing') return;
-    const seat = Array.from({ length: MAX_PLAYERS }, (_, i) => i).find((i) => !this.players.some((p) => p.seat === i));
-    if (seat === undefined) return;
+    const seat = this.seatFor();
+    if (seat === null) return;
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
-    this.players.push({ id, token: `bot:${id}`, name, seat, queued: null, deck: 'modern', score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
+    this.players.push({ id, token: `bot:${id}`, name, seat, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
     this.changed();
   }
 
@@ -737,7 +758,7 @@ export class Room {
     for (const p of this.players) {
       p.score = 0;
       delete p.rounds;
-      if (p.lot) p.drew = false; // a table started over draws its lots over
+      if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
     this.startTold = 0;
@@ -749,25 +770,21 @@ export class Room {
     this.changed();
   }
 
-  /** A player's back is to be drawn by lot (or, with null, no longer): once, at the next deal, and kept at this table from then on. If a round is on, it is drawn at once. */
-  private setLot(player: Player, lot: string | null): void {
-    if (lot === null) {
-      delete player.lot;
-      delete player.drew;
-      return;
-    }
-    if (player.lot === lot) return;
-    player.lot = lot;
-    player.drew = false; // a lot chosen anew is drawn anew: at the next deal, or now if a round is on
-    if (this.phase === 'playing') this.drawBack(player);
+  /** `player`'s cards now look as `to` says (`rechosen`, for their backs); false if that is how they looked. A lot chosen while a round is on is drawn at once. */
+  private dress(player: Player, to: Look): boolean {
+    const was = player.look;
+    const backs = rechosen(was.backs, to.backs);
+    if (was.deck === to.deck && was.night === to.night && was.bare === to.bare && was.backs === backs) return false;
+    player.look = { ...to, backs };
+    if (this.phase === 'playing') this.draw(player);
+    return true;
   }
 
-  /** Draws a back for a player from their lot: not the one they had, if there is another to be had. */
-  private drawBack(player: Player): void {
-    const pool = backPool(player.lot!);
-    const fresh = pool.length > 1 ? pool.filter((b) => b !== player.back) : pool;
-    player.back = fresh[Math.floor(this.rng() * fresh.length)]!;
-    player.drew = true;
+  /** Draws `player` a back from their lot, if they are on one with nothing drawn from it yet. */
+  private draw(player: Player): void {
+    const { backs } = player.look;
+    if (backs.k !== 'lot' || backs.drawn) return;
+    player.look = { ...player.look, backs: { ...backs, drawn: anotherBack(undefined, backPool(backs.lot), this.rng()) } };
   }
 
   private removeBot(by: Player, seat: number): void {
@@ -888,7 +905,7 @@ export class Room {
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
   private debugBotOut(by: Player): void {
-    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || this.phase !== 'playing' || !this.game || this.game.stage !== 'play' || this.game.nertzCalledBy !== null) return;
+    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || !this.game || !isLive(this.game)) return;
     const bot = this.players.find((p) => p.bot && this.game!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -931,7 +948,7 @@ export class Room {
     const game = this.game && viewFor(this.game, at(you));
     const dealer = this.dealer;
     const hand = (p: Player) => (this.inRound(p) ? game?.players.find((g) => g.seat === p.seat) : undefined);
-    const dealt = this.phase === 'playing' && (game?.stage === 'dealing' || game?.stage === 'ready');
+    const dealt = game?.status.at === 'dealing' || game?.status.at === 'ready';
     return {
       code: this.code,
       phase: this.phase,
@@ -943,22 +960,19 @@ export class Room {
         seat: p.seat,
         name: p.name,
         connected: p.conn !== null,
+        ...(p.out ? { left: true as const } : {}),
         score: p.score,
         rounds: p.rounds ?? 0,
         isHost: p === dealer,
         ...(dealt && (p.bot || p.ready) && hand(p) ? { ready: true } : {}),
         bot: p.bot?.level,
         ...(p.queued !== null ? { queued: true } : {}),
-        deck: p.deck && deckNamed(p.deck, p.night),
-        // (A back by lot is not known until a round is dealt: before the first, a card with a question mark.)
-        back: p.lot && this.phase === 'lobby' ? ANY_BACK : backNamed(p.back, p.bare),
-        ...(p.lot ? { lot: p.lot } : {}),
+        look: p.look,
       })),
       settings: this.settings,
+      seats: this.seats,
       game,
-      graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
-      dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
-      startMs: this.startTimer ? Math.max(0, this.startEndsAt - Date.now()) : null,
+      timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
       paused: this.pausedBy ? { by: this.pausedBy.id } : null,
       lastRound: this.lastRound,

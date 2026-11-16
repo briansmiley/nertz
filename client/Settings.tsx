@@ -6,15 +6,17 @@
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { endVote, seatedPeople } from '../shared/engine';
+import { endVote, isLive, seatedPeople } from '../shared/engine';
 import type { TableSettings } from '../shared/settings';
+import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { pause, redeal, send, setTableSettings } from './net';
+import { pause, redeal, send, setSeats, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { Feedback } from './Feedback';
+import { SaidWord, Slash, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -28,7 +30,7 @@ function Speaker({ off }: { off: boolean }) {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" fill="currentColor" stroke="none" />
       <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />
-      {off && <path d="M4.5 4.5l15 15" strokeWidth="2.4" />}
+      <Slash on={off} />
     </svg>
   );
 }
@@ -140,10 +142,10 @@ function PauseIcon() {
   );
 }
 
-/** Can you pause the round right now? While it is being played, before anyone calls Nertz, if you were dealt in. */
+/** Can you pause the round right now? While it is live, if you were dealt in. */
 export function canPause(room: RoomView | null | undefined): boolean {
   const g = room?.game;
-  return !!room && room.phase === 'playing' && !room.paused && !!g && g.stage === 'play' && g.nertzCalledBy === null && !g.ended && g.players.some((p) => p.seat === room.seat);
+  return !!room && !room.paused && !!g && isLive(g) && g.players.some((p) => p.seat === room.seat);
 }
 
 /** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
@@ -211,12 +213,12 @@ function Volume({ prefs }: { prefs: Prefs }) {
 
 /**
  * Ending the round where it stands, for a round that drags on (everyone voting: bots go along). Shown while a round
- * is in play and you are in it.
+ * is live and you are in it.
  */
 function EndVote({ room }: { room: RoomView }) {
   const game = room.game;
   const me = game?.players.find((p) => p.seat === room.seat);
-  if (room.phase !== 'playing' || !game || game.stage !== 'play' || game.nertzCalledBy !== null || !me) return null;
+  if (!game || !isLive(game) || !me) return null;
   const { voters, voted } = endVote(game, seatedPeople(room.players));
   return (
     <div className="end-vote">
@@ -336,21 +338,26 @@ export function Corner({ room }: { room?: RoomView | null }) {
   }, [open]);
 
   /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
-  const stage = room?.phase === 'playing' ? room.game?.stage : undefined;
-  const styling = stage !== 'countdown' && stage !== 'play';
+  const stage = room?.game?.status.at;
+  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
-  // The sound key mutes from anywhere (except while typing a name), P pauses or carries on.
+  // The sound key mutes from anywhere (except while typing a name), and says so on the button.
+  const said = useHotkey(prefs.soundKey, () => {
+    const muted = !getPrefs().muted;
+    setPrefs({ muted });
+    return muted ? 'Muted' : 'Unmuted';
+  });
+  // P pauses or carries on.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (hotkeyPressed(e, prefs.soundKey)) setPrefs({ muted: !prefs.muted });
-      else if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
+      if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [prefs.muted, prefs.soundKey, pausable, resumable]);
+  }, [pausable, resumable]);
 
   useDismiss(root, open, () => setOpen(false));
 
@@ -371,6 +378,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         }}
       >
         <Speaker off={prefs.muted} />
+        <SaidWord said={said} />
       </button>
       {pausable && (
         <button
@@ -439,14 +447,14 @@ export function Corner({ room }: { room?: RoomView | null }) {
                   <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
                   <span>Allow text chat</span>
                 </label>
-                <Specs on={social.text && social.watchText !== false} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+                <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
               </div>
               <div className="allow">
                 <label className="check">
                   <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
                   <span>Allow voice chat</span>
                 </label>
-                <Specs on={social.voice && social.watchVoice !== false} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+                <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
               </div>
             </div>
           )}
@@ -459,9 +467,28 @@ export function Corner({ room }: { room?: RoomView | null }) {
   );
 }
 
+/** How many may sit at the table: a number between a minus and a plus. Each tap is one seat more or fewer; the server keeps it within its bounds. */
+function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
+  const n = room.seats.of;
+  return (
+    <div className="stepper">
+      <span id="seats-label">Seats</span>
+      <span role="group" aria-labelledby="seats-label">
+        <button type="button" aria-label="Fewer seats" disabled={!mine || n <= fewestSeats(room.seats)} onClick={() => setSeats(-1)}>
+          −
+        </button>
+        <output aria-live="polite">{n}</output>
+        <button type="button" aria-label="More seats" disabled={!mine || n >= MAX_PLAYERS} onClick={() => setSeats(1)}>
+          +
+        </button>
+      </span>
+    </div>
+  );
+}
+
 /**
  * The table's house rules, in the lobby and behind the score sheet's gear. One row per option
- * of `TableSettings` that the host is offered.
+ * of `TableSettings` that the host is offered, and the number of seats.
  */
 export function TableRules({ room }: { room: RoomView }) {
   const host = room.players.find((p) => p.isHost);
@@ -476,6 +503,7 @@ export function TableRules({ room }: { room: RoomView }) {
           Move without dragging <Info>Tap or click a card, then where it goes.</Info>
         </span>
       </label>
+      <SeatCount room={room} mine={mine} />
     </fieldset>
   );
 }

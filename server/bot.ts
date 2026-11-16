@@ -3,7 +3,7 @@
 // intent, or nothing. The Room owns the timers and submits the intent through
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
-import { completedBy, feltFree, isHidden, legalDrops, type Rng } from '../shared/engine';
+import { completedBy, feltFree, isHidden, isLive, legalDrops, type Rng } from '../shared/engine';
 import { feltHw, type Pt } from '../shared/table';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
@@ -73,7 +73,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  */
 export function chooseIntent(view: GameState, seat: number, memory: BotMemory, rng: Rng, observance = 1): { intent: Intent; memory: BotMemory } | null {
   const me = view.players.find((p) => p.seat === seat);
-  if (!me || view.stage !== 'play' || view.nertzCalledBy !== null) return null;
+  if (!me || !isLive(view)) return null;
   const nertz = top(me.nertz);
   const waste = me.dealt > 0 ? undefined : top(me.waste); // a group is half-dealt: the waste's top is face-down and out of play
   // Cards that are face-up in play but hidden in this view: the table is not open yet. Look again later.
