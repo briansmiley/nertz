@@ -19,9 +19,9 @@ function roomWith(n: number): { room: Room; conns: FakeConn[]; kept: (i: number)
 }
 
 /** Ends the round: seat 0 has no nertz pile left, and says so. */
-function callNertz(room: Room, conn: FakeConn, seq = 1000): void {
+function callNertz(room: Room, conn: FakeConn): void {
   room.game = rig(inPlay(room.game!.players.map((p) => p.seat), seeded(7)), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz: [0] });
-  room.handle(conn, { t: 'intent', seq, intent: { k: 'nertz' } });
+  room.handle(conn, { t: 'intent', seq: 1000, intent: { k: 'nertz' } });
   expect(room.phase).toBe('results');
 }
 
@@ -74,25 +74,6 @@ describe('a back by lot', () => {
     expect(shown(1)).toMatchObject({ back: 'any', lot: 'Plants' });
     send(room, a, { t: 'start' });
     expect(shown(1)).toSatisfy(inLot('Plants'));
-  });
-
-  it('is never drawn as the back they had: their own on choosing the lot, the one drawn last when the table is started over', () => {
-    vi.useFakeTimers();
-    const { room, conns, shown } = roomWith(2);
-    const [a, b] = conns as [FakeConn, FakeConn];
-    const own = backPool('Plants')[0]!;
-    send(room, b, { t: 'deck', deck: 'modern', back: own, lot: 'Plants' });
-    let had: string = own;
-    for (let i = 0; i < 20; i++) {
-      send(room, a, { t: 'start' });
-      const drawn = shown(1).back!;
-      expect(shown(1)).toSatisfy(inLot('Plants'));
-      expect(drawn).not.toBe(had);
-      had = drawn;
-      vi.advanceTimersByTime(DEAL_MS);
-      callNertz(room, a, 1000 + i);
-      send(room, a, { t: 'reset' });
-    }
   });
 
   it('chosen between rounds is not drawn until the next deal; chosen while a round is on, it is drawn at once', () => {

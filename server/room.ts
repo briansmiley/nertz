@@ -80,9 +80,9 @@ interface Player {
 /**
  * Where a player's backs come from: their own choice, or a lot (`backPool`: 'all', or a kind of back). A back is drawn
  * from a lot once for the table and kept for every round there: `drawn` is null until it is, which is at the next deal,
- * or at once if a round is on (`Room.draw`). `had` is the back they had before, which a draw does not land on again.
+ * or at once if a round is on (`Room.draw`).
  */
-type Backs = { k: 'own'; back: Back } | { k: 'lot'; lot: Lot; drawn: Back | null; had: Back };
+type Backs = { k: 'own'; back: Back } | { k: 'lot'; lot: Lot; drawn: Back | null };
 
 /**
  * What `was` becomes when the player (or, for a bot, whoever deals) says `back` and `lot`; `was` itself if that changes
@@ -91,14 +91,12 @@ type Backs = { k: 'own'; back: Back } | { k: 'lot'; lot: Lot; drawn: Back | null
  */
 function rechosen(was: Backs, back: Back | undefined, lot: Lot | null | undefined): Backs {
   if (lot === undefined && was.k === 'lot') return was;
-  if (lot) return was.k === 'lot' && was.lot === lot ? was : { k: 'lot', lot, drawn: null, had: back ?? shown(was) };
-  const own = back ?? shown(was);
+  if (lot) return was.k === 'lot' && was.lot === lot ? was : { k: 'lot', lot, drawn: null };
+  const own = back ?? backOf(was) ?? 'plain';
   return was.k === 'own' && was.back === own ? was : { k: 'own', back: own };
 }
 /** The back `backs` come to: null for a lot not drawn yet. */
 const backOf = (backs: Backs): Back | null => (backs.k === 'own' ? backs.back : backs.drawn);
-/** The back last shown for `backs`: for a lot not drawn yet, the one they had before it. */
-const shown = (backs: Backs): Back => backOf(backs) ?? (backs.k === 'lot' ? backs.had : 'plain');
 /** `p`'s backs as they are named for drawing (`ANY_BACK` while their lot is not drawn). */
 const shownBack = (p: Player): string => {
   const back = backOf(p.backs);
@@ -758,7 +756,7 @@ export class Room {
     for (const p of this.players) {
       p.score = 0;
       delete p.rounds;
-      if (p.backs.k === 'lot') p.backs = { ...p.backs, drawn: null, had: shown(p.backs) }; // a table started over draws its lots over
+      if (p.backs.k === 'lot') p.backs = { ...p.backs, drawn: null }; // a table started over draws its lots over
     }
     this.round = 0;
     this.startTold = 0;
@@ -778,13 +776,11 @@ export class Room {
     return true;
   }
 
-  /** Draws `player` a back from their lot, if they are on one with nothing drawn from it yet: not the one they had, if there is another to be had. */
+  /** Draws `player` a back from their lot, if they are on one with nothing drawn from it yet. */
   private draw(player: Player): void {
     if (player.backs.k !== 'lot' || player.backs.drawn) return;
-    const { had } = player.backs;
     const pool = backPool(player.backs.lot);
-    const fresh = pool.length > 1 ? pool.filter((b) => b !== had) : pool;
-    player.backs = { ...player.backs, drawn: fresh[Math.floor(this.rng() * fresh.length)]! };
+    player.backs = { ...player.backs, drawn: pool[Math.floor(this.rng() * pool.length)]! };
   }
 
   private removeBot(by: Player, seat: number): void {
