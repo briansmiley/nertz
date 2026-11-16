@@ -835,6 +835,7 @@ button {
   transition: opacity 0.3s;
   pointer-events: none;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transform-origin: 0 0;
 }
 
 .heap.on {
@@ -967,10 +968,6 @@ button {
 }
 
 /* The same label on a cleared table (a phone), in fewer words and a narrower box (LABEL_SHORT in Finale.tsx). */
-.heap {
-  transform-origin: 0 0;
-}
-
 .heap.short {
   grid-template-columns: minmax(0, 1fr) auto; /* the score at the far end of the box: pile, lines, score fill it */
   justify-content: stretch;
@@ -1025,8 +1022,7 @@ button {
   grid-column: 1;
 }
 
-.heap.tile .net,
-.heap.tile.end .net {
+.heap.tile .net {
   grid-column: 1;
   grid-row: 1;
   justify-self: end;
@@ -1218,7 +1214,7 @@ button {
 }
 
 .pad h2 {
-  margin: 0 0 0.5rem;
+  margin: 0;
   font: 400 1.65rem/2rem var(--display);
   letter-spacing: 0.01em;
 }
@@ -1241,13 +1237,8 @@ button {
   align-content: start;
 }
 
-.pad h2,
 .pad .lead {
-  margin: 0;
-}
-
-.pad .lead {
-  margin-top: -0.6rem;
+  margin: -0.6rem 0 0;
   color: var(--ink-soft);
 }
 
@@ -1518,6 +1509,8 @@ button {
 }
 
 .mybacks .mini {
+  zoom: 0.42;
+  transform: rotate(-4deg);
   transition: transform 0.12s ease-out;
 }
 
@@ -1545,11 +1538,6 @@ button {
 
 .mybacks.compact .mini {
   zoom: 0.5;
-}
-
-.mybacks .mini {
-  zoom: 0.42;
-  transform: rotate(-4deg);
 }
 
 .mybacks .what {
@@ -1593,24 +1581,56 @@ button {
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  border: 0;
   border-radius: 99px;
   background: none;
   color: var(--chalk);
-  font: 400 20px/1 var(--ui);
+  font: 400 24px/1 var(--ui);
   cursor: pointer;
 }
 
-/* The sheet holds the same piles as the page of cards (.showroom): a little smaller, and with no page margins. */
+/* The sheet holds the same piles as the page of cards (.showroom): a little smaller, and with no page margins. One size
+   whichever panel is up (backs or faces): the sheet does not jump when the other is chosen; a longer panel scrolls inside it. */
 .picker .sheet.showroom {
   width: min(940px, 100%);
   max-width: none;
+  height: min(86vh, 760px);
   margin: 0;
-  padding: 14px 18px 22px;
+  padding: 30px 18px 22px;
 }
 
 .picker .heading {
   margin: 0 0 4px;
+}
+
+.picker .sheet.showroom > .heading {
+  margin-top: 0;
+}
+
+.picker .sheet section > .heading {
+  margin-top: 0.4rem;
+}
+
+/* The sheet of your own cards has two panels: backs and faces. */
+.picker .panels {
+  display: inline-flex;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.picker .panels button {
+  padding: 4px 14px 5px;
+  border: 0;
+  font: 600 0.9rem/1.2 var(--ui);
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.picker .panels button.on {
+  color: var(--ink);
+  background: var(--marigold);
 }
 
 .picker .heading .shut {
@@ -1733,13 +1753,16 @@ button {
   gap: 0.5rem 0.8rem;
 }
 
+/* The bot's speed: the browser's own arrow sits against the edge, so the field draws its own, with room round it. */
 .bots select {
-  padding: 0.55rem 0.5rem;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.55rem 2.1rem 0.55rem 0.75rem;
   border: 1.5px solid var(--ink);
   border-radius: 8px;
   font: inherit;
   color: var(--ink);
-  background: #fffdf6;
+  background: #fffdf6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231c2433' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0.65rem center / 0.95rem;
 }
 
 /* On the score sheet, a player who has sat down since the round: no line of it, only that they are coming in. */
@@ -2453,19 +2476,61 @@ label.check {
   stroke-linejoin: round;
 }
 
+/* In the bar: the headset (opens the voice slip), the microphone (mutes you) and an eye with how many are watching. */
 .chat-bar .mic {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-variant-numeric: tabular-nums;
   padding: 4px 9px 5px;
-  border: 1.5px solid transparent;
+  border: 1.5px solid rgba(241, 234, 216, 0.4);
   border-radius: 99px;
   font-size: 13px;
 }
 
 .chat-bar .mic.speaking {
   border-color: var(--marigold);
+}
+
+.chat-bar button.mic.mute {
+  padding: 4px 8px 5px;
+}
+
+.chat-bar button.mic.mute.on {
+  color: var(--ink);
+  background: var(--marigold);
+  border-color: var(--marigold);
+}
+
+/* Voice, one press away beside the chat button. While others are in it, it beckons. */
+.chat-bar button.mic.join {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chat-bar button.mic.join.calling {
+  color: var(--ink);
+  background: var(--marigold);
+  border-color: var(--marigold);
+  animation: calling 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes calling {
+  from {
+    box-shadow: 0 0 0 0 rgba(240, 180, 40, 0.75);
+  }
+  to {
+    box-shadow: 0 0 0 7px rgba(240, 180, 40, 0);
+  }
+}
+
+.calm .chat-bar button.mic.join.calling {
+  animation: none;
+}
+
+.chat-bar .mic-error {
+  color: var(--chalk);
+  font-size: 12px;
 }
 
 .chat .dot {
@@ -3061,10 +3126,10 @@ body:has(main.showroom),
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px 4px 5px;
-  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  padding: 0;
+  border: 0;
   border-radius: 99px;
-  background: rgba(8, 28, 33, 0.5);
+  background: none;
   color: var(--chalk);
   font: 600 13px/1 var(--ui);
   letter-spacing: 0.02em;
@@ -3092,10 +3157,6 @@ body:has(main.showroom),
   border-radius: 99px;
   background: var(--chalk);
   transition: transform 0.15s;
-}
-
-.showroom .edge.on {
-  border-color: var(--marigold);
 }
 
 .showroom .edge.on .lever {
@@ -3168,14 +3229,11 @@ body:has(main.showroom),
   margin-bottom: 14px;
   border: 2px dashed rgba(241, 234, 216, 0.28);
   border-radius: 8px;
-}
-
-/* A kind of back is a fan of its first few cards, not a deck: three in full, the next two fading away to the right, as many more would. */
-.showroom .stack {
   zoom: 0.8;
   translate: -24px 0; /* the fan runs to the right of its first card: this brings the whole of it over its name */
 }
 
+/* A kind of back is a fan of its first few cards, not a deck: three in full, the next two fading away to the right, as many more would. */
 .showroom .stack .mini {
   position: absolute;
   left: -2px;
@@ -3199,15 +3257,12 @@ body:has(main.showroom),
 /* Picked up: its cards go down towards where they are dealt out, and only the outline of the first is left. */
 .showroom .pile.open .stack {
   translate: 0 0;
+  border-color: var(--marigold);
 }
 
 .showroom .pile.open .stack .mini {
   transform: translate(0, 46px) rotate(0deg) scale(0.8);
   opacity: 0;
-}
-
-.showroom .pile.open .stack {
-  border-color: var(--marigold);
 }
 
 .showroom .pile b {
@@ -3638,11 +3693,6 @@ body:has(main.showroom),
   }
 }
 
-/* (The cloth's pool of light stays put while the long page scrolls: no seam where the first screen ends.) */
-body:has(main.showroom) {
-  background-attachment: fixed;
-}
-
 /* While one deck's 52 cards are laid out, the other decks are faint: it is plain whose cards those are. */
 .showroom .decks.one article:not(.open) {
   opacity: 0.3;
@@ -3677,38 +3727,6 @@ body:has(main.showroom) {
   box-shadow: none;
 }
 
-/* Voice, one press away beside the chat button. While others are in it, it beckons. */
-.chat-bar button.mic.join {
-  cursor: pointer;
-  border-color: rgba(241, 234, 216, 0.4);
-  white-space: nowrap;
-}
-
-.chat-bar button.mic.join.calling {
-  color: var(--ink);
-  background: var(--marigold);
-  border-color: var(--marigold);
-  animation: calling 1.1s ease-in-out infinite alternate;
-}
-
-@keyframes calling {
-  from {
-    box-shadow: 0 0 0 0 rgba(240, 180, 40, 0.75);
-  }
-  to {
-    box-shadow: 0 0 0 7px rgba(240, 180, 40, 0);
-  }
-}
-
-.calm .chat-bar button.mic.join.calling {
-  animation: none;
-}
-
-.chat-bar .mic-error {
-  color: var(--chalk);
-  font-size: 12px;
-}
-
 /* Ready, in the middle where the dealer has Start: smaller than Start, and still once pressed. */
 .opening .kickoff.readyup {
   padding: 13px 40px 12px;
@@ -3725,9 +3743,14 @@ body:has(main.showroom) {
   animation: none;
 }
 
-/* The bug button's slip (Feedback.tsx): what kind, the words, a screenshot, Send. */
+/* The bug button's slip (Feedback.tsx): what kind, the words, a screenshot, Send. Plain paper: no red edge. */
 .slip.feedback {
   width: min(20rem, calc(100vw - 24px));
+  padding-top: 1.1rem;
+}
+
+.slip.feedback::before {
+  display: none;
 }
 
 .feedback .kinds {
@@ -3736,7 +3759,12 @@ body:has(main.showroom) {
   gap: 6px;
 }
 
+/* Its two kinds carry a picture each. */
 .feedback .kinds button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   padding: 0.4rem 0.5rem;
   border: 1.5px solid var(--ink);
   border-radius: 8px;
@@ -3749,6 +3777,16 @@ body:has(main.showroom) {
 .feedback .kinds button.on {
   color: var(--paper);
   background: var(--ink);
+}
+
+.feedback .kinds svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .feedback textarea {
@@ -3796,10 +3834,13 @@ body:has(main.showroom) {
   opacity: 0.7;
 }
 
+/* The attached screenshot, with a small bin on its corner to take it off again. */
 .feedback .shot {
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
   gap: 0.6rem;
+  width: max-content;
 }
 
 .feedback .shot img {
@@ -3808,6 +3849,32 @@ body:has(main.showroom) {
   object-fit: cover;
   border: 1.5px solid var(--ink);
   border-radius: 6px;
+}
+
+.feedback .shot .trash {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--ink);
+  border-radius: 99px;
+  color: var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.feedback .shot .trash svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .feedback .hint,
@@ -3951,32 +4018,6 @@ body:has(main.showroom) {
   color: var(--chalk-dim);
 }
 
-/* The feedback slip is plain paper: no red edge. Its two kinds carry a picture each. */
-.slip.feedback::before {
-  display: none;
-}
-
-.slip.feedback {
-  padding-top: 1.1rem;
-}
-
-.feedback .kinds button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-}
-
-.feedback .kinds svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 /* A line of the score sheet: chip, name, the stamp, the ×. In a narrow window the name is what gives way. */
 .scores .who {
   display: flex;
@@ -4052,26 +4093,6 @@ body:has(main.showroom) {
 
 }
 
-/* In the bar: the headset (opens the voice slip) and the microphone (mutes you) are buttons. */
-.chat-bar button.mic {
-  cursor: pointer;
-  border-color: rgba(241, 234, 216, 0.4);
-}
-
-.chat-bar button.mic.speaking {
-  border-color: var(--marigold);
-}
-
-.chat-bar button.mic.mute {
-  padding: 4px 8px 5px;
-}
-
-.chat-bar button.mic.mute.on {
-  color: var(--ink);
-  background: var(--marigold);
-  border-color: var(--marigold);
-}
-
 /* Under the chat's buttons, on the cloth: the line to type in and what is being said. No panel. */
 .chat-under {
   position: absolute;
@@ -4115,11 +4136,8 @@ body:has(main.showroom) {
   animation: none;
 }
 
-.chat-bar button.chat-toggle.on {
-  color: var(--ink);
-}
-
-/* The voice slip: who is in it, mute yourself, leave. */
+/* The voice slip: who is in it, mute yourself, leave. Its heading with Leave at the right; a microphone beside a name
+   (your own is a button). */
 .voice-slip {
   position: absolute;
   left: 0;
@@ -4136,9 +4154,22 @@ body:has(main.showroom) {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
+.voice-slip header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.voice-slip h3 {
+  margin: 0;
+  font: 400 1rem/1.2 var(--display);
+}
+
 .voice-slip ul {
   display: grid;
   gap: 3px;
+  min-width: 11rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4148,7 +4179,11 @@ body:has(main.showroom) {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.voice-slip li.you {
+  font-weight: 700;
 }
 
 .voice-slip li i {
@@ -4169,85 +4204,6 @@ body:has(main.showroom) {
 
 .voice-slip li small.bad {
   color: #b3261e;
-}
-
-/* The attached screenshot, with a small bin on its corner to take it off again. */
-.feedback .shot {
-  position: relative;
-  display: inline-flex;
-  width: max-content;
-}
-
-.feedback .shot .trash {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1.5px solid var(--ink);
-  border-radius: 99px;
-  color: var(--ink);
-  background: var(--paper);
-  cursor: pointer;
-}
-
-.feedback .shot .trash svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* The table's code in the lobby's heading is a button: pressed, it is copied. */
-button.code.copy {
-  position: relative;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: copy;
-}
-
-button.code.copy:hover {
-  text-decoration: underline dotted 2px;
-  text-underline-offset: 0.15em;
-}
-
-button.code.copy small {
-  position: absolute;
-  left: calc(100% + 0.6rem);
-  top: 50%;
-  translate: 0 -50%;
-  font: 600 0.8rem/1 var(--ui);
-  letter-spacing: 0;
-  white-space: nowrap;
-  color: var(--ink-soft);
-}
-
-/* The voice slip: its heading with Leave at the right; a microphone beside a name (your own is a button). */
-.voice-slip header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-}
-
-.voice-slip h3 {
-  margin: 0;
-  font: 400 1rem/1.2 var(--display);
-}
-
-.voice-slip li {
-  font-weight: 500;
-}
-
-.voice-slip li.you {
-  font-weight: 700;
 }
 
 .voice-slip .mic-at {
@@ -4281,8 +4237,29 @@ button.code.copy small {
   stroke-linejoin: round;
 }
 
-.voice-slip ul {
-  min-width: 11rem;
+/* The table's code in the lobby's heading is a button: pressed, it is copied. */
+button.code.copy {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: copy;
+}
+
+button.code.copy:hover {
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 0.15em;
+}
+
+button.code.copy small {
+  position: absolute;
+  left: calc(100% + 0.6rem);
+  top: 50%;
+  translate: 0 -50%;
+  font: 600 0.8rem/1 var(--ui);
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--ink-soft);
 }
 
 /* Settings: the keys. */
@@ -4318,71 +4295,6 @@ button.code.copy small {
 
 .hotkeys button.on {
   background: var(--marigold);
-}
-
-/* The sheet of your own cards has two panels: backs and faces. */
-.picker .panels {
-  display: inline-flex;
-  border: 1.5px solid currentColor;
-  border-radius: 99px;
-  overflow: hidden;
-}
-
-.picker .panels button {
-  padding: 4px 14px 5px;
-  border: 0;
-  font: 600 0.9rem/1.2 var(--ui);
-  color: inherit;
-  background: none;
-  cursor: pointer;
-}
-
-.picker .panels button.on {
-  color: var(--ink);
-  background: var(--marigold);
-}
-
-.picker .sheet section > .heading {
-  margin-top: 0.4rem;
-}
-
-/* The sheet of cards, tidied: room above its heading; the two switches are a lever and a word, no pill round them;
-   the × has no ring; the Backs/Faces switch is nearly square. */
-.picker .sheet.showroom {
-  padding-top: 30px;
-}
-
-.showroom .edge,
-.showroom .edge.on {
-  padding: 0;
-  border: 0;
-  background: none;
-}
-
-.picker .shut {
-  border: 0;
-  font-size: 24px;
-}
-
-.picker .panels {
-  border-radius: 4px;
-}
-
-.picker .sheet.showroom > .heading {
-  margin-top: 0;
-}
-
-/* One size whichever panel is up (backs or faces): the sheet does not jump when the other is chosen; a longer panel scrolls inside it. */
-.picker .sheet.showroom {
-  height: min(86vh, 760px);
-}
-
-/* The bot's speed: the browser's own arrow sits against the edge, so the field draws its own, with room round it. */
-.bots select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 0.55rem 2.1rem 0.55rem 0.75rem;
-  background: #fffdf6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231c2433' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0.65rem center / 0.95rem;
 }
 
 /* In the lobby, beside a bot's name: a robot's head and its speed. */
@@ -4478,25 +4390,32 @@ button.code.copy small {
   left: -8px;
   top: calc(100% + 8px);
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  width: 196px; /* up to nine of them: five to a row */
   padding: 8px;
-  border-radius: 99px;
+  border-radius: 20px;
   background: var(--paper);
   box-shadow:
     0 0 0 1.5px var(--ink),
     0 8px 18px rgba(0, 0, 0, 0.3);
 }
 
-/* In the chat's bar: an eye and how many are watching. */
-.chat-bar .mic.eye {
-  cursor: pointer;
+.colour .free button {
+  flex: none;
+  position: relative;
 }
 
-/* (Up to nine of them: five to a row.) */
-.colour .free {
-  flex-wrap: wrap;
-  width: 196px;
-  border-radius: 20px;
+/* Your own colour among the free ones: ticked. */
+.colour .free button.mine::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 800 15px/1 var(--ui);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
 }
 
 /* The host's chat switches: each with, at its end, the same for spectators (glasses and a box). */
@@ -4536,15 +4455,10 @@ button.code.copy small {
   width: 20px;
   height: 20px;
   fill: none;
-  stroke: currentColor;
+  stroke: var(--ink);
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.allow .specs svg,
-.allow .specs.on svg {
-  stroke: var(--ink);
 }
 
 /* Someone else's snipe, small, on the lower rim of the felt: chalk words with the two names in their colours. */
@@ -4602,21 +4516,4 @@ button.code.copy small {
   color: var(--ink);
   background: var(--marigold);
   cursor: pointer;
-}
-
-/* Your own colour among the free ones: ticked. */
-.colour .free button {
-  flex: none;
-  position: relative;
-}
-
-.colour .free button.mine::after {
-  content: '✓';
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font: 800 15px/1 var(--ui);
-  color: #fff;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
 }
