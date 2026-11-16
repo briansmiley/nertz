@@ -14,8 +14,9 @@ import { pause, redeal, send, setSeats, setTableSettings } from './net';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { Feedback } from './Feedback';
+import { SaidWord, Slash, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -29,7 +30,7 @@ function Speaker({ off }: { off: boolean }) {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" fill="currentColor" stroke="none" />
       <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />
-      {off && <path d="M4.5 4.5l15 15" strokeWidth="2.4" />}
+      <Slash on={off} />
     </svg>
   );
 }
@@ -342,16 +343,21 @@ export function Corner({ room }: { room?: RoomView | null }) {
 
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
-  // The sound key mutes from anywhere (except while typing a name), P pauses or carries on.
+  // The sound key mutes from anywhere (except while typing a name), and says so on the button.
+  const said = useHotkey(prefs.soundKey, () => {
+    const muted = !getPrefs().muted;
+    setPrefs({ muted });
+    return muted ? 'Muted' : 'Unmuted';
+  });
+  // P pauses or carries on.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (hotkeyPressed(e, prefs.soundKey)) setPrefs({ muted: !prefs.muted });
-      else if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
+      if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [prefs.muted, prefs.soundKey, pausable, resumable]);
+  }, [pausable, resumable]);
 
   useDismiss(root, open, () => setOpen(false));
 
@@ -372,6 +378,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         }}
       >
         <Speaker off={prefs.muted} />
+        <SaidWord said={said} />
       </button>
       {pausable && (
         <button

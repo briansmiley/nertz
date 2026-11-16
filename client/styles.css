@@ -4558,3 +4558,53 @@ button.code.copy small {
   background: var(--marigold);
   cursor: pointer;
 }
+
+/* A line through an icon for "off" draws itself on, and back off (hotkey.tsx). */
+.slash {
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.22s ease-out;
+}
+
+.slash.on {
+  stroke-dashoffset: 0;
+}
+
+/* What a hotkey just did, in a word inside its button: the button opens out to say it, and closes again. */
+.said {
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 0;
+  margin-left: -5px; /* (the button's gap, until there is a word) */
+  font: 600 13px/1 var(--ui);
+  animation: said 1.4s ease-in-out forwards;
+}
+
+@keyframes said {
+  0% {
+    max-width: 0;
+    margin-left: -5px;
+    opacity: 0;
+  }
+  14%,
+  78% {
+    max-width: 6em;
+    margin-left: 0;
+    opacity: 1;
+  }
+  100% {
+    max-width: 0;
+    margin-left: -5px;
+    opacity: 0;
+  }
+}
+
+.calm .slash {
+  transition: none;
+}
+
+.calm .said {
+  animation: none;
+  max-width: none;
+  margin-left: 0;
+}
