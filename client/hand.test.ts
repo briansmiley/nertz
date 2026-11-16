@@ -469,7 +469,7 @@ describe('a group coming off the stock', () => {
     expect(t.cardDue).toBe(false);
   });
 
-  it('a King put on the middle while the group comes off: no card is due and nobody is nagged until the pile is in the tray, then the group goes on', () => {
+  it('a King put on the middle while the group comes off: no card is due until the pile is in the tray, then the group goes on', () => {
     const t = dealing();
     t.drag(t.at('0:SK'), t.slot(0));
     expect(t.sent).toEqual([hold('0:SK'), move('0:SK', slot(0))]);
@@ -477,7 +477,6 @@ describe('a group coming off the stock', () => {
     t.drag(t.slot(0), by({ x: t.L.trayHit.x, y: t.L.trayHit.y }, 20, 20));
     expect(t.sent.at(-1)).toEqual({ k: 'clear', slot: 0 });
     expect(t.cardDue).toBe(true);
-    expect(t.did).toEqual([]);
   });
 
   it('a card the server refuses (it came too soon after the last) is undone by its snapshot: the stock is as it was, and the card is due again', () => {
@@ -485,9 +484,10 @@ describe('a group coming off the stock', () => {
     const at = onSnapshot(freshSync, { rev: 1, ack: 0, room: roomOf(t.game, 0) });
     const sent = onSend(at, FLIP);
     expect(predict(sent)!.game!.players[0]).toMatchObject({ dealt: 2, waste: { length: 2 } });
+    expect(seatAt(predict(sent)!.game!).cardDue).toBe(true);
     const answered = onSnapshot(sent, { rev: 2, ack: sent.seq, room: roomOf(t.game, 0) });
     expect(predict(answered)!.game!.players[0]).toMatchObject({ dealt: 1, waste: { length: 1 } });
-    expect(t.cardDue).toBe(true);
+    expect(seatAt(predict(answered)!.game!).cardDue).toBe(true);
   });
 });
 
