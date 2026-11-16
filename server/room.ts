@@ -132,10 +132,10 @@ export class Room {
   /** Running while a called round waits for held cards to land; `graceEndsAt` is its deadline (ms epoch). */
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private graceEndsAt = 0;
-  /** Running while a new round is being dealt out (stage `dealing`); `dealEndsAt` is its deadline (ms epoch). */
+  /** Running while a new round is being dealt out (status `dealing`); `dealEndsAt` is its deadline (ms epoch). */
   private dealTimer: ReturnType<typeof setTimeout> | null = null;
   private dealEndsAt = 0;
-  /** Running through the dealer's "1, 2, 3" (stage `countdown`); `startEndsAt` is its deadline (ms epoch). */
+  /** Running through the dealer's "1, 2, 3" (status `countdown`); `startEndsAt` is its deadline (ms epoch). */
   private startTimer: ReturnType<typeof setTimeout> | null = null;
   /** The last round whose start the chat was told of. */
   private startTold = 0;

@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { calledBy, checkInvariants, inGrace, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, hasOpened, inGrace, isHidden, legalDrops, grab, viewFor, type Rng } from '../shared/engine';
 import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
 import { felt, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
 import type { AnyCard, GameState, Intent, PileRef } from '../shared/types';
@@ -23,7 +23,7 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 function leaks(g: GameState): string[] {
   const out: string[] = [];
   const faceUp = (c: AnyCard) => !isHidden(c);
-  const shut = g.status.at === 'dealing' || g.status.at === 'ready' || g.status.at === 'countdown';
+  const shut = !hasOpened(g);
   for (const p of g.players) {
     const at = `${g.status.at} seat ${p.seat}`;
     p.stock.forEach((c) => faceUp(c) && out.push(`${at}: stock card with a face`));
