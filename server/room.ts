@@ -973,6 +973,7 @@ export class Room {
         seat: p.seat,
         name: p.name,
         connected: p.conn !== null,
+        ...(p.out ? { left: true as const } : {}),
         score: p.score,
         rounds: p.rounds ?? 0,
         isHost: p === dealer,

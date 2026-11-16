@@ -510,7 +510,7 @@ function Lobby({ room }: { room: RoomView }) {
               )}
               <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
               <span className="note">
-                {[p.id === room.me && 'you', !p.connected && 'away'].filter(Boolean).join(', ')}
+                {[p.id === room.me && 'you', p.left ? 'left' : !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
                 {p.bot && (
                   <span className="botnote" title={`${p.bot} bot`} aria-label={`${p.bot} bot`}>

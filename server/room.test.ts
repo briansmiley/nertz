@@ -461,7 +461,8 @@ describe('Room', () => {
     startRound(room, a);
     room.handle(c, { t: 'leave' });
     room.join(late, 'Late', 'tok-late', true);
-    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2', 'Late:q']); // listed (away) while their cards lie there
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2', 'Late:q']); // listed while their cards lie there, as having left
+    expect(a.last.room.players.filter((p) => p.left).map((p) => p.name)).toEqual(['P2']);
     const again = new FakeConn();
     room.join(again, 'P2', 'tok-0002'); // back, by their token: not into their cards, but to watch
     room.flush();

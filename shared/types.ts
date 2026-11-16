@@ -196,6 +196,8 @@ export interface PlayerView {
   seat: number | null;
   name: string;
   connected: boolean;
+  /** Gone for good (they left, or were sent away) while their cards are in the round: those lie there until it is over. Never back: someone back by the same token is someone new. */
+  left?: true;
   /** Total across finished rounds. */
   score: number;
   /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */
