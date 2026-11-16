@@ -448,19 +448,20 @@ describe('Room', () => {
     expect(c.last.room.players.find((p) => p.isHost)).toMatchObject({ name: 'P1' });
   });
 
-  it('whoever leaves in the middle of a round holds the seat until it is over, and may come back into their cards; after it they are gone, their line staying', () => {
+  it('whoever leaves in the middle of a round is gone for good: their cards lie there until it is over, back they are someone new; after it they are off the list, their line staying', () => {
     const { room, conns } = roomWith(3, { deal: rigged([0]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     const late = new FakeConn();
     startRound(room, a);
     room.handle(c, { t: 'leave' });
     room.join(late, 'Late', 'tok-late', true);
-    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2', 'Late:q']); // listed (away) while their cards lie there
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2', 'Late:q']); // listed while their cards lie there, as having left
+    expect(a.last.room.players.filter((p) => p.left).map((p) => p.name)).toEqual(['P2']);
     const again = new FakeConn();
-    room.join(again, 'P2', 'tok-0002'); // back, by their token: into the same cards
+    room.join(again, 'P2', 'tok-0002'); // back, by their token: not into their cards, but to watch
     room.flush();
-    expect(again.last.room).toMatchObject({ me: 2, seat: 2 });
-    room.handle(again, { t: 'leave' });
+    expect(again.last.room).toMatchObject({ me: 4, seat: null });
+    room.handle(again, { t: 'leave' }); // (and off again: a watcher goes at once)
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'Late@2']); // the round is over: gone, and the seat is the next one's
     expect(a.last.room.lastRound!.scores.find((s) => s.seat === 2)).toMatchObject({ id: 2, name: 'P2', delta: -26, total: -26 });

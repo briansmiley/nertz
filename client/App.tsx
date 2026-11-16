@@ -1,16 +1,18 @@
 // Screens around the table: home, lobby, round results.
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { BOT_LEVELS, cleanName, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
+import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
 import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
+import { Name } from './Host';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
+import { Spread } from './Spread';
 import { Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the form. What makes a reload sit back down is
@@ -51,7 +53,7 @@ export function App() {
   const me = room.players.find((p) => p.id === room.me);
   // Without a seat: watching, whatever the table is doing: by choice, until they ask for one; or having asked, until there is one (the table is full, or a round is on). With one, but come in the middle of a round: watching until the next.
   const nextRound = 'Spectating - You can join next round';
-  const free = MAX_PLAYERS - room.players.filter(hasSeat).length;
+  const free = freeSeats(room.seats);
   /** How many are before you in the queue for a seat (the list is in the order they will be seated). */
   const ahead = room.players.filter((p) => p.queued && p.connected).findIndex((p) => p.id === room.me);
   const spectating = !me
@@ -118,7 +120,7 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
 /** For whoever deals, between rounds: a robot button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const full = room.players.filter(hasSeat).length >= MAX_PLAYERS;
+  const full = freeSeats(room.seats) === 0;
   return (
     <Pop icon={<Robot />} label="Add a bot">
       <h3>Add a bot</h3>
@@ -376,13 +378,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   return (
     <main className="home">
       <div className="hero">
-        <div className="spread" aria-hidden="true">
-          {/* (Six, as the fan was drawn: the table seats ten now, the picture does not have to.) */}
-          {BACKS.slice(0, 6).map((_, seat) => (
-            <Mini key={seat} seat={seat} style={{ '--i': seat } as CSSProperties} />
-          ))}
-          <Mini suit="S" rank={1} style={{ '--i': 6 } as CSSProperties} />
-        </div>
+        <Spread />
         <h1>Nertz!</h1>
       </div>
 
@@ -509,9 +505,11 @@ function Lobby({ room }: { room: RoomView }) {
               ) : (
                 <Mini seat={p.seat} look={p.look} />
               )}
-              <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
+              <Name host={p.isHost} className="name">
+                {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
+              </Name>
               <span className="note">
-                {[p.id === room.me && 'you', !p.connected && 'away'].filter(Boolean).join(', ')}
+                {[p.id === room.me && 'you', p.left ? 'left' : !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
                 {p.bot && (
                   <span className="botnote" title={`${p.bot} bot`} aria-label={`${p.bot} bot`}>
@@ -557,7 +555,7 @@ function Lobby({ room }: { room: RoomView }) {
         {/* Whoever has just come in is watching: a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
           <button className="go" onClick={() => takeSeat(true)}>
-            {room.players.filter(hasSeat).length < MAX_PLAYERS ? 'Take a seat' : 'Join the queue for a seat'}
+            {freeSeats(room.seats) > 0 ? 'Take a seat' : 'Join the queue for a seat'}
           </button>
         )}
         {me?.isHost ? (
@@ -682,7 +680,9 @@ function Results({ room }: { room: RoomView }) {
                 <th scope="row">
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
-                  <span className="nm">{me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}</span>
+                  <Name host={p?.isHost} className="nm">
+                    {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}
+                  </Name>
                   {s.seat === calledBy && (
                     <span className="called" title={`${s.id === room.me ? 'You' : s.name} called Nertz`}>
                       Nertz!
@@ -716,7 +716,7 @@ function Results({ room }: { room: RoomView }) {
                 <tr key={`new${p.id}`} className={`joining${p.id === room.me ? ' you' : ''}`}>
                   <th scope="row">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
-                    {p.name}
+                    <Name host={p.isHost}>{p.name}</Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </th>
