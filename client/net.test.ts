@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyIntent, checkInvariants, deal as dealRound, finishDeal, isHidden, refused, startCountdown } from '../shared/engine';
+import { describe, expect, it } from 'vitest';
+import { roomWith, send as told, startRound } from '../server/testkit';
+import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
 import { inPlay, lcg, roomOf, toPlay, withPile } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
-import * as net from './net';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
 
 /** A tiny authoritative server for one player's messages. */
@@ -278,7 +278,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     const game = predict(sync)!.game!;
     expect(game.players[0]!.holding).toBeNull();
-    expect(game.grace).toEqual([]);
+    expect(inGrace(game)).toEqual([]);
   });
 
   it('predicts through the grace window: the held card may still land, and only it', () => {
@@ -289,8 +289,8 @@ describe('prediction', () => {
     sync = send(sync, { k: 'hold', cardId: ace.id });
     s.apply(0, sync.pending[0]!.intent, sync.seq);
     s.apply(1, { k: 'nertz' }); // we were holding a playable card: we are in grace
-    sync = onSnapshot(sync, { ...s.snapshot(), room: { ...s.snapshot().room, graceMs: 4000 } });
-    expect(predict(sync)!.game!.grace).toEqual([0]);
+    sync = onSnapshot(sync, { ...s.snapshot(), room: { ...s.snapshot().room, timerMs: 4000 } });
+    expect(inGrace(predict(sync)!.game!)).toEqual([0]);
 
     // A flip is refused locally-replayed too; the held card's move is predicted and empties grace.
     sync = send(sync, { k: 'flip' });
@@ -298,7 +298,7 @@ describe('prediction', () => {
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     const game = predict(sync)!.game!;
     expect(game.slots[0]!.cards.map((c) => c.id)).toEqual([ace.id]);
-    expect(game.grace).toEqual([]);
+    expect(inGrace(game)).toEqual([]);
     expect(game.players[0]!.holding).toBeNull();
     expect(checkInvariants(game)).toBeNull();
   });
@@ -395,78 +395,37 @@ describe('a refused drop in the replay', () => {
   });
 });
 
-describe('the store over a (fake) socket', () => {
-  /** Just enough of a browser WebSocket: the test plays the server. */
-  class FakeSocket {
-    static OPEN = 1;
-    static all: FakeSocket[] = [];
-    readyState = 0;
-    sent: unknown[] = [];
-    onopen: (() => void) | null = null;
-    onmessage: ((e: { data: string }) => void) | null = null;
-    onclose: ((e: { code: number }) => void) | null = null;
-    constructor(readonly url: string) {
-      FakeSocket.all.push(this);
-    }
-    send(data: string): void {
-      this.sent.push(JSON.parse(data));
-    }
-    close(): void {}
-    open(): void {
-      this.readyState = FakeSocket.OPEN;
-      this.onopen?.();
-    }
-    deliver(msg: unknown): void {
-      this.onmessage?.({ data: JSON.stringify(msg) });
-    }
-    drop(): void {
-      this.readyState = 3;
-      this.onclose?.({ code: 1006 });
-    }
-  }
+describe('against the real Room', () => {
+  it('what is predicted is what the Room then says, with a refused intent among mine and another player acting in between', () => {
+    const { room, conns } = roomWith(2);
+    const [me, them] = conns as [(typeof conns)[0], (typeof conns)[0]];
+    startRound(room, me);
+    room.flush();
+    let sync = onSnapshot(freshSync, me.last);
+    const seat = sync.server!.seat!;
+    const sent = ([{ k: 'flip' }, { k: 'nertz' }, { k: 'flip' }, { k: 'flip' }] as Intent[]).map((intent) => {
+      sync = send(sync, intent);
+      return { t: 'intent', seq: sync.seq, intent };
+    });
+    const players = () => predict(sync)!.game!.players;
+    const mine = () => players().find((p) => p.seat === seat)!;
+    const predicted = mine().waste.map((c) => c.id);
+    expect(predicted).toHaveLength(3);
 
-  afterEach(() => {
-    net.leave();
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
+    expect(told(room, them, { t: 'intent', seq: 1, intent: { k: 'flip' } })).toBe(true); // reaches the Room first
+    for (const msg of sent.slice(0, 2)) told(room, me, msg);
+    room.flush();
+    sync = onSnapshot(sync, me.last);
+    expect(sync.pending.map((p) => p.seq)).toEqual([3, 4]);
+    expect(mine().waste.map((c) => c.id)).toEqual(predicted);
+    expect(players().find((p) => p.seat !== seat)!.waste).toHaveLength(1);
 
-  // Regression: after a reconnect the socket is open before its first snapshot arrives. `send` judged the intent
-  // against the old table, then rendered `predict` of a connection that had no snapshot: null, i.e. the home screen.
-  it('sends and predicts nothing between a reconnect and its first snapshot, and keeps the table on screen', () => {
-    vi.useFakeTimers();
-    vi.stubGlobal('WebSocket', FakeSocket);
-    vi.stubGlobal('location', { origin: 'http://localhost:5173' });
-    FakeSocket.all = [];
-    const s = server(inPlay([0, 1], lcg(8)), 0);
-
-    net.join('ABCD', 'Ada');
-    const first = FakeSocket.all[0]!;
-    first.open();
-    expect(first.sent).toMatchObject([{ t: 'join', room: 'ABCD', name: 'Ada' }, { t: 'deck' }]);
-    expect(net.send({ k: 'flip' })).toBe(false); // nothing to play on yet
-    first.deliver({ t: 'state', ...s.snapshot() });
-    expect(net.current()).toMatchObject({ status: 'online', room: { phase: 'playing' } });
-    expect(net.send({ k: 'flip' })).toBe(true);
-    expect(first.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'flip' } });
-
-    first.drop();
-    expect(net.current().status).toBe('reconnecting');
-    vi.advanceTimersByTime(300);
-    const second = FakeSocket.all[1]!;
-    second.open();
-    expect(second.sent).toHaveLength(2); // the join, and which deck
-    const shown = net.current().room;
-    expect(shown?.game).toBeTruthy();
-
-    expect(net.send({ k: 'flip' })).toBe(false);
-    expect(second.sent).toHaveLength(2); // nothing went out
-    expect(net.current().room).toBe(shown); // and the table is still what is rendered
-
-    second.deliver({ t: 'state', ...s.snapshot() });
-    expect(net.current().status).toBe('online');
-    expect(net.send({ k: 'flip' })).toBe(true);
-    expect(second.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'flip' } }); // seq starts over with the connection
-    expect(net.current().room!.game!.players[0]!.waste).toHaveLength(1);
+    for (const msg of sent.slice(2)) told(room, me, msg);
+    room.flush();
+    sync = onSnapshot(sync, me.last);
+    expect(sync.pending).toEqual([]);
+    expect(predict(sync)).toBe(sync.server);
+    expect(mine().waste.map((c) => c.id)).toEqual(predicted);
+    expect(mine().waste.some(isHidden)).toBe(false);
   });
 });

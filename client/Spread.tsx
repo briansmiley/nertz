@@ -4,7 +4,7 @@ import { useAnimate } from 'motion/react';
 import { useRef, useState, type CSSProperties } from 'react';
 import { anotherBack, type Back } from '../shared/protocol';
 import { backArt, backColour, backOf, Face } from './cards/Face';
-import { calm, deckOf, usePrefs } from './prefs';
+import { calm, usePrefs } from './prefs';
 import { deal } from './sound';
 
 /** (Six, as the fan was drawn: the table seats ten now, the picture does not have to.) */
@@ -54,7 +54,7 @@ function Card({ seat }: { seat: number }) {
 }
 
 export function Spread() {
-  const deck = deckOf(usePrefs()); // a card shown for its own sake is one of yours
+  const { deck, night } = usePrefs(); // a card shown for its own sake is one of yours
   return (
     <div className="spread" aria-hidden="true">
       {Array.from({ length: CARDS }, (_, seat) => (
@@ -62,7 +62,7 @@ export function Spread() {
       ))}
       <span className="mini" style={{ '--i': CARDS } as CSSProperties}>
         <span className="front">
-          <Face suit="S" rank={1} mini={false} deck={deck} />
+          <Face suit="S" rank={1} mini={false} deck={deck} night={night} />
         </span>
       </span>
     </div>

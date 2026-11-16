@@ -3,7 +3,7 @@
 // are remembered in localStorage when there is one (without it they last as
 // long as the page).
 import { useSyncExternalStore } from 'react';
-import { deckNamed, isBack, isDeck, isLot, type Back, type Deck } from '../shared/protocol';
+import { isBack, isDeck, isLot, type Back, type Deck, type Look } from '../shared/protocol';
 
 export { backGroups, CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
 
@@ -53,8 +53,13 @@ export const CHANNELS = ['mine', 'others', 'voice'] as const satisfies readonly 
 /** A channel's gain as it plays: squared, so that a slider feels even. Muted, the game's channels are silent and voice chat is not. */
 export const loudness = (p: Pick<Prefs, 'muted' | 'levels'>, ch: Channel): number => (p.muted && ch !== 'voice' ? 0 : (p.levels.master * p.levels[ch]) ** 2);
 
-/** Your deck as it is named for drawing (client/cards/Face.tsx): its name, with `:night` after it for the dark one. */
-export const deckOf = (p: Pick<Prefs, 'deck' | 'night'>): string => deckNamed(p.deck, p.night);
+/** Your cards as you chose them: by lot, a lot not drawn yet (the table draws it, and says what it drew). */
+export const lookOf = (p: Pick<Prefs, 'deck' | 'night' | 'back' | 'bare' | 'random'>): Look => ({
+  deck: p.deck,
+  night: p.night,
+  backs: p.random ? { k: 'lot', lot: p.random, drawn: null } : { k: 'own', back: p.back },
+  bare: p.bare,
+});
 
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
 

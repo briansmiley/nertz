@@ -37,7 +37,7 @@ export type ChatEvent =
   /** Round `round` has started: play is open (once a round: not again when it is dealt over and started anew). */
   | { k: 'started'; round: number }
   /**
-   * Round `round` is over: called by `end` (with their points), or ended without a call (`RoundResult.ended`). `best`
+   * Round `round` is over: called by `end` (with their points), or ended without a call (`RoundResult.end`). `best`
    * scored the most in it and so won it, all of them if it is a tie; the one who called is not always among them.
    */
   | { k: 'over'; round: number; end: Scored | 'jam' | 'vote'; best: Scored[] }
@@ -51,13 +51,13 @@ export type ChatLine = ChatEvent & {
   at: number;
 };
 
-/** The host's two switches. Both default to on. */
+/** The host's four switches. All default to on. */
 export interface SocialSettings {
   text: boolean;
   voice: boolean;
-  /** May those watching a full table (no seat) take part in the text chat, and in voice? Left out: they may. */
-  watchText?: boolean;
-  watchVoice?: boolean;
+  /** May those watching a full table (no seat) take part in the text chat, and in voice? */
+  watchText: boolean;
+  watchVoice: boolean;
 }
 
 export interface VoiceMember {
@@ -87,6 +87,8 @@ export type SocialServerMsg =
   | { t: 'chat'; lines: ChatLine[]; history: boolean }
   /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
   | ({ t: 'social'; inVoice: VoiceMember[]; ice?: IceServer[] } & SocialSettings)
+  /** To one connection: the host's switches keep it out of voice. Its `voice` on was refused, or it has just been put out (sent before the `social` without it). */
+  | { t: 'outOfVoice' }
   /** `from` (an id) is stamped by the server. */
   | { t: 'signal'; from: number; data: string };
 

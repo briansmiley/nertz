@@ -5,7 +5,7 @@
 // notice appears by the pile and there is a soft tap. Never a modal.
 import { useEffect, useState } from 'react';
 import { CLEAR_FIRST, completedBy, mustClear } from '../shared/engine';
-import type { GameState, Intent } from '../shared/types';
+import type { Intent, RoomView } from '../shared/types';
 import type { Rect } from './layout';
 import { current, send as netSend } from './net';
 import { home } from './sound';
@@ -28,21 +28,25 @@ export function nag(): void {
   for (const l of listeners) l();
 }
 
-/** Is the player we are rendering held up by a finished pile of their own right now? */
-function blocked(): boolean {
-  const room = current().room;
-  return !!room?.game && room.phase === 'playing' && room.game.stage === 'play' && room.seat !== null && mustClear(room.game, room.seat);
+/**
+ * The finished pile of their own that the player at this window has still to carry to the tray: its slot, or -1. The
+ * one place the client asks. Only while the round is being played: not once it is scored, nor while it is paused.
+ */
+export function waitingPile(room: RoomView | null): number {
+  const game = room?.game;
+  if (!room || !game || room.phase !== 'playing' || room.paused || room.seat === null || !mustClear(game, room.seat)) return -1;
+  return game.slots.findIndex((pile) => completedBy(pile) === room.seat);
 }
 
-/** `send` from net.ts, which refuses whatever the engine refuses; if the reason is clear-first, the player is told. */
+/** `send` from net.ts, which refuses whatever the engine refuses; if the reason is clear-first, the player is told. (Asked of the room as it is now, not as it was last drawn.) */
 export function send(intent: Intent): boolean {
   if (netSend(intent)) return true;
-  if (intent.k !== 'clear' && blocked()) nag();
+  if (intent.k !== 'clear' && waitingPile(current().room) >= 0) nag();
   return false;
 }
 
 export interface ClearFirst {
-  /** A finished pile of `you` is waiting: nothing else can be done. */
+  /** A finished pile of yours is waiting: nothing else can be done. */
   blocked: boolean;
   /** The slot it is in, or -1. */
   slot: number;
@@ -53,8 +57,8 @@ export interface ClearFirst {
 }
 
 /** What the table needs to know about clear-first for the round on screen. */
-export function useClearFirst(game: GameState, you: number): ClearFirst {
-  const slot = game.stage === 'play' && mustClear(game, you) ? game.slots.findIndex((pile) => completedBy(pile) === you) : -1;
+export function useClearFirst(room: RoomView): ClearFirst {
+  const slot = waitingPile(room);
   const waiting = slot >= 0;
   const [tries, setTries] = useState(0);
   const [shown, setShown] = useState(false);
