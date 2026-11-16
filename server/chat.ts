@@ -86,7 +86,9 @@ export class Social {
 
   /** `member` has given up their seat to watch: out of voice, if those watching are kept out of it. */
   unseated(member: Member, members: readonly Member[]): void {
-    if (!this.watchVoice && this.inVoice.delete(member)) this.announce(members);
+    if (!this.inVoice.has(member) || this.mayVoice(member)) return;
+    this.putOut(member);
+    this.announce(members);
   }
 
   handle(member: Member, members: readonly Member[], isHost: boolean, msg: SocialClientMsg): void {
@@ -99,12 +101,12 @@ export class Social {
         this.voice = msg.voice ?? this.voice;
         this.watchText = msg.watchText ?? this.watchText;
         this.watchVoice = msg.watchVoice ?? this.watchVoice;
-        if (!this.voice) this.inVoice.clear(); // everyone is out at once; nobody is put back in when it returns
-        else if (!this.watchVoice) for (const m of [...this.inVoice.keys()]) if (m.seat === null) this.inVoice.delete(m); // those watching are put out
+        // Voice switched off puts everyone out at once, and off for those watching puts them out; nobody is put back in when it returns.
+        for (const m of [...this.inVoice.keys()]) if (!this.mayVoice(m)) this.putOut(m);
         return this.announce(members);
       }
       case 'voice': {
-        if (!this.voice || (msg.on && !this.watchVoice && member.seat === null)) return;
+        if (msg.on && !this.mayVoice(member)) return this.putOut(member);
         if (msg.on) this.inVoice.set(member, msg.muted);
         else if (!this.inVoice.delete(member)) return;
         return this.announce(members);
@@ -155,6 +157,17 @@ export class Social {
     this.lines.push(line);
     if (this.lines.length > CHAT_HISTORY) this.lines.shift();
     for (const m of members) m.conn?.send({ t: 'chat', lines: [line], history: false });
+  }
+
+  /** Whether the host's switches let `member` into voice. */
+  private mayVoice(member: Member): boolean {
+    return this.voice && (this.watchVoice || member.seat !== null);
+  }
+
+  /** Put out of voice (or kept out of it) by the host's switches, and told so: a client that only saw the list without it would take that for a reconnect and ask again. */
+  private putOut(member: Member): void {
+    this.inVoice.delete(member);
+    member.conn?.send({ t: 'outOfVoice' });
   }
 
   private state(): SocialServerMsg {

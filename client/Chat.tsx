@@ -106,10 +106,6 @@ export function Chat({ room }: { room: RoomView }) {
   const mayText = social.text && (!watching || social.watchText);
   const mayVoice = social.voice && (!watching || social.watchVoice);
   const typing = open === 'chat' && mayText;
-  // Stood up while in voice, at a table where those watching are kept out of it: out, and the microphone released.
-  useEffect(() => {
-    if (inVoice && !mayVoice) outOfVoice(false);
-  }, [inVoice, mayVoice]);
   // A press anywhere else puts a slip away.
   const slip = open === 'voice' || open === 'watchers';
   useEffect(() => {
