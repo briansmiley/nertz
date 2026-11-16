@@ -3,7 +3,7 @@
 // "mini" face for cards shown too small for pips to read (opponents' piles),
 // which is just a big rank and suit.
 import { memo, type CSSProperties, type ReactElement } from 'react';
-import { ANY_BACK } from '../../shared/protocol';
+import type { Back, Deck } from '../../shared/protocol';
 import type { Suit } from '../../shared/types';
 import { getPrefs, watchPrefs } from '../prefs';
 import { drawnBack, isDrawn } from './backArt';
@@ -30,29 +30,23 @@ const ART = 2;
 const SMALL: Record<string, number> = { 'carpet-tint': 1.8, waterlily: 1.2, lilypads: 1.2, maple: 1.2, 'dandelion-1': 1.1, daisy: 1.2, tulip: 1.2, poppies: 1.2, sequoia: 1.25, fronds: 1.15, oak: 1.3, thistle: 1.2, lily: 1.2, rose: 1.25, iris: 1.15, sunflower: 1.15, acanthus: 1.7, fern: 1.5, ginkgo: 1, 'ginkgo-ring': 1.4, 'ginkgo-scatter': 2, piatnik: 1.5, atlas: 1.4, bicycle: 1, lion: 1, ornate: 1.8, rosette: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, 'tarot-star-tint': 2, 'tarot-eye-tint': 1.9 };
 
 /**
- * The picture a back is made of (none for the plain one), printed in the player's colour: how many times larger than
- * the card it is shown (`zoom`: more than 1 on a small card), and whether it lies inside a white edge.
+ * The picture a back is made of (none for the plain one, nor for a back by lot not drawn yet: null), printed in the
+ * player's colour: how many times larger than the card it is shown (`zoom`: more than 1 on a small card), and whether
+ * it lies inside a white edge.
  */
-export function backArt(named: string | undefined, small = false): { src: string; zoom: number; edge: boolean } | null {
-  const [back, bare] = bareOf(named);
-  if (back === 'plain' || back === ANY_BACK) return null; // a back by lot not drawn yet has no picture
+export function backArt(back: Back | null, bare: boolean, small = false): { src: string; zoom: number; edge: boolean } | null {
+  if (back === null || back === 'plain') return null;
   if (isDrawn(back)) return { src: drawnBack(back, small, bare).slice(5, -2), zoom: 1, edge: false };
   const zoom = small ? (SMALL[back] ?? 1.8) : 1;
   return { src: `/cards/backs/${back}.png?v=${ART}`, zoom, edge: !bare };
 }
 
-/** A back as it is named for drawing, taken apart: which back, and whether it is the one without its white edge (`:bare` after its name). */
-export const bareOf = (named: string | undefined): [back: string, bare: boolean] => {
-  const bare = !!named?.endsWith(':bare');
-  return [(bare ? named!.slice(0, -5) : named) || 'plain', bare];
-};
-
-/** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose. */
-export function backOf(colour: string, back: string | undefined, small = false): { className: string; style: CSSProperties } {
+/** What to put on a card's back element: its class and style, for the seat whose card it is and the back they chose (null: by lot, not drawn yet). */
+export function backOf(colour: string, back: Back | null, bare: boolean, small = false): { className: string; style: CSSProperties } {
   const vars = { '--back': colour } as CSSProperties;
-  if (back === ANY_BACK) return { className: 'back any', style: vars }; // a back by lot, not drawn yet: a question mark (the stylesheet's)
-  const art = backArt(back, small);
-  if (!art) return { className: `back${bareOf(back)[1] ? ' bare' : ''}`, style: vars };
+  if (back === null) return { className: 'back any', style: vars }; // a question mark (the stylesheet's)
+  const art = backArt(back, bare, small);
+  if (!art) return { className: `back${bare ? ' bare' : ''}`, style: vars };
   return {
     className: `back tint${art.edge ? ' edged' : ''}`,
     style: { ...vars, backgroundImage: `url("${art.src}")`, ...(art.zoom > 1 ? { backgroundSize: `${art.zoom * 100}% ${art.zoom * 100}%`, backgroundPosition: 'center' } : {}) },
@@ -190,25 +184,24 @@ interface Theme {
   cute?: boolean;
 }
 const CUTE_FONT = "'Fredoka', 'Baloo 2', 'Arial Rounded MT Bold', 'Helvetica Rounded', Arial, sans-serif";
-const THEMES: Record<string, Theme> = {
+const THEMES: Record<'modern' | 'cute', Theme> = {
   modern: { red: RED, black: BLACK, font: INDEX_FONT },
   cute: { paper: '#fff5f9', red: '#ff5a8c', black: '#4b4573', font: CUTE_FONT, cute: true },
 };
 /** The same decks dark: light on a dark card. */
-const NIGHT: Record<string, Theme> = {
+const NIGHT: Record<'modern' | 'cute', Theme> = {
   modern: { paper: '#1b2132', dark: 'dark', red: '#ff6f86', black: '#e9edf7', font: INDEX_FONT, tint: ['#3b2433', '#2b334b'] },
   cute: { paper: '#27213f', dark: 'dark dark-cute', red: '#ff7fa8', black: '#cfc8ff', font: CUTE_FONT, cute: true },
 };
-const FILES = new Set(['classic']);
+const FILES = new Set<Deck>(['classic']);
 
 const CODE = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
-const picture = (deck: string, suit: Suit, rank: number): string => `/cards/${deck}/${CODE[rank]}${suit}.svg`;
+const picture = (deck: Deck, suit: Suit, rank: number): string => `/cards/${deck}/${CODE[rank]}${suit}.svg`;
 
 // A deck of pictures is fetched whole as soon as it is chosen (by you, or by anyone at your table), so that no card is
 // blank the first time it is turned up.
-const warmed = new Set<string>();
-export function warm(named: string = getPrefs().deck): void {
-  const deck = named.split(':')[0]!;
+const warmed = new Set<Deck>();
+export function warm(deck: Deck = getPrefs().deck): void {
   if (warmed.has(deck) || !FILES.has(deck) || typeof Image === 'undefined') return;
   warmed.add(deck);
   for (const suit of ['C', 'D', 'H', 'S'] as const) for (let rank = 1; rank <= 13; rank++) new Image().src = picture(deck, suit, rank);
@@ -293,17 +286,14 @@ function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour:
 
 /**
  * The face of one card. `mini` picks the large-print rendition. A card belongs to its owner's deck, and is drawn as
- * they chose for everyone (`deck`: whoever draws the card says which, so that a change to your other settings does
+ * they chose for everyone (`deck` and `night`: whoever draws the card says which, so that a change to your other settings does
  * not draw every card on the table again).
  */
-export const Face = memo(function Face({ suit, rank, mini, deck: of }: { suit: Suit; rank: number; mini: boolean; deck: string }) {
-  // (A dark deck is named with `:night` after it.)
-  const [deck = 'modern', mode] = of.split(':');
-  const night = mode === 'night';
+export const Face = memo(function Face({ suit, rank, mini, deck, night }: { suit: Suit; rank: number; mini: boolean; deck: Deck; night: boolean }) {
   // (A deck of pictures has no dark pictures: the light ones are turned inside out, and their colours turned back.)
   if (FILES.has(deck)) return mini ? <ClassicLarge suit={suit} rank={rank} night={night} /> : <img className={`art${night ? ' night' : ''}`} src={picture(deck, suit, rank)} alt="" draggable={false} />;
   if (deck === 'pixel') return <Pixel suit={suit} rank={rank} mini={mini} ink={night ? PIXEL_NIGHT : PIXEL} />;
-  const theme = (night ? NIGHT : THEMES)[deck === 'big' ? 'modern' : deck] ?? THEMES.modern!;
+  const theme = (night ? NIGHT : THEMES)[deck === 'cute' ? 'cute' : 'modern'];
   const red = suit === 'H' || suit === 'D';
   const colour = red ? theme.red : theme.black;
   if (mini || deck === 'big') return <Large suit={suit} rank={rank} colour={colour} theme={theme} />;

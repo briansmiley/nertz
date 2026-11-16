@@ -6,8 +6,8 @@ import type { BotLevel, Intent, PileRef, PlayerView, RoomView } from './types';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
- * its suit marks, and a traditional deck of picture files. Any of them can also be had dark (`night`): light on a
- * dark card. Where a deck is named for drawing, a dark one is its name with `:night` after it. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
+ * its suit marks, and a traditional deck of picture files. Any of them can also be had dark (`Look.night`): light on a
+ * dark card. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
  * suit must not be one colour in your hand and another in your neighbour's.)
  */
 export const DECKS = { modern: 'Nertz', big: 'Big print', classic: 'Classic', pixel: 'Pixel', cute: 'Cute' } as const;
@@ -106,13 +106,6 @@ export const CARD_BACKS = {
   'tarot-eye-tint': 'Vision',
 } as const;
 export type Back = keyof typeof CARD_BACKS;
-/**
- * A back can be had without its white edge (`bare`): what is inside the edge is drawn larger, out to the edge of the
- * card. Where a back is named for drawing, such a one is its name with `:bare` after it (as a dark deck has `:night`).
- */
-/** A deck as it is named for drawing: its name, with `:night` after it for the dark one. */
-export const deckNamed = (deck: Deck, night: boolean | undefined): string => `${deck}${night ? ':night' : ''}`;
-export const backNamed = (back: Back, bare: boolean | undefined): string => (bare ? `${back}:bare` : back);
 /** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
 export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
   { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life'] },
@@ -126,14 +119,33 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
 /**
  * A lot: backs to draw one from by chance, in place of a back of one's own choosing: once for a table, when its first
  * round is dealt (or the first after the lot was chosen), and kept there for every round after. 'all' is every back;
- * otherwise the name of a kind (a group above, or "Other" if there are backs in none: `backGroups`). Until it is drawn, such a player's back is shown as `ANY_BACK`: a
+ * otherwise the name of a kind (a group above, or "Other" if there are backs in none: `backGroups`). Until it is drawn, such a player's back is shown as a
  * card with a question mark.
  */
 export type Lot = string;
 export const isLot = (v: unknown): v is Lot => typeof v === 'string' && (v === 'all' || backGroups().some((g) => g.name === v));
 export const backPool = (lot: Lot): readonly Back[] => backGroups().find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
-/** What a back not yet drawn is called where backs are named for drawing. */
-export const ANY_BACK = 'any';
+
+/**
+ * Where a player's backs come from: their own choice, or a lot. A back is drawn from a lot once for the table and kept
+ * for every round there: `drawn` is null until it is, which is at the next deal, or at once if a round is on. Only
+ * the table draws: a lot said by a client is always undrawn.
+ */
+export type Backs = { k: 'own'; back: Back } | { k: 'lot'; lot: Lot; drawn: Back | null };
+/** The back `backs` come to: null for a lot not drawn yet (a card with a question mark). */
+export const shownBack = (backs: Backs): Back | null => (backs.k === 'own' ? backs.back : backs.drawn);
+/**
+ * How a player's cards look, for everyone: their faces (`deck`, dark if `night`) and their backs (`bare`: without the
+ * white edge, what is inside it drawn larger, out to the edge of the card).
+ */
+export interface Look {
+  deck: Deck;
+  night: boolean;
+  backs: Backs;
+  bare: boolean;
+}
+/** The look of a bot's cards, and of anyone's until they say theirs. */
+export const PLAIN_LOOK: Look = { deck: 'modern', night: false, backs: { k: 'own', back: 'plain' }, bare: false };
 
 /** `BACK_GROUPS`, with any back that is in none of them gathered at the end. */
 export function backGroups(): { name: string; backs: Back[] }[] {
@@ -165,8 +177,8 @@ export type ClientMsg =
   | { t: 'redeal' }
   /** Pause the round for everyone (on), or carry on (off). */
   | { t: 'pause'; on: boolean }
-  /** Which card faces I play with: everyone sees the cards of my deck drawn that way. */
-  | { t: 'deck'; deck: Deck; back?: Back; night?: boolean; bare?: boolean; lot?: string | null }
+  /** How my cards look: everyone sees the cards of my deck drawn that way. Every part of it is said, every time. */
+  | { t: 'deck'; look: Look }
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
@@ -182,8 +194,8 @@ export type ClientMsg =
   | { t: 'kick'; id: number }
   /** Whoever deals: what the bot in `seat` is called. */
   | { t: 'botName'; seat: number; name: string }
-  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table (`lot`; null: no lot, the back it has). */
-  | { t: 'botBack'; seat: number; back?: Back; lot?: string | null }
+  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table. */
+  | { t: 'botBack'; seat: number; backs: Backs }
   /** In the lobby: move to another seat nobody has, which is to take its colour. */
   | { t: 'seat'; seat: number }
   /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
@@ -344,6 +356,19 @@ export function parseIntent(raw: unknown): Intent | null {
   }
 }
 
+function parseBacks(raw: unknown): Backs | null {
+  if (!isObj(raw)) return null;
+  if (raw.k === 'own') return isBack(raw.back) ? { k: 'own', back: raw.back } : null;
+  if (raw.k === 'lot') return isLot(raw.lot) ? { k: 'lot', lot: raw.lot, drawn: null } : null;
+  return null;
+}
+
+function parseLook(raw: unknown): Look | null {
+  if (!isObj(raw)) return null;
+  const backs = parseBacks(raw.backs);
+  return isDeck(raw.deck) && typeof raw.night === 'boolean' && typeof raw.bare === 'boolean' && backs ? { deck: raw.deck, night: raw.night, backs, bare: raw.bare } : null;
+}
+
 /** Strips control characters, collapses whitespace, trims and caps length. May return ''. */
 export function cleanName(raw: string): string {
   return raw
@@ -398,8 +423,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return typeof v.on === 'boolean' && (v.id === undefined || isPlayerId(v.id)) ? { t: 'sit', on: v.on, ...(v.id === undefined ? {} : { id: v.id }) } : null;
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
-    case 'deck':
-      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}), ...(typeof v.bare === 'boolean' ? { bare: v.bare } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
+    case 'deck': {
+      const look = parseLook(v.look);
+      return look ? { t: 'deck', look } : null;
+    }
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;
@@ -418,8 +445,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
       return isIndex(v.seat, MAX_PLAYERS) && name ? { t: 'botName', seat: v.seat, name } : null;
     }
-    case 'botBack':
-      return isIndex(v.seat, MAX_PLAYERS) && (isBack(v.back) || v.lot === null || isLot(v.lot)) ? { t: 'botBack', seat: v.seat, ...(isBack(v.back) ? { back: v.back } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
+    case 'botBack': {
+      const backs = parseBacks(v.backs);
+      return isIndex(v.seat, MAX_PLAYERS) && backs ? { t: 'botBack', seat: v.seat, backs } : null;
+    }
     case 'seat':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
     case 'settings': {

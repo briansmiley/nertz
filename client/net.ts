@@ -7,11 +7,11 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
-import { getPrefs, watchPrefs } from './prefs';
+import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, isRoomCode, type Back, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, isRoomCode, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
@@ -135,9 +135,9 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 let toldDeck: string | null = null;
 /** Tells the table my cards' faces and backs, if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
 function tell(): void {
-  const { deck, night, bare, back, random } = getPrefs();
-  const now = `${deck} ${back} ${night} ${bare} ${random}`;
-  if (now !== toldDeck && post({ t: 'deck', deck, back, night, bare, lot: random })) toldDeck = now;
+  const look = lookOf(getPrefs());
+  const now = JSON.stringify(look);
+  if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
 
@@ -321,7 +321,7 @@ export const redeal = (): void => void post({ t: 'redeal' });
 /** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
-export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });
+export const botBack = (seat: number, backs: Backs): void => void post({ t: 'botBack', seat, backs });
 
 /** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
 export function setTableSettings(patch: Partial<TableSettings>): void {

@@ -2,7 +2,7 @@
 // "Faces" panel of the sheet opened from your card back): every deck as a fanned hand, light or dark, with the whole
 // deck behind "See all 52". Each is shown with its small rendition too: what other players' piles are drawn with.
 import { Fragment, useState, type CSSProperties } from 'react';
-import { deckNamed, DECKS, type Deck } from '../shared/protocol';
+import { DECKS, type Deck } from '../shared/protocol';
 import type { Suit } from '../shared/types';
 import { Face } from './cards/Face';
 import { setPrefs, usePrefs } from './prefs';
@@ -13,11 +13,11 @@ const RANKS = Array.from({ length: 13 }, (_, i) => i + 1);
 /** The hand a deck is shown by: an Ace, pip cards, and the court cards last, the King on top where the whole of him shows. */
 const HAND: [Suit, number][] = [['S', 1], ['D', 2], ['H', 7], ['S', 10], ['D', 11], ['C', 12], ['H', 13]];
 
-function Card({ deck, suit, rank, mini }: { deck: string; suit: Suit; rank: number; mini: boolean }) {
+function Card({ deck, night, suit, rank, mini }: { deck: Deck; night: boolean; suit: Suit; rank: number; mini: boolean }) {
   return (
     <span className={`mini${mini ? ' small' : ''}`}>
       <span className="front">
-        <Face suit={suit} rank={rank} mini={mini} deck={deck} />
+        <Face suit={suit} rank={rank} mini={mini} deck={deck} night={night} />
       </span>
     </span>
   );
@@ -27,8 +27,6 @@ export function FaceShelf() {
   const prefs = usePrefs();
   /** The deck whose 52 cards are laid out, if any: one at a time, across the whole page, the other decks faded. */
   const [all, setAll] = useState<Deck | null>(null);
-  /** A deck as it is shown here: light or dark, as you have yours. */
-  const faces = (deck: Deck): string => deckNamed(deck, prefs.night);
   return (
     <section>
       <div className="heading">
@@ -47,7 +45,7 @@ export function FaceShelf() {
               <button type="button" className="fan" aria-pressed={prefs.deck === deck} aria-label={`Use the ${DECKS[deck]} deck`} onClick={() => setPrefs({ deck })} onPointerEnter={(e) => e.pointerType === 'mouse' && riffle()}>
                 {HAND.map(([suit, rank], i) => (
                   <span key={i} className="leaf" style={{ '--i': i - (HAND.length - 1) / 2 } as CSSProperties}>
-                    <Card deck={faces(deck)} suit={suit} rank={rank} mini={false} />
+                    <Card deck={deck} night={prefs.night} suit={suit} rank={rank} mini={false} />
                   </span>
                 ))}
               </button>
@@ -57,7 +55,7 @@ export function FaceShelf() {
                   <h3>{DECKS[deck]}</h3>
                   <div className="smalls">
                     {HAND.map(([suit, rank], i) => (
-                      <Card key={i} deck={faces(deck)} suit={suit} rank={rank} mini />
+                      <Card key={i} deck={deck} night={prefs.night} suit={suit} rank={rank} mini />
                     ))}
                   </div>
                 </div>
@@ -67,7 +65,7 @@ export function FaceShelf() {
               </div>
             </article>
             {/* Laid out under the row its deck is in, across the whole page: the decks themselves stay where they are. */}
-            {all === deck && <div className="all">{SUITS.flatMap((suit) => RANKS.map((rank) => <Card key={`${suit}${rank}`} deck={faces(deck)} suit={suit} rank={rank} mini={false} />))}</div>}
+            {all === deck && <div className="all">{SUITS.flatMap((suit) => RANKS.map((rank) => <Card key={`${suit}${rank}`} deck={deck} night={prefs.night} suit={suit} rank={rank} mini={false} />))}</div>}
           </Fragment>
         ))}
       </div>
