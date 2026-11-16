@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, inGrace, isLive, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, MAX_PLAYERS, parseClientMsg, START_MS } from '../shared/protocol';
+import { DEAL_MS, MAX_PLAYERS, parseClientMsg, PLAIN_LOOK, START_MS } from '../shared/protocol';
 import { card, inPlay, pile, seeded, slot, table as wholeTable, work, type Hand } from '../shared/testkit';
 import type { GameState, Intent, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -285,10 +285,10 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'addBot', level: 'slow' });
     room.flush();
     expect(host.last.room.players).toEqual([
-      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, back: 'plain' },
-      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, back: 'plain' },
-      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, bot: 'fast', deck: 'modern', back: 'plain' },
-      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, bot: 'slow', deck: 'modern', back: 'plain' },
+      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, look: PLAIN_LOOK },
+      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, look: PLAIN_LOOK },
+      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, bot: 'fast', look: PLAIN_LOOK },
+      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, bot: 'slow', look: PLAIN_LOOK },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot

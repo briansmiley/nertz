@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { applyIntent, deal, expireGrace, finishDeal, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { ANY_BACK, backNamed, backPool, deckNamed, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, START_MS, type Back, type ClientMsg, type Deck, type DragAt, type Lot, type ServerMsg } from '../shared/protocol';
+import { backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -61,12 +61,8 @@ interface Player {
   dirty: boolean;
   /** How many rounds their score is the sum of: those they were dealt into. */
   rounds?: number;
-  /** The card faces this player chose; everyone sees their cards drawn so. */
-  deck?: Deck;
-  backs: Backs;
-  night?: boolean;
-  /** Their backs without the white edge. */
-  bare?: boolean;
+  /** The faces and backs this player chose; everyone sees their cards drawn so. */
+  look: Look;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
   /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
@@ -78,30 +74,13 @@ interface Player {
 }
 
 /**
- * Where a player's backs come from: their own choice, or a lot (`backPool`: 'all', or a kind of back). A back is drawn
- * from a lot once for the table and kept for every round there: `drawn` is null until it is, which is at the next deal,
- * or at once if a round is on (`Room.draw`).
+ * What `was` becomes when the player (or, for a bot, whoever deals) says `to`; `was` itself if that changes nothing.
+ * A back drawn by lot is the table's to keep: the same lot said again keeps what was drawn from it.
  */
-type Backs = { k: 'own'; back: Back } | { k: 'lot'; lot: Lot; drawn: Back | null };
-
-/**
- * What `was` becomes when the player (or, for a bot, whoever deals) says `back` and `lot`; `was` itself if that changes
- * nothing. A message that says nothing of lots (`lot` undefined) leaves a lot as it is. A back drawn by lot is the
- * table's to keep: the back sent along with a lot (their own choice, for when there is none) is not taken in its place.
- */
-function rechosen(was: Backs, back: Back | undefined, lot: Lot | null | undefined): Backs {
-  if (lot === undefined && was.k === 'lot') return was;
-  if (lot) return was.k === 'lot' && was.lot === lot ? was : { k: 'lot', lot, drawn: null };
-  const own = back ?? backOf(was) ?? 'plain';
-  return was.k === 'own' && was.back === own ? was : { k: 'own', back: own };
+function rechosen(was: Backs, to: Backs): Backs {
+  if (to.k === 'lot') return was.k === 'lot' && was.lot === to.lot ? was : { k: 'lot', lot: to.lot, drawn: null };
+  return was.k === 'own' && was.back === to.back ? was : to;
 }
-/** The back `backs` come to: null for a lot not drawn yet. */
-const backOf = (backs: Backs): Back | null => (backs.k === 'own' ? backs.back : backs.drawn);
-/** `p`'s backs as they are named for drawing (`ANY_BACK` while their lot is not drawn). */
-const shownBack = (p: Player): string => {
-  const back = backOf(p.backs);
-  return back ? backNamed(back, p.bare) : ANY_BACK;
-};
 
 type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
@@ -201,7 +180,7 @@ export class Room {
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
-      player = { id: this.ids++, token, name, seat: null, queued: null, backs: { k: 'own', back: 'plain' }, score: 0, conn: null, ack: -1, dirty: false };
+      player = { id: this.ids++, token, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
     } else if (player.conn) {
       // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
@@ -316,7 +295,7 @@ export class Room {
         // Whoever deals dresses the bots: any time, since it changes nothing but how their cards look.
         const bot = this.players.find((p) => p.seat === msg.seat);
         if (player !== this.dealer || !bot?.bot) return;
-        if (!this.dress(bot, rechosen(bot.backs, msg.back, msg.lot))) return;
+        if (!this.dress(bot, { ...bot.look, backs: msg.backs })) return;
         return this.changed();
       }
       case 'pause':
@@ -327,15 +306,9 @@ export class Room {
         if (this.phase !== 'lobby' || !seated(player) || this.players.some((p) => p.seat === msg.seat)) return;
         player.seat = msg.seat;
         return this.changed();
-      case 'deck': {
-        const backs = rechosen(player.backs, msg.back, msg.lot);
-        if (player.deck === msg.deck && player.backs === backs && !!player.night === (msg.night ?? !!player.night) && !!player.bare === (msg.bare ?? !!player.bare)) return;
-        player.deck = msg.deck;
-        player.night = msg.night ?? player.night;
-        player.bare = msg.bare ?? player.bare;
-        this.dress(player, backs);
+      case 'deck':
+        if (!this.dress(player, msg.look)) return;
         return this.changed();
-      }
       default:
         return this.social.handle(player, this.players, player === this.dealer, msg);
     }
@@ -551,8 +524,7 @@ export class Room {
       const p = this.players.find((p) => p.seat === s.seat);
       if (p) p.score += s.delta;
       if (p) p.rounds = (p.rounds ?? 0) + 1;
-      const deck = p?.deck && deckNamed(p.deck, p.night);
-      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(deck ? { deck } : {}), ...(p ? { back: shownBack(p) } : {}) };
+      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(p ? { look: p.look } : {}) };
     });
     const pairs = new Map<string, { by: number; of: number; n: number }>();
     for (const s of this.snipes) {
@@ -742,7 +714,7 @@ export class Room {
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
-    this.players.push({ id, token: `bot:${id}`, name, seat, queued: null, deck: 'modern', backs: { k: 'own', back: 'plain' }, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
+    this.players.push({ id, token: `bot:${id}`, name, seat, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
     this.changed();
   }
 
@@ -756,7 +728,7 @@ export class Room {
     for (const p of this.players) {
       p.score = 0;
       delete p.rounds;
-      if (p.backs.k === 'lot') p.backs = { ...p.backs, drawn: null }; // a table started over draws its lots over
+      if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
     this.startTold = 0;
@@ -768,19 +740,22 @@ export class Room {
     this.changed();
   }
 
-  /** `player`'s backs are now `backs`; false if that is what they had. A lot chosen while a round is on is drawn at once. */
-  private dress(player: Player, backs: Backs): boolean {
-    if (player.backs === backs) return false;
-    player.backs = backs;
+  /** `player`'s cards now look as `to` says (`rechosen`, for their backs); false if that is how they looked. A lot chosen while a round is on is drawn at once. */
+  private dress(player: Player, to: Look): boolean {
+    const was = player.look;
+    const backs = rechosen(was.backs, to.backs);
+    if (was.deck === to.deck && was.night === to.night && was.bare === to.bare && was.backs === backs) return false;
+    player.look = { ...to, backs };
     if (this.phase === 'playing') this.draw(player);
     return true;
   }
 
   /** Draws `player` a back from their lot, if they are on one with nothing drawn from it yet. */
   private draw(player: Player): void {
-    if (player.backs.k !== 'lot' || player.backs.drawn) return;
-    const pool = backPool(player.backs.lot);
-    player.backs = { ...player.backs, drawn: pool[Math.floor(this.rng() * pool.length)]! };
+    const { backs } = player.look;
+    if (backs.k !== 'lot' || backs.drawn) return;
+    const pool = backPool(backs.lot);
+    player.look = { ...player.look, backs: { ...backs, drawn: pool[Math.floor(this.rng() * pool.length)]! } };
   }
 
   private removeBot(by: Player, seat: number): void {
@@ -962,9 +937,7 @@ export class Room {
         ...(dealt && (p.bot || p.ready) && hand(p) ? { ready: true } : {}),
         bot: p.bot?.level,
         ...(p.queued !== null ? { queued: true } : {}),
-        deck: p.deck && deckNamed(p.deck, p.night),
-        back: shownBack(p),
-        ...(p.backs.k === 'lot' ? { lot: p.backs.lot } : {}),
+        look: p.look,
       })),
       settings: this.settings,
       game,

@@ -14,7 +14,7 @@ import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, inGrace, isHidden, isLive } from '../shared/engine';
-import { backNamed, DRAG_HZ, STOCK_CARD_MS, STOCK_TURN_MS, type DragAt } from '../shared/protocol';
+import { DRAG_HZ, PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { cardSize, offFelt, TABLE } from '../shared/table';
 import type { PileRef, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
@@ -25,7 +25,7 @@ import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { onDrag, onSnipe, pause, post } from './net';
 import { canResume } from './Settings';
-import { calm, deckOf, usePrefs } from './prefs';
+import { calm, lookOf, usePrefs } from './prefs';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -106,10 +106,12 @@ interface CardProps {
   mine: boolean;
   up: boolean;
   mini: boolean;
-  /** The faces of the deck this card came from: its owner's choice. */
-  deck: string;
-  /** And its backs. */
-  back: string | undefined;
+  /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
+  deck: Deck;
+  night: boolean;
+  /** And its backs: null for a back by lot not drawn yet. */
+  back: Back | null;
+  bare: boolean;
   slow: boolean;
   /** Travels at its own level, not above everything: a card coming up under the ones already held. */
   low: boolean;
@@ -118,6 +120,9 @@ interface CardProps {
   /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
   deal: Dealt | undefined;
 }
+
+/** A card's props for how it looks, each a value of its own: a snapshot brings new looks, and a card is drawn again only if its own has changed. */
+const drawn = (look: Look): Pick<CardProps, 'deck' | 'night' | 'back' | 'bare'> => ({ deck: look.deck, night: look.night, back: shownBack(look.backs), bare: look.bare });
 
 const CardView = memo(function CardView(p: CardProps) {
   const dealt = useRef(p.deal).current;
@@ -220,8 +225,8 @@ const CardView = memo(function CardView(p: CardProps) {
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
-        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} /> : null}</div>
-        <div {...backOf(backColour(p.owner), p.back, p.mini)} />
+        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} night={p.night} /> : null}</div>
+        <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini)} />
       </motion.div>
     </motion.div>
   );
@@ -352,8 +357,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [W, H] = useViewport();
   const prefs = usePrefs();
   // Whatever decks are at the table are fetched before their cards are turned up.
-  const decks = room.players.map((p) => p.deck ?? '').join();
-  useEffect(() => room.players.forEach((p) => p.deck && warm(p.deck)), [decks]);
+  const decks = room.players.map((p) => p.look.deck).join();
+  useEffect(() => room.players.forEach((p) => warm(p.look.deck)), [decks]);
   /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
   const clears = isTall(W, H) || isLow(W, H);
   const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
@@ -622,21 +627,21 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [dealing, dealMs, game.players, L, you]);
   const grace = inGrace(game);
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
-  /** My own faces. */
-  const own = deckOf(prefs);
-  /** My own backs, as they are named for drawing: my choice, shown at once; or, if they are by lot, the one the table drew for me (it comes with the deal). */
-  const myBack = prefs.random ? info(you)?.back : backNamed(prefs.back, prefs.bare);
+  /** My own faces and backs: my choice, shown at once; or, if my backs are by lot, the one the table drew for me (it comes with the deal). */
+  const chosen = lookOf(prefs);
+  const myLook: Look = chosen.backs.k === 'lot' ? { ...chosen, backs: info(you)?.look.backs ?? chosen.backs } : chosen;
   /** This seat's line of the round just scored. The finished table goes by it: whoever played the round may have left since. */
   const line = (seat: number) => (results ? room.lastRound?.scores.find((s) => s.seat === seat) : undefined);
   /**
-   * Whose faces and backs the cards from `seat` have: the player's who sits there, as they have them now; but on the
+   * Whose faces and backs the cards from `seat` have: yours, if it is yours; the player's who sits there, as they have them now; but on the
    * finished table, if whoever played the round has left (the seat is empty, or someone else's by now), as they were
    * when the round ended.
    */
-  const dress = (seat: number): { deck?: string; back?: string } | undefined => {
+  const dress = (seat: number): Look | undefined => {
+    if (seat === you) return myLook;
     const l = line(seat);
     const p = info(seat);
-    return p && (!l || p.id === l.id) ? p : l;
+    return p && (!l || p.id === l.id) ? p.look : l?.look;
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
@@ -1214,8 +1219,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             up={c.up && !replaying}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
-            deck={c.card.owner === you ? own : (dress(c.card.owner)?.deck ?? 'modern')}
-            back={c.card.owner === you ? myBack : dress(c.card.owner)?.back}
+            {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
             cls={cardClass(c)}
@@ -1264,7 +1268,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} backs={(seat) => (seat === you ? myBack : dress(seat)?.back)} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} looks={dress} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // (On a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the sound and settings buttons on its side.)

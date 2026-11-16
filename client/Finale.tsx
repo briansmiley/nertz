@@ -5,9 +5,10 @@
 // canvas from pre-rendered back sprites instead of being 300 animated
 // elements; the labels beside the piles are ordinary DOM.
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { PLAIN_LOOK, shownBack, type Back, type Look } from '../shared/protocol';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
-import { backArt, backColour, bareOf, CARD_H, CARD_W } from './cards/Face';
+import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
 import { LOW, MINI_BELOW, onCanvas, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
@@ -651,15 +652,22 @@ interface Props {
   name: (seat: number) => string;
   /** How far the end of the round has got: which piles the table has let go of, and at 'sheet' the finished picture at once (skipped, reduced motion, or arriving after the fact). */
   stage: Stage;
-  /** The back each player chose for their cards. */
-  backs?: (seat: number) => string | undefined;
+  /** How each player's cards look. */
+  looks?: (seat: number) => Look | undefined;
 }
 
-export function Finale({ L, game, scores, name, stage, backs }: Props) {
+/** The back `seat`'s cards are drawn with here, and whether without its white edge: a back by lot not drawn yet is the plain one. */
+const backFor = (looks: Props['looks'], seat: number): [back: Back | null, bare: boolean] => {
+  const look = looks?.(seat) ?? PLAIN_LOOK;
+  const back = shownBack(look.backs);
+  return [back, back !== null && look.bare];
+};
+
+export function Finale({ L, game, scores, name, stage, looks }: Props) {
   const instant = stage === 'sheet';
   // (A back's picture that has not arrived yet: the cards are plain until it has, and then drawn again.)
   const [arrived, setArrived] = useState(0);
-  const chosen = game.players.map((p) => backs?.(p.seat) ?? '').join();
+  const chosen = game.players.map((p) => backFor(looks, p.seat).join(' ')).join();
   const plan = useMemo(() => planFinale(L, game), [L, game]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const began = useRef(0);
@@ -693,9 +701,10 @@ export function Finale({ L, game, scores, name, stage, backs }: Props) {
       el.height = Math.round(plan.area.h * k);
       sprites = new Map(
         plan.piles.map((p) => {
-          const art = backArt(backs?.(p.seat), plan.w < MINI_BELOW);
+          const [back, bare] = backFor(looks, p.seat);
+          const art = backArt(back, bare, plan.w < MINI_BELOW);
           const img = art && pictureOf(art.src, () => setArrived((a) => a + 1));
-          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k * Math.max(1, plan.scale), art && img ? { img, zoom: art.zoom, edge: art.edge } : undefined, bareOf(backs?.(p.seat))[1])];
+          return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k * Math.max(1, plan.scale), art && img ? { img, zoom: art.zoom, edge: art.edge } : undefined, bare)];
         }),
       );
     };

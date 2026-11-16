@@ -4,7 +4,7 @@
 // that bot's), or the card that stands for your backs (`YourBacks`: on the first page and in your settings).
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { backNamed, CARD_BACKS, type Back } from '../shared/protocol';
+import { CARD_BACKS, type Back } from '../shared/protocol';
 import { BackShelf } from './BackShelf';
 import { backOf } from './cards/Face';
 import { FaceShelf } from './FaceShelf';
@@ -75,7 +75,7 @@ export function YourBacks({ colour, compact, locked }: { colour: string; compact
     <>
       <button type="button" className={`mybacks${compact ? ' compact' : ''}`} disabled={locked} aria-label="Choose your card backs" title={locked ? 'You can change card styles between rounds' : 'Your card backs: change them'} onClick={() => setOpen(true)}>
         <span className="mini">
-          <span {...backOf(colour, prefs.random ? 'any' : backNamed(prefs.back, prefs.bare), true)} />
+          <span {...backOf(colour, prefs.random ? null : prefs.back, prefs.bare, true)} />
         </span>
         {!compact && (
           <span className="what">

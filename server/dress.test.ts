@@ -1,7 +1,7 @@
 // What a player's cards look like, and the seat they sit in, as the table keeps them: the back drawn by lot stays
-// drawn, a message that says nothing of lots changes none, and what goes by seat (chat, voice) follows a change of seat.
+// drawn, a look half said changes nothing, and what goes by seat (chat, voice) follows a change of seat.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { backPool, DEAL_MS, isBack, parseClientMsg } from '../shared/protocol';
+import { backPool, DEAL_MS, isBack, parseClientMsg, PLAIN_LOOK, type Back, type Backs, type Look } from '../shared/protocol';
 import { inPlay, lehmer, rig, seeded } from '../shared/testkit';
 import type { PlayerView } from '../shared/types';
 import type { Room } from './room';
@@ -25,8 +25,12 @@ function callNertz(room: Room, conn: FakeConn): void {
   expect(room.phase).toBe('results');
 }
 
-/** Their back is one drawn from `lot`. */
-const inLot = (lot: string) => (v: PlayerView) => (backPool(lot) as readonly string[]).includes(v.back!.replace(/:bare$/, ''));
+const own = (back: Back): Backs => ({ k: 'own', back });
+const lot = (lot: string): Backs => ({ k: 'lot', lot, drawn: null });
+/** A player saying how their cards look: the plain look, but for `look`. */
+const deck = (look: Partial<Look>) => ({ t: 'deck', look: { ...PLAIN_LOOK, ...look } });
+/** Their backs are by `lot`, with one drawn from it. */
+const inLot = (of: string) => (v: PlayerView) => v.look.backs.k === 'lot' && v.look.backs.lot === of && !!v.look.backs.drawn && backPool(of).includes(v.look.backs.drawn);
 
 afterEach(() => void vi.useRealTimers());
 
@@ -34,44 +38,44 @@ describe('a back by lot', () => {
   it('stays as drawn when the player says the rest again (a reconnect, or another setting changed)', () => {
     const { room, conns, shown } = roomWith(2);
     const [a] = conns as [FakeConn, FakeConn];
-    send(room, a, { t: 'deck', deck: 'modern', back: 'plain', lot: 'all' });
+    send(room, a, deck({ backs: lot('all') }));
     send(room, a, { t: 'start' });
-    const drawn = shown(0).back;
-    expect(isBack(drawn)).toBe(true);
-    send(room, a, { t: 'deck', deck: 'modern', back: 'plain', lot: 'all' }); // the same again
-    send(room, a, { t: 'deck', deck: 'modern', back: 'plain', night: true, lot: 'all' }); // dark cards switched on
-    expect(shown(0)).toMatchObject({ back: drawn, lot: 'all', deck: 'modern:night' });
-    send(room, a, { t: 'deck', deck: 'modern', back: 'fern', lot: null }); // no lot any more: their own choice
-    expect(shown(0).back).toBe('fern');
-    expect(shown(0).lot).toBeUndefined();
+    const drawn = shown(0).look.backs;
+    expect(drawn).toSatisfy((b: Backs) => b.k === 'lot' && isBack(b.drawn));
+    send(room, a, deck({ backs: lot('all') })); // the same again
+    send(room, a, deck({ backs: lot('all'), night: true })); // dark cards switched on
+    expect(shown(0).look).toEqual({ ...PLAIN_LOOK, night: true, backs: drawn });
+    send(room, a, deck({ backs: own('fern') })); // no lot any more: their own choice
+    expect(shown(0).look.backs).toEqual(own('fern'));
   });
 
-  it('is left alone by a message that names no lot, or one this table does not know', () => {
+  it('is left alone by a look half said, one with a lot this table does not know, or one that says what was drawn', () => {
     const { room, conns, shown } = roomWith(2);
     const [a] = conns as [FakeConn, FakeConn];
-    expect(parseClientMsg({ t: 'deck', deck: 'modern' })).toEqual({ t: 'deck', deck: 'modern' });
-    expect(parseClientMsg({ t: 'deck', deck: 'modern', lot: 'No such kind' })).toEqual({ t: 'deck', deck: 'modern' });
-    expect(parseClientMsg({ t: 'deck', deck: 'modern', lot: null })).toEqual({ t: 'deck', deck: 'modern', lot: null });
-    send(room, a, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Plants' });
-    send(room, a, { t: 'deck', deck: 'classic', back: 'fern' });
-    send(room, a, { t: 'deck', deck: 'classic', lot: 'No such kind' });
-    expect(shown(0)).toMatchObject({ back: 'any', lot: 'Plants', deck: 'classic' });
+    const { bare: _, ...unsaid } = PLAIN_LOOK;
+    for (const look of [unsaid, { ...PLAIN_LOOK, backs: lot('No such kind') }, { ...PLAIN_LOOK, backs: { k: 'own' } }, { ...PLAIN_LOOK, deck: 'classic:night' }]) expect(parseClientMsg({ t: 'deck', look })).toBeNull();
+    expect(parseClientMsg({ t: 'deck', deck: 'modern', back: 'fern' })).toBeNull(); // (as a window from before the look was one thing said it)
+    expect(parseClientMsg(deck({ backs: { k: 'lot', lot: 'Plants', drawn: 'fern' } }))).toEqual(deck({ backs: lot('Plants') })); // only the table draws
+    send(room, a, deck({ backs: lot('Plants'), deck: 'classic' }));
+    send(room, a, { t: 'deck', look: { ...unsaid, backs: own('fern') } });
+    expect(shown(0).look).toEqual({ ...PLAIN_LOOK, deck: 'classic', backs: lot('Plants') });
   });
 
   it('is not drawn until a round is dealt, and is drawn again when the table is started over', () => {
     vi.useFakeTimers();
     const { room, conns, shown } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
-    send(room, b, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Plants' });
-    expect(shown(1).back).toBe('any');
+    send(room, b, deck({ backs: lot('Plants') }));
+    expect(shown(1).look.backs).toEqual(lot('Plants'));
     send(room, a, { t: 'start' });
-    const drawn = shown(1).back;
+    const drawn = shown(1).look.backs;
     expect(shown(1)).toSatisfy(inLot('Plants'));
     vi.advanceTimersByTime(DEAL_MS);
     callNertz(room, a);
-    expect(shown(1).back).toBe(drawn); // kept to the end of the round, and on its finished table
+    expect(shown(1).look.backs).toEqual(drawn); // kept to the end of the round, and on its finished table
+    expect(conns[0]!.room.lastRound!.scores.find((l) => l.seat === 1)!.look!.backs).toEqual(drawn);
     send(room, a, { t: 'reset' });
-    expect(shown(1)).toMatchObject({ back: 'any', lot: 'Plants' });
+    expect(shown(1).look.backs).toEqual(lot('Plants'));
     send(room, a, { t: 'start' });
     expect(shown(1)).toSatisfy(inLot('Plants'));
   });
@@ -81,12 +85,12 @@ describe('a back by lot', () => {
     const { room, conns, shown } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     send(room, a, { t: 'start' });
-    send(room, b, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Emblems' });
+    send(room, b, deck({ backs: lot('Emblems') }));
     expect(shown(1)).toSatisfy(inLot('Emblems'));
     vi.advanceTimersByTime(DEAL_MS);
     callNertz(room, a);
-    send(room, b, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Celestial' });
-    expect(shown(1)).toMatchObject({ back: 'any', lot: 'Celestial' });
+    send(room, b, deck({ backs: lot('Celestial') }));
+    expect(shown(1).look.backs).toEqual(lot('Celestial'));
     send(room, a, { t: 'start' });
     expect(shown(1)).toSatisfy(inLot('Celestial'));
   });
@@ -94,49 +98,49 @@ describe('a back by lot', () => {
   it('is drawn at the deal for someone at the table who is away, and is theirs when they come back', () => {
     const { room, conns, shown } = roomWith(3);
     const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
-    send(room, c, { t: 'deck', deck: 'modern', back: 'plain', lot: 'Maths' });
+    send(room, c, deck({ backs: lot('Maths') }));
     room.disconnect(c);
     send(room, a, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
-    const drawn = shown(2).back;
+    const drawn = shown(2).look.backs;
     expect(shown(2)).toSatisfy(inLot('Maths'));
     expect(room.join(c, 'P2', 'tok-0002')).toBeNull();
-    expect(shown(2).back).toBe(drawn);
+    expect(shown(2).look.backs).toEqual(drawn);
   });
 
-  it('is shown without its white edge for whoever has backs so; not drawn, it is the one with a question mark', () => {
+  it('keeps its white edge or not as the player has their backs, drawn or not', () => {
     const { room, conns, shown } = roomWith(2);
     const [a] = conns as [FakeConn, FakeConn];
-    send(room, a, { t: 'deck', deck: 'modern', back: 'fern', bare: true, lot: null });
-    expect(shown(0).back).toBe('fern:bare');
-    send(room, a, { t: 'deck', deck: 'modern', back: 'fern', bare: true, lot: 'Tilings' });
-    expect(shown(0).back).toBe('any');
+    send(room, a, deck({ backs: own('fern'), bare: true }));
+    expect(shown(0).look).toMatchObject({ backs: own('fern'), bare: true });
+    send(room, a, deck({ backs: lot('Tilings'), bare: true }));
+    expect(shown(0).look).toMatchObject({ backs: lot('Tilings'), bare: true });
     send(room, a, { t: 'start' });
-    expect(shown(0).back).toMatch(/^[a-z-]+:bare$/);
     expect(shown(0)).toSatisfy(inLot('Tilings'));
+    expect(shown(0).look.bare).toBe(true);
   });
 });
 
 describe("a bot's back", () => {
-  it('is for whoever deals to choose, or to have drawn by lot: and a back drawn stays, whatever else is said with no word of the lot', () => {
+  it('is for whoever deals to choose, or to have drawn by lot: and a back drawn stays while the lot is said again', () => {
     const { room, conns, shown } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     send(room, a, { t: 'addBot', level: 'slow' });
-    expect(shown(2).back).toBe('plain');
-    send(room, b, { t: 'botBack', seat: 2, lot: 'Emblems' }); // not theirs to say
-    expect(shown(2).lot).toBeUndefined();
-    send(room, a, { t: 'botBack', seat: 2, lot: 'Emblems' });
-    expect(shown(2)).toMatchObject({ back: 'any', lot: 'Emblems' });
+    expect(shown(2).look).toEqual(PLAIN_LOOK);
+    send(room, b, { t: 'botBack', seat: 2, backs: lot('Emblems') }); // not theirs to say
+    expect(shown(2).look.backs).toEqual(own('plain'));
+    expect(parseClientMsg({ t: 'botBack', seat: 2, lot: 'Emblems' })).toBeNull(); // (as a window from before said it)
+    send(room, a, { t: 'botBack', seat: 2, backs: lot('Emblems') });
+    expect(shown(2).look.backs).toEqual(lot('Emblems'));
     send(room, a, { t: 'start' });
-    const drawn = shown(2).back;
+    const drawn = shown(2).look.backs;
     expect(shown(2)).toSatisfy(inLot('Emblems'));
-    send(room, a, { t: 'botBack', seat: 2, back: 'fern' }); // a back, with nothing said of the lot
-    expect(shown(2)).toMatchObject({ back: drawn, lot: 'Emblems' });
-    send(room, a, { t: 'botBack', seat: 2, back: 'fern', lot: null });
-    expect(shown(2)).toMatchObject({ back: 'fern' });
-    expect(shown(2).lot).toBeUndefined();
-    send(room, a, { t: 'botBack', seat: 2, lot: 'all' }); // in the middle of a round: drawn at once
-    expect(isBack(shown(2).back)).toBe(true);
+    send(room, a, { t: 'botBack', seat: 2, backs: lot('Emblems') });
+    expect(shown(2).look.backs).toEqual(drawn);
+    send(room, a, { t: 'botBack', seat: 2, backs: own('fern') });
+    expect(shown(2).look).toEqual({ ...PLAIN_LOOK, backs: own('fern') });
+    send(room, a, { t: 'botBack', seat: 2, backs: lot('all') }); // in the middle of a round: drawn at once
+    expect(shown(2)).toSatisfy(inLot('all'));
   });
 });
 

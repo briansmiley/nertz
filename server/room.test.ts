@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { calledBy, checkInvariants, endVote, finishDeal, grab, inGrace, isComplete, isHidden, legalDrops, mustClear, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
-import { STOCK_CARD_MS } from '../shared/protocol';
+import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { felt, hold, inPlay, move, rig, seeded, slot, toPlay, wire, withPile, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, PileRef } from '../shared/types';
@@ -816,9 +816,9 @@ describe('Room', () => {
     expect(a.last.room.lastRound).toEqual({
       end: { by: 'nertz', seat: 1 },
       scores: [
-        { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, delta: -25, total: -25, back: 'plain' },
-        { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, back: 'plain' }, // no bonus for going out
-        { seat: 2, id: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, delta: -26, total: -26, back: 'plain' },
+        { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, delta: -25, total: -25, look: PLAIN_LOOK },
+        { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, look: PLAIN_LOOK }, // no bonus for going out
+        { seat: 2, id: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, delta: -26, total: -26, look: PLAIN_LOOK },
       ],
     });
     expect(a.last.room.players.map((p) => p.score)).toEqual([-25, 2, -26]);
@@ -880,8 +880,8 @@ describe('Room', () => {
     sendIntent(room, a, 12, { k: 'nertz' });
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
-      { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, back: 'plain' },
-      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length, back: 'plain' },
+      { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, look: PLAIN_LOOK },
+      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game.players[1]!.nertz.length, total: 12 - 2 * room.game.players[1]!.nertz.length, look: PLAIN_LOOK },
     ]);
     expect(a.last.room.game!.tray).toHaveLength(1); // still there for the end-of-round sequence
     expect(checkInvariants(room.game)).toBeNull();

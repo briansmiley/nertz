@@ -3,7 +3,7 @@
 // row, first a card with a question mark on it (any one of that kind, drawn by lot when a table's first round is dealt), then every
 // back of the kind with its small rendition tucked against it.
 import { useState, type CSSProperties } from 'react';
-import { backGroups, backNamed, CARD_BACKS, type Back } from '../shared/protocol';
+import { backGroups, CARD_BACKS, type Back } from '../shared/protocol';
 import { backOf } from './cards/Face';
 import { layOut } from './sound';
 
@@ -21,7 +21,6 @@ export function BackShelf({ colour, bare, back, random, onPick, onRandom }: { co
   /** The kind of back that is dealt out (one at a time; none, if its pile was put back): to begin with, the one the choice is in. */
   const [open, setOpen] = useState<string | null>(() => (groups.find((g) => (random && random !== 'all' ? g.name === random : g.backs.includes(back))) ?? groups[0]!).name);
   const shown = groups.find((g) => g.name === open);
-  const named = (b: Back): string => backNamed(b, bare);
   return (
     <>
       <div className="shelf" style={{ '--piles': groups.length } as CSSProperties}>
@@ -35,7 +34,7 @@ export function BackShelf({ colour, bare, back, random, onPick, onRandom }: { co
                 {top
                   .map((b, i) => (
                     <span key={b} className="mini" style={{ '--k': i } as CSSProperties}>
-                      <span {...backOf(colour, named(b))} />
+                      <span {...backOf(colour, b, bare)} />
                     </span>
                   ))
                   .reverse()}
@@ -51,17 +50,17 @@ export function BackShelf({ colour, bare, back, random, onPick, onRandom }: { co
           {/* First in every spread: any one of this kind, drawn by lot for a table, when its first round is dealt. */}
           <button type="button" className={`lay lot${random === shown.name ? ' on' : ''}`} style={{ '--lie': '-2deg', '--n': 0 } as CSSProperties} aria-pressed={random === shown.name} title={`One of ${shown.name}, drawn by lot when a table's first round is dealt, and kept for that table`} onClick={() => onRandom(random === shown.name ? null : shown.name)}>
             <span className="mini">
-              <span {...backOf(colour, 'any')} />
+              <span {...backOf(colour, null, bare)} />
             </span>
             <em>Random</em>
           </button>
           {shown.backs.map((b, i) => (
             <button key={b} type="button" className={`lay${!random && back === b ? ' on' : ''}`} style={{ '--lie': `${LIE[i % LIE.length]}deg`, '--n': i + 1 } as CSSProperties} aria-pressed={!random && back === b} onClick={() => onPick(b)}>
               <span className="mini">
-                <span {...backOf(colour, named(b))} />
+                <span {...backOf(colour, b, bare)} />
               </span>
               <span className="mini small">
-                <span {...backOf(colour, named(b), true)} />
+                <span {...backOf(colour, b, bare, true)} />
               </span>
               <em>{CARD_BACKS[b]}</em>
             </button>

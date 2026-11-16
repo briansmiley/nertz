@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, DRAG_HZ, DRAG_RATE, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, randomRoomCode } from './protocol';
+import { cleanName, DRAG_HZ, DRAG_RATE, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, PLAIN_LOOK, randomRoomCode } from './protocol';
 import { TABLE } from './table';
 
 const TOKEN = 'abcDEF123_-xyz';
@@ -28,6 +28,13 @@ describe('parseClientMsg', () => {
     expect(parseClientMsg({ t: 'tried', card: 'c1', slot: 3, seen: 'c2', by: 0 })).toEqual({ t: 'tried', card: 'c1', slot: 3, seen: 'c2' }); // (who did it is the server's to say)
     expect(parseClientMsg({ t: 'tried', card: 'c1', slot: 0, seen: null })).toEqual({ t: 'tried', card: 'c1', slot: 0, seen: null });
     expect(parseClientMsg({ t: 'sniped', slot: 2 })).toEqual({ t: 'sniped' }); // a window from before the server judged snipes: taken, and ignored
+  });
+
+  it('takes a look whole, with every part said, and a lot always undrawn', () => {
+    const look = { deck: 'classic', night: true, backs: { k: 'own', back: 'fern', lot: 'all' }, bare: true, x: 1 };
+    expect(parseClientMsg({ t: 'deck', look })).toEqual({ t: 'deck', look: { deck: 'classic', night: true, backs: { k: 'own', back: 'fern' }, bare: true } });
+    expect(parseClientMsg({ t: 'botBack', seat: 2, backs: { k: 'lot', lot: 'Plants', drawn: 'fern' } })).toEqual({ t: 'botBack', seat: 2, backs: { k: 'lot', lot: 'Plants', drawn: null } });
+    for (const bad of [{ ...PLAIN_LOOK, night: undefined }, { ...PLAIN_LOOK, deck: 'modern:night' }, { ...PLAIN_LOOK, backs: 'fern:bare' }, { ...PLAIN_LOOK, backs: { k: 'own', back: 'any' } }, { ...PLAIN_LOOK, backs: { k: 'lot' } }]) expect(parseClientMsg({ t: 'deck', look: bad })).toBeNull();
   });
 
   it('caps the name length', () => {

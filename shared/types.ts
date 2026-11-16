@@ -2,6 +2,7 @@
 //
 // Pile convention, everywhere: the TOP of a pile is the LAST array element.
 
+import type { Look } from './protocol';
 import type { TableSettings } from './settings';
 import type { Spot } from './table';
 
@@ -162,9 +163,8 @@ export interface RoundLine extends RoundScore {
   rounds: number;
   /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
-  /** Their faces and backs when the round ended, named as in `PlayerView`. */
-  deck?: string;
-  back?: string;
+  /** Their faces and backs when the round ended. */
+  look?: Look;
 }
 
 export interface RoundResult {
@@ -202,12 +202,8 @@ export interface PlayerView {
   queued?: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
-  /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */
-  deck?: string;
-  /** The backs of this player's cards (`CARD_BACKS`, with `:bare` after it for one without its white edge), for everyone likewise. Always sent by the room: 'any' while a lot is not drawn yet. */
-  back?: string;
-  /** Set if their back is drawn by lot (once for the table, at its first deal after the lot was chosen): the lot ('all', or a kind of back). `back` is then 'any' until it is drawn. */
-  lot?: string;
+  /** The faces and backs this player chose: the cards of their deck are drawn so for everyone. A bot's, and anyone's who has not said yet, are the plain ones. */
+  look: Look;
 }
 
 /** Everything one client needs to render, personalised for the player `me`. */
