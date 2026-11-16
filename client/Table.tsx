@@ -23,6 +23,7 @@ import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { onDrag, onSnipe, pause, playable, post, send as play } from './net';
 import { canResume } from './Settings';
+import { Name } from './Host';
 import { calm, lookOf, usePrefs } from './prefs';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
 
@@ -840,7 +841,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <i className="chip" style={{ background: backColour(o.seat) }} />
-              <span className="name">{name(o.seat)}</span>
+              <Name host={p?.isHost} className="name">
+                {name(o.seat)}
+              </Name>
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">left</em> : p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}

@@ -4619,3 +4619,35 @@ button.code.copy small {
   max-width: none;
   margin-left: 0;
 }
+
+/* ------------------------------------------------------------ the host, by their name (Host.tsx) */
+
+svg.host {
+  flex: none;
+  width: 1.1em;
+  height: 1.17em;
+  margin-left: 0.35em;
+  vertical-align: -0.2em;
+  overflow: visible;
+}
+
+/* The dealer button: a white puck with a D, its edge showing under it. */
+svg.host circle {
+  fill: var(--card);
+  stroke: var(--ink);
+  stroke-width: 1.1;
+}
+
+svg.host .edge {
+  fill: #d9d2bf;
+}
+
+svg.host text {
+  font: 800 9.5px/1 var(--ui);
+  fill: var(--ink);
+}
+
+/* In the lobby the gap of the line already stands between name and mark. */
+.seats .name + svg.host {
+  margin-left: -0.35rem;
+}

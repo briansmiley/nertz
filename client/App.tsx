@@ -8,6 +8,7 @@ import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
+import { Name } from './Host';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
@@ -504,7 +505,9 @@ function Lobby({ room }: { room: RoomView }) {
               ) : (
                 <Mini seat={p.seat} look={p.look} />
               )}
-              <span className="name">{me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}</span>
+              <Name host={p.isHost} className="name">
+                {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
+              </Name>
               <span className="note">
                 {[p.id === room.me && 'you', p.left ? 'left' : !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
@@ -677,7 +680,9 @@ function Results({ room }: { room: RoomView }) {
                 <th scope="row">
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
-                  <span className="nm">{me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}</span>
+                  <Name host={p?.isHost} className="nm">
+                    {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}
+                  </Name>
                   {s.seat === calledBy && (
                     <span className="called" title={`${s.id === room.me ? 'You' : s.name} called Nertz`}>
                       Nertz!
@@ -711,7 +716,7 @@ function Results({ room }: { room: RoomView }) {
                 <tr key={`new${p.id}`} className={`joining${p.id === room.me ? ' you' : ''}`}>
                   <th scope="row">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
-                    {p.name}
+                    <Name host={p.isHost}>{p.name}</Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </th>
