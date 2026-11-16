@@ -329,16 +329,24 @@ export function setTableSettings(patch: Partial<TableSettings>): void {
 }
 
 /**
- * Plays an intent: applied locally at once, sent to the server, reconciled
- * when its ack comes back. Returns false (and sends nothing) if it is not
- * legal in the state we are looking at, or if this connection has not had its
- * first snapshot yet (just reconnected: what is on screen is the table as it
- * was before the drop, and there is nothing to predict over).
+ * Would `send` play this intent right now? Not if it is not legal in the state
+ * we are looking at, or if this connection has not had its first snapshot yet
+ * (just reconnected: what is on screen is the table as it was before the drop,
+ * and there is nothing to predict over).
  */
-export function send(intent: Intent): boolean {
+export function playable(intent: Intent): boolean {
   const room = state.room;
   if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
-  if (room.seat === null || !applyIntent(room.game, room.seat, intent).ok) return false;
+  return room.seat !== null && applyIntent(room.game, room.seat, intent).ok;
+}
+
+/**
+ * Plays an intent: applied locally at once, sent to the server, reconciled
+ * when its ack comes back. Returns false (and sends nothing) if it is not
+ * `playable`.
+ */
+export function send(intent: Intent): boolean {
+  if (!playable(intent)) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });
   set({ room: predict(sync) });
