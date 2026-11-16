@@ -453,9 +453,11 @@ the client's replay applies the same rule. All the rules of grace live in the pu
   is taken out with it.
 - When nobody is left in grace the status is `over`, by that Nertz. `expireGrace(state)` takes it there at once.
 
-The server owns only the clock: when a call leaves someone in grace it starts one 4-second timer, and on expiry applies
-`expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to `results`. Snapshots carry
-`graceMs`, the milliseconds left when the snapshot was sent (a duration to count down locally, not a timestamp), or `null`.
+The server owns only the clock. The room keeps one round timer for whichever timed status is current (`dealing`,
+`countdown` or `grace`); grace is timed on the call itself, the change into `grace` in the room's `intent`, for 4 seconds,
+and on expiry the room applies `expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to
+`results`. Snapshots carry one `timerMs`, the milliseconds left of the timed status when the snapshot was sent (a
+duration to count down locally, not a timestamp), or `null`; `game.status` names the stage it belongs to.
 
 **One status.** How far a round has got is one field, `GameState.status`: `dealing`, `ready`, `countdown`, `play`,
 `grace` (who called) or `over` (how it ended: a Nertz by a seat, a jam, or a vote). The reducer switches on it once, and
@@ -469,17 +471,17 @@ when it is not its turn). Only `play` accepts intents: before it `applyIntent` r
 sender's `ack` still advances), so a client predicts nothing either. `viewFor` redacts by stage: while `dealing` every
 card, the face-up ones included, so no layout can be read early, not even off the network tab; in `ready` and `countdown`
 the work tops are shown and every nertz top is still hidden, the owner's included. Ids never change, so the cards on
-screen are the ones that turn over later. The server owns the two clocks and the button, exactly as for grace:
+screen are the ones that turn over later. The server owns the clock and the button, exactly as for grace, with the same one round timer:
 
-- one `DEAL_MS` (3 s) timer per round; when it fires, `finishDeal` and one flush. Snapshots carry `dealMs`.
+- `dealing` is timed for `DEAL_MS` (3 s); when it runs out, `finishDeal` and one flush. Snapshots carry `timerMs`.
 - `ready` has no timer at all. `{ t: 'go' }` from whoever may deal (the host, or the acting dealer while the host is away,
   even if they are sitting the round out) applies `startCountdown`; from anyone else, or in any other stage, it is ignored.
-- one `START_MS` timer (3 beats of `START_BEAT_MS`, 2.1 s); when it fires, `openPlay`, the bots are woken, and every
-  player's view with the nertz tops goes out in the same flush. Snapshots carry `startMs`, a duration like `dealMs`, so a
+- `countdown` is timed for `START_MS` (3 beats of `START_BEAT_MS`, 2.1 s); when it runs out, `openPlay`, the bots are
+  woken, and every player's view with the nertz tops goes out in the same flush. Snapshots carry the same `timerMs`, so a
   window that reloads mid-count shows the right number and nothing is replayed.
 
-A table left in `ready` with nobody connected runs no timer and expires like any abandoned table. Both timers are stopped
-when the room is forgotten. The
+A table left in `ready` with nobody connected runs no timer and expires like any abandoned table. The round timer is
+stopped when the room is forgotten. The
 client animates from it and never decides anything: its input is off because the shared reducer says no, and a window that
 arrives late (a reload or reconnect mid-deal) puts the cards already dealt in place and deals the rest on schedule
 (`dealWait` in `client/layout.ts`). A card is dealt only when its element first appears during a deal, and only once, so

@@ -103,7 +103,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const add = (cue: Cue, key = '') => cues.set(`${cue.k}:${'who' in cue ? cue.who : ''}:${key}`, cue);
 
   // The opening: the count starts once (its ticks are scheduled from the duration the snapshot carried), play opens once.
-  if (b.game.status.at === 'countdown' && a.game.status.at !== 'countdown') add({ k: 'count', at: startBeats(b.startMs ?? START_MS) });
+  if (b.game.status.at === 'countdown' && a.game.status.at !== 'countdown') add({ k: 'count', at: startBeats(b.timerMs ?? START_MS) });
   if (hasOpened(b.game) && !hasOpened(a.game)) add({ k: 'open' });
 
   const before = places(a.game);

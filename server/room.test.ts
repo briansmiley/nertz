@@ -805,14 +805,14 @@ describe('Room', () => {
     sendIntent(room, b, 0, move(workTop(room.game, 1, 0), felt(0.6, 0)));
     sendIntent(room, b, 1, move(workTop(room.game, 1, 2), felt(1.5, 0)));
     room.flush();
-    expect(a.last.room.graceMs).toBeNull();
+    expect(a.last.room.timerMs).toBeNull();
     sendIntent(room, b, 2, { k: 'nertz' });
     sendIntent(room, a, 2, { k: 'flip' }); // too late
     room.flush();
     expect(room.phase).toBe('results');
     expect(vi.getTimerCount()).toBe(0); // no grace window was opened
     expect(a.last.ack).toBe(2);
-    expect(a.last.room.graceMs).toBeNull();
+    expect(a.last.room.timerMs).toBeNull();
     expect(a.last.room.lastRound).toEqual({
       end: { by: 'nertz', seat: 1 },
       scores: [
@@ -905,7 +905,7 @@ describe('Room', () => {
       const dealt = room.game!;
       expect(vi.getTimerCount()).toBe(1);
       for (const conn of conns) {
-        expect(conn.last.room).toMatchObject({ phase: 'playing', round: 1, dealMs: DEAL_MS, startMs: null, graceMs: null, game: { status: { at: 'dealing' } } });
+        expect(conn.last.room).toMatchObject({ phase: 'playing', round: 1, timerMs: DEAL_MS, game: { status: { at: 'dealing' } } });
         expect(faces(conn.last)).toBe(false);
         expect(cardIds(conn.last.room.game!)).toEqual(cardIds(dealt));
       }
@@ -920,7 +920,7 @@ describe('Room', () => {
         tries.forEach((intent, seq) => sendIntent(room, conn, seq, intent));
         room.flush();
         expect(room.game).toBe(dealt); // nothing happened
-        expect(conn.last).toMatchObject({ ack: tries.length - 1, room: { dealMs: DEAL_MS - 900, game: { status: { at: 'dealing' } } } }); // acked all the same
+        expect(conn.last).toMatchObject({ ack: tries.length - 1, room: { timerMs: DEAL_MS - 900, game: { status: { at: 'dealing' } } } }); // acked all the same
         expect(faces(conn.last)).toBe(false);
         expect(conns.filter((x) => x !== conn).map((x) => x.states.length)).toEqual(others); // only the sender hears of a refusal
       }
@@ -938,7 +938,7 @@ describe('Room', () => {
       room.flush(); // ...and everybody is told in the same flush
       expect(conns.map((x) => x.states.length)).toEqual(sent.map((n) => n + 1));
       for (const conn of conns) {
-        expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, startMs: null, game: { status: { at: 'ready' } } });
+        expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: null, game: { status: { at: 'ready' } } });
         expect(conn.last.rev).toBe(a.last.rev);
         expect(conn.last.room.game).toEqual(wire(viewFor(finishDeal(dealt), 0)));
         expect(cardIds(conn.last.room.game!)).toEqual(cardIds(dealt)); // the same cards, the work tops turned over
@@ -957,7 +957,7 @@ describe('Room', () => {
       const b2 = new FakeConn();
       expect(room.join(b2, 'P1', 'tok-0001', true)).toBeNull();
       room.flush();
-      expect(b2.last.room).toMatchObject({ me: 1, seat: 1, dealMs: DEAL_MS - 1000, game: { status: { at: 'dealing' } } });
+      expect(b2.last.room).toMatchObject({ me: 1, seat: 1, timerMs: DEAL_MS - 1000, game: { status: { at: 'dealing' } } });
       expect(faces(b2.last)).toBe(false);
       expect(faces(a.last)).toBe(false);
       expect(vi.getTimerCount()).toBe(1); // one deal, not restarted
@@ -975,7 +975,7 @@ describe('Room', () => {
       const a2 = new FakeConn();
       room.join(a2, 'P0', 'tok-0000', true);
       room.flush();
-      expect(a2.last.room).toMatchObject({ dealMs: null, startMs: null, game: { status: { at: 'ready' } } });
+      expect(a2.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'ready' } } });
       expect(faces(a2.last)).toBe(true);
       expect(nertzFaces(a2.last)).toBe(0);
       room.handle(a2, { t: 'go' });
@@ -994,7 +994,7 @@ describe('Room', () => {
       const c2 = new FakeConn();
       room.join(c2, 'P2', 'tok-0002', true);
       room.flush();
-      expect(c2.last.room).toMatchObject({ me: 2, seat: 2, dealMs: DEAL_MS, game: { status: { at: 'dealing' } } });
+      expect(c2.last.room).toMatchObject({ me: 2, seat: 2, timerMs: DEAL_MS, game: { status: { at: 'dealing' } } });
       expect(c2.last.room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
       expect(faces(c2.last)).toBe(false);
       sendIntent(room, c2, 0, { k: 'flip' }); // nothing is taken while the cards are being dealt
@@ -1021,11 +1021,11 @@ describe('Room', () => {
       next.room.handle(x, { t: 'start' });
       next.room.flush();
       expect(vi.getTimerCount()).toBe(1);
-      expect(y.last.room).toMatchObject({ phase: 'playing', round: 2, dealMs: DEAL_MS, game: { status: { at: 'dealing' } } });
+      expect(y.last.room).toMatchObject({ phase: 'playing', round: 2, timerMs: DEAL_MS, game: { status: { at: 'dealing' } } });
       expect(faces(y.last)).toBe(false);
       vi.advanceTimersByTime(DEAL_MS);
       next.room.flush();
-      expect(y.last.room).toMatchObject({ dealMs: null, game: { status: { at: 'ready' } } });
+      expect(y.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'ready' } } });
     });
   });
 
@@ -1056,7 +1056,7 @@ describe('Room', () => {
       vi.advanceTimersByTime(24 * 60 * 60_000);
       expect(room.game).toBe(waiting);
       for (const conn of conns) {
-        expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, startMs: null, graceMs: null, game: { status: { at: 'ready' } } });
+        expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: null, game: { status: { at: 'ready' } } });
         expect(nertzFaces(conn.last)).toBe(0);
         expect(workFaces(conn.last)).toBe(3 * 4);
       }
@@ -1089,7 +1089,7 @@ describe('Room', () => {
       room.flush();
       expect(START_MS).toBe(3 * START_BEAT_MS);
       for (const conn of conns) {
-        expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, startMs: START_MS, game: { status: { at: 'countdown' } } });
+        expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: START_MS, game: { status: { at: 'countdown' } } });
         expect(nertzFaces(conn.last)).toBe(0);
         expect(conn.last.room.game).toEqual(wire(viewFor(startCountdown(waiting), 0)));
       }
@@ -1103,7 +1103,7 @@ describe('Room', () => {
       for (const [seat, conn] of conns.entries()) {
         for (const intent of everything(waiting, seat)) sendIntent(room, conn, seq++, intent);
         room.flush();
-        expect(conn.last).toMatchObject({ ack: seq - 1, room: { startMs: START_MS - 500, game: { status: { at: 'countdown' } } } });
+        expect(conn.last).toMatchObject({ ack: seq - 1, room: { timerMs: START_MS - 500, game: { status: { at: 'countdown' } } } });
         expect(nertzFaces(conn.last)).toBe(0);
       }
       expect(room.game).toEqual(startCountdown(waiting));
@@ -1118,7 +1118,7 @@ describe('Room', () => {
       room.flush(); // ...and everybody is told in the same flush
       expect(conns.map((x) => x.states.length)).toEqual(sent.map((n) => n + 1));
       for (const conn of conns) {
-        expect(conn.last.room).toMatchObject({ phase: 'playing', dealMs: null, startMs: null, game: { status: { at: 'play' } } });
+        expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: null, game: { status: { at: 'play' } } });
         expect(conn.last.rev).toBe(a.last.rev);
         expect(nertzFaces(conn.last)).toBe(3);
         expect(conn.last.room.game).toEqual(wire(viewFor(toPlay(waiting), 0)));
@@ -1167,24 +1167,24 @@ describe('Room', () => {
       };
       room.disconnect(b);
       const b2 = again('tok-0001', 'P1');
-      expect(b2.last.room).toMatchObject({ me: 1, seat: 1, dealMs: null, startMs: null, game: { status: { at: 'ready' } } });
+      expect(b2.last.room).toMatchObject({ me: 1, seat: 1, timerMs: null, game: { status: { at: 'ready' } } });
       expect(nertzFaces(b2.last)).toBe(0);
 
       room.handle(a, { t: 'go' });
       vi.advanceTimersByTime(800);
       const b3 = again('tok-0001', 'P1'); // a reload: the same token on a new socket
       expect(b2.closed).toBe(true);
-      expect(b3.last.room).toMatchObject({ startMs: START_MS - 800, game: { status: { at: 'countdown' } } });
+      expect(b3.last.room).toMatchObject({ timerMs: START_MS - 800, game: { status: { at: 'countdown' } } });
       expect(nertzFaces(b3.last)).toBe(0);
       const a2 = again('tok-0000', 'P0'); // the dealer reloading does not stop the count either
-      expect(a2.last.room).toMatchObject({ startMs: START_MS - 800, game: { status: { at: 'countdown' } } });
+      expect(a2.last.room).toMatchObject({ timerMs: START_MS - 800, game: { status: { at: 'countdown' } } });
       expect(vi.getTimerCount()).toBe(1);
 
       vi.advanceTimersByTime(START_MS - 800);
       room.flush();
-      expect(b3.last.room).toMatchObject({ startMs: null, game: { status: { at: 'play' } } });
+      expect(b3.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } });
       const b4 = again('tok-0001', 'P1');
-      expect(b4.last.room).toMatchObject({ startMs: null, dealMs: null, game: { status: { at: 'play' } } });
+      expect(b4.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } });
       expect(nertzFaces(b4.last)).toBe(3);
       expect(vi.getTimerCount()).toBe(0);
     });
@@ -1226,12 +1226,12 @@ describe('Room', () => {
       expect(a2.last.room.game!.players.map((p) => p.seat)).toEqual([1, 2]);
       expect(nertzFaces(a2.last)).toBe(0);
       expect(a2.last.room.players.map((p) => p.isHost)).toEqual([true, false, false]);
-      for (const conn of [a2, b, c]) expect(conn.last.room).toMatchObject({ startMs: START_MS, game: { status: { at: 'countdown' } } });
+      for (const conn of [a2, b, c]) expect(conn.last.room).toMatchObject({ timerMs: START_MS, game: { status: { at: 'countdown' } } });
       sendIntent(room, a2, 0, { k: 'flip' }); // not in the round at all
       vi.advanceTimersByTime(START_MS);
       room.flush();
       for (const conn of [a2, b, c]) {
-        expect(conn.last.room).toMatchObject({ startMs: null, game: { status: { at: 'play' } } });
+        expect(conn.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } });
         expect(nertzFaces(conn.last)).toBe(2);
       }
     });
@@ -1253,11 +1253,11 @@ describe('Room', () => {
       next.room.handle(x, { t: 'start' });
       vi.advanceTimersByTime(DEAL_MS);
       next.room.flush();
-      expect(y.last.room).toMatchObject({ round: 2, startMs: null, game: { status: { at: 'ready' } } });
+      expect(y.last.room).toMatchObject({ round: 2, timerMs: null, game: { status: { at: 'ready' } } });
       expect(vi.getTimerCount()).toBe(0);
       next.room.handle(x, { t: 'go' });
       next.room.flush();
-      expect(y.last.room).toMatchObject({ startMs: START_MS, game: { status: { at: 'countdown' } } });
+      expect(y.last.room).toMatchObject({ timerMs: START_MS, game: { status: { at: 'countdown' } } });
     });
   });
 
@@ -1308,7 +1308,7 @@ describe('Room', () => {
       room.flush();
       expect(room.phase).toBe('playing');
       for (const conn of [a, b, c]) {
-        expect(conn.last.room).toMatchObject({ phase: 'playing', graceMs: GRACE_MS, lastRound: null });
+        expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: GRACE_MS, lastRound: null });
         expect(conn.last.room.game!.status).toEqual({ at: 'grace', calledBy: 1 });
         expect(conn.last.room.game!.players.map((p) => p.holding)).toEqual([A.aceS, null, null]);
       }
@@ -1324,14 +1324,14 @@ describe('Room', () => {
       sendIntent(room, a, 2, hold(A.aceH));
       expect(room.game).toBe(before);
       room.flush();
-      expect(a.last).toMatchObject({ ack: 2, room: { phase: 'playing', graceMs: GRACE_MS - 1500 } }); // a duration, counted down
+      expect(a.last).toMatchObject({ ack: 2, room: { phase: 'playing', timerMs: GRACE_MS - 1500 } }); // a duration, counted down
       expect(c.last.ack).toBe(2);
 
       sendIntent(room, a, 4, move(A.aceS, felt(0.5, 0.3)));
       room.flush();
       expect(room.phase).toBe('results');
       expect(vi.getTimerCount()).toBe(0);
-      expect(a.last.room).toMatchObject({ phase: 'results', graceMs: null });
+      expect(a.last.room).toMatchObject({ phase: 'results', timerMs: null });
       expect(a.last.room.game!.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1 } });
       expect(a.last.room.game!.slots[0]!.cards.map((x) => x.id)).toEqual([A.aceS]);
       expect(a.last.room.lastRound!.scores.map((x) => [x.played, x.delta])).toEqual([[1, -25], [0, 0], [0, -26]]); // the grace move counted
@@ -1340,6 +1340,21 @@ describe('Room', () => {
       sendIntent(room, a, 5, move(A.aceH, felt(-0.5, 0))); // exactly one move
       expect(room.game!.slots[1]).toBeNull();
       expect(room.rev).toBe(rev + 1); // only the rejection's ack
+    });
+
+    it('a round dealt over in its window: the deal is the one thing timed, and the window never runs out', () => {
+      const { room, a, b, A } = table();
+      sendIntent(room, a, 0, hold(A.aceS));
+      sendIntent(room, b, 0, { k: 'nertz' });
+      vi.advanceTimersByTime(1000);
+      room.handle(a, { t: 'redeal' });
+      room.flush();
+      expect(vi.getTimerCount()).toBe(1);
+      expect(a.last.room).toMatchObject({ phase: 'playing', timerMs: DEAL_MS, game: { status: { at: 'dealing' } } });
+      vi.advanceTimersByTime(GRACE_MS);
+      room.flush();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(a.last.room).toMatchObject({ phase: 'playing', timerMs: null, lastRound: null, game: { status: { at: 'ready' } } });
     });
 
     // Regression: a drop that lost a race used to leave `holding` set on the server (only an accepted move or an
@@ -1429,13 +1444,13 @@ describe('Room', () => {
       expect(room.phase).toBe('playing');
       sendIntent(room, c, 0, { k: 'flip' });
       room.flush();
-      expect(c.last.room.graceMs).toBe(1);
+      expect(c.last.room.timerMs).toBe(1);
       const sent = a.states.length;
       vi.advanceTimersByTime(1);
       expect(room.phase).toBe('results');
       room.flush();
       expect(a.states.length).toBe(sent + 1); // everyone is told
-      expect(a.last.room).toMatchObject({ phase: 'results', graceMs: null });
+      expect(a.last.room).toMatchObject({ phase: 'results', timerMs: null });
       expect(a.last.room.game!.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1 } });
       expect(holding(room)).toEqual([null, null, null]); // the drag is cancelled
       expect(workTop(room.game!, 0, 0)).toBe(A.aceS);
@@ -1496,7 +1511,7 @@ describe('Room', () => {
       sendIntent(room, c, 2, move(C.aceH, felt(0, 0))); // they let go: frozen now
       expect(filled(room.game!)).toEqual([]);
       room.flush();
-      expect(a.last.room.graceMs).toBe(GRACE_MS - 1000); // one window, not restarted
+      expect(a.last.room.timerMs).toBe(GRACE_MS - 1000); // one window, not restarted
       vi.advanceTimersByTime(1000);
       sendIntent(room, a, 1, move(A.aceS, felt(0, 0)));
       expect(room.phase).toBe('results');
@@ -1516,7 +1531,7 @@ describe('Room', () => {
       sendIntent(room, a2, 0, move(A.aceS, felt(0, 0)));
       expect(filled(room.game!)).toEqual([]);
       room.flush();
-      expect(a2.last.room).toMatchObject({ phase: 'playing', graceMs: GRACE_MS });
+      expect(a2.last.room).toMatchObject({ phase: 'playing', timerMs: GRACE_MS });
       room.handle(c, { t: 'leave' }); // walking out counts as letting go too
       expect(room.phase).toBe('results');
       expect(vi.getTimerCount()).toBe(0);
@@ -1703,8 +1718,8 @@ describe('server over real sockets', () => {
     for (const p of players) {
       await vi.waitFor(() => expect(inGrace(p.last.room.game!)).toEqual([0, 2]));
       expect(p.last.room.phase).toBe('playing');
-      expect(p.last.room.graceMs).toBeGreaterThan(GRACE_MS - 1000);
-      expect(p.last.room.graceMs).toBeLessThanOrEqual(GRACE_MS);
+      expect(p.last.room.timerMs).toBeGreaterThan(GRACE_MS - 1000);
+      expect(p.last.room.timerMs).toBeLessThanOrEqual(GRACE_MS);
     }
     const flip = b.intent({ k: 'flip' }); // frozen
     a.intent(move(aceA, felt(0, 0)));
@@ -1714,7 +1729,7 @@ describe('server over real sockets', () => {
     expect(b.last.room.game!.players[1]!.waste).toHaveLength(0);
     await c.close(); // the last one in grace drops off the network: no need to wait out the clock
     await vi.waitFor(() => expect(a.last.room.phase).toBe('results'));
-    expect(a.last.room).toMatchObject({ graceMs: null, lastRound: { end: { by: 'nertz', seat: 1 } } });
+    expect(a.last.room).toMatchObject({ timerMs: null, lastRound: { end: { by: 'nertz', seat: 1 } } });
     expect(a.last.room.lastRound!.scores.map((x) => x.played)).toEqual([1, 0, 0]);
     expect(a.last.room.game).toEqual(wire(viewFor(room.game!, 0)));
     expect(a.last.room.game!.slots[0]!.cards.map((x) => x.id)).toEqual([aceA]);

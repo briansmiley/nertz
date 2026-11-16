@@ -601,9 +601,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const must = useClearFirst(game, you);
 
   // The deal. Every player's cards start as one deck where their stock lies, and the nertz pile and the work piles
-  // are dealt off it one card after another, everyone's at once. `dealMs` says how far along the server is: in a
+  // are dealt off it one card after another, everyone's at once. `timerMs` says how far along the server is: in a
   // window that arrives late (a reload) the cards already dealt are simply in place and the rest follow on time.
-  const dealMs = replaying ? DEAL_MS : room.dealMs;
+  const dealMs = replaying ? DEAL_MS : room.timerMs;
   const deck = useMemo(() => {
     const plan = new Map<string, Dealt>();
     if (!dealing || dealMs === null || calm()) return plan;
@@ -1255,9 +1255,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         </div>
       )}
 
-      {grace.length > 0 && room.graceMs !== null && (
+      {grace.length > 0 && room.timerMs !== null && (
         <Countdown
-          ms={room.graceMs}
+          ms={room.timerMs}
           top={countdownTop(L, W)}
           text={grace.includes(you) ? 'Put it down!' : name(grace[0]!) + (grace.length > 1 ? ` +${grace.length - 1}` : '')}
           label={grace.includes(you) ? 'Put your card down' : `Waiting for ${grace.map(name).join(' and ')} to put a card down`}

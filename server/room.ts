@@ -129,17 +129,15 @@ export class Room {
   /** Whoever opened the room. See `dealer` for who may actually start a round. */
   private host: Player | null = null;
   private flushScheduled = false;
-  /** Running while a called round waits for held cards to land; `graceEndsAt` is its deadline (ms epoch). */
-  private graceTimer: ReturnType<typeof setTimeout> | null = null;
-  private graceEndsAt = 0;
-  /** Running while a new round is being dealt out (status `dealing`); `dealEndsAt` is its deadline (ms epoch). */
-  private dealTimer: ReturnType<typeof setTimeout> | null = null;
-  private dealEndsAt = 0;
-  /** Running through the dealer's "1, 2, 3" (status `countdown`); `startEndsAt` is its deadline (ms epoch). */
-  private startTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The timer of the round's timed status, while one runs, and when it is up (ms epoch): the deal (`dealing`), the
+   * "1, 2, 3" (`countdown`) or the wait for held cards once Nertz is called (`grace`); the status says which. Each is
+   * set on the way into its status (`timeRound`, which calls off whatever ran before) and is gone on the way out: it
+   * fired, or the round was dealt anew or is over.
+   */
+  private roundTimer: { handle: ReturnType<typeof setTimeout>; endsAt: number } | null = null;
   /** The last round whose start the chat was told of. */
   private startTold = 0;
-  private startEndsAt = 0;
   /** Who paused the round in play, if it is paused. */
   private pausedBy: Player | null = null;
   /** The round's clock: what it had run up before it was last stopped, and since when it is running now (ms epoch; null while it is not). */
@@ -331,7 +329,7 @@ export class Room {
 
   /** The room is being forgotten: stops its timers and its bots. */
   close(): void {
-    this.stopTimers();
+    this.stopRoundTimer();
     this.stopBots();
   }
 
@@ -403,15 +401,12 @@ export class Room {
     this.played = 0; // the clock starts on the word NERTZ!
     this.playingSince = null;
     // The deal is a phase of its own: the engine refuses every intent and shows nobody a face until this fires.
-    this.stopTimers();
-    this.dealEndsAt = Date.now() + DEAL_MS;
-    this.dealTimer = this.later(DEAL_MS, () => this.dealt());
+    this.timeRound(DEAL_MS, () => this.dealt());
     this.changed();
   }
 
   /** The deal timer fired: the work piles show their tops, and the table waits (for as long as it takes) for the dealer to press Start. */
   private dealt(): void {
-    this.dealTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = finishDeal(this.game);
     this.changed();
@@ -421,14 +416,12 @@ export class Room {
   private go(player: Player): void {
     if (player !== this.dealer || this.game?.status.at !== 'ready') return;
     this.game = startCountdown(this.game);
-    this.startEndsAt = Date.now() + START_MS;
-    this.startTimer = this.later(START_MS, () => this.opened());
+    this.timeRound(START_MS, () => this.opened());
     this.changed();
   }
 
   /** "...NERTZ!": play opens, and everyone's next snapshot (one flush) shows the nertz tops. */
   private opened(): void {
-    this.startTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = openPlay(this.game);
     // Told once a round, where the chat is: not again if the round is dealt over and started anew.
@@ -464,9 +457,21 @@ export class Room {
     return timer;
   }
 
-  private stopTimers(): void {
-    for (const timer of [this.dealTimer, this.startTimer, this.graceTimer]) if (timer) clearTimeout(timer);
-    this.dealTimer = this.startTimer = this.graceTimer = null;
+  /** The round's timed status lasts `ms`, then `fn` moves it on. Whatever was timed before is called off. */
+  private timeRound(ms: number, fn: () => void): void {
+    this.stopRoundTimer();
+    this.roundTimer = {
+      endsAt: Date.now() + ms,
+      handle: this.later(ms, () => {
+        this.roundTimer = null; // (a timer called off never fires: one that fires is this one)
+        fn();
+      }),
+    };
+  }
+
+  private stopRoundTimer(): void {
+    if (this.roundTimer) clearTimeout(this.roundTimer.handle);
+    this.roundTimer = null;
   }
 
   private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
@@ -483,7 +488,11 @@ export class Room {
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.game, at(player), intent);
     if (next === this.game) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)
+    const called = next.status.at === 'grace' && this.game.status.at !== 'grace';
     this.game = next;
+    // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace. This is the one way
+    // into grace (bots and debugBotOut call Nertz through `intent` too), so the grace window is timed here and nowhere else.
+    if (called) this.timeRound(GRACE_MS, () => this.graceExpired());
     this.settle();
     this.changed();
   }
@@ -510,21 +519,15 @@ export class Room {
 
   /**
    * After anything that can end the round or complete an "everyone is stuck"
-   * vote. Once Nertz is called the round waits (at most GRACE_MS) for the
-   * players the engine left in grace; once it is over, however it ended, it is scored.
+   * vote. Once it is over, however it ended, it is scored.
    */
   private settle(): void {
     if (this.phase !== 'playing' || !this.game) return;
     this.game = resolveEndVote(resolveStuck(this.game, this.connectedSeats()), this.table.filter((p) => p.conn && !p.bot).map((p) => p.seat));
     const { status } = this.game;
-    if (status.at === 'grace' && !this.graceTimer) {
-      this.graceEndsAt = Date.now() + GRACE_MS;
-      this.graceTimer = this.later(GRACE_MS, () => this.graceExpired());
-    }
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
     if (status.at !== 'over') return;
-    if (this.graceTimer) clearTimeout(this.graceTimer);
-    this.graceTimer = null;
+    this.stopRoundTimer();
     const scores = scoreRound(this.game).map((s) => {
       const p = this.players.find((p) => p.seat === s.seat);
       if (p) p.score += s.delta;
@@ -579,7 +582,6 @@ export class Room {
   }
 
   private graceExpired(): void {
-    this.graceTimer = null;
     if (this.phase !== 'playing' || !this.game) return;
     this.game = expireGrace(this.game);
     this.settle();
@@ -955,9 +957,7 @@ export class Room {
       })),
       settings: this.settings,
       game,
-      graceMs: this.graceTimer ? Math.max(0, this.graceEndsAt - Date.now()) : null,
-      dealMs: this.dealTimer ? Math.max(0, this.dealEndsAt - Date.now()) : null,
-      startMs: this.startTimer ? Math.max(0, this.startEndsAt - Date.now()) : null,
+      timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
       paused: this.pausedBy ? { by: this.pausedBy.id } : null,
       lastRound: this.lastRound,

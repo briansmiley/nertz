@@ -558,8 +558,8 @@ describe('bots on the real server', () => {
     expect(JSON.stringify(room.game!.players[1])).toBe(dealt);
     b.send({ t: 'go' });
     await vi.waitFor(() => expect(b.last.room).toMatchObject({ game: { status: { at: 'countdown' } } }));
-    expect(b.last.room.startMs).toBeGreaterThan(START_MS - 500);
-    await vi.waitFor(() => expect(b.last.room).toMatchObject({ startMs: null, game: { status: { at: 'play' } } }), { timeout: 4000 });
+    expect(b.last.room.timerMs).toBeGreaterThan(START_MS - 500);
+    await vi.waitFor(() => expect(b.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } }), { timeout: 4000 });
     // Then the bot plays by itself.
     await vi.waitFor(() => expect(JSON.stringify(room.game!.players[1])).not.toBe(dealt), { timeout: 25_000 });
     b.ws.close();
