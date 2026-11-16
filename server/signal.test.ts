@@ -1,10 +1,11 @@
 // Voice signalling is one message per offer, answer or ICE candidate: what the parser lets through at the frame limit,
-// what it still refuses, and a whole offer relayed over real sockets.
+// what it still refuses, and a whole offer relayed over real sockets; and over them too, how a player is told they are out of voice.
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { CHAT_MAX_LENGTH, SIGNAL_MAX_LENGTH } from '../shared/chat';
-import { MAX_MESSAGE_BYTES, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
+import { Social, SIGNAL_BURST_BYTES, type Member } from './chat';
 import { startServer, type NertzServer } from './index';
 
 const candidate = (i: number, type: 'host' | 'srflx' | 'relay', proto: 'udp' | 'tcp'): string =>
@@ -71,9 +72,10 @@ describe('signalling validation', () => {
 /** A socket at a table (`room` null opens one), in voice, recording the signalling it is sent and any errors. */
 async function inVoice(port: number, room: string | null, name: string) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-  const got = { me: -1, code: '', voice: 0, signals: [] as ServerMsg[], errors: [] as ServerMsg[] };
+  const got = { me: -1, code: '', voice: 0, signals: [] as ServerMsg[], errors: [] as ServerMsg[], all: [] as ServerMsg[] };
   ws.on('message', (data) => {
     const msg = JSON.parse(data.toString()) as ServerMsg;
+    got.all.push(msg);
     if (msg.t === 'state') Object.assign(got, { me: msg.room.me, code: msg.room.code });
     if (msg.t === 'social') got.voice = msg.inVoice.length;
     if (msg.t === 'signal') got.signals.push(msg);
@@ -110,5 +112,93 @@ describe('signalling over real sockets', () => {
     expect(b.got.signals).toEqual(sent.map((data) => ({ t: 'signal', from: a.got.me, data })));
     expect(a.got.errors).toEqual([]);
     expect(a.ws.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it('tells a player put out of voice so, before anything else they are sent, and answers a join it refuses', async () => {
+    server = await startServer({ port: 0, dist: '/nonexistent' });
+    const a = await inVoice(server.port, null, 'Ann');
+    const b = await inVoice(server.port, a.got.code, 'Bob');
+    sockets.push(a.ws, b.ws);
+    const seat = (on: boolean) => (m: ServerMsg) => m.t === 'state' && (m.room.seat !== null) === on;
+    b.ws.send(JSON.stringify({ t: 'sit', on: true })); // (Bob came to watch)
+    await vi.waitFor(() => expect(b.got.all.some(seat(true))).toBe(true));
+    await vi.waitFor(() => expect([a.got.voice, b.got.voice]).toEqual([2, 2]));
+    a.ws.send(JSON.stringify({ t: 'social', watchVoice: false }));
+    await vi.waitFor(() => expect(b.got.all.at(-1)).toMatchObject({ t: 'social', watchVoice: false, inVoice: [{}, {}] }));
+
+    // Bob stands up to watch: told he is out first, then the list without him, then the snapshot that has him watching.
+    const from = b.got.all.length;
+    b.ws.send(JSON.stringify({ t: 'sit', on: false }));
+    await vi.waitFor(() => expect(b.got.all.slice(from).some(seat(false))).toBe(true));
+    const after = b.got.all.slice(from);
+    expect(after.slice(0, 2)).toEqual([{ t: 'outOfVoice' }, expect.objectContaining({ t: 'social', inVoice: [{ id: a.got.me, muted: false }] })]);
+    expect(after.filter((m) => m.t === 'outOfVoice')).toHaveLength(1);
+    expect(a.got.all.filter((m) => m.t === 'outOfVoice')).toEqual([]);
+
+    // Asking again (as a page that took the list for a reconnect would) is answered, and changes nothing for anyone.
+    const [bFrom, aFrom] = [b.got.all.length, a.got.all.length];
+    b.ws.send(JSON.stringify({ t: 'voice', on: true, muted: false }));
+    await vi.waitFor(() => expect(b.got.all.slice(bFrom)).toEqual([{ t: 'outOfVoice' }]));
+    expect(a.got.all.slice(aFrom).filter((m) => m.t === 'social')).toEqual([]);
+  });
+});
+
+describe('the signal budget', () => {
+  /** A table of `n`, all in voice, each recording what it is relayed. */
+  function table(n: number) {
+    const social = new Social();
+    const got: string[][] = [];
+    const members: Member[] = Array.from({ length: n }, (_, id) => {
+      got.push([]);
+      return { id, seat: id < MAX_PLAYERS ? id : null, name: `P${id}`, conn: { send: (m: ServerMsg) => m.t === 'signal' && got[id]!.push(m.data), close: () => {} } as unknown as Member['conn'] };
+    });
+    for (const m of members) social.handle(m, members, false, { t: 'voice', on: true, muted: false });
+    return { social, members, got };
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it('holds a whole table, watchers and all, joining voice at once', () => {
+    vi.useFakeTimers();
+    const { social, members, got } = table(MAX_PLAYERS + MAX_WATCHERS);
+    // To each other one an offer (or answer) and the candidates of a dozen-odd paths (the test's dozen, and again for the relay ones).
+    for (const from of members) {
+      for (const to of members) {
+        if (to === from) continue;
+        social.handle(from, members, false, { t: 'signal', to: to.id, data: OFFER });
+        for (let i = 0; i < 16; i++) social.handle(from, members, false, { t: 'signal', to: to.id, data: ICE });
+      }
+    }
+    for (const [id, signals] of got.entries()) expect(signals, `P${id}`).toHaveLength(17 * (members.length - 1));
+  });
+
+  it('cuts a flood off and lets signals through again as it refills', () => {
+    vi.useFakeTimers();
+    const { social, members, got } = table(2);
+    const [a, b] = members as [Member, Member];
+    const big = 'x'.repeat(SIGNAL_MAX_LENGTH);
+    for (let i = 0; i < 1000; i++) social.handle(a, members, false, { t: 'signal', to: b.id, data: big });
+    expect(got[1]!.length * SIGNAL_MAX_LENGTH).toBeLessThanOrEqual(SIGNAL_BURST_BYTES);
+    expect(got[1]!.length).toBeGreaterThan(0);
+    const before = got[1]!.length;
+    vi.advanceTimersByTime(5000);
+    social.handle(a, members, false, { t: 'signal', to: b.id, data: big });
+    expect(got[1]).toHaveLength(before + 1);
+    // Nothing is taken from anyone else's budget.
+    social.handle(b, members, false, { t: 'signal', to: a.id, data: OFFER });
+    expect(got[0]).toEqual([OFFER]);
+  });
+
+  it('counts a signal as it is relayed, escaped, so one of control characters or quotes cannot get past the burst', () => {
+    vi.useFakeTimers();
+    for (const ch of ['\u0001', '"']) {
+      const { social, members, got } = table(2);
+      const [a, b] = members as [Member, Member];
+      const data = ch.repeat(SIGNAL_MAX_LENGTH);
+      for (let i = 0; i < 1000; i++) social.handle(a, members, false, { t: 'signal', to: b.id, data });
+      const relayed = got[1]!.reduce((n, d) => n + Buffer.byteLength(JSON.stringify({ t: 'signal', from: a.id, data: d })), 0);
+      expect(got[1]!.length).toBeGreaterThan(0);
+      expect(relayed).toBeLessThanOrEqual(SIGNAL_BURST_BYTES + got[1]!.length * 64); // the envelope's few bytes aside
+    }
   });
 });

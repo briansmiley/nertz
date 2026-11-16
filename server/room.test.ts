@@ -294,14 +294,19 @@ describe('Room', () => {
     room.handle(w, { t: 'chat', text: 'still here' });
     expect(said()).toEqual(['hello', 'still here']);
     room.handle(conns[0]!, { t: 'social', watchText: false, watchVoice: false });
-    expect(inVoice()).toEqual([2]); // put out of voice at once
+    expect(inVoice()).toEqual([2]); // put out of voice at once, and told so
+    expect(got.filter((m) => m.t === 'outOfVoice')).toHaveLength(1);
+    expect(conns.flatMap((c) => c.of('outOfVoice'))).toEqual([]);
+    expect(got.filter((m) => m.t === 'social').at(-1)).toMatchObject({ text: true, voice: true, watchText: false, watchVoice: false });
     room.handle(w, { t: 'chat', text: 'anyone?' });
     room.handle(w, { t: 'voice', on: true, muted: false });
+    expect(got.at(-1)).toEqual({ t: 'outOfVoice' }); // refused, and told so
     room.handle(conns[1]!, { t: 'chat', text: 'seated people still can' });
     expect(said()).toEqual(['hello', 'still here', 'seated people still can']);
     expect(inVoice()).toEqual([2]);
     standUp(room, conns[2]!); // and whoever stands up is one of those watching
     expect(inVoice()).toEqual([]);
+    expect(conns[2]!.of('outOfVoice')).toHaveLength(1);
   });
 
   it('someone sent away is gone at once, also from the score sheet; someone who stands up watches until they ask for a seat again', () => {

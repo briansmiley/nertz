@@ -142,12 +142,12 @@ describe('the host switches', () => {
   it('start on, are told to everyone who sits down, and only the host can flip them', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
-    expect(b.social).toEqual({ t: 'social', text: true, voice: true, inVoice: [] });
+    expect(b.social).toEqual({ t: 'social', text: true, voice: true, watchText: true, watchVoice: true, inVoice: [] });
     send(room, b, { t: 'social', text: false, voice: false }); // not the host
     expect(room.social.text && room.social.voice).toBe(true);
     expect(a.of('social')).toHaveLength(1);
     send(room, a, { t: 'social', voice: false });
-    for (const conn of [a, b]) expect(conn.social).toEqual({ t: 'social', text: true, voice: false, inVoice: [] });
+    for (const conn of [a, b]) expect(conn.social).toEqual({ t: 'social', text: true, voice: false, watchText: true, watchVoice: true, inVoice: [] });
     send(room, a, { t: 'social', text: false });
     for (const conn of [a, b]) expect(conn.social).toMatchObject({ text: false, voice: false });
     // They can be flipped mid-round too: they are not game rules.
@@ -236,10 +236,18 @@ describe('voice', () => {
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     join(room, a, b);
+    const was = b.msgs.length;
     send(room, a, { t: 'social', voice: false });
     for (const conn of [a, b]) expect(conn.social).toMatchObject({ voice: false, inVoice: [] });
+    expect(b.msgs.slice(was).map((m) => m.t)).toEqual(['outOfVoice', 'social']); // told, then the list without them
+    expect(a.of('outOfVoice')).toHaveLength(1);
     send(room, a, { t: 'signal', to: 1, data: '.x' });
+    const socials = b.of('social').length;
     join(room, b);
+    expect(b.msgs.at(-1)).toEqual({ t: 'outOfVoice' }); // a join refused is answered, and nobody else is told anything
+    expect(b.of('social')).toHaveLength(socials);
+    send(room, b, { t: 'voice', on: false, muted: false }); // (leaving, when not in it, is not)
+    expect(b.of('outOfVoice')).toHaveLength(2);
     expect(b.of('signal')).toEqual([]);
     expect(b.social.inVoice).toEqual([]);
     send(room, a, { t: 'social', voice: true });

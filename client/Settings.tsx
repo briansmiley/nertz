@@ -446,14 +446,14 @@ export function Corner({ room }: { room?: RoomView | null }) {
                   <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
                   <span>Allow text chat</span>
                 </label>
-                <Specs on={social.text && social.watchText !== false} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+                <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
               </div>
               <div className="allow">
                 <label className="check">
                   <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
                   <span>Allow voice chat</span>
                 </label>
-                <Specs on={social.voice && social.watchVoice !== false} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+                <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
               </div>
             </div>
           )}

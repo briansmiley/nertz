@@ -51,13 +51,13 @@ export type ChatLine = ChatEvent & {
   at: number;
 };
 
-/** The host's two switches. Both default to on. */
+/** The host's four switches. All default to on. */
 export interface SocialSettings {
   text: boolean;
   voice: boolean;
-  /** May those watching a full table (no seat) take part in the text chat, and in voice? Left out: they may. */
-  watchText?: boolean;
-  watchVoice?: boolean;
+  /** May those watching a full table (no seat) take part in the text chat, and in voice? */
+  watchText: boolean;
+  watchVoice: boolean;
 }
 
 export interface VoiceMember {
@@ -87,6 +87,8 @@ export type SocialServerMsg =
   | { t: 'chat'; lines: ChatLine[]; history: boolean }
   /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
   | ({ t: 'social'; inVoice: VoiceMember[]; ice?: IceServer[] } & SocialSettings)
+  /** To one connection: the host's switches keep it out of voice. Its `voice` on was refused, or it has just been put out (sent before the `social` without it). */
+  | { t: 'outOfVoice' }
   /** `from` (an id) is stamped by the server. */
   | { t: 'signal'; from: number; data: string };
 
