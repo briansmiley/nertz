@@ -57,8 +57,8 @@ describe('Room', () => {
     sendIntent(room, b, 0, move(aceB, felt(0, 0))); // an Ace beaten to a place is no snipe: it has others
     sendIntent(room, a, 1, move(twoA, slot(0)));
     sendIntent(room, b, 1, move(twoB, slot(0))); // too late: a's two is on it
-    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: aceA }); // and their window had refused it too: counted once
-    room.handle(a, { t: 'tried', card: twoA, slot: 0, seen: aceA }); // (theirs is on the pile)
+    room.handle(b, { t: 'tried', card: twoB, seen: [aceA] }); // and their window had refused it too: counted once
+    room.handle(a, { t: 'tried', card: twoA, seen: [aceA] }); // (theirs is on the pile)
     expect(send(room, b, { t: 'sniped', slot: 0 })).toBe(true); // a window from before: taken, and nothing comes of it
     sendIntent(room, a, 2, { k: 'nertz' });
     expect(room.phase).toBe('results');
@@ -76,9 +76,9 @@ describe('Room', () => {
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, b, 0, hold(twoB)); // b takes their two up while the Ace is the top
     sendIntent(room, a, 1, move(twoA, slot(0)));
-    // b's window sees a's two arrive, and refuses b's own drop there; it tells the server what it tried.
-    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: aceA });
-    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: aceA }); // said again: still one
+    // b's window sees a's two arrive, and b puts their own back, wherever; the window tells the server.
+    room.handle(b, { t: 'tried', card: twoB, seen: [aceA] });
+    room.handle(b, { t: 'tried', card: twoB, seen: [aceA] }); // said again: still one
     for (const conn of [a, b, c]) {
       expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0 }]);
       expect(conn.lines.filter((l) => l.k === 'sniped')).toMatchObject([{ k: 'sniped', by: { who: 0, name: 'P0' }, of: { who: 1, name: 'P1' } }]);
@@ -92,10 +92,10 @@ describe('Room', () => {
     const [aceA, twoA, twoB, aceHB] = [workTop(room.game!, 0, 0), workTop(room.game!, 0, 1), workTop(room.game!, 1, 1), workTop(room.game!, 1, 2)];
     sendIntent(room, a, 0, move(aceA, felt(0, 0)));
     sendIntent(room, a, 1, move(twoA, slot(0)));
-    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: twoA }); // a's two lay there already when b took theirs up
-    room.handle(b, { t: 'tried', card: aceHB, slot: 0, seen: aceA }); // a card that never went there
-    room.handle(b, { t: 'tried', card: twoB, slot: 0, seen: 'no such card' });
-    room.handle(b, { t: 'tried', card: twoB, slot: 1, seen: aceA }); // no pile there
+    room.handle(b, { t: 'tried', card: twoB, seen: [twoA] }); // a's two lay there already when b took theirs up
+    room.handle(b, { t: 'tried', card: aceHB, seen: [aceA] }); // a card that never went there
+    room.handle(b, { t: 'tried', card: twoB, seen: ['no such card'] });
+    room.handle(b, { t: 'tried', card: twoB, seen: [twoA, null, null] }); // (nor on any other pile: there is none)
     expect([...a.of('snipe'), ...b.of('snipe')]).toEqual([]);
     sendIntent(room, a, 2, { k: 'nertz' });
     expect(room.lastRound!.snipes).toBeUndefined();
