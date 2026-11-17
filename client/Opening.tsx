@@ -3,6 +3,7 @@
 // as play opens. It decides nothing: the button sends `go`, the numbers are
 // read off `timerMs`, and the word appears when the snapshot that opens play does.
 import { useEffect, useRef, useState } from 'react';
+import { hasSay, plays } from '../shared/engine';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { PlayerView, RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
@@ -28,7 +29,7 @@ export const pressStart = (late: number, warnedAt: number | null, now: number): 
 export const notReady = (room: RoomView): PlayerView[] => {
   const game = room.game;
   if (game?.status.at !== 'ready') return [];
-  return room.players.filter((p) => !p.isHost && p.connected && !p.ready && game.players.some((g) => g.seat === p.seat));
+  return room.players.filter((p) => !p.isHost && hasSay(p) && !p.ready && game.players.some((g) => g.seat === p.seat));
 };
 
 /** The number being said when `startMs` of the count are left: 1, 2, 3. */
@@ -53,7 +54,7 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
   const dealer = room.players.find((p) => p.isHost);
   const mine = stage === 'ready' && dealer?.id === room.me;
   /** Who was dealt in, and which of them have said they are ready. */
-  const dealt = stage === 'ready' ? room.players.filter((p) => room.game!.players.some((g) => g.seat === p.seat)) : [];
+  const dealt = stage === 'ready' ? room.players.filter((p) => plays(p) && room.game!.players.some((g) => g.seat === p.seat)) : [];
   const me = dealt.find((p) => p.id === room.me);
   const waiting = dealt.filter((p) => !p.isHost);
   const late = notReady(room);

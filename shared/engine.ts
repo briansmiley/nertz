@@ -472,19 +472,24 @@ export function canProgress(state: GameState, seat: number): boolean {
 
 /**
  * If every seat in `activeSeats` (the connected players) has flagged "stuck":
- * - when nobody at the table can make a move that gets anywhere (`canProgress`), the table is jammed: the round ends
- *   there (over by a `jam`), to be scored as it stands;
+ * - when no hand that is still played (`played`: by default every hand; not one whose player is up from it, which
+ *   nobody will ever move) has a move that gets anywhere (`canProgress`), the table is jammed: the round ends there
+ *   (over by a `jam`), to be scored as it stands;
+ *   With no hand played at all it is jammed whoever has or has not said so.
  * - otherwise every player's waste is turned back onto their stock (restoring the original order; a half-dealt group
  *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently, and
  *   all flags clear.
  * Returns the SAME state object when nothing happens (always, unless the round is live).
  */
-export function resolveStuck(state: GameState, activeSeats: Iterable<number>): GameState {
+export function resolveStuck(state: GameState, activeSeats: Iterable<number>, played: Iterable<number> = state.players.map((p) => p.seat)): GameState {
   if (!isLive(state)) return state;
+  const hands = [...played];
+  const jam = (): GameState => endRound({ ...state, players: state.players.map((p) => ({ ...p, stuck: false })) }, { by: 'jam' });
+  if (hands.length === 0) return jam(); // nobody plays it any more: there is nobody to say so
   const active = new Set(activeSeats);
   const voters = state.players.filter((p) => active.has(p.seat));
   if (voters.length === 0 || !voters.every((p) => p.stuck)) return state;
-  if (!state.players.some((p) => canProgress(state, p.seat))) return endRound({ ...state, players: state.players.map((p) => ({ ...p, stuck: false })) }, { by: 'jam' });
+  if (!hands.some((seat) => canProgress(state, seat))) return jam();
   const players = state.players.map((p): PlayerState => {
     const stock = [...p.stock, ...p.waste.toReversed()];
     // The top card goes to the bottom, so the next pass of threes brings up different cards (and the one after that
@@ -507,8 +512,14 @@ export function endVote(state: GameState, people: Iterable<number>): { voters: n
   return { voters: voters.length, voted: voters.filter((p) => p.ending).length };
 }
 
-/** The `people` of `endVote` as a room view lists them: those with a seat who are here and are not bots. */
-export const seatedPeople = (players: readonly PlayerView[]): number[] => players.flatMap((p) => (p.seat !== null && p.connected && !p.bot ? [p.seat] : []));
+/** Does `p` play at the table, as a room view lists them: has a seat, and is not up from the cards at it (`PlayerView.left`)? */
+export const plays = (p: PlayerView): boolean => p.seat !== null && !p.left;
+
+/** Has `p` a say in the round's votes: plays, and is here (a bot too: see `seatedPeople`). */
+export const hasSay = (p: PlayerView): boolean => plays(p) && p.connected;
+
+/** The `people` of `endVote` as a room view lists them: those with a say who are not bots. */
+export const seatedPeople = (players: readonly PlayerView[]): number[] => players.flatMap((p) => (hasSay(p) && !p.bot ? [p.seat!] : []));
 
 /**
  * If everyone with a say in the `endVote` has voted to end the round, it ends there, to be scored as it stands

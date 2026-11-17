@@ -286,7 +286,7 @@ describe('the seats at a table', () => {
   it('are not taken back even while free: whoever left mid-round comes back to watch, their cards still lying where they were', () => {
     const { room, conns } = roomWith(3, { rng: lcg(3) });
     const [host, , third] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(host, { t: 'start' });
+    startRound(room, host);
     room.flush();
     room.handle(third, { t: 'leave' });
     room.flush();

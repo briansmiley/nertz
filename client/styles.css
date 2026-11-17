@@ -505,6 +505,56 @@ button {
   opacity: 0.45;
 }
 
+/* Whoever deals: someone's name at the table is a button; pressed, the eye and the × beside it. */
+.tag .hosting {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tag .hosting .who {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tag .hosting .standup,
+.tag .hosting .unseat {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  color: var(--chalk);
+  opacity: 0.9;
+}
+
+.tag .hosting .unseat {
+  font-size: 22px;
+}
+
+.tag .hosting .standup:hover,
+.tag .hosting .unseat:hover {
+  opacity: 1;
+  color: var(--marigold);
+}
+
+.tag .hosting .unseat.sure {
+  opacity: 1;
+  color: var(--red);
+}
+
 .count {
   position: absolute;
   z-index: 9000;

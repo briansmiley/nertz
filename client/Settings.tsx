@@ -4,7 +4,7 @@
 //   that opens a small slip.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
-// Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Door`).
+// Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Eye`, `Door`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { endVote, isLive, seatedPeople } from '../shared/engine';
 import type { TableSettings } from '../shared/settings';
@@ -78,6 +78,16 @@ export function Robot({ plain }: { plain?: boolean } = {}) {
       <circle cx="9.8" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
       {/* the plus, clear of the head */}
       {!plain && <path d="M19.8 10v5M17.3 12.5h5" />}
+    </svg>
+  );
+}
+
+/** An eye: standing up from the table to watch. */
+export function Eye() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.8" />
     </svg>
   );
 }

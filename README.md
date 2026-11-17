@@ -174,15 +174,17 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
   one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
   gains nothing.
-- **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, the server (which knows every
-  card) checks whether anybody can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
+- **Stuck**: each player can toggle "I'm stuck". When every connected player who plays the round is stuck (not anyone
+  who has got up from their cards: see table management), the server (which knows every card) checks whether any hand
+  still played, here or away, can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
   waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
   run that turns up a face-down card or empties a pile. If nobody can, **the table is jammed** and the round ends there,
   scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
   flags clear. Making any move clears your own flag.
 - **Voting to end a round**: in the gear menu, while a round is on, anyone can vote to end it where it stands. When
-  every connected person has voted (bots go along), it ends and is scored as usual. A vote can be taken back.
+  every connected person who plays the round has voted (bots go along), it ends and is scored as usual. A vote can be
+  taken back.
 - **Ending a round**: once your nertz pile is empty you may press **NERTZ!**. It is a deliberate action, so you can keep
   playing cards to the middle first if you think it pays. Everyone is frozen at once, with one exception:
 - **Held-card grace.** A player who was in the middle of dragging a card at the moment of the call, and whose card has at
@@ -203,6 +205,15 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
+- **Standing someone up, sending someone away.** Whoever deals can do either to anyone else at any time, a round in
+  play included: pressing a name at the table (or the eye and the × beside it on the lobby and the score sheet). Standing
+  up gives the seat up to watch; sending away puts them out of the table altogether, and back by the same window they
+  are someone new. Between rounds either happens at once. In a round, it is the same for its cards whichever it is (and
+  the same as pressing Leave): their cards lie where they are, marked "left", and are scored as they lie; they play no
+  more of it and no longer count in "I'm stuck", the vote to end the round, or whether the table is jammed, so those
+  who remain can carry on, unstick or end it without them. The seat is held for those cards until the round is over.
+  Then whoever was stood up is watching (and can take a seat again), and whoever was sent away is off the list and off
+  the score sheet; whoever left is off the list, their line staying.
 - **Who is who.** Everyone in a room has an `id`, which is theirs for as long as the table stands and never anyone
   else's: everything about a person goes by it (who you are, who said what, who is in voice, whose line of the score
   sheet). What is about cards goes by seat. Where someone is, is exactly one of three things: at the table (a seat), in
@@ -655,8 +666,9 @@ would still need one of the options above, and serving both from one origin is s
 
 ## Known limits
 
-- **Someone who never comes back** keeps their seat until they press Leave or the table expires. They are not dealt cards
-  while away, but they count towards the six seats. There is no kick.
+- **Someone who never comes back** keeps their seat until they press Leave, whoever deals stands them up or sends them
+  away, or the table expires. They are not dealt cards while away, but they count towards the six seats. Only whoever
+  deals can do that: if that is the one who is not looking (connected, but gone), nobody can.
 - **Every table is on the home page.** **Tables** lists, to anyone, each table someone is at just now (the twenty where
   something happened last): its code, the names at it, and its round. There is no private table.
 - **An abandoned lobby lasts a minute.** If you open a table and everyone's connection drops for more than a minute before

@@ -11,7 +11,7 @@ import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
-import { Corner, Door, Gear, Pop, Robot, TableRules } from './Settings';
+import { Corner, Door, Eye, Gear, Pop, Robot, TableRules } from './Settings';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -59,7 +59,9 @@ export function App() {
   const ahead = room.players.filter((p) => p.queued && p.connected).findIndex((p) => p.id === room.me);
   const spectating = !me
     ? null
-    : hasSeat(me)
+    : me.left
+      ? 'You are Spectating'
+      : hasSeat(me)
       ? room.phase === 'playing' && !room.game?.players.some((p) => p.seat === me.seat)
         ? nextRound
         : null
@@ -215,10 +217,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   return (
     <span className="pop-at" ref={root}>
       <button type="button" className="standup" aria-label={says} title={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
-          <circle cx="12" cy="12" r="2.8" />
-        </svg>
+        <Eye />
       </button>
       {step && (
         <div className="pop handon" role="dialog" aria-label="Transfer host role">

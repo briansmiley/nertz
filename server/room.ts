@@ -35,10 +35,10 @@ export interface Conn {
  *   at the table   `seat` is a number: dealt into every round that begins while they are here
  *   in the queue   `queued` is a number: waiting for a seat, first come first
  *   watching       neither: no seat, and not asking for one
- * It changes only in `fill` (queue to table), on `sit` (asking for a seat, giving it up) and in `remove`.
+ * It changes only in `fill` (queue to table), on `sit` (asking for a seat, giving it up), in `sendOff` and in `remove`.
  * Someone at the table takes one of its seats (`Room.seats`), unless they are `out`.
  *
- * Apart from that: here or away (`conn`); and gone but for their cards (`out`).
+ * Apart from that: here or away (`conn`); and up from their cards (`out`).
  */
 interface Player {
   id: number;
@@ -49,11 +49,15 @@ interface Player {
   /** Their number in the queue for a seat (a count, not a clock: lower is earlier); null when they are not in it. Never set together with `seat`. */
   queued: number | null;
   /**
-   * Gone for good (left, or sent away by whoever deals), but with cards in the round being played: they hold the seat
-   * until it is over, and are off the list then. Whoever left may still come back into their cards; whoever was sent
-   * away may not, and is off the score sheet too. (Gone with no cards in play is simply off the list: see `gone`.)
+   * Up for good from their cards in the round being played: they stood up (or were stood up by whoever deals), left,
+   * or were sent away. For the round it is all one: their cards lie where they are and are scored as they lie; they
+   * play no more of it and have no say in its votes; and they hold the seat only for those cards, until it is over
+   * (`sendOff`). What becomes of them then is what this says: whoever stood up is watching, whoever left is off the
+   * list, and whoever was sent away is off the score sheet too. Only someone who stood up is still here meanwhile: the
+   * other two are gone now (`gone`), and back by their token they are someone new. (With no cards in play none of this
+   * waits: see `sit` and `gone`.)
    */
-  out?: 'left' | 'kicked';
+  out?: 'stood' | 'left' | 'kicked';
   score: number;
   conn: Conn | null;
   /** Highest intent seq processed from the current connection (-1 = none yet). */
@@ -85,10 +89,12 @@ function rechosen(was: Backs, to: Backs): Backs {
 
 type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
-/** Takes one of the table's seats: at it, and not gone (whoever is gone holds their seat only for their cards). */
+/** Takes one of the table's seats: at it, and not up from their cards (`out`: whoever is holds their seat only for those). */
 const taking = (p: Player): p is Seated => seated(p) && !p.out;
-/** The seat to ask the engine about for `p`: theirs, or one that no hand has. */
-const at = (p: Player): number => p.seat ?? -1;
+/** Gone from the room, but for cards of theirs that lie there: they left, or were sent away (see `out`). */
+const gone = (p: Player): boolean => p.out === 'left' || p.out === 'kicked';
+/** The seat to ask the engine about for `p`: the one whose cards they play, or one that no hand has (they have none, or are up from theirs). */
+const at = (p: Player): number => (taking(p) ? p.seat : -1);
 /** `p` as a line of the chat names them. */
 const named = (p: Player): Named => ({ who: p.id, name: p.name });
 
@@ -189,7 +195,7 @@ export class Room {
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
     // Whoever left is gone for good: back, they are someone new, there to watch. (Only someone away comes back to their seat.)
-    let player = this.players.find((p) => p.token === token && !p.out);
+    let player = this.players.find((p) => p.token === token && !gone(p));
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
@@ -243,15 +249,16 @@ export class Room {
         return;
       case 'sit': {
         // Asking for a seat, or giving it (or a place in the queue) up to watch: oneself, or whoever deals for someone else.
+        // (Not someone up from their cards: until the round is over they are neither playing nor watching. See `out`.)
         const who = msg.id === undefined ? player : this.players.find((p) => p.id === msg.id);
         if (!who || who.bot || who.out || (who !== player && player !== this.dealer)) return;
         if (msg.on) {
           if (seated(who) || who.queued !== null) return;
           who.queued = ++this.queue; // behind whoever is waiting already
         } else {
-          // (Not out of a round they hold cards in: those would be left lying. When it is over.)
-          if ((!seated(who) && who.queued === null) || this.inRound(who)) return;
+          if (!seated(who) && who.queued === null) return;
           if (seated(who) && !this.room()) return; // (no room among those watching)
+          if (this.holds(who)) return this.upFrom(who, 'stood'); // up from cards of the round: see there
           who.seat = who.queued = null;
           this.social.unseated(who, this.players);
         }
@@ -266,7 +273,7 @@ export class Room {
         return this.changed();
       }
       case 'kick': {
-        // Whoever deals may send a person away, at any time: wherever they are in the room, and whether they are here or away.
+        // Whoever deals may send a person away, at any time (a round in play too): wherever they are in the room, and whether they are here or away.
         const out = this.players.find((p) => p.id === msg.id);
         if (player !== this.dealer || !out || out.bot || out === player || out.out === 'kicked') return;
         const theirs = out.conn;
@@ -460,7 +467,7 @@ export class Room {
    * and told to everyone in the room at once, and where the chat is.
    */
   private sniped(victim: Player, card: string, slot: number, seen: string | null): void {
-    if (this.phase !== 'playing' || !this.state || !seated(victim)) return;
+    if (this.phase !== 'playing' || !this.state || !taking(victim)) return;
     const snipe = snipedBy(this.state, victim.seat, card, slot, seen);
     if (!snipe || this.snipes.some((s) => s.of === victim.seat && s.card === snipe.card)) return;
     this.snipes.push({ by: snipe.by, of: victim.seat, card: snipe.card });
@@ -526,7 +533,7 @@ export class Room {
    * a card fly that is not in their hand; and only DRAG_RATE times a second.
    */
   private dragged(player: Player, where: { t: 'drag' } & DragAt): void {
-    if (this.phase !== 'playing' || this.pausedBy || !seated(player) || this.state?.players.find((p) => p.seat === player.seat)?.holding !== where.id) return;
+    if (this.phase !== 'playing' || this.pausedBy || !taking(player) || this.state?.players.find((p) => p.seat === player.seat)?.holding !== where.id) return;
     const now = Date.now();
     const drags = (player.drags ??= { left: DRAG_BURST, at: now });
     drags.left = Math.min(DRAG_BURST, drags.left + ((now - drags.at) / 1000) * DRAG_RATE);
@@ -543,7 +550,12 @@ export class Room {
    */
   private settle(): void {
     if (this.phase !== 'playing' || !this.state) return;
-    this.state = resolveEndVote(resolveStuck(this.state, this.connectedSeats()), this.table.filter((p) => p.conn && !p.bot).map((p) => p.seat));
+    // Who has a say in its votes: whoever plays it and is here (not anyone away, nor up from their cards). A bot goes
+    // along with ending it. And the table is jammed when no hand that is played (here or away) can get anywhere: cards
+    // lying where someone got up from them will never be moved. (With nobody left playing it at all, that is at once.)
+    const playing = this.table.filter(taking);
+    const here = playing.filter((p) => p.conn);
+    this.state = resolveEndVote(resolveStuck(this.state, here.map((p) => p.seat), playing.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
     const { status } = this.state;
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
     if (status.at !== 'over') return;
@@ -573,7 +585,8 @@ export class Room {
 
   /**
    * Anyone dealt into the round may pause it while it is being played (not once Nertz is called). Cards in hand go
-   * back, and the bots stop. The one who paused it carries on, or the dealer, or anyone once the one who paused is away.
+   * back, and the bots stop. The one who paused it carries on, or the dealer, or anyone once the one who paused is away
+   * or up from their cards.
    */
   private pause(player: Player, on: boolean): void {
     if (!this.state || !this.inRound(player)) return;
@@ -585,7 +598,7 @@ export class Room {
       this.stopBots();
     } else {
       const by = this.pausedBy;
-      if (!by || (player !== by && player !== this.dealer && by.conn)) return;
+      if (!by || (player !== by && player !== this.dealer && by.conn && !by.out)) return;
       this.pausedBy = null;
       this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p);
@@ -606,9 +619,9 @@ export class Room {
     this.changed();
   }
 
-  /** The player's connection is gone: a card in their hand is put back, which also cuts them off if they were in grace. */
+  /** The player's connection is gone, or they are getting up from their cards: a card in their hand is put back, which also cuts them off if they were in grace. */
   private letGo(player: Player): void {
-    if (this.phase !== 'playing' || !this.state) return;
+    if (this.phase !== 'playing' || !this.state || !taking(player)) return;
     const result = applyIntent(this.state, at(player), { k: 'release' });
     if (result.ok) this.state = result.state;
   }
@@ -638,20 +651,31 @@ export class Room {
     return { of: this.capacity, taken: this.players.filter(taking).length };
   }
 
-  /** Those at the table who are here: who a deal would give cards to. */
+  /** Those at the table who are here: who a deal would give cards to. (Not anyone up from their cards: they are not dealt in again.) */
   private get present(): number {
-    return this.table.filter((p) => p.conn).length;
+    return this.table.filter((p) => taking(p) && p.conn).length;
   }
 
-  /** Does `p` hold cards in a round that is not over: dealt into the one now on the table? */
-  private inRound(p: Player): boolean {
+  /** Are cards of `p`'s in a round that is not over, dealt into the one now on the table? (Played by them, or lying there: see `out`.) */
+  private holds(p: Player): boolean {
     return this.phase === 'playing' && seated(p) && !!this.state?.players.some((g) => g.seat === p.seat);
+  }
+
+  /** Does `p` play the round that is on: dealt into it, and not up from their cards? */
+  private inRound(p: Player): boolean {
+    return taking(p) && this.holds(p);
   }
 
   /** Is a round being played (the count, and play)? Not: the lobby, the score sheet, or cards dealt that nobody has played yet. */
   private get roundOn(): boolean {
     const stage = this.state?.status.at;
     return stage === 'countdown' || stage === 'play' || stage === 'grace';
+  }
+
+  /** Are the cards on the table dealt, and none of them played: the deal, and the wait for the dealer's Start? */
+  private get unplayed(): boolean {
+    const stage = this.state?.status.at;
+    return this.phase === 'playing' && (stage === 'dealing' || stage === 'ready');
   }
 
   /** Is there room for one more without a seat? If not, someone without one whose window is long gone gives up their place (never the host). */
@@ -699,23 +723,41 @@ export class Room {
   }
 
   /**
-   * `p` is gone for good: they left, or were sent away. With cards in a round that is not over they stay on the list,
-   * marked, until it is (`sendOff`): their cards lie where they are, but the seat is free now. Otherwise they are off it now.
+   * `p` is gone for good: they left, or were sent away. With cards in a round that is not over (theirs to play, or
+   * already lying there since they stood up) they get up from them (`upFrom`); otherwise they are off the list now.
    */
   private gone(p: Player, how: 'left' | 'kicked'): void {
-    if (this.inRound(p)) {
-      p.out = how;
-      this.letGo(p);
-      this.social.left(p, this.players);
-    } else this.remove(p, how === 'kicked');
+    if (this.holds(p)) return this.upFrom(p, how);
+    this.remove(p, how === 'kicked');
     this.fill(); // a seat may be free: the first in the queue has it
-    this.settle(); // those who remain may now all be stuck
     this.changed();
   }
 
-  /** The round is over (or dealt over): whoever went while their cards were in it is off the list now. */
+  /**
+   * The one place where anyone gets up from their cards in a round not over: stood up, left, or sent away (`out`, which
+   * also says what becomes of them when it is). A card in their hand goes home first; and whoever remains may now all
+   * be stuck, or all have voted to end it. Before the dealer's Start nothing has been played, so if enough remain the
+   * cards are simply dealt again without them (which is a round gone: `dealOut` puts them where `out` says).
+   */
+  private upFrom(p: Player, how: NonNullable<Player['out']>): void {
+    this.letGo(p);
+    p.out = how;
+    if (gone(p)) this.social.left(p, this.players);
+    if (this.unplayed && this.present >= MIN_PLAYERS) return this.dealOut();
+    this.fill(); // (whoever waits for a seat has the one this frees, once no round is being played)
+    this.settle();
+    this.changed();
+  }
+
+  /** The round is over (or dealt over): whoever got up from their cards in it is where their `out` said, now. */
   private sendOff(): void {
-    for (const p of this.players.filter((q) => q.out)) this.remove(p, p.out === 'kicked');
+    for (const p of this.players.filter((q) => q.out)) {
+      if (p.out === 'stood') {
+        delete p.out;
+        p.seat = null;
+        this.social.unseated(p, this.players);
+      } else this.remove(p, p.out === 'kicked');
+    }
   }
 
   /**
@@ -937,10 +979,6 @@ export class Room {
     }
   }
 
-  private connectedSeats(): number[] {
-    return this.table.filter((p) => p.conn).map((p) => p.seat);
-  }
-
   /** Records a change: bumps rev, marks who is owed a snapshot (default everyone) and schedules one flush. */
   private changed(only?: Player): void {
     this.rev++;
@@ -961,7 +999,7 @@ export class Room {
       phase: this.phase,
       round: this.round,
       me: you.id,
-      seat: you.seat,
+      seat: taking(you) ? you.seat : null,
       players: [...this.table, ...this.players.filter((p) => p.queued !== null).sort((a, b) => a.queued! - b.queued!), ...this.players.filter((p) => !seated(p) && p.queued === null)].map((p) => ({
         id: p.id,
         seat: p.seat,

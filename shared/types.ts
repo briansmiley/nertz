@@ -193,7 +193,7 @@ export interface PlayerView {
   seat: number | null;
   name: string;
   connected: boolean;
-  /** Gone for good (they left, or were sent away) while their cards are in the round: those lie there until it is over. Never back: someone back by the same token is someone new. */
+  /** Up from their cards in the round being played: they stood up (or whoever deals stood them up), left, or were sent away. Their cards lie there until it is over, and they play no more of it nor have a say in its votes. Then whoever stood up is watching; whoever left or was sent away is gone, and back by the same token is someone new. */
   left?: true;
   /** Total across finished rounds. */
   score: number;
@@ -212,8 +212,8 @@ export interface PlayerView {
 
 /**
  * The seats at a table: how many it has (`of`: the host's to set, between rounds, from `MIN_PLAYERS` to `MAX_PLAYERS`)
- * and how many of them are taken. Taken is held by someone at the table, but not by anyone gone whose cards are still in
- * the round (they keep only those). Not a house rule: what it may be set to, and who sits down when it changes, depend
+ * and how many of them are taken. Taken is held by someone at the table, but not by anyone up from their cards in the
+ * round (they keep it only for those). Not a house rule: what it may be set to, and who sits down when it changes, depend
  * on who is at the table. See `freeSeats` and `fewestSeats`.
  */
 export interface Seats {
@@ -229,7 +229,7 @@ export interface RoomView {
   round: number;
   /** Who you are: your `PlayerView.id`. */
   me: number;
-  /** Your seat, or null if you have none (watching): the same as your line of `players` says. */
+  /** The seat whose cards are yours to play: null if you have none (watching), or are up from yours (`PlayerView.left`), when your line of `players` still has it. */
   seat: number | null;
   /** Those at the table by seat; then those waiting for a seat, first to be seated first; then those just watching. */
   players: PlayerView[];

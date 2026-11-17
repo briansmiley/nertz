@@ -723,6 +723,17 @@ describe('everyone stuck: a table where nothing can move ends the round', () => 
     expect(resolveStuck(r, [0, 1])).toBe(r);
   });
 
+  it('a hand nobody plays any more (its player is up from it) does not keep the table from jamming', () => {
+    const s = table([
+      { work: blocked, stock: 'SJ S9 S7 C5 CJ CQ', nertz: 'C2', rest: 0 },
+      { work: blocked, stock: 'SQ SK', nertz: 'S2', rest: 0 },
+      { work: blocked, stock: 'SQ SK', nertz: 'H1', rest: 0 }, // an Ace on top: a move, for whoever played it
+    ]);
+    expect([0, 1, 2].map((seat) => canProgress(s, seat))).toEqual([false, false, true]);
+    expect(resolveStuck(both(s), [0, 1]).status.at).toBe('play'); // played, if away: the stocks are turned over
+    expect(resolveStuck(both(s), [0, 1], [0, 1]).status).toEqual({ at: 'over', end: { by: 'jam' } });
+  });
+
   it('a jammed round is over like any other: a card in hand goes back, and nobody is held to clearing a pile', () => {
     // Seat 1 finished the diamonds, and went away before carrying them to the tray; seat 0 has a card in hand.
     const s = table(
