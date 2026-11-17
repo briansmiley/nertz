@@ -1,5 +1,5 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz and the home page's list of /tables; websockets on /ws carry the game.
+// built client (when dist/ exists), /healthz, the home page's list of /tables and signing in (/api/auth: server/accounts.ts); websockets on /ws carry the game.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { TableSummary } from '../shared/types';
+import { accountsFromEnv, AUTH_PATH, openAccounts, type Accounts, type AccountsOptions } from './accounts';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
 import { Room, type Conn, type RoomOptions } from './room';
@@ -24,6 +25,8 @@ const RATE_PER_SECOND = 60; // sustained messages per connection; far above what
 // dozen or two candidates, on top of the reports of a card being carried. (At 3 seconds of 40 a table of six could
 // run a connection out of allowance in the middle of setting voice up: it was closed, and a pair was left deaf.)
 const RATE_BURST_SECONDS = 10;
+/** The most a request about signing in may carry. */
+const MAX_AUTH_BODY_BYTES = 16 << 10;
 /** Close code (policy violation) for a connection that floods the server. */
 export const CLOSE_FLOOD = 1008;
 
@@ -45,6 +48,8 @@ const MIME: Record<string, string> = {
 
 export interface NertzServer {
   port: number;
+  /** Whether anyone can sign in: accounts were asked for, and opened. */
+  accounts: boolean;
   rooms: Map<string, Room>;
   /** Deletes rooms that have had no connections for their TTL (shorter for a table that never dealt). Runs on a timer; exposed for tests. */
   sweep(now?: number): void;
@@ -64,9 +69,11 @@ export interface ServerOptions {
   deal?: RoomOptions['deal'];
   /** Where bug reports go (server/feedback.ts). Defaults to what the environment says. */
   feedback?: FeedbackOptions;
+  /** Where accounts are kept and how people sign in (server/accounts.ts): null for no accounts. Defaults to what the environment says. */
+  accounts?: AccountsOptions | null;
 }
 
-export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
+export async function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const dist = resolve(options.dist ?? fileURLToPath(new URL('../dist', import.meta.url)));
   const rate = options.rate ?? RATE_PER_SECOND;
   const flipMs = options.flipMs ?? STOCK_CARD_MS - FLIP_SLACK_MS;
@@ -106,6 +113,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   // ---------------------------------------------------------------- http
 
   const feedback = feedbackHandler(options.feedback);
+  const accounts = await withAccounts(options.accounts);
   const http = createServer((req, res) => {
     try {
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
@@ -129,6 +137,19 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
         feedback(req, res).catch(() => {
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
           res.end('{"ok":false}');
+        });
+      } else if (path.startsWith(`${AUTH_PATH}/`)) {
+        // With no accounts set up there is nothing here: the client takes the 404 to mean nobody can sign in.
+        if (!accounts) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
+        // What is said here is a few hundred bytes. Better Auth would read a body of any size: one too big, or of no stated size, is not read at all.
+        const stated = req.headers['content-length'];
+        const body = req.method !== 'GET' && req.method !== 'HEAD';
+        if (body && (stated === undefined ? req.headers['transfer-encoding'] !== undefined : !(Number(stated) <= MAX_AUTH_BODY_BYTES))) {
+          return void res.writeHead(413, { 'content-type': 'application/json', connection: 'close' }).end('null');
+        }
+        accounts.handle(req, res).catch(() => {
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('null');
         });
       } else {
         serveStatic(dist, path, req, res);
@@ -248,7 +269,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       for (const ws of wss.clients) ws.terminate();
       for (const room of rooms.values()) room.close();
       wss.close();
-      http.close(() => done());
+      http.close(() => (accounts?.close(), done()));
       http.closeAllConnections();
     });
 
@@ -256,9 +277,30 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
     http.once('error', failed);
     http.listen(options.port ?? 8787, () => {
       const address = http.address();
-      ready({ port: typeof address === 'object' && address ? address.port : 0, rooms, sweep, close });
+      ready({ port: typeof address === 'object' && address ? address.port : 0, accounts: !!accounts, rooms, sweep, close });
     });
   });
+}
+
+/**
+ * The accounts asked for (by `asked`, or with none said, by the environment), opened: null for none. The game does not
+ * need them, so whatever goes wrong here (a volume that cannot be written, a file that cannot be read) is said in the
+ * log and the game runs without.
+ */
+async function withAccounts(asked: AccountsOptions | null | undefined): Promise<Accounts | null> {
+  try {
+    const setUp = asked === undefined ? accountsFromEnv() : asked;
+    if (!setUp) return null;
+    if ('missing' in setUp) {
+      // Some of it set and some not: somebody meant to. (None of it: nobody did, and there is nothing to say.)
+      if (!['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'AUTH_SECRET'].every((name) => setUp.missing.includes(name))) console.warn(`accounts are off: ${setUp.missing.join(', ')} not set`);
+      return null;
+    }
+    return await openAccounts(setUp);
+  } catch (err) {
+    console.error('accounts are off: they could not be opened', err);
+    return null;
+  }
 }
 
 /** Serves the built client, falling back to index.html for app routes (anything without a file extension). */
@@ -296,6 +338,6 @@ function serveStatic(dist: string, path: string, req: IncomingMessage, res: Serv
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = await startServer({ port: Number(process.env.PORT) || 8787 });
   const hasClient = existsSync(fileURLToPath(new URL('../dist/index.html', import.meta.url)));
-  console.log(`nertz server on http://localhost:${server.port}${hasClient ? '' : ' (websocket only: no dist/ build)'}`);
+  console.log(`nertz server on http://localhost:${server.port}${hasClient ? '' : ' (websocket only: no dist/ build)'}${server.accounts ? ', with accounts' : ''}`);
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => void server.close().then(() => process.exit(0)));
 }

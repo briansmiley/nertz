@@ -4651,3 +4651,61 @@ svg.host text {
 .seats .name + svg.host {
   margin-left: -0.35rem;
 }
+
+/* Who is signed in, on the first page: a line of writing on the pad, not a button on it. */
+.who,
+.who button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 0.9rem/2rem var(--ui);
+  color: var(--ink-soft);
+}
+
+button.who,
+.who button {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+button.who:hover,
+.who button:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.who.in {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink);
+}
+
+.who img {
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+}
+
+.who.in {
+  min-width: 0;
+}
+
+.who.in span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.who.in button {
+  flex: none;
+}
+
+.whofoot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.4rem;
+}

@@ -261,6 +261,16 @@ export interface RoomView {
 }
 
 /**
+ * Someone signed in (server/accounts.ts): `id` is who they are, for good. Their name and picture are what Google had
+ * for them when they last signed in.
+ */
+export interface Account {
+  id: string;
+  name: string;
+  image: string | null;
+}
+
+/**
  * A table as the home page lists it (`GET /tables`), for anyone to see before coming to it: what it is doing and who is
  * at it by the names they go by. Nothing that says who anyone is beyond that (no `id`, never a token).
  */

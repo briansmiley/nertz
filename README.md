@@ -717,6 +717,39 @@ would still need one of the options above, and serving both from one origin is s
   captions under your nertz pile and, narrower still, over the pile's edge. Hide it to play.
 - **No spectators, no persistence.** Restarting the server ends every game and forgets the chat.
 
+## Accounts
+
+Nobody has to sign in: a guest plays exactly as before. Whoever wants to can sign in with Google (the line at the foot of
+the first page), and is then known across tables and visits. Nothing is kept about them yet beyond who they are.
+
+`server/accounts.ts` is the only file that knows how: it hands the work to [Better Auth](https://better-auth.com), which
+does the exchange with Google, keeps the session in a cookie, and keeps its tables (user, session, account,
+verification) in one SQLite file, `nertz.db` under `DATA_DIR`, brought up to date on boot. The file is opened with
+Node's own `node:sqlite`: nothing to compile. Everything of Better Auth's is served under `/api/auth`.
+
+Accounts are **off unless set up**. With any of the settings below missing, `/api/auth` answers 404, and the client
+takes that to mean there is no signing in and shows nothing about it. The same if the database cannot be opened: the
+game runs without accounts, and the log says why (`accounts are off: ...`). With them on, the boot line ends
+`, with accounts`.
+
+Of someone signed in, the name, email address and picture Google has are kept, taken afresh each time they sign in, and
+nothing else: not the address or browser they signed in from, and not Google's tokens for their account
+(`public/privacy.html` says so, to them).
+
+To turn them on (names as in `.env.example`; on Fly, `fly secrets set NAME=value -a <app>`, once per app):
+
+1. In the Google Cloud console make an OAuth client of type "Web application", with one authorised redirect URI per
+   place the app runs: `https://nertz.binarysmile.com/api/auth/callback/google`,
+   `https://nertz-staging.binarysmile.com/api/auth/callback/google`, `http://localhost:5173/api/auth/callback/google`.
+   Publish the consent screen, or only the test users listed on it can sign in.
+2. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from it, `AUTH_SECRET` to a long random string
+   (`openssl rand -base64 32`), and `PUBLIC_URL` to where that app is reached (`https://nertz.binarysmile.com`).
+   Signing in works only from that address: at the app's `fly.dev` one a guest can play, and nobody can sign in.
+3. On Fly the database lives on a volume mounted at `/data` (`fly.toml`, `[mounts]`). Each app needs one, made once,
+   **before** the first deploy that mounts it: `fly volumes create nertz_data --size 1 -r sjc -a <app>`.
+
+A volume belongs to one machine, which is what each app already runs. Fly keeps daily snapshots of it for five days.
+
 ## Feedback
 
 The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever the server was told, to both if both are set:
