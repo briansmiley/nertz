@@ -1,26 +1,32 @@
 // What a player's cards look like, and the seat they sit in, as the table keeps them: the back drawn by lot stays
 // drawn, a look half said changes nothing, and what goes by seat (chat, voice) follows a change of seat.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { backPool, DEAL_MS, isBack, parseClientMsg, PLAIN_LOOK, type Back, type Backs, type Look } from '../shared/protocol';
-import { inPlay, lehmer, rig, seeded } from '../shared/testkit';
+import { deal } from '../shared/engine';
+import { backPool, DEAL_MS, isBack, parseClientMsg, PLAIN_LOOK, START_MS, type Back, type Backs, type Look } from '../shared/protocol';
+import { lehmer, rig } from '../shared/testkit';
 import type { PlayerView } from '../shared/types';
 import type { Room } from './room';
 import { FakeConn, roomWith as seated, send } from './testkit';
 
-function roomWith(n: number): { room: Room; conns: FakeConn[]; kept: (i: number) => { seat: number }; shown: (seat: number) => PlayerView } {
-  const { room, conns } = seated(n, { rng: lehmer(7) });
-  const kept = (i: number) => (room as unknown as { players: { name: string; seat: number }[] }).players.find((p) => p.name === `P${i}`)!;
-  /** Whoever is in `seat`, as the table shows them to everyone. */
-  const shown = (seat: number): PlayerView => {
+/** `n` at a table whose every round is dealt with no nertz pile for seat 0 (see `callNertz`). */
+function roomWith(n: number): { room: Room; conns: FakeConn[]; everyone: () => PlayerView[]; kept: (i: number) => PlayerView; shown: (seat: number) => PlayerView } {
+  const { room, conns } = seated(n, { rng: lehmer(7), deal: (seats, rng) => rig(deal(seats, rng), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz: [0] }) });
+  /** Everyone in the room, as the table shows them to the first of them. */
+  const everyone = (): PlayerView[] => {
     room.flush();
-    return conns[0]!.room.players.find((p) => p.seat === seat)!;
+    return conns[0]!.room.players;
   };
-  return { room, conns, kept, shown };
+  /** P`i`, wherever they are. */
+  const kept = (i: number) => everyone().find((p) => p.name === `P${i}`)!;
+  /** Whoever is in `seat`. */
+  const shown = (seat: number) => everyone().find((p) => p.seat === seat)!;
+  return { room, conns, everyone, kept, shown };
 }
 
-/** Ends the round: seat 0 has no nertz pile left, and says so. */
+/** Ends the round, once its cards are down: the dealer's Start, the count, and seat 0 (dealt no nertz pile) calls. (Fake timers.) */
 function callNertz(room: Room, conn: FakeConn): void {
-  room.game = rig(inPlay(room.game!.players.map((p) => p.seat), seeded(7)), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz: [0] });
+  send(room, conn, { t: 'go' });
+  vi.advanceTimersByTime(START_MS);
   room.handle(conn, { t: 'intent', seq: 1000, intent: { k: 'nertz' } });
   expect(room.phase).toBe('results');
 }
@@ -164,10 +170,10 @@ describe('a change of seat', () => {
 
 describe("a bot's name", () => {
   it('is whatever whoever deals calls it: not for anyone else to say, and not a name already at the table', () => {
-    const { room, conns, kept } = roomWith(2);
+    const { room, conns, kept, shown } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
     send(room, a, { t: 'addBot', level: 'slow' });
-    const bot = () => (room as unknown as { players: { name: string; seat: number }[] }).players.find((p) => p.seat === 2)!;
+    const bot = () => shown(2);
     send(room, b, { t: 'botName', seat: 2, name: 'Mine' });
     expect(bot().name).toBe('Bot Ada');
     send(room, a, { t: 'botName', seat: 2, name: 'P1' }); // taken
@@ -204,14 +210,13 @@ describe('sitting down after the deal', () => {
 
 describe('coming back', () => {
   it('goes by the token alone: a stranger with the name of someone who is away is someone else, with no seat, score or cards of theirs', () => {
-    const { room, conns, kept } = roomWith(3);
+    const { room, conns, everyone, kept } = roomWith(3);
     const [a, , c] = conns as [FakeConn, FakeConn, FakeConn];
     send(room, a, { t: 'start' });
     room.disconnect(c);
-    const players = () => (room as unknown as { players: { name: string; seat: number | null; conn: unknown }[] }).players;
     expect(room.join(new FakeConn(), 'P2', 'tok-another-window', true)).toBeNull(); // the name of someone away, and a new token
-    expect(players()).toHaveLength(4);
-    expect(players().filter((p) => p.name === 'P2').map((p) => [p.seat, !!p.conn])).toEqual([[2, false], [3, true]]); // prettier-ignore
+    expect(everyone()).toHaveLength(4);
+    expect(everyone().filter((p) => p.name === 'P2').map((p) => [p.seat, p.connected])).toEqual([[2, false], [3, true]]); // prettier-ignore
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 3]); // (before Start: dealt in, to their own seat; the one away is not)
     expect(room.join(c, 'P2', 'tok-0002')).toBeNull(); // and the one who was away is back by their token: in their seat
     expect(kept(2).seat).toBe(2);
@@ -238,11 +243,11 @@ describe('coming back', () => {
 
 describe('sent away', () => {
   it('by whoever deals, a person is out of the table as if they had left: told so, and their connection closed', () => {
-    const { room, conns, kept } = roomWith(3);
+    const { room, conns, everyone, kept } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     const closed: FakeConn[] = [];
     for (const conn of conns) conn.close = () => void closed.push(conn);
-    const seats = () => (room as unknown as { players: { seat: number }[] }).players.map((p) => p.seat);
+    const seats = () => everyone().map((p) => p.seat);
     send(room, b, { t: 'kick', id: 2 }); // not theirs to say
     send(room, a, { t: 'kick', id: 0 }); // not oneself
     expect(seats()).toEqual([0, 1, 2]);

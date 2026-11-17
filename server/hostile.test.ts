@@ -6,13 +6,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { calledBy, checkInvariants, hasOpened, inGrace, isHidden, viewFor } from '../shared/engine';
+import { calledBy, checkInvariants, deal, hasOpened, inGrace, isHidden, viewFor } from '../shared/engine';
 import { CLOSE_OVER, DEAL_MS, DRAG_BURST, START_MS, type ServerMsg } from '../shared/protocol';
-import { felt, FUZZ_MS, MIXES, move, randomIntent, rig, seeded, slot, toPlay, untilReached, wire, withPile, workTop } from '../shared/testkit';
+import { felt, FUZZ_MS, nertzOf, run, MIXES, move, randomIntent, rig, seeded, slot, untilReached, wire, workTop } from '../shared/testkit';
 import type { AnyCard, GameState, PileRef } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
-import { Client, type StateMsg } from './testkit';
+import { Client, startOver, type StateMsg } from './testkit';
 
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -28,7 +28,7 @@ function leaks(g: GameState): string[] {
     const at = `${g.status.at} seat ${p.seat}`;
     p.stock.forEach((c) => faceUp(c) && out.push(`${at}: stock card with a face`));
     p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && out.push(`${at}: nertz card ${i} with a face`));
-    p.work.forEach((w, k) => w.forEach((c, i) => faceUp(c) && (i < p.down[k]! || g.status.at === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
+    p.work.forEach((w, k) => w.cards.forEach((c, i) => faceUp(c) && (i < w.down || g.status.at === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
     p.waste.forEach((c, i) => faceUp(c) && (i >= p.waste.length - p.dealt || shut) && out.push(`${at}: waste card ${i} with a face`));
   }
   return out;
@@ -46,22 +46,28 @@ describe('a hostile client over real sockets', () => {
     clients.push(c);
     return c;
   };
-  /** A table of `n` people with the cards dealt (stage `dealing`, the deal timer running). */
-  const dealt = async (n: number) => {
+  /** How the server deals the next table's round. */
+  let dealing: typeof deal = deal;
+  /** `n` people at a new table, its round dealt by `how` but not yet started. */
+  const seated = async (n: number, how: typeof deal) => {
     const players = [await open(null, 'P0')];
     for (let i = 1; i < n; i++) players.push(await open(players[0]!.code, `P${i}`));
-    players[0]!.send({ t: 'start' });
-    await vi.waitFor(() => players.forEach((p) => expect(p.last.room.phase).toBe('playing')));
+    dealing = how;
     return { room: server.rooms.get(players[0]!.code)!, players };
   };
-  /** The same with play open and the hands rigged; every client has seen the rigged table. */
+  /** A table of `n` people with the cards dealt (stage `dealing`, the deal timer running). */
+  const dealt = async (n: number) => {
+    const t = await seated(n, deal);
+    t.players[0]!.send({ t: 'start' });
+    await vi.waitFor(() => t.players.forEach((p) => expect(p.last.room.phase).toBe('playing')));
+    return t;
+  };
+  /** The same with the hands rigged, and dealt, started and counted in to play; every client has seen the table. */
   const playing = async (n: number, emptyNertzFor: number[] = [], also: (g: GameState) => GameState = (g) => g) => {
-    const t = await dealt(n);
-    t.room.game = also(rig(toPlay(t.room.game!), { work: ['S1', 'S2', 'H1', 'C13'], emptyNertz: emptyNertzFor }));
-    expect(checkInvariants(t.room.game)).toBeNull();
-    // Any change sends everyone the table as it now is.
-    await t.players[0]!.did({ k: 'stuck', on: false });
-    await vi.waitFor(() => t.players.forEach((p) => expect(p.game).toEqual(wire(viewFor(t.room.game!, p.seat)))));
+    const t = await seated(n, (seats, rng) => also(rig(deal(seats, rng), { work: ['S1', 'S2', 'H1', 'C13'], emptyNertz: emptyNertzFor })));
+    await startOver(t.room, t.players[0]!, t.players);
+    expect(checkInvariants(t.room.game!)).toBeNull();
+    await converged(t.room, t.players);
     return t;
   };
   const converged = (room: Room, players: Client[]) =>
@@ -72,7 +78,7 @@ describe('a hostile client over real sockets', () => {
   beforeAll(async () => {
     dist = mkdtempSync(join(tmpdir(), 'nertz-hostile-'));
     writeFileSync(join(dist, 'index.html'), '<!doctype html><title>nertz</title>');
-    server = await startServer({ port: 0, dist, flipMs: 0 }); // the real rate limit; the stock's pacing has its own test in room.test.ts
+    server = await startServer({ port: 0, dist, flipMs: 0, deal: (seats, rng) => dealing(seats, rng) }); // the real rate limit; the stock's pacing has its own test in room.test.ts
   });
   afterAll(async () => {
     await server.close();
@@ -98,19 +104,19 @@ describe('a hostile client over real sockets', () => {
     expect(piles(room.game!)).toHaveLength(1);
     const at = room.game!.slots.findIndex((s) => s?.cards.length === 1);
     const winner = room.game!.slots[at]!.cards[0].owner;
-    for (const p of players) expect(me(room.game!, p.seat).work[0]!.length).toBe(p.seat === winner ? 0 : 1); // the losers' Aces lie where they lay
+    for (const p of players) expect(me(room.game!, p.seat).work[0]!.cards.length).toBe(p.seat === winner ? 0 : 1); // the losers' Aces lie where they lay
     // Three twos of spades for that one pile.
     const twos = players.map((p) => p.intent(move(workTop(room.game!, p.seat, 1), slot(at))));
     await vi.waitFor(() => players.forEach((p, i) => expect(p.last.ack).toBe(twos[i])));
     expect(room.game!.slots[at]!.cards.map((c) => c.rank)).toEqual([1, 2]);
-    expect(players.filter((p) => me(room.game!, p.seat).work[1]!.length === 1)).toHaveLength(2);
+    expect(players.filter((p) => me(room.game!, p.seat).work[1]!.cards.length === 1)).toHaveLength(2);
     // Overlapping, not identical, patches of felt: still one. A patch well clear of it: both.
     const [a, b] = players as [Client, Client, Client];
     const hearts = [a, b].map((p) => workTop(room.game!, p.seat, 2));
     const s = [a.intent(move(hearts[0]!, felt(-0.5, -0.2))), b.intent(move(hearts[1]!, felt(-0.47, -0.18)))];
     await vi.waitFor(() => [a, b].forEach((p, i) => expect(p.last.ack).toBe(s[i])));
     expect(piles(room.game!)).toHaveLength(2);
-    const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.length === 1)!;
+    const loser = [a, b].find((p) => me(room.game!, p.seat).work[2]!.cards.length === 1)!;
     await loser.did(move(workTop(room.game!, loser.seat, 2), felt(1.2, -0.2)));
     expect(piles(room.game!)).toHaveLength(3);
     // Off the table, on another pile, or not an Ace: refused.
@@ -224,12 +230,12 @@ describe('a hostile client over real sockets', () => {
     const { room, players } = await dealt(3);
     const [a, b, c] = players as [Client, Client, Client];
     const truth = room.game!;
-    const faceUp = (p: Client) => p.game.players.flatMap((q) => [...q.nertz, ...q.work.flat(), ...q.stock, ...q.waste]).filter((x) => !isHidden(x)).length;
+    const faceUp = (p: Client) => p.game.players.flatMap((q) => [...q.nertz, ...q.work.flatMap((w) => w.cards), ...q.stock, ...q.waste]).filter((x) => !isHidden(x)).length;
     /** Everything a client can send, about every card of its own and somebody else's top cards. */
     const everything = async (p: Client) => {
       const mine = me(truth, p.seat);
       const other = me(truth, (p.seat + 1) % 3);
-      const ids = [mine.nertz.at(-1)!.id, ...mine.work.map((w) => w.at(-1)!.id), mine.stock.at(-1)!.id, other.work[0]!.at(-1)!.id];
+      const ids = [mine.nertz.at(-1)!.id, ...mine.work.map((w) => w.cards.at(-1)!.id), mine.stock.at(-1)!.id, other.work[0]!.cards.at(-1)!.id];
       for (const id of ids) {
         p.intent({ k: 'hold', cardId: id });
         p.drag(id);
@@ -281,33 +287,39 @@ describe('a hostile client over real sockets', () => {
   }, 20_000);
 
   it('clear-first cannot be got round: no intent of any kind, no report, no reconnect; and nobody else is held up', async () => {
-    const { room, players } = await playing(2, [0], (g) => withPile(g, 3, 0, 'C', 12)); // clubs to the Queen in slot 3: one King short of finished
+    // Seat 0's nertz pile is its clubs, the Queen down to the Ace: played out, they are one King short of finished.
+    const { room, players } = await playing(2, [0], (g) => nertzOf(g, 0, run('C', 12, 1)));
     const [a, b] = players as [Client, Client];
+    const top = () => me(room.game!, a.seat).nertz.at(-1)!.id;
+    await a.did(move(top(), felt(0, 0)));
+    const pile = room.game!.slots.findIndex((s) => s !== null);
+    while (me(room.game!, a.seat).nertz.length > 0) await a.did(move(top(), slot(pile)));
+    expect(room.game!.slots[pile]!.cards).toHaveLength(12);
     const king = workTop(room.game!, a.seat, 3);
     const ace = workTop(room.game!, a.seat, 0);
     // Pick another card up first, then put the King down and try everything else in the same breath.
     a.intent({ k: 'hold', cardId: ace });
-    a.intent(move(king, slot(3)));
+    a.intent(move(king, slot(pile)));
     const tries: unknown[] = [
       { k: 'flip' },
       { k: 'stuck', on: true },
       { k: 'nertz' }, // (its nertz pile is empty)
       { k: 'hold', cardId: ace },
       { k: 'release' },
-      move(ace, slot(0)),
+      move(ace, slot(pile + 1)),
       move(ace, felt(0.5, 0.3)),
       move(ace, { k: 'work', i: 1 }),
       move(workTop(room.game!, a.seat, 1), { k: 'work', i: 2 }),
-      { k: 'clear', slot: 0 },
-      { k: 'clear', slot: 4 },
+      { k: 'clear', slot: pile + 1 },
+      { k: 'clear', slot: pile + 4 },
     ];
     for (const t of tries) a.intent(t);
     a.drag(ace);
     await vi.waitFor(() => expect(a.last.ack).toBe(a.seq - 1));
     await a.synced();
     const waiting = room.game!;
-    expect(waiting.slots[3]!.cards).toHaveLength(13);
-    expect(me(waiting, a.seat)).toMatchObject({ holding: null, stuck: false, waste: [], work: [{ length: 1 }, { length: 1 }, { length: 1 }, []] });
+    expect(waiting.slots[pile]!.cards).toHaveLength(13);
+    expect(me(waiting, a.seat)).toMatchObject({ holding: null, stuck: false, waste: [], work: [{ cards: { length: 1 } }, { cards: { length: 1 } }, { cards: { length: 1 } }, { cards: [] }] });
     expect(calledBy(waiting)).toBeNull();
     expect(piles(waiting)).toHaveLength(1);
     expect(b.drags).toEqual([]);
@@ -317,12 +329,12 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => expect(a2.last.ack).toBe(a2.seq - 1));
     expect(room.game).toBe(waiting);
     // The other player is not held up, and cannot clear it for them.
-    await b.did({ k: 'clear', slot: 3 });
+    await b.did({ k: 'clear', slot: pile });
     expect(room.game).toBe(waiting);
     await b.did({ k: 'flip' });
     expect(me(room.game!, b.seat).waste).toHaveLength(1);
     // Into the tray, and everything works again.
-    await a2.did({ k: 'clear', slot: 3 });
+    await a2.did({ k: 'clear', slot: pile });
     expect(room.game!.tray).toHaveLength(1);
     await a2.did({ k: 'nertz' });
     await vi.waitFor(() => expect(b.last.room.phase).toBe('results'));
@@ -343,7 +355,7 @@ describe('a hostile client over real sockets', () => {
     await vi.waitFor(() => expect(a.closeCode).toBe(CLOSE_OVER));
     await vi.waitFor(() => expect(me(b.game, a.seat).holding).toBeNull());
     expect(me(a2.game, a.seat).holding).toBeNull();
-    expect(me(a2.game, a.seat).work[0]!.at(-1)!.id).toBe(ace);
+    expect(me(a2.game, a.seat).work[0]!.cards.at(-1)!.id).toBe(ace);
     a2.drag(ace); // not held by this socket's player any more
     await a2.synced();
     await b.synced();
@@ -391,10 +403,10 @@ describe('four bots and a swarm at one table', () => {
       taps.forEach((t, i) => expect(room.join(t, `S${i}`, `swarm-tok-${i}`, true)).toBeNull());
       for (let i = 0; i < 4; i++) room.handle(taps[0]!, { t: 'addBot', level: 'fast' });
       // Every intent, whoever sends it, goes through this one method: look at the table after each.
-      const inner = (room as unknown as { intent: (...args: unknown[]) => void }).intent.bind(room);
+      const inner = room['intent'].bind(room);
       const problems: string[] = [];
       const count = { intents: 0, accepted: 0 };
-      (room as unknown as { intent: (...args: unknown[]) => void }).intent = (...args) => {
+      room['intent'] = (...args) => {
         const before = room.game;
         inner(...args);
         count.intents++;

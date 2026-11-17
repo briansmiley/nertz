@@ -33,7 +33,7 @@ import {
   type Result,
   type Rng,
 } from './engine';
-import { allCards, card as c, cards as cs, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seeded, slot, table, untilReached, work, type Hand } from './testkit';
+import { allCards, card as c, cards as cs, downs, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seeded, slot, table, untilReached, work, type Hand } from './testkit';
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
@@ -75,7 +75,7 @@ describe('dealing', () => {
   const fresh = deepFreeze(dealRound([0, 1, 2], seeded(21)));
   const everyIntent = (s: GameState, seat: number): Intent[] => {
     const p = s.players.find((q) => q.seat === seat)!;
-    const tops = [p.nertz.at(-1)!, ...p.work.map((w) => w.at(-1)!)];
+    const tops = [p.nertz.at(-1)!, ...p.work.map((w) => w.cards.at(-1)!)];
     return [
       { k: 'flip' },
       { k: 'stuck', on: true },
@@ -112,8 +112,8 @@ describe('dealing', () => {
       expect(allCards(view).every(isHidden)).toBe(true);
       expect(JSON.stringify(view)).not.toMatch(/suit|rank/);
       expect(allCards(view).map((x) => [x.id, x.owner])).toEqual(allCards(fresh).map((x) => [x.id, x.owner]));
-      expect(view.players.map((p) => [p.nertz.length, p.work.map((w) => w.length), p.down, p.stock.length])).toEqual(
-        fresh.players.map((p) => [p.nertz.length, p.work.map((w) => w.length), p.down, p.stock.length]),
+      expect(view.players.map((p) => [p.nertz.length, p.work.map((w) => w.cards.length), downs(p), p.stock.length])).toEqual(
+        fresh.players.map((p) => [p.nertz.length, p.work.map((w) => w.cards.length), downs(p), p.stock.length]),
       );
       expect(checkInvariants(view)).toBeNull();
       // The reducer refuses on the view exactly as on the full state, so a client predicts nothing during the deal.
@@ -146,8 +146,8 @@ describe('dealing', () => {
         view.players.forEach((p, i) => {
           expect(p.nertz.every(isHidden)).toBe(true); // nobody sees a nertz card, not even their own
           expect(p.stock.every(isHidden)).toBe(true);
-          expect(p.work.map((w) => w.at(-1))).toEqual(waiting.players[i]!.work.map((w) => w.at(-1))); // the four tops, true faces
-          expect(p.work.flat().filter((x) => !isHidden(x))).toHaveLength(4);
+          expect(p.work.map((w) => w.cards.at(-1))).toEqual(waiting.players[i]!.work.map((w) => w.cards.at(-1))); // the four tops, true faces
+          expect(p.work.flatMap((w) => w.cards).filter((x) => !isHidden(x))).toHaveLength(4);
         });
         const nertzIds = waiting.players.flatMap((p) => p.nertz.map((x) => x.id));
         for (const id of nertzIds) expect(JSON.stringify(view)).not.toMatch(new RegExp(`"id":"${id}"[^}]*(suit|rank)`));
@@ -176,7 +176,7 @@ describe('dealing', () => {
       // The same ids, now with the face-up cards showing: the nertz top and the four work tops of every player.
       const view = viewFor(open, seat);
       expect(ids(allCards(view))).toEqual(ids(allCards(viewFor(fresh, seat))));
-      for (const p of view.players) expect([...p.nertz, ...p.work.flat(), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(5);
+      for (const p of view.players) expect([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(5);
       view.players.forEach((p, i) => expect(p.nertz.at(-1)).toEqual(open.players[i]!.nertz.at(-1)));
       ok(applyIntent(open, seat, { k: 'flip' }));
       ok(applyIntent(view, seat, hold(view.players.find((p) => p.seat === seat)!.nertz.at(-1)!.id)));
@@ -198,14 +198,14 @@ describe('deal', () => {
     expect(state.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     for (const p of state.players) {
       expect(p.nertz).toHaveLength(13);
-      expect(p.work.map((w) => w.length)).toEqual([1, 1, 2, 3]);
-      expect(p.down).toEqual([0, 0, 1, 2]);
-      expect(p.work.flat()).toHaveLength(7);
+      expect(p.work.map((w) => w.cards.length)).toEqual([1, 1, 2, 3]);
+      expect(downs(p)).toEqual([0, 0, 1, 2]);
+      expect(p.work.flatMap((w) => w.cards)).toHaveLength(7);
       expect(p.stock).toHaveLength(32);
       expect(p.waste).toHaveLength(0);
       expect(p.stuck).toBe(false);
       expect(p.holding).toBeNull();
-      const faces = new Set([...p.nertz, ...p.stock, ...p.work.flat()].map((x) => (isHidden(x) ? '?' : `${x.suit}${x.rank}`)));
+      const faces = new Set([...p.nertz, ...p.stock, ...p.work.flatMap((w) => w.cards)].map((x) => (isHidden(x) ? '?' : `${x.suit}${x.rank}`)));
       expect(faces.size).toBe(52);
     }
     expect(state.slots).toEqual(Array.from({ length: 12 }, () => null)); // 4 slots per player
@@ -247,7 +247,7 @@ describe('work pile moves', () => {
     const s = table([{ nertz: 'C9 H6', work: ['S7', 'D7', 'H7', []] }]);
     const next = ok(applyIntent(s, 0, move('0:H6', work(0))));
     expect(ids(next.players[0]!.nertz)).toEqual(['0:C9']);
-    expect(ids(next.players[0]!.work[0]!)).toEqual(['0:S7', '0:H6']);
+    expect(ids(next.players[0]!.work[0]!.cards)).toEqual(['0:S7', '0:H6']);
     rejected(applyIntent(s, 0, move('0:H6', work(1)))); // same colour
     rejected(applyIntent(s, 0, move('0:H6', work(2)))); // same suit
     ok(applyIntent(s, 0, move('0:H6', work(3)))); // empty pile takes anything
@@ -270,11 +270,11 @@ describe('work pile moves', () => {
   it('moves a run (any suffix) between work piles, keeping its order', () => {
     const s = table([{ work: ['S9 H8 C7 D6', 'C9', 'H7', []] }]);
     const a = ok(applyIntent(s, 0, move('0:H8', work(1), 3)));
-    expect(ids(a.players[0]!.work[0]!)).toEqual(['0:S9']);
-    expect(ids(a.players[0]!.work[1]!)).toEqual(['0:C9', '0:H8', '0:C7', '0:D6']);
+    expect(ids(a.players[0]!.work[0]!.cards)).toEqual(['0:S9']);
+    expect(ids(a.players[0]!.work[1]!.cards)).toEqual(['0:C9', '0:H8', '0:C7', '0:D6']);
     const b = ok(applyIntent(s, 0, move('0:C7', work(3), 2)));
-    expect(ids(b.players[0]!.work[0]!)).toEqual(['0:S9', '0:H8']);
-    expect(ids(b.players[0]!.work[3]!)).toEqual(['0:C7', '0:D6']);
+    expect(ids(b.players[0]!.work[0]!.cards)).toEqual(['0:S9', '0:H8']);
+    expect(ids(b.players[0]!.work[3]!.cards)).toEqual(['0:C7', '0:D6']);
     rejected(applyIntent(s, 0, move('0:C7', work(1), 2))); // 7 on 9
     rejected(applyIntent(s, 0, move('0:D6', work(2)))); // red on red
     rejected(applyIntent(s, 0, move('0:H8', work(0), 3))); // onto itself
@@ -295,7 +295,7 @@ describe('work pile moves', () => {
     expect(grab(s, 0, '1:H8')).toBeNull();
     // seat 1 playing to work(0) lands on seat 1's own pile, not seat 0's
     const next = ok(applyIntent(s, 1, move('1:H8', work(0))));
-    expect(ids(next.players[1]!.work[0]!)).toEqual(['1:C9', '1:H8']);
+    expect(ids(next.players[1]!.work[0]!.cards)).toEqual(['1:C9', '1:H8']);
     expect(next.players[0]).toBe(s.players[0]);
     rejected(applyIntent(s, 7, move('1:H8', work(0)))); // seat not in the round
   });
@@ -312,7 +312,7 @@ describe('work pile moves', () => {
 
 describe('face-down work cards', () => {
   // Pile 0: D4 and C9 face-down under a face-up H6. Pile 1: a face-up S7. Pile 2: K-Q face-up over one face-down card.
-  const s = table([{ nertz: 'D8', work: ['D4 C9 H6', 'S7', 'C2 SK HQ', []], down: [2, 0, 1, 0] }]);
+  const s = table([{ nertz: 'D8', work: [{ down: 'D4 C9', up: 'H6' }, 'S7', { down: 'C2', up: 'SK HQ' }, []] }]);
 
   it('cannot be picked up, held or played onto while face-down', () => {
     expect(grab(s, 0, '0:C9')).toBeNull();
@@ -325,58 +325,58 @@ describe('face-down work cards', () => {
 
   it('the next one turns face-up when the face-up cards leave, one at a time', () => {
     const a = ok(applyIntent(s, 0, move('0:H6', work(1))));
-    expect(ids(a.players[0]!.work[0]!)).toEqual(['0:D4', '0:C9']);
-    expect(a.players[0]!.down).toEqual([1, 0, 1, 0]); // C9 is now the face-up top
+    expect(ids(a.players[0]!.work[0]!.cards)).toEqual(['0:D4', '0:C9']);
+    expect(downs(a.players[0]!)).toEqual([1, 0, 1, 0]); // C9 is now the face-up top
     expect(grab(a, 0, '0:C9')).not.toBeNull();
     expect(grab(a, 0, '0:D4')).toBeNull();
     const b = ok(applyIntent(a, 0, move('0:D8', work(0)))); // and it can be built on
-    expect(ids(b.players[0]!.work[0]!)).toEqual(['0:D4', '0:C9', '0:D8']);
-    expect(b.players[0]!.down).toEqual([1, 0, 1, 0]); // adding cards turns nothing over
+    expect(ids(b.players[0]!.work[0]!.cards)).toEqual(['0:D4', '0:C9', '0:D8']);
+    expect(downs(b.players[0]!)).toEqual([1, 0, 1, 0]); // adding cards turns nothing over
     const d = run(b, [0, move('0:C9', work(3), 2)]);
-    expect(ids(d.players[0]!.work[0]!)).toEqual(['0:D4']);
-    expect(d.players[0]!.down).toEqual([0, 0, 1, 0]);
-    expect(viewFor(d, 0).players[0]!.work[0]).toEqual(cs('D4')); // face-up for everyone now
+    expect(ids(d.players[0]!.work[0]!.cards)).toEqual(['0:D4']);
+    expect(downs(d.players[0]!)).toEqual([0, 0, 1, 0]);
+    expect(viewFor(d, 0).players[0]!.work[0]!.cards).toEqual(cs('D4')); // face-up for everyone now
   });
 
   it('moving the whole face-up run to an empty pile is allowed when it uncovers a card, and works to the middle too', () => {
     const a = ok(applyIntent(s, 0, move('0:SK', work(3), 2)));
-    expect(ids(a.players[0]!.work[2]!)).toEqual(['0:C2']);
-    expect(a.players[0]!.down).toEqual([2, 0, 0, 0]);
-    const lone = table([{ work: ['C9 HA', [], [], []], down: [1, 0, 0, 0] }]);
+    expect(ids(a.players[0]!.work[2]!.cards)).toEqual(['0:C2']);
+    expect(downs(a.players[0]!)).toEqual([2, 0, 0, 0]);
+    const lone = table([{ work: [{ down: 'C9', up: 'HA' }, [], [], []] }]);
     const b = ok(applyIntent(lone, 0, move('0:HA', felt(0, 0))));
-    expect(b.players[0]!.down).toEqual([0, 0, 0, 0]);
-    expect(ids(b.players[0]!.work[0]!)).toEqual(['0:C9']);
+    expect(downs(b.players[0]!)).toEqual([0, 0, 0, 0]);
+    expect(ids(b.players[0]!.work[0]!.cards)).toEqual(['0:C9']);
   });
 
   it('a pile with nothing left accepts any card or run', () => {
     // Pile 0 is emptied completely: its face-up H6 leaves, the C9 under it turns over and leaves too.
-    const start = table([{ nertz: 'D8', work: ['C9 H6', 'SK HQ CJ', 'S7', 'D10'], down: [1, 0, 0, 0] }]);
+    const start = table([{ nertz: 'D8', work: [{ down: 'C9', up: 'H6' }, 'SK HQ CJ', 'S7', 'D10'] }]);
     const e = run(start, [0, move('0:H6', work(2))], [0, move('0:C9', work(3))]);
-    expect(e.players[0]!.work[0]).toEqual([]);
-    expect(e.players[0]!.down).toEqual([0, 0, 0, 0]);
-    expect(ids(ok(applyIntent(e, 0, move('0:D8', work(0)))).players[0]!.work[0]!)).toEqual(['0:D8']);
-    expect(ids(ok(applyIntent(e, 0, move('0:HQ', work(0), 2))).players[0]!.work[0]!)).toEqual(['0:HQ', '0:CJ']);
+    expect(e.players[0]!.work[0]!.cards).toEqual([]);
+    expect(downs(e.players[0]!)).toEqual([0, 0, 0, 0]);
+    expect(ids(ok(applyIntent(e, 0, move('0:D8', work(0)))).players[0]!.work[0]!.cards)).toEqual(['0:D8']);
+    expect(ids(ok(applyIntent(e, 0, move('0:HQ', work(0), 2))).players[0]!.work[0]!.cards)).toEqual(['0:HQ', '0:CJ']);
   });
 
   it('are redacted in every view, the owner included, with stable ids; the client sees the flip only in the next snapshot', () => {
     for (const seat of [0, 1]) {
       const v = viewFor(s, seat).players[0]!;
-      expect(v.work[0]).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }, c('H6')]);
-      expect(v.work[2]).toEqual([{ id: '0:C2', owner: 0, hidden: true }, c('SK'), c('HQ')]);
-      expect(v.down).toEqual(s.players[0]!.down);
+      expect(v.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }, c('H6')]);
+      expect(v.work[2]!.cards).toEqual([{ id: '0:C2', owner: 0, hidden: true }, c('SK'), c('HQ')]);
+      expect(downs(v)).toEqual(downs(s.players[0]!));
     }
     // Prediction on the view: the pile shrinks and `down` drops, but the new top's face is unknown...
     const predicted = ok(applyIntent(viewFor(s, 0), 0, move('0:H6', work(1))));
-    expect(predicted.players[0]!.down).toEqual([1, 0, 1, 0]);
-    expect(predicted.players[0]!.work[0]).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }]);
+    expect(downs(predicted.players[0]!)).toEqual([1, 0, 1, 0]);
+    expect(predicted.players[0]!.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }]);
     // ...so it can be neither moved, held nor built on until the server reveals it.
     rejected(applyIntent(predicted, 0, move('0:C9', work(3))));
     rejected(applyIntent(predicted, 0, hold('0:C9')));
     rejected(applyIntent(predicted, 0, move('0:D8', work(0))));
     // The server's next snapshot has the same ids with the face filled in.
     const truth = viewFor(ok(applyIntent(s, 0, move('0:H6', work(1)))), 0);
-    expect(truth.players[0]!.work[0]).toEqual([{ id: '0:D4', owner: 0, hidden: true }, c('C9')]);
-    expect(truth.players[0]!.down).toEqual(predicted.players[0]!.down);
+    expect(truth.players[0]!.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, c('C9')]);
+    expect(downs(truth.players[0]!)).toEqual(downs(predicted.players[0]!));
   });
 });
 
@@ -742,7 +742,7 @@ describe('everyone stuck: a table where nothing can move ends the round', () => 
   });
 
   it('counts a run moved to turn up a face-down card, and a card from a work pile to the middle', () => {
-    const turnUp = table([{ work: ['S9 H8', 'C9', 'S5', 'S3'], down: [1, 0, 0, 0], rest: 0 }]);
+    const turnUp = table([{ work: [{ down: 'S9', up: 'H8' }, 'C9', 'S5', 'S3'], rest: 0 }]);
     expect(canProgress(turnUp, 0)).toBe(true);
     const toMiddle = table([{ work: ['H5', 'C9', 'S5', 'S3'], rest: 0 }], { slots: [pile('H4')] });
     expect(canProgress(toMiddle, 0)).toBe(true);
@@ -974,7 +974,7 @@ describe('calling nertz and scoring', () => {
 
 describe('holding a card', () => {
   const s = table([
-    { nertz: 'C9 H6', waste: 'D2 S4', stock: 'C8 C7', work: ['D4 S7', 'SK HQ', [], []], down: [1, 0, 0, 0] },
+    { nertz: 'C9 H6', waste: 'D2 S4', stock: 'C8 C7', work: [{ down: 'D4', up: 'S7' }, 'SK HQ', [], []] },
     { nertz: 'H8' },
   ]);
 
@@ -1031,7 +1031,7 @@ describe('a refused drop', () => {
     expect(raced.players[0]!.holding).toBe('0:SA');
     const after = refused(raced, 0, drop);
     expect(after.players[0]!.holding).toBeNull();
-    expect(ids(after.players[0]!.work[0]!)).toEqual(['0:H2', '0:SA']); // the card is where it came from
+    expect(ids(after.players[0]!.work[0]!.cards)).toEqual(['0:H2', '0:SA']); // the card is where it came from
     // So a Nertz call right after finds nobody holding anything.
     expect(isOver(ok(applyIntent(after, 1, NERTZ)))).toBe(true);
     expect(isOver(ok(applyIntent(raced, 1, NERTZ)))).toBe(false); // what it was like without
@@ -1057,7 +1057,7 @@ describe('a refused drop', () => {
   it('a move names how many cards were lifted, and is refused if that is not what lies there', () => {
     rejected(applyIntent(s, 0, move('0:H2', work(1)))); // "one card", but the Ace is on it
     const both = ok(applyIntent(s, 0, move('0:H2', work(1), 2)));
-    expect(ids(both.players[0]!.work[1]!)).toEqual(['0:C3', '0:H2', '0:SA']);
+    expect(ids(both.players[0]!.work[1]!.cards)).toEqual(['0:C3', '0:H2', '0:SA']);
     rejected(applyIntent(s, 0, move('0:SA', felt(0, 0), 2))); // "two cards", but it is the top one
     rejected(applyIntent(s, 0, move('0:D9', work(2), 2))); // the nertz pile only ever gives one
     expect(canDrop(s, 0, '0:H2', work(1))).toBe(true); // canDrop and legalDrops speak of what lies there now
@@ -1162,7 +1162,7 @@ describe('held-card grace after a Nertz call', () => {
     expect(inGrace(called)).toEqual([1]);
     rejected(applyIntent(called, 1, move('1:C7', work(0)))); // part of the lifted run, but not the card that was grabbed
     const over = ok(applyIntent(called, 1, move('1:H8', work(1), 2)));
-    expect(ids(over.players[1]!.work[1]!)).toEqual(['1:C9', '1:H8', '1:C7']);
+    expect(ids(over.players[1]!.work[1]!.cards)).toEqual(['1:C9', '1:H8', '1:C7']);
     expect(isOver(over)).toBe(true);
   });
 
@@ -1199,7 +1199,7 @@ describe('held-card grace after a Nertz call', () => {
   });
 
   it('...but leaves in grace a player whose card still has another home', () => {
-    const roomy = { ...s, players: s.players.map((p) => (p.seat === 1 ? { ...p, work: [...p.work.slice(0, 3), []] } : p)) };
+    const roomy = { ...s, players: s.players.map((p) => (p.seat === 1 ? { ...p, work: [...p.work.slice(0, 3), { cards: [], down: 0 }] } : p)) };
     const called = run(roomy, [1, hold('1:H2')], [3, hold('3:H2')], [0, NERTZ]);
     const taken = ok(applyIntent(called, 3, move('3:H2', slot(0))));
     expect([inGrace(taken), holding(taken), isOver(taken)]).toEqual([[1], [null, '1:H2', null, null], false]);
@@ -1254,12 +1254,12 @@ describe('viewFor', () => {
       expect(p.stock.every(isHidden)).toBe(true);
       expect(p.nertz.slice(0, -1).every(isHidden)).toBe(true);
       expect(p.nertz.at(-1)).toEqual(real.nertz.at(-1));
-      for (const [i, w] of p.work.entries()) {
+      for (const [i, { cards: w }] of p.work.entries()) {
         expect(w.slice(0, -1).every(isHidden)).toBe(true);
-        expect(w.at(-1)).toEqual(real.work[i]!.at(-1));
-        expect(ids(w)).toEqual(ids(real.work[i]!));
+        expect(w.at(-1)).toEqual(real.work[i]!.cards.at(-1));
+        expect(ids(w)).toEqual(ids(real.work[i]!.cards));
       }
-      expect(p.down).toEqual(real.down);
+      expect(downs(p)).toEqual(downs(real));
       expect(p.waste).toEqual(real.waste);
       expect(ids(p.stock)).toEqual(ids(real.stock));
       expect(ids(p.nertz)).toEqual(ids(real.nertz));
@@ -1297,7 +1297,7 @@ describe('viewFor', () => {
     expect(ids(predicted.players[0]!.waste)).toEqual(ids(flipped.players[0]!.waste));
     // a hidden waste top cannot be moved anywhere, not even to an empty pile
     const hiddenTop = predicted.players[0]!.waste.at(-1)!.id;
-    const withGap = { ...predicted, players: predicted.players.map((p) => ({ ...p, work: [[], ...p.work.slice(1)] })) };
+    const withGap = { ...predicted, players: predicted.players.map((p) => ({ ...p, work: [{ cards: [], down: 0 }, ...p.work.slice(1)] })) };
     rejected(applyIntent(withGap, 0, move(hiddenTop, work(0))));
     rejected(applyIntent(withGap, 0, move(hiddenTop, slot(0))));
     rejected(applyIntent(withGap, 0, hold(hiddenTop)));
@@ -1327,11 +1327,11 @@ describe('checkInvariants', () => {
   it('catches a duplicated face under a fresh id', () =>
     expect(checkInvariants(withPlayer0((p) => ({ stock: [{ ...(p.nertz[0] as Card), id: 'x' }, ...p.stock.slice(1)] })))).toMatch(/duplicate face/));
   it('catches a broken work run', () => {
-    const bad = withPlayer0((p) => ({ work: [p.work.flat(), [], [], []], down: [0, 0, 0, 0] }));
+    const bad = withPlayer0((p) => ({ work: [{ cards: p.work.flatMap((w) => w.cards), down: 0 }, ...p.work.slice(1).map(() => ({ cards: [], down: 0 }))] }));
     expect(checkInvariants(bad)).toMatch(/alternating run/);
   });
   it('catches a work pile with no face-up top', () =>
-    expect(checkInvariants(withPlayer0((p) => ({ down: [1, ...p.down.slice(1)] })))).toMatch(/no face-up card/));
+    expect(checkInvariants(withPlayer0((p) => ({ work: [{ ...p.work[0]!, down: 1 }, ...p.work.slice(1)] })))).toMatch(/no face-up card/));
   it('catches a nertz call with cards left', () => expect(checkInvariants({ ...good, status: { at: 'over', end: { by: 'nertz', seat: 0 } } })).toMatch(/nertz called/));
   it('catches a wrong number of work piles', () => expect(checkInvariants(withPlayer0((p) => ({ work: p.work.slice(1) })))).toMatch(/work piles/));
   it("catches a card in someone else's pile", () => {
@@ -1341,8 +1341,8 @@ describe('checkInvariants', () => {
   });
   it('catches a malformed centre pile, a wrong slot count and an unfinished tray pile', () => {
     const p = good.players[0]!;
-    const card = p.work[0]![0] as Card;
-    const without = withPlayer0(() => ({ work: [[], ...p.work.slice(1)] }));
+    const card = p.work[0]!.cards[0] as Card;
+    const without = withPlayer0(() => ({ work: [{ cards: [], down: 0 }, ...p.work.slice(1)] }));
     const inSlot: GameState = { ...without, slots: [{ cards: [card], at: { x: 0, y: 0, r: 0 } }, ...good.slots.slice(1)] };
     if (card.rank === 1) expect(checkInvariants(inSlot)).toBeNull();
     else expect(checkInvariants(inSlot)).toMatch(/ace-up/);
@@ -1551,7 +1551,7 @@ describe('starting a pile on the felt', () => {
     rejected(r);
     const after = refused(held, 1, late);
     expect(after.players[1]!.holding).toBeNull(); // the drop is over: the card is back in its pile
-    expect(ids(after.players[1]!.work[1]!)).toEqual(['1:HA']);
+    expect(ids(after.players[1]!.work[1]!.cards)).toEqual(['1:HA']);
     expect(after.slots.filter((pile) => pile !== null)).toHaveLength(1);
     expect(after.slots.map((pile) => pile?.at)).toEqual(first.slots.map((pile) => pile?.at));
     // The same Ace a little further off is fine, whoever was first.
@@ -1676,7 +1676,7 @@ describe('random play keeps every invariant', () => {
               expect(state.slots[intent.slot]).toBeNull(); // the felt is anybody's again
             }
             if (inSlots(state).length > 0) reached('centre');
-            const downs = (g: GameState) => g.players.reduce((n, p) => n + p.down.reduce((a, b) => a + b, 0), 0);
+            const downs = (g: GameState) => g.players.reduce((n, p) => n + p.work.reduce((a, w) => a + w.down, 0), 0);
             if (downs(state) < downs(before)) reached('reveal');
           }
           // The server's timer, played by the dice: grace does not last for ever.
@@ -1741,7 +1741,7 @@ describe('greedy bots can finish a round', () => {
     /** Lifts the whole face-up part of a work pile that still has face-down cards under it. */
     const uncovers = (m: Intent): boolean => {
       const g = m.k === 'move' ? grab(s, seat, m.cardId)! : null;
-      return g?.from.k === 'work' && p.down[g.from.i]! > 0 && p.work[g.from.i]!.length - g.cards.length === p.down[g.from.i];
+      return g?.from.k === 'work' && p.work[g.from.i]!.down > 0 && p.work[g.from.i]!.cards.length - g.cards.length === p.work[g.from.i]!.down;
     };
     const best =
       legal.find((m) => to(m) !== 'work') ??
@@ -1802,9 +1802,9 @@ function expectPredictionMatches(predicted: GameState, truth: GameState) {
     expect(pred.seat).toBe(real.seat);
     expect(pred.stuck).toBe(real.stuck);
     expect(pred.holding).toBe(real.holding);
-    expect(pred.down).toEqual(real.down);
+    expect(downs(pred)).toEqual(downs(real));
     expect(pred.dealt).toBe(real.dealt);
-    const piles = (p: PlayerState) => [p.nertz, p.stock, p.waste, ...p.work];
+    const piles = (p: PlayerState) => [p.nertz, p.stock, p.waste, ...p.work.map((w) => w.cards)];
     const realPiles = piles(real);
     for (const [j, pile] of piles(pred).entries()) {
       expect(ids(pile)).toEqual(ids(realPiles[j]!));

@@ -5,10 +5,11 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode }
 import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
-import { hotkeyName, hotkeyPressed, usePrefs } from './prefs';
+import { SaidWord, Slash, useHotkey } from './hotkey';
+import { hotkeyName, usePrefs } from './prefs';
 import { kick, takeSeat } from './net';
 import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
-import { joinVoice, setMuted, useVoice } from './voice';
+import { joinVoice, toggleMuted, useVoice } from './voice';
 
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
@@ -137,27 +138,23 @@ export function Chat({ room }: { room: RoomView }) {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="9" y="3" width="6" height="11" rx="3" />
       <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
-      {off && <path d="M4.5 4.5l15 15" strokeWidth="2.4" />}
+      <Slash on={off} />
     </svg>
   );
   /** The key that mutes you, to name on the button: none on a phone. */
   const key = hotkeyName(prefs.voiceKey);
 
-  // The key that mutes your microphone, from anywhere but a text field, while you are in voice.
-  useEffect(() => {
-    if (!inVoice || !prefs.voiceKey) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!hotkeyPressed(e, prefs.voiceKey)) return;
-      setMuted(!voice.muted);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [inVoice, prefs.voiceKey, voice.muted]);
+  // The key that mutes your microphone, from anywhere but a text field, while you are in voice; it says so on the button.
+  const said = useHotkey(
+    prefs.voiceKey,
+    inVoice ? () => (toggleMuted() ? 'Muted' : 'Unmuted') : null,
+  );
 
   /** Mute yourself: in the bar, a microphone (yellow, with a line through it, while muted). */
   const mute = inVoice && (
-    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
+    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
       {mic(voice.muted)}
+      <SaidWord said={said} />
     </button>
   );
 
@@ -273,7 +270,7 @@ export function Chat({ room }: { room: RoomView }) {
                   {name(m.id)}
                   {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
                   {me ? (
-                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
+                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
                       {mic(off)}
                     </button>
                   ) : (

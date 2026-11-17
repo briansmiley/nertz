@@ -15,7 +15,7 @@ import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type De
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
-import { Finale, sortAt, sortMs, TIMING, washedAt } from './Finale';
+import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
@@ -23,6 +23,7 @@ import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { onDrag, onSnipe, pause, playable, post, send as play } from './net';
 import { canResume } from './Settings';
+import { Name } from './Host';
 import { calm, lookOf, usePrefs } from './prefs';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
 
@@ -325,7 +326,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [playingOut]);
   const stageWas = useRef(stage);
   useEffect(() => {
-    stageSound(stageWas.current, stage, sortAt(game.tray.length, clears)); // the riffle of the wash, the flourish of the score sheet
+    // The riffle of the wash and each player's cards arriving, on the canvas's schedule; the flourish of the score sheet.
+    stageSound(stageWas.current, stage, sortings(game, room.lastRound?.scores ?? [], clears));
     stageWas.current = stage;
   }, [stage]);
   /** Your work pile that is being looked at (fanned out in full): the mouse rested on it, or it was tapped. */
@@ -566,7 +568,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     for (const p of game.players) {
       const hand = p.seat === you ? L.me : L.opponents.find((o) => o.seat === p.seat);
       if (!hand) continue;
-      const work = p.work.flat();
+      const work = p.work.flatMap((w) => w.cards);
       const out = [...work, ...p.nertz];
       out.forEach((c, i) => {
         const wait = dealWait(i, dealMs, work.length);
@@ -840,10 +842,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <i className="chip" style={{ background: backColour(o.seat) }} />
-              <span className="name">{name(o.seat)}</span>
+              <Name host={p?.isHost} className="name">
+                {name(o.seat)}
+              </Name>
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
-              {p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
+              {p?.left ? <em className="flag">left</em> : p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />

@@ -1558,7 +1558,7 @@ button {
 .picker {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 48000; /* over the score sheet, the chat and your settings (it is opened from them), under the connection banner */
   display: grid;
   place-items: center;
   padding: 16px;
@@ -2023,6 +2023,17 @@ button {
   animation-delay: calc(var(--i) * 55ms);
 }
 
+/* A back of the fan, pressed, turns over about its own middle. */
+.spread .turn {
+  position: absolute;
+  inset: 0;
+}
+
+.spread .mini:has(.turn) {
+  perspective: 500px;
+  cursor: pointer;
+}
+
 @keyframes deal {
   from {
     rotate: 0deg;
@@ -2359,6 +2370,47 @@ label.check {
   font-weight: 500;
   font-size: 0.85rem;
   color: var(--ink-soft);
+}
+
+/* How many seats: the word, then a minus, the number and a plus, bare ink. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.stepper [role='group'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.stepper output {
+  min-width: 1.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper button {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stepper button:disabled {
+  color: var(--ink-soft);
+  opacity: 0.4;
+  cursor: default;
 }
 
 @media (max-width: 420px) {
@@ -4516,4 +4568,86 @@ button.code.copy small {
   color: var(--ink);
   background: var(--marigold);
   cursor: pointer;
+}
+
+/* A line through an icon for "off" draws itself on, and back off (hotkey.tsx). */
+.slash {
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.22s ease-out;
+}
+
+.slash.on {
+  stroke-dashoffset: 0;
+}
+
+/* What a hotkey just did, in a word inside its button: the button opens out to say it, and closes again. */
+.said {
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 0;
+  margin-left: -5px; /* (the button's gap, until there is a word) */
+  font: 600 13px/1 var(--ui);
+  animation: said 1.4s ease-in-out forwards;
+}
+
+@keyframes said {
+  0% {
+    max-width: 0;
+    margin-left: -5px;
+    opacity: 0;
+  }
+  14%,
+  78% {
+    max-width: 6em;
+    margin-left: 0;
+    opacity: 1;
+  }
+  100% {
+    max-width: 0;
+    margin-left: -5px;
+    opacity: 0;
+  }
+}
+
+.calm .slash {
+  transition: none;
+}
+
+.calm .said {
+  animation: none;
+  max-width: none;
+  margin-left: 0;
+}
+
+/* ------------------------------------------------------------ the host, by their name (Host.tsx) */
+
+svg.host {
+  flex: none;
+  width: 1.1em;
+  height: 1.17em;
+  margin-left: 0.35em;
+  vertical-align: -0.2em;
+  overflow: visible;
+}
+
+/* The dealer button: a white puck with a D, its edge showing under it. */
+svg.host circle {
+  fill: var(--card);
+  stroke: var(--ink);
+  stroke-width: 1.1;
+}
+
+svg.host .edge {
+  fill: #d9d2bf;
+}
+
+svg.host text {
+  font: 800 9.5px/1 var(--ui);
+  fill: var(--ink);
+}
+
+/* In the lobby the gap of the line already stands between name and mark. */
+.seats .name + svg.host {
+  margin-left: -0.35rem;
 }

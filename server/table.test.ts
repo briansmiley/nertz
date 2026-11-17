@@ -2,22 +2,25 @@
 // same patch of felt, the relay of card positions while a card is being
 // dragged, and bots playing whole rounds.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkInvariants, feltFree, viewFor } from '../shared/engine';
+import { checkInvariants, deal, feltFree, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, START_MS, type DragAt } from '../shared/protocol';
 import { cardSize, openPlace, TABLE, type Spot } from '../shared/table';
-import { felt, move, seeded } from '../shared/testkit';
+import { felt, move, seeded, upWork } from '../shared/testkit';
 import type { Card, CentrePile, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
 import type { Room } from './room';
 import { FakeConn, roomWith, startRound } from './testkit';
 
-/** Every player gets an Ace from their stock face-up on their waste, ready to play. Returns the Aces' ids by seat. */
-function acesUp(room: Room): string[] {
-  const game = room.game!;
+/** A deal (the room's `deal`) where every player has an Ace from their stock on top of their nertz pile, ready to play once it is open. */
+function acesUp(seats: readonly number[], rng: Rng): GameState {
+  const game = deal(seats, rng);
   const aces = game.players.map((p) => (p.stock as Card[]).find((c) => c.rank === 1)!);
-  room.game = { ...game, players: game.players.map((p, i) => ({ ...p, stock: p.stock.filter((c) => c !== aces[i]), waste: [aces[i]!] })) };
-  expect(checkInvariants(room.game)).toBeNull();
-  return aces.map((c) => c.id);
+  return { ...game, players: game.players.map((p, i) => ({ ...p, stock: [...p.stock.filter((c) => c !== aces[i]), p.nertz[0]!], nertz: [...p.nertz.slice(1), aces[i]!] })) };
+}
+/** The Aces' ids by seat, on a table dealt by `acesUp`. */
+function aces(room: Room): string[] {
+  expect(checkInvariants(room.game!)).toBeNull();
+  return room.game!.players.map((p) => p.nertz.at(-1)!.id);
 }
 
 const at = (id: string, w = 0.5): { t: 'drag' } & DragAt => ({ t: 'drag', id, w, h: [1, 2], p: [0.1, 0.6] });
@@ -35,10 +38,10 @@ describe('the middle', () => {
 
   it('two Aces for the same patch of felt are two messages: the first lands, the second goes home', () => {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: acesUp });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     startRound(room, a);
-    const [aceA, aceB, aceC] = acesUp(room) as [string, string, string];
+    const [aceA, aceB, aceC] = aces(room) as [string, string, string];
     room.handle(a, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceA } });
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceB } });
     // Both aimed at bare felt; B's message arrives first.
@@ -49,7 +52,7 @@ describe('the middle', () => {
     expect(game.slots[0]!.cards.map((x) => x.id)).toEqual([aceB]);
     expect(game.slots.filter((s) => s !== null)).toHaveLength(1);
     expect(game.slots[0]!.at).toMatchObject({ x: 0.2, y: 0.1 });
-    expect(game.players[0]!.waste.map((x) => x.id)).toEqual([aceA]); // back where it came from
+    expect(game.players[0]!.nertz.at(-1)!.id).toBe(aceA); // back where it came from
     expect(game.players[0]!.holding).toBeNull(); // and out of the hand
     expect(a.states.at(-1)!.ack).toBe(2); // the refusal is an answer too
     // Everyone is shown the one pile, at the same point of the table.
@@ -146,7 +149,13 @@ describe('card positions while dragging', () => {
 
   it('nothing is forwarded in the lobby, during the deal, before play opens, or once the round is over', () => {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(2);
+    // B is dealt no nertz pile: they can go out.
+    const { room, conns } = roomWith(2, {
+      deal: (seats, rng) => {
+        const game = deal(seats, rng);
+        return { ...game, players: game.players.map((p) => (p.seat === 1 ? { ...p, nertz: [], stock: [...p.nertz, ...p.stock] } : p)) };
+      },
+    });
     const [a, b] = conns as [FakeConn, FakeConn];
     room.handle(a, at('x'));
     room.handle(a, { t: 'start' });
@@ -164,9 +173,7 @@ describe('card positions while dragging', () => {
     expect(room.game!.status.at).toBe('countdown');
     expect(b.drags).toEqual([]);
     vi.advanceTimersByTime(START_MS);
-    // B goes out and calls; A was not holding anything, so the round is over at once.
-    const game = room.game!;
-    room.game = { ...game, players: game.players.map((p) => (p.seat === 1 ? { ...p, nertz: [], stock: [...p.nertz, ...p.stock] } : p)) };
+    // B calls; A was not holding anything, so the round is over at once.
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
     room.handle(a, at(card));
@@ -207,20 +214,20 @@ describe('card positions while dragging', () => {
 });
 
 describe('bots starting piles', () => {
-  /** A table of `n` where seat `seat` has an Ace on its waste. */
+  /** A table of `n` where seat `seat` has an Ace to play. */
   function withAce(n: number, seat: number, seed = 3): { view: GameState; ace: string } {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(n, { rng: seeded(seed) });
+    const { room, conns } = roomWith(n, { rng: seeded(seed), deal: acesUp });
     startRound(room, conns[0]!);
-    const ace = acesUp(room)[seat]!;
+    const ace = aces(room)[seat]!;
     const view = viewFor(room.game!, seat);
     room.close();
     return { view, ace };
   }
-  /** The same table with nothing for that seat to think about but its waste card: Kings everywhere else, which go nowhere. */
+  /** The same table with nothing for that seat to think about but the Ace, as its waste card: Kings everywhere else, which go nowhere. */
   const wasteOnly = (view: GameState, seat: number): GameState => {
     const king = (id: string): Card => ({ id, owner: seat, suit: 'S', rank: 13 });
-    return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: [[king('w0')], [king('w1')], [king('w2')], [king('w3')]], down: [0, 0, 0, 0] } : p)) };
+    return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: upWork([[king('w0')], [king('w1')], [king('w2')], [king('w3')]]), waste: [p.nertz.at(-1)!] } : p)) };
   };
 
   it('starts its piles anywhere there is room, mostly about the middle, differently each time, and the same way whichever seat it has', () => {
