@@ -244,7 +244,7 @@ export class Room {
       case 'leave':
         return this.drop(conn, true);
       case 'tried':
-        return this.sniped(player, msg.card, msg.slot, msg.seen);
+        return this.sniped(player, msg.card, msg.seen);
       case 'sniped':
         return;
       case 'sit': {
@@ -462,13 +462,17 @@ export class Room {
   }
 
   /**
-   * Was `victim` sniped, putting `card` on the pile at `slot`? The one judge of it (`snipedBy`), for a move refused on
-   * arrival and for a drop its window refused. Counted once for each card that did it, shown with the round's scores,
-   * and told to everyone in the room at once, and where the chat is.
+   * Was `victim` sniped with `card` in hand? The one judge of it (`snipedBy`), asked of the pile at `slot` for a move
+   * refused on arrival there, and of every pile for a card its window put back, wherever it was let go (`seen`: each
+   * pile's top when the card was taken up). Counted once for each card that did it, shown with the round's scores, and
+   * told to everyone in the room at once, and where the chat is.
    */
-  private sniped(victim: Player, card: string, slot: number, seen: string | null): void {
+  private sniped(victim: Player, card: string, seen: (string | null)[], at?: number): void {
     if (this.phase !== 'playing' || !this.state || !taking(victim)) return;
-    const snipe = snipedBy(this.state, victim.seat, card, slot, seen);
+    const { state } = this;
+    const judge = (i: number) => snipedBy(state, victim.seat, card, i, seen[i] ?? null);
+    const slot = at ?? state.slots.findIndex((_, i) => judge(i));
+    const snipe = slot < 0 ? null : judge(slot);
     if (!snipe || this.snipes.some((s) => s.of === victim.seat && s.card === snipe.card)) return;
     this.snipes.push({ by: snipe.by, of: victim.seat, card: snipe.card });
     const msg: ServerMsg = { t: 'snipe', by: snipe.by, of: victim.seat, slot };
@@ -511,7 +515,7 @@ export class Room {
       player.flipped = now;
     }
     const result = applyIntent(this.state, at(player), intent);
-    if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, intent.to.i, null); // (a race lost on the way here)
+    if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, [], intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.state, at(player), intent);
     if (next === this.state) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)

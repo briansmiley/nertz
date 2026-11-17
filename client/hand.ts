@@ -10,7 +10,7 @@ import { DRAG_HZ, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, type Pt } from '../shared/table';
 import type { GameState, Intent, PileRef } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
-import { dropTarget, inside, landingAt, toTable, type Layout, type Placed, type Rect } from './layout';
+import { dropTarget, landingAt, toTable, type Layout, type Placed, type Rect } from './layout';
 
 const DRAG_SLOP = 6; // px of travel before a press becomes a carry
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
@@ -106,8 +106,8 @@ export type Gesture =
 /** What is to be done about a gesture, in order. */
 export type Effect =
   | { k: 'send'; intent: Intent }
-  /** One card let go over the pile at `slot`, which would not take it: the server says whether that was a snipe. */
-  | { k: 'tried'; card: string; slot: number; seen: string | null }
+  /** One card put back, wherever it was let go: the server says whether it was sniped while in hand (`seen`: the piles' tops when it was taken up). */
+  | { k: 'tried'; card: string; seen: (string | null)[] }
   /** A group off the stock (or the waste turned back over). */
   | { k: 'deal' }
   /** Clear-first: something other than the waiting pile was tried. */
@@ -265,15 +265,13 @@ function take(d: Pressed, phase: 'carried' | 'tapped', p: Pt, scene: Scene): { h
 function put(d: InHand, at: Aim | null, scene: Scene): Effect[] {
   const { L } = scene;
   if (d.held.k === 'pile') return at && pileUnder(d, at, [{ hit: L.trayHit }], L) ? [send({ k: 'clear', slot: d.held.slot })] : [];
-  const back = send({ k: 'release' });
-  if (!at) return [back];
+  // One card put back, wherever: perhaps someone else's same card reached a pile in the middle while it was in hand.
+  const back: Effect[] = [...(d.ids.length === 1 ? [{ k: 'tried' as const, card: d.held.id, seen: d.tops.map((top) => top ?? null) }] : []), send({ k: 'release' })];
+  if (!at) return back;
   const felt = feltUnder(d, at.centre ?? at.pointer, scene);
   const to = pileUnder(d, at, pilesFor(d.held.id, scene), L)?.to ?? (felt?.ok ? felt.to : undefined);
   const move: Intent | undefined = to && { k: 'move', cardId: d.held.id, count: d.ids.length, to };
-  if (move && scene.plays(move)) return [send(move)];
-  // Let go over a pile in the middle that will not take it: perhaps someone else's same card got there first.
-  const over = d.ids.length === 1 ? L.slotHit.findIndex((r) => r && (inside(r, at.pointer.x, at.pointer.y) || (at.centre && inside(r, at.centre.x, at.centre.y)))) : -1;
-  return over >= 0 ? [{ k: 'tried', card: d.held.id, slot: over, seen: d.tops[over] ?? null }, back] : [back];
+  return move && scene.plays(move) ? [send(move)] : back;
 }
 
 /** What a press on `on` takes hold of: a finished pile of yours that is waiting, or a card of yours with whatever lies on it. */

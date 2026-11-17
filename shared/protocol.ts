@@ -194,9 +194,9 @@ export type ClientMsg =
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
-  /** I let my one card `card` go over the pile at `slot`, which would not take it; its top was `seen` when I took the card up (null: there was no pile). The server judges whether I was sniped (`snipedBy`). */
-  | { t: 'tried'; card: string; slot: number; seen: string | null }
-  /** From a window older than the server's own judgement of snipes. Ignored. */
+  /** I put my one card `card` back unplayed, wherever I let it go; `seen` is the top of every pile in the middle when I took the card up (null: there was no pile). The server judges whether I was sniped meanwhile (`snipedBy`). */
+  | { t: 'tried'; card: string; seen: (string | null)[] }
+  /** From a window older than the server's own judgement of snipes, or than a snipe counting wherever the card is let go. Ignored. */
   | { t: 'sniped' }
   /** Ask for a seat (on: it is yours at once if one is free and no round is being played, and otherwise when your turn in the queue comes), or give up your seat or your place in the queue and just watch (off): yourself, or as whoever deals the person `id`. Not out of a round you hold cards in. */
   | { t: 'sit'; on: boolean; id?: number }
@@ -450,7 +450,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
     case 'tried':
-      return isId(v.card) && isIndex(v.slot, MAX_SLOTS) && (v.seen === null || isId(v.seen)) ? { t: 'tried', card: v.card, slot: v.slot, seen: v.seen } : null;
+      if (isId(v.card) && isIndex(v.slot, MAX_SLOTS) && (v.seen === null || isId(v.seen))) return { t: 'sniped' }; // (an older window's: one pile only)
+      return isId(v.card) && Array.isArray(v.seen) && v.seen.length <= MAX_SLOTS && v.seen.every((c) => c === null || isId(c)) ? { t: 'tried', card: v.card, seen: v.seen } : null;
     case 'sniped':
       return { t: 'sniped' };
     case 'host':

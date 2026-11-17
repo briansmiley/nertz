@@ -22,6 +22,8 @@ const game = (): GameState => table([{ nertz: 'C3 DQ', work: ['S5', 'H4', 'DA', 
 const finished = (): GameState => table([{ nertz: 'C3 DQ', work: ['C5', 'H4', 'DA', 'CK'] }, {}], { slots: [pile('S13', 0)] });
 const phone = { W: 390, H: 844, touch: true };
 const release: Intent = { k: 'release' };
+/** What the server is asked when the one card `card` is put back: was it sniped while in hand? (With every pile's top as it was taken up.) */
+const tried = (card: string, of: GameState = game()) => ({ k: 'tried', card, seen: of.slots.map((p) => p?.cards.at(-1)?.id ?? null) });
 const by = (p: Pt, dx: number, dy: number): Pt => ({ x: p.x + dx, y: p.y + dy });
 const off: Pt = { x: 40, y: 300 }; // nothing lies there
 /** The middle of the card in hand, where it is drawn. */
@@ -123,21 +125,31 @@ describe('carrying a card (a mouse)', () => {
     expect(t.sent).toEqual([hold('0:DA'), release]);
   });
 
-  it('one card let go on a pile of the middle that will not take it: the server is asked whether that was a snipe, with the top the pile had when the card was taken up', () => {
+  it('one card let go anywhere it is not played, far from the pile that was taken meanwhile: the server is asked whether that was a snipe all the same', () => {
+    const t = seatAt(game());
+    t.down(t.at('0:S2'));
+    t.move(by(t.at('0:S2'), 0, -30));
+    t.plays(1, move('1:S2', slot(0))); // the same card, there first: seen from half way
+    t.up(off);
+    expect(t.did).toEqual([tried('0:S2')]);
+    expect(t.sent).toEqual([hold('0:S2'), release]);
+  });
+
+  it('one card let go on a pile of the middle that will not take it: the server is asked whether that was a snipe, with the top every pile had when the card was taken up', () => {
     const t = seatAt(game());
     t.down(t.at('0:S2'));
     t.move(by(t.at('0:S2'), 0, -30));
     t.plays(1, move('1:S2', slot(0))); // the same card, there first
     t.move(t.slot(0));
     t.up(t.slot(0));
-    expect(t.did).toEqual([{ k: 'tried', card: '0:S2', slot: 0, seen: '1:SA' }]);
+    expect(t.did).toEqual([tried('0:S2')]);
     expect(t.sent).toEqual([hold('0:S2'), release]);
   });
 
   it('the pile took the card as the table was last drawn, but the game has moved on and the window will not play it: the card is put back, and the server is asked about that too', () => {
     const t = seatAt(game(), { scene: { plays: (intent) => intent.k !== 'move' } });
     t.drag(t.at('0:S2'), t.slot(0));
-    expect(t.did).toEqual([{ k: 'tried', card: '0:S2', slot: 0, seen: '1:SA' }]);
+    expect(t.did).toEqual([tried('0:S2')]);
     expect(t.sent).toEqual([hold('0:S2'), release]);
   });
 
@@ -252,7 +264,7 @@ describe('tap to move', () => {
     t.tap(t.at('0:CK'));
     expect(t.sent).toEqual([hold('0:H4'), release, hold('0:H4'), release]);
     expect(t.hand).toBeNull();
-    expect(t.did).toEqual([]);
+    expect(t.did).toEqual([tried('0:H4'), tried('0:H4')]); // (no deal, no nag: only the word of a card put back)
   });
 
   it('Escape puts a tapped card back, and leaves a carried one alone', () => {
@@ -279,7 +291,7 @@ describe('tap to move', () => {
     const t = seatAt(game());
     t.tap(t.at('0:S5'));
     t.tap(t.slot(0));
-    expect(t.did).toEqual([{ k: 'tried', card: '0:S5', slot: 0, seen: '1:SA' }]);
+    expect(t.did).toEqual([tried('0:S5')]);
     expect(t.sent).toEqual([hold('0:S5'), release]);
   });
 

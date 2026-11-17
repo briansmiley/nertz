@@ -714,7 +714,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     grasp.current = next;
     for (const fx of effects) {
       if (fx.k === 'send') send(fx.intent);
-      else if (fx.k === 'tried') post({ t: 'tried', card: fx.card, slot: fx.slot, seen: fx.seen });
+      else if (fx.k === 'tried') post({ t: 'tried', card: fx.card, seen: fx.seen });
       else if (fx.k === 'deal') dealGroup();
       else if (fx.k === 'nag') nag();
       else {
