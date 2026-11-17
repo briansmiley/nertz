@@ -10,7 +10,7 @@
 import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, dragsOn, endVote, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, seatedPeople } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
@@ -23,7 +23,8 @@ import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } fro
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
-import { canResume, Eye } from './Settings';
+import { Eye } from './Settings';
+import { ballot, canResume, perform } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { calm, lookOf, usePrefs } from './prefs';
@@ -826,8 +827,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const active = game.players.filter((p) => say.has(p.seat));
   const waitingOn = active.filter((p) => !p.stuck).length;
   const oh = me ? me.nertz.h : 0;
-  /** The vote to end the round: offered at the table once the round drags on, or once anyone has voted (the same vote as in the settings). */
-  const ballot = endVote(game, seatedPeople(room.players));
+  /** The vote to end the round: stands at the table once the round drags on, or once anyone has voted (the same vote as in the table's menu). */
+  const vote = ballot(room);
   /** On its side: is there room for the stuck button between your hand and the edge of the screen? */
   const besideHand = me ? me.box.x + me.box.w + 10 + STUCK_W <= W - 8 - pad.r : false;
   /** Upright: the room between your nertz pile and your stock, for your name, and under it for saying you are stuck. */
@@ -991,16 +992,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
                   </>
                 )}
               </button>
-              {(dragsOn(game) || ballot.voted > 0) && (
+              {vote?.pressing && (
                 <button
                   type="button"
-                  className={`stuck${mine.ending ? ' on' : ''}`}
+                  className={`stuck${vote.mine ? ' on' : ''}`}
                   onClick={(e) => {
-                    send({ k: 'end', on: !mine.ending });
+                    perform('vote', room);
                     e.currentTarget.blur();
                   }}
                 >
-                  End round {ballot.voted > 0 && <small>{ballot.voted}/{ballot.voters}</small>}
+                  End round {vote.voted > 0 && <small>{vote.voted}/{vote.voters}</small>}
                 </button>
               )}
             </div>
