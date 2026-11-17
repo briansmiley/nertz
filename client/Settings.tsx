@@ -6,7 +6,7 @@
 //   in the chat bar (Chat.tsx) says so, and turns it back on.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
-// Also the small icon buttons the sheets share (`Pop`, `Robot`, `Eye`; the rest are in icons.tsx).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
@@ -67,14 +67,6 @@ export function Robot({ plain }: { plain?: boolean } = {}) {
 }
 
 /** An eye: standing up from the table to watch. */
-export function Eye() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
-      <circle cx="12" cy="12" r="2.8" />
-    </svg>
-  );
-}
 
 /**
  * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away.

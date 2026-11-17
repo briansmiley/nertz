@@ -197,6 +197,8 @@ export interface PlayerView {
   connected: boolean;
   /** Up from their cards in the round being played: they stood up (or whoever deals stood them up), left, or were sent away. Their cards lie there until it is over, and they play no more of it nor have a say in its votes. Then whoever stood up is watching; whoever left or was sent away is gone, and back by the same token is someone new. */
   left?: true;
+  /** Standing up from their cards in the round being played, for now: as good as away (no say in its votes) until they sit back down; watching from the next round if they have not by its end. */
+  standing?: true;
   /** Total across finished rounds. */
   score: number;
   /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */

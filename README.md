@@ -44,7 +44,7 @@ Controls:
 | Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
-| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Carry on**), **End round** (the vote, with its tally), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot) |
+| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Carry on**), **End round** (the vote, with its tally), **Stand up** (for now: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot) |
 | Press M (or the key you set under Hotkeys in the settings) | mute or unmute. While the sound is off a small amber speaker sits at the end of the chat bar, top left: press it to turn the sound back on |
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
@@ -202,7 +202,10 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   comes in to watch, and has a seat only by asking for one ("Take a seat"); whoever opens the table sits down at it. A
   seat asked for is given at once if one is free and no round is being played, and otherwise by the queue, first asked
   first, when the round is over or a seat comes free; whoever asked can think again and just watch, and anyone at the
-  table can stand up between rounds. (Until the dealer has said Start nothing has been played: whoever sits down or
+  table can stand up between rounds. In a round under way, **Stand up** in the menu stands you up for now: you are
+  shown as away, your cards lie as they are, and the votes (stuck, end round) go on without you; you sit back down by
+  pressing **Sit back down** (in the menu, or where "I'm stuck" was) or by playing a card, and if you have not by the
+  time the round is over you are watching from then on. (Until the dealer has said Start nothing has been played: whoever sits down or
   comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.

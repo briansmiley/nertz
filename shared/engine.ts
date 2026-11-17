@@ -537,8 +537,8 @@ export function endVote(state: GameState, people: Iterable<number>): { voters: n
 /** Does `p` play at the table, as a room view lists them: has a seat, and is not up from the cards at it (`PlayerView.left`)? */
 export const plays = (p: PlayerView): boolean => p.seat !== null && !p.left;
 
-/** Has `p` a say in the round's votes: plays, and is here (a bot too: see `seatedPeople`). */
-export const hasSay = (p: PlayerView): boolean => plays(p) && p.connected;
+/** Has `p` a say in the round's votes: plays, and is here and not standing (a bot too: see `seatedPeople`). */
+export const hasSay = (p: PlayerView): boolean => plays(p) && p.connected && !p.standing;
 
 /** The `people` of `endVote` as a room view lists them: those with a say who are not bots. */
 export const seatedPeople = (players: readonly PlayerView[]): number[] => players.flatMap((p) => (hasSay(p) && !p.bot ? [p.seat!] : []));

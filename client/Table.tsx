@@ -23,8 +23,8 @@ import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } fro
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
-import { Eye } from './Settings';
-import { ballot, canResume, perform } from './actions';
+import { Eye } from './icons';
+import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { calm, lookOf, usePrefs } from './prefs';
@@ -829,6 +829,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const oh = me ? me.nertz.h : 0;
   /** The vote to end the round: stands at the table once the round drags on, or once anyone has voted (the same vote as in the table's menu). */
   const vote = ballot(room);
+  /** You have stood up from your cards for now (actions.ts `standing`): as good as away, until you sit back down. */
+  const up = !!standing(room);
   /** On its side: is there room for the stuck button between your hand and the edge of the screen? */
   const besideHand = me ? me.box.x + me.box.w + 10 + STUCK_W <= W - 8 - pad.r : false;
   /** Upright: the room between your nertz pile and your stock, for your name, and under it for saying you are stuck. */
@@ -878,7 +880,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         return (
           <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
-              className={`tag${p?.connected === false || p?.left ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
+              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <i className="chip" style={{ background: backColour(o.seat) }} />
@@ -895,7 +897,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               )}
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
-              {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
+              {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false || p?.standing ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
@@ -974,25 +976,39 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
                       : { right: 8 + pad.r, bottom: 6 + pad.b }
               }
             >
-              <button
-                type="button"
-                className={`stuck${mine.stuck ? ' on' : ''}`}
-                onClick={(e) => {
-                  send({ k: 'stuck', on: !mine.stuck });
-                  e.currentTarget.blur(); // keep Space for dealing
-                }}
-              >
-                {mine.stuck ? (
-                  <>
-                    Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
-                  </>
-                ) : (
-                  <>
-                    I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
-                  </>
-                )}
-              </button>
-              {vote?.pressing && (
+              {/* Standing up for now (from the menu): the one thing to say here is that you are coming back. */}
+              {up ? (
+                <button
+                  type="button"
+                  className="stuck on"
+                  onClick={(e) => {
+                    perform('stand', room);
+                    e.currentTarget.blur();
+                  }}
+                >
+                  Sit back down
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`stuck${mine.stuck ? ' on' : ''}`}
+                  onClick={(e) => {
+                    send({ k: 'stuck', on: !mine.stuck });
+                    e.currentTarget.blur(); // keep Space for dealing
+                  }}
+                >
+                  {mine.stuck ? (
+                    <>
+                      Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
+                    </>
+                  ) : (
+                    <>
+                      I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
+                    </>
+                  )}
+                </button>
+              )}
+              {!up && vote?.pressing && (
                 <button
                   type="button"
                   className={`stuck${vote.mine ? ' on' : ''}`}

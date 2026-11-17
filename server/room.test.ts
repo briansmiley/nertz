@@ -533,19 +533,43 @@ describe('Room', () => {
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     const paused = () => (room.flush(), c.last.room.paused);
     startRound(room, a);
-    room.handle(a, { t: 'pause', on: true });
-    standUp(room, a);
-    expect(paused()).toEqual({ by: 0 });
-    room.handle(a, { t: 'pause', on: false }); // not theirs any more: they play none of it
-    expect(paused()).toEqual({ by: 0 });
+    room.handle(b, { t: 'pause', on: true });
+    standUp(room, a, 1); // whoever deals stands B up, for good
+    expect(paused()).toEqual({ by: 1 });
+    room.handle(b, { t: 'pause', on: false }); // not theirs any more: they play none of it
+    expect(paused()).toEqual({ by: 1 });
     room.handle(c, { t: 'pause', on: false });
     expect(paused()).toBeNull();
-    standUp(room, b);
-    expect(room.phase).toBe('playing'); // C plays on
-    standUp(room, c);
-    expect(room.phase).toBe('results'); // nobody does: scored as it lies
+    standUp(room, a, 2);
+    expect(room.phase).toBe('playing'); // A plays on
+    standUp(room, a); // and stands up too, for now: nobody plays it any more
+    expect(room.phase).toBe('results'); // scored as it lies
     expect(room.lastRound).toMatchObject({ end: { by: 'jam' } });
     expect(whereAll(room, a)).toEqual(['P0:w', 'P1:w', 'P2:w']);
+  });
+
+  it('someone may stand up from their cards for now: as good as away, back by saying so or by playing; watching once the round is over', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    const them = () => (room.flush(), a.last.room.players.find((p) => p.id === 2)!);
+    startRound(room, a);
+    standUp(room, c);
+    expect(them()).toMatchObject({ seat: 2, standing: true });
+    expect(them()).not.toHaveProperty('left');
+    expect(endVote(a.last.room.game!, seatedPeople(a.last.room.players))).toEqual({ voters: 2, voted: 0 }); // (as every window counts it)
+    sitDown(room, c);
+    expect(them()).not.toHaveProperty('standing');
+    standUp(room, c);
+    sendIntent(room, c, 0, { k: 'flip' }); // playing is sitting back down
+    expect(them()).not.toHaveProperty('standing');
+    // Standing, the other two end the round between them; C's cards are scored as they lie, and C watches from then on.
+    standUp(room, c);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    sendIntent(room, b, 0, { k: 'end', on: true });
+    expect(room.phase).toBe('results');
+    expect(room.lastRound!.scores.find((s) => s.seat === 2)).toMatchObject({ id: 2, name: 'P2' });
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
+    expect(them()).not.toHaveProperty('standing');
   });
 
   it('a host who stands up still hosts, unless they hand the table on: to a person at it, who has it for good', () => {

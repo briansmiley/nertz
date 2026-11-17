@@ -4,13 +4,13 @@
 import { useState } from 'react';
 import type { RoomView } from '../shared/types';
 import { perform, type ActionId, type TableAction } from './actions';
-import { Bug, Door, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Bug, Door, Eye, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu, or one of the slips it leads to. */
 export type Panel = 'menu' | 'settings' | 'feedback';
 
 /** Each action's icon, before its name. */
-const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, leave: Door };
+const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, stand: Eye, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {

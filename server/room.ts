@@ -58,6 +58,12 @@ interface Player {
    * waits: see `sit` and `gone`.)
    */
   out?: 'stood' | 'left' | 'kicked';
+  /**
+   * Standing up, for now, from their cards in the round being played: they said so themselves (`sit` off), and may take
+   * it back until the round is over (`sit` on, or any move of theirs). Meanwhile they are as good as away: their cards
+   * lie as they are and they have no say in its votes. When it is over (`sendOff`) they are watching.
+   */
+  standing?: true;
   score: number;
   conn: Conn | null;
   /** Highest intent seq processed from the current connection (-1 = none yet). */
@@ -252,6 +258,15 @@ export class Room {
         // (Not someone up from their cards: until the round is over they are neither playing nor watching. See `out`.)
         const who = msg.id === undefined ? player : this.players.find((p) => p.id === msg.id);
         if (!who || who.bot || who.out || (who !== player && player !== this.dealer)) return;
+        // Someone getting up from their own cards in a round under way stands, and may sit back down until it is over.
+        // (Before the dealer's Start, and whoever deals standing someone else up, is for good: `upFrom`, below.)
+        if (who === player && this.holds(who) && !this.unplayed) {
+          if (msg.on === !who.standing) return;
+          if (msg.on) delete who.standing;
+          else who.standing = true;
+          this.settle(); // (without their say, everyone else may now all be stuck, or all have voted)
+          return this.changed();
+        }
         if (msg.on) {
           if (seated(who) || who.queued !== null) return;
           who.queued = ++this.queue; // behind whoever is waiting already
@@ -509,6 +524,7 @@ export class Room {
     if (seq <= player.ack) return; // duplicate or out of order: already answered
     player.ack = seq;
     if (this.phase !== 'playing' || !this.state || (this.pausedBy && intent.k !== 'end')) return this.changed(player); // while paused, only the vote to end the round
+    delete player.standing; // playing is sitting back down
     if (intent.k === 'flip' && this.flipMs > 0 && !player.bot) {
       const now = Date.now();
       if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player); // too soon after their last card: refused
@@ -554,12 +570,14 @@ export class Room {
    */
   private settle(): void {
     if (this.phase !== 'playing' || !this.state) return;
-    // Who has a say in its votes: whoever plays it and is here (not anyone away, nor up from their cards). A bot goes
-    // along with ending it. And the table is jammed when no hand that is played (here or away) can get anywhere: cards
-    // lying where someone got up from them will never be moved. (With nobody left playing it at all, that is at once.)
+    // Who has a say in its votes: whoever plays it and is here (not anyone away, standing, or up from their cards). A
+    // bot goes along with ending it. And the table is jammed when no hand that is played (here or away) can get
+    // anywhere: cards lying where someone got up from them will never be moved, nor will a standing player's be unless
+    // they sit back down, which a jam no longer waits for. (With nobody left playing it at all, that is at once.)
     const playing = this.table.filter(taking);
-    const here = playing.filter((p) => p.conn);
-    this.state = resolveEndVote(resolveStuck(this.state, here.map((p) => p.seat), playing.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
+    const here = playing.filter((p) => p.conn && !p.standing);
+    const played = playing.filter((p) => !p.standing);
+    this.state = resolveEndVote(resolveStuck(this.state, here.map((p) => p.seat), played.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
     const { status } = this.state;
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
     if (status.at !== 'over') return;
@@ -602,7 +620,7 @@ export class Room {
       this.stopBots();
     } else {
       const by = this.pausedBy;
-      if (!by || (player !== by && player !== this.dealer && by.conn && !by.out)) return;
+      if (!by || (player !== by && player !== this.dealer && by.conn && !by.out && !by.standing)) return;
       this.pausedBy = null;
       this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p);
@@ -746,6 +764,7 @@ export class Room {
   private upFrom(p: Player, how: NonNullable<Player['out']>): void {
     this.letGo(p);
     p.out = how;
+    delete p.standing; // (for good, now)
     if (gone(p)) this.social.left(p, this.players);
     if (this.unplayed && this.present >= MIN_PLAYERS) return this.dealOut();
     this.fill(); // (whoever waits for a seat has the one this frees, once no round is being played)
@@ -761,6 +780,11 @@ export class Room {
         p.seat = null;
         this.social.unseated(p, this.players);
       } else this.remove(p, p.out === 'kicked');
+    }
+    for (const p of this.players.filter((q) => q.standing)) {
+      delete p.standing;
+      p.seat = null;
+      this.social.unseated(p, this.players);
     }
   }
 
@@ -1010,6 +1034,7 @@ export class Room {
         name: p.name,
         connected: p.conn !== null,
         ...(p.out ? { left: true as const } : {}),
+        ...(p.standing ? { standing: true as const } : {}),
         score: p.score,
         rounds: p.rounds ?? 0,
         isHost: p === dealer,

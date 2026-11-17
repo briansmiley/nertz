@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyIntent, deal, finishDeal, RESHUFFLES_BEFORE_VOTE, resolveEndVote, seatedPeople } from '../shared/engine';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 import type { GameState, PlayerView, RoomView } from '../shared/types';
-import { ballot, canPause, canRedeal, canResume, tableActions } from './actions';
+import { ballot, canPause, canRedeal, canResume, standing, tableActions } from './actions';
 
 const live = inPlay([0, 1, 2], lcg(7));
 const voting = (g: GameState, seat: number): GameState => {
@@ -15,9 +15,9 @@ const withPlayer = (room: RoomView, seat: number, patch: Partial<PlayerView>): R
 const ids = (room: RoomView) => tableActions(room).map((a) => a.id);
 
 describe("the table's actions", () => {
-  it('in a live round: pause, the vote and leaving for anyone dealt in; dealing again for whoever deals', () => {
-    expect(ids(roomOf(live, 1))).toEqual(['pause', 'vote', 'leave']);
-    expect(ids(roomOf(live, 0))).toEqual(['pause', 'vote', 'redeal', 'leave']);
+  it('in a live round: pause, the vote, standing up and leaving for anyone dealt in; restarting for whoever deals', () => {
+    expect(ids(roomOf(live, 1))).toEqual(['pause', 'vote', 'stand', 'leave']);
+    expect(ids(roomOf(live, 0))).toEqual(['pause', 'vote', 'redeal', 'stand', 'leave']);
   });
 
   it('what cannot be undone asks twice: dealing again, and leaving', () => {
@@ -41,9 +41,10 @@ describe("the table's actions", () => {
 
   it('paused: whoever paused, or whoever deals, carries on; the others wait, unless whoever paused is away', () => {
     const paused = (you: number) => roomOf(live, you, { paused: { by: 1 } });
-    expect(ids(paused(1))).toEqual(['resume', 'vote', 'leave']);
-    expect(ids(paused(0))).toEqual(['resume', 'vote', 'redeal', 'leave']);
-    expect(ids(paused(2))).toEqual(['vote', 'leave']);
+    expect(ids(paused(1))).toEqual(['resume', 'vote', 'stand', 'leave']);
+    expect(ids(paused(0))).toEqual(['resume', 'vote', 'redeal', 'stand', 'leave']);
+    expect(ids(paused(2))).toEqual(['vote', 'stand', 'leave']);
+    expect(canResume(withPlayer(paused(2), 1, { standing: true }))).toBe(true);
     expect(canResume(withPlayer(paused(2), 1, { connected: false }))).toBe(true);
     expect(canResume(roomOf(live, 1))).toBe(false);
   });
@@ -55,6 +56,22 @@ describe("the table's actions", () => {
     expect(tableActions(room)).toEqual([]);
     expect(canRedeal(room)).toBe(false);
     expect(canPause(room)).toBe(false);
+  });
+});
+
+describe('standing up from your cards for now', () => {
+  it('is open once the round is under way, to whoever plays it; standing, the line says you can sit back down', () => {
+    expect(standing(roomOf(finishDeal(deal([0, 1, 2], lcg(7))), 1))).toBeNull(); // before Start: leave, or wait
+    expect(standing(roomOf(live, 1))).toBe(false);
+    const up = withPlayer(roomOf(live, 1), 1, { standing: true });
+    expect(standing(up)).toBe(true);
+    expect(tableActions(up).find((a) => a.id === 'stand')).toEqual({ id: 'stand', label: 'Sit back down', on: true });
+  });
+
+  it('standing, you have no say in the votes: the others decide without you', () => {
+    const up = withPlayer(roomOf(voting(live, 0), 1), 1, { standing: true });
+    expect(ballot(up)).toBeNull();
+    expect(ballot(roomOf(voting(live, 0), 0, { players: up.players }))).toMatchObject({ voters: 2, voted: 1 });
   });
 });
 
