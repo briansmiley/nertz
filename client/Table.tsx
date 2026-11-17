@@ -308,19 +308,22 @@ const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.
  */
 function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  /** The × asks twice: mid-round, sending someone away cannot be taken back. */
+  const [sure, setSure] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
-  useDismiss(root, open, () => setOpen(false));
+  const shut = () => (setOpen(false), setSure(false));
+  useDismiss(root, open, shut);
   return (
     <span className="hosting" ref={root} onPointerDown={(e) => e.stopPropagation()}>
-      <button type="button" className="who" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button type="button" className="who" aria-expanded={open} onClick={() => (open ? shut() : setOpen(true))}>
         {children}
       </button>
       {open && (
         <>
-          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} title={`Stand ${who.name} up`} onClick={() => (takeSeat(false, who.id), setOpen(false))}>
+          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} title={`Stand ${who.name} up`} onClick={() => (takeSeat(false, who.id), shut())}>
             <Eye />
           </button>
-          <button type="button" className="unseat" aria-label={`Send ${who.name} away`} title={`Send ${who.name} away`} onClick={() => (kick(who.id), setOpen(false))}>
+          <button type="button" className={`unseat${sure ? ' sure' : ''}`} aria-label={`Send ${who.name} away${sure ? '?' : ''}`} title={`Send ${who.name} away${sure ? '?' : ''}`} onClick={() => (sure ? (kick(who.id), shut()) : setSure(true))}>
             ×
           </button>
         </>
@@ -886,7 +889,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               )}
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
-              {p?.left ? <em className="flag">left</em> : p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
+              {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />

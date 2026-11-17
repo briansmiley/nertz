@@ -339,9 +339,11 @@ describe('Room', () => {
     sitDown(room, c); // the cards are dealt, nothing is played: dealt again with them
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     expect(room.game!.status.at).toBe('dealing');
-    standUp(room, c); // up from cards that are dealt: they lie there for the round (the seat is held for them), and C watches once it is over
-    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2']);
-    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    standUp(room, c); // up from cards that are dealt but not played: dealt again without them, and C watches at once
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    expect(room.game!.status.at).toBe('dealing');
+    vi.advanceTimersByTime(DEAL_MS);
     opening(room, a);
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
@@ -524,6 +526,26 @@ describe('Room', () => {
     expect(room.phase).toBe('results');
     expect(room.lastRound!.scores.find((s) => s.id === 3)).toMatchObject({ gone: true });
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1']);
+  });
+
+  it('a round nobody plays any more is over; and one paused by someone who then got up from it is anyone\'s to carry on', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    const paused = () => (room.flush(), c.last.room.paused);
+    startRound(room, a);
+    room.handle(a, { t: 'pause', on: true });
+    standUp(room, a);
+    expect(paused()).toEqual({ by: 0 });
+    room.handle(a, { t: 'pause', on: false }); // not theirs any more: they play none of it
+    expect(paused()).toEqual({ by: 0 });
+    room.handle(c, { t: 'pause', on: false });
+    expect(paused()).toBeNull();
+    standUp(room, b);
+    expect(room.phase).toBe('playing'); // C plays on
+    standUp(room, c);
+    expect(room.phase).toBe('results'); // nobody does: scored as it lies
+    expect(room.lastRound).toMatchObject({ end: { by: 'jam' } });
+    expect(whereAll(room, a)).toEqual(['P0:w', 'P1:w', 'P2:w']);
   });
 
   it('a host who stands up still hosts, unless they hand the table on: to a person at it, who has it for good', () => {

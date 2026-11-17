@@ -89,7 +89,7 @@ function rechosen(was: Backs, to: Backs): Backs {
 
 type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
-/** Takes one of the table's seats: at it, and not gone (whoever is gone holds their seat only for their cards). */
+/** Takes one of the table's seats: at it, and not up from their cards (`out`: whoever is holds their seat only for those). */
 const taking = (p: Player): p is Seated => seated(p) && !p.out;
 /** Gone from the room, but for cards of theirs that lie there: they left, or were sent away (see `out`). */
 const gone = (p: Player): boolean => p.out === 'left' || p.out === 'kicked';
@@ -258,7 +258,7 @@ export class Room {
         } else {
           if (!seated(who) && who.queued === null) return;
           if (seated(who) && !this.room()) return; // (no room among those watching)
-          if (this.holds(who)) return this.upFrom(who, 'stood'); // up from cards in play: they lie there, and they watch once the round is over
+          if (this.holds(who)) return this.upFrom(who, 'stood'); // up from cards of the round: see there
           who.seat = who.queued = null;
           this.social.unseated(who, this.players);
         }
@@ -552,7 +552,7 @@ export class Room {
     if (this.phase !== 'playing' || !this.state) return;
     // Who has a say in its votes: whoever plays it and is here (not anyone away, nor up from their cards). A bot goes
     // along with ending it. And the table is jammed when no hand that is played (here or away) can get anywhere: cards
-    // lying where someone got up from them will never be moved.
+    // lying where someone got up from them will never be moved. (With nobody left playing it at all, that is at once.)
     const playing = this.table.filter(taking);
     const here = playing.filter((p) => p.conn);
     this.state = resolveEndVote(resolveStuck(this.state, here.map((p) => p.seat), playing.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
@@ -585,7 +585,8 @@ export class Room {
 
   /**
    * Anyone dealt into the round may pause it while it is being played (not once Nertz is called). Cards in hand go
-   * back, and the bots stop. The one who paused it carries on, or the dealer, or anyone once the one who paused is away.
+   * back, and the bots stop. The one who paused it carries on, or the dealer, or anyone once the one who paused is away
+   * or up from their cards.
    */
   private pause(player: Player, on: boolean): void {
     if (!this.state || !this.inRound(player)) return;
@@ -597,7 +598,7 @@ export class Room {
       this.stopBots();
     } else {
       const by = this.pausedBy;
-      if (!by || (player !== by && player !== this.dealer && by.conn)) return;
+      if (!by || (player !== by && player !== this.dealer && by.conn && !by.out)) return;
       this.pausedBy = null;
       this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p);
@@ -671,6 +672,12 @@ export class Room {
     return stage === 'countdown' || stage === 'play' || stage === 'grace';
   }
 
+  /** Are the cards on the table dealt, and none of them played: the deal, and the wait for the dealer's Start? */
+  private get unplayed(): boolean {
+    const stage = this.state?.status.at;
+    return this.phase === 'playing' && (stage === 'dealing' || stage === 'ready');
+  }
+
   /** Is there room for one more without a seat? If not, someone without one whose window is long gone gives up their place (never the host). */
   private room(): boolean {
     if (this.players.filter((p) => !seated(p)).length < MAX_WATCHERS) return true;
@@ -729,12 +736,14 @@ export class Room {
   /**
    * The one place where anyone gets up from their cards in a round not over: stood up, left, or sent away (`out`, which
    * also says what becomes of them when it is). A card in their hand goes home first; and whoever remains may now all
-   * be stuck, or all have voted to end it.
+   * be stuck, or all have voted to end it. Before the dealer's Start nothing has been played, so if enough remain the
+   * cards are simply dealt again without them (which is a round gone: `dealOut` puts them where `out` says).
    */
   private upFrom(p: Player, how: NonNullable<Player['out']>): void {
     this.letGo(p);
     p.out = how;
     if (gone(p)) this.social.left(p, this.players);
+    if (this.unplayed && this.present >= MIN_PLAYERS) return this.dealOut();
     this.fill(); // (whoever waits for a seat has the one this frees, once no round is being played)
     this.settle();
     this.changed();

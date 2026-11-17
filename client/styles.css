@@ -524,6 +524,7 @@ button {
   font: inherit;
   color: inherit;
   background: none;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -547,6 +548,11 @@ button {
 .tag .hosting .unseat:hover {
   opacity: 1;
   color: var(--marigold);
+}
+
+.tag .hosting .unseat.sure {
+  opacity: 1;
+  color: var(--red);
 }
 
 .count {

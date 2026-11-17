@@ -59,7 +59,9 @@ export function App() {
   const ahead = room.players.filter((p) => p.queued && p.connected).findIndex((p) => p.id === room.me);
   const spectating = !me
     ? null
-    : hasSeat(me)
+    : me.left
+      ? 'You are Spectating'
+      : hasSeat(me)
       ? room.phase === 'playing' && !room.game?.players.some((p) => p.seat === me.seat)
         ? nextRound
         : null
