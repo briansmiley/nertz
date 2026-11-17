@@ -1,14 +1,15 @@
 // Chat and voice, in the top-left corner of every screen of a table. Nothing here is a panel over the table: what is
 // said is written on the cloth under the buttons, and "Chat" only adds a line to type in above it. The headset joins
 // voice, and once in it opens a small slip (who is there, mute yourself, leave).
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { CHAT_MAX_LENGTH, type ChatLine } from '../shared/chat';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
-import { keyName, touchOnly, usePrefs } from './prefs';
+import { SaidWord, Slash, useHotkey } from './hotkey';
+import { hotkeyName, usePrefs } from './prefs';
 import { kick, takeSeat } from './net';
-import { PASSING_MS, say, setOpen, useSocial, type SocialState } from './social';
-import { joinVoice, leaveVoice, setMuted, useVoice } from './voice';
+import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
+import { joinVoice, toggleMuted, useVoice } from './voice';
 
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
@@ -16,17 +17,48 @@ const SHOWN = 8;
 /** The colour a name is written in: that of the seat its player has now. Someone watching (or gone) has no seat and no colour: the colour of the words. */
 type Colour = (who: number) => string | undefined;
 
-/** One line: a name in its colour and what was said; or the table's notice that someone beat someone to a pile. */
+/** Points as the score sheet writes them: with their sign, and a true minus. */
+export const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+
+/** One line: a name in its colour and what was said; or a notice from the table (a snipe, a round started or over, the table started over). */
 function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
-  return line.sniped ? (
-    <em className="notice">
-      <b style={{ color: colour(line.who) }}>{line.name}</b> sniped <b style={{ color: colour(line.sniped.who) }}>{line.sniped.name}</b>
-    </em>
-  ) : (
-    <>
-      <b style={{ color: colour(line.who) }}>{line.name}</b> {line.text}
-    </>
-  );
+  const named = (n: Named) => <b style={{ color: colour(n.who) }}>{n.name}</b>;
+  /** "A", "A and B", "A, B and C". */
+  const all = (them: readonly Named[]) =>
+    them.map((n, i) => (
+      <Fragment key={n.who}>
+        {i === 0 ? '' : i === them.length - 1 ? ' and ' : ', '}
+        {named(n)}
+      </Fragment>
+    ));
+  if (line.k === 'said') {
+    return (
+      <>
+        {named(line.by)} {line.text}
+      </>
+    );
+  }
+  let notice: ReactNode;
+  if (line.k === 'sniped') notice = <>{named(line.by)} sniped {named(line.of)}</>;
+  else if (line.k === 'started') notice = <>Round {line.round} started</>;
+  else if (line.k === 'reset') notice = <>{named(line.by)} started the table over</>;
+  else {
+    // Whoever scored most in the round wins it (as the table says at its end); whoever called Nertz is named too when that is someone else.
+    const { end, best } = line;
+    const caller = typeof end === 'string' ? null : end;
+    notice = (
+      <>
+        Round {line.round} over
+        {best.length > 0 && (
+          <>
+            : {all(best)} {best.length > 1 ? 'win' : 'wins'} ({signed(best[0]!.points)})
+          </>
+        )}
+        {caller ? !best.some((b) => b.who === caller.who) && <>, {named(caller)} called Nertz ({signed(caller.points)})</> : end === 'jam' ? ', the table jammed' : ', ended by agreement'}
+      </>
+    );
+  }
+  return <em className="notice">{notice}</em>;
 }
 
 /** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while, and never in the way of the pointer. */
@@ -57,10 +89,8 @@ export function Chat({ room }: { room: RoomView }) {
   const prefs = usePrefs();
   const voice = useVoice();
   const [draft, setDraft] = useState('');
-  /** The voice slip, open or not. (It and the line to type in are never open together.) */
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  /** The slip that says who is watching. */
-  const [eyeOpen, setEyeOpen] = useState(false);
+  const { open } = social;
+  const toggle = (what: Open) => setOpen(open === what ? null : what);
   const hosting = !!room.players.find((p) => p.id === room.me)?.isHost;
   const root = useRef<HTMLElement>(null);
   const name = (who: number) => room.players.find((p) => p.id === who)?.name ?? 'Someone';
@@ -74,29 +104,19 @@ export function Chat({ room }: { room: RoomView }) {
   /** Those without a seat (waiting for one, or just watching), and whether you are one: the host may keep them out of the chat, or of voice. */
   const watchers = room.players.filter((p) => p.seat === null);
   const watching = room.seat === null;
-  const mayText = social.text && (!watching || social.watchText !== false);
-  const mayVoice = social.voice && (!watching || social.watchVoice !== false);
-  const typing = social.open && mayText;
+  const mayText = social.text && (!watching || social.watchText);
+  const mayVoice = social.voice && (!watching || social.watchVoice);
+  const typing = open === 'chat' && mayText;
+  // A press anywhere else puts a slip away.
+  const slip = open === 'voice' || open === 'watchers';
   useEffect(() => {
-    if (!inVoice) setVoiceOpen(false);
-  }, [inVoice]);
-  // Stood up while in voice, at a table where those watching are kept out of it: out, and the microphone released.
-  useEffect(() => {
-    if (inVoice && !mayVoice) leaveVoice(false);
-  }, [inVoice, mayVoice]);
-  // (The last of those watching sat down: their slip has nothing to show, and must not keep the chat's lines hidden.)
-  useEffect(() => {
-    if (!watchers.length) setEyeOpen(false);
-  }, [watchers.length]);
-  // A press anywhere else puts the voice slip away.
-  useEffect(() => {
-    if (!voiceOpen && !eyeOpen) return;
+    if (!slip) return;
     const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) (setVoiceOpen(false), setEyeOpen(false));
+      if (!root.current?.contains(e.target as Node)) setOpen(null);
     };
     window.addEventListener('pointerdown', onDown, true);
     return () => window.removeEventListener('pointerdown', onDown, true);
-  }, [voiceOpen, eyeOpen]);
+  }, [slip]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -118,27 +138,23 @@ export function Chat({ room }: { room: RoomView }) {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="9" y="3" width="6" height="11" rx="3" />
       <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
-      {off && <path d="M4.5 4.5l15 15" strokeWidth="2.4" />}
+      <Slash on={off} />
     </svg>
   );
   /** The key that mutes you, to name on the button: none on a phone. */
-  const key = prefs.voiceKey && !touchOnly() ? keyName(prefs.voiceKey) : null;
+  const key = hotkeyName(prefs.voiceKey);
 
-  // The key that mutes your microphone, from anywhere but a text field, while you are in voice.
-  useEffect(() => {
-    if (!inVoice || !prefs.voiceKey) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== prefs.voiceKey || e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || (e.target as Element).closest?.('input,textarea,[data-keying]')) return;
-      setMuted(!voice.muted);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [inVoice, prefs.voiceKey, voice.muted]);
+  // The key that mutes your microphone, from anywhere but a text field, while you are in voice; it says so on the button.
+  const said = useHotkey(
+    prefs.voiceKey,
+    inVoice ? () => (toggleMuted() ? 'Muted' : 'Unmuted') : null,
+  );
 
   /** Mute yourself: in the bar, a microphone (yellow, with a line through it, while muted). */
   const mute = inVoice && (
-    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
+    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
       {mic(voice.muted)}
+      <SaidWord said={said} />
     </button>
   );
 
@@ -150,13 +166,13 @@ export function Chat({ room }: { room: RoomView }) {
       // Keys typed here are not game hotkeys (Space flips the stock), and a button pressed here must not keep the focus for the same reason.
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === 'Escape') (setOpen(false), setVoiceOpen(false), setEyeOpen(false));
+        if (e.key === 'Escape') setOpen(null);
       }}
       onClick={(e) => (e.target as HTMLElement).closest<HTMLElement>('button')?.blur()}
     >
       <div className="chat-bar">
         {mayText && (
-          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} aria-expanded={typing} onClick={() => (setOpen(!social.open), setVoiceOpen(false), setEyeOpen(false))}>
+          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} aria-expanded={typing} onClick={() => toggle('chat')}>
             Chat
             {!typing && social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
           </button>
@@ -179,11 +195,11 @@ export function Chat({ room }: { room: RoomView }) {
         {inVoice && (
           <button
             type="button"
-            className={`mic${voice.speaking.includes(room.me) && !voice.muted ? ' speaking' : ''}${voiceOpen ? ' open' : ''}`}
-            aria-expanded={voiceOpen}
+            className={`mic${voice.speaking.includes(room.me) && !voice.muted ? ' speaking' : ''}${open === 'voice' ? ' open' : ''}`}
+            aria-expanded={open === 'voice'}
             aria-label={`In voice: ${social.inVoice.length}. Who is there, mute yourself, leave`}
             title={`In voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}`}
-            onClick={() => (setVoiceOpen(!voiceOpen), setOpen(false), setEyeOpen(false))}
+            onClick={() => toggle('voice')}
           >
             {headset}
             {social.inVoice.length}
@@ -192,7 +208,7 @@ export function Chat({ room }: { room: RoomView }) {
         {mute}
         {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
         {watchers.length > 0 && (
-          <button type="button" className={`mic eye${eyeOpen ? ' open' : ''}`} aria-expanded={eyeOpen} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => (setEyeOpen(!eyeOpen), setVoiceOpen(false), setOpen(false))}>
+          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
               <circle cx="12" cy="12" r="2.8" />
@@ -203,7 +219,7 @@ export function Chat({ room }: { room: RoomView }) {
       </div>
 
       {/* Who is watching: a slip like the voice one. Whoever hosts can send one of them away. */}
-      {eyeOpen && watchers.length > 0 && (
+      {open === 'watchers' && (
         <section className="voice-slip" aria-label="Watching">
           <header>
             <h3>Watching</h3>
@@ -236,11 +252,11 @@ export function Chat({ room }: { room: RoomView }) {
         </section>
       )}
 
-      {voiceOpen && inVoice && (
+      {open === 'voice' && (
         <section className="voice-slip" aria-label="Voice">
           <header>
             <h3>Voice</h3>
-            <button type="button" onClick={() => leaveVoice()}>
+            <button type="button" onClick={() => outOfVoice()}>
               Leave
             </button>
           </header>
@@ -254,7 +270,7 @@ export function Chat({ room }: { room: RoomView }) {
                   {name(m.id)}
                   {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
                   {me ? (
-                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => setMuted(!voice.muted)}>
+                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
                       {mic(off)}
                     </button>
                   ) : (
@@ -274,7 +290,7 @@ export function Chat({ room }: { room: RoomView }) {
       )}
 
       {/* Under the buttons, on the cloth: the line to type in (once Chat is pressed), and what is being said. */}
-      {social.text && !voiceOpen && !eyeOpen && (
+      {social.text && !slip && (
         <div className="chat-under">
           {typing && (
             <form onSubmit={submit}>

@@ -1,11 +1,10 @@
 // The backs to choose among, in a sheet over whatever is on screen: the same piles as on the page of cards
 // (BackShelf), in one colour; over them, the choice of any back at all by lot, and of backs without their white
-// edge. Opened from a card: the one beside your name in a table's lobby (your backs at that table), the one beside a
-// bot's there (whoever deals: that bot's), or the card that stands for your usual backs (`YourBacks`: on the first
-// page and in your settings).
+// edge. Opened from a card: the one beside your name in a table's lobby, the one beside a bot's there (whoever deals:
+// that bot's), or the card that stands for your backs (`YourBacks`: on the first page and in your settings).
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { backNamed, CARD_BACKS, type Back } from '../shared/protocol';
+import { CARD_BACKS, type Back } from '../shared/protocol';
 import { BackShelf } from './BackShelf';
 import { backOf } from './cards/Face';
 import { FaceShelf } from './FaceShelf';
@@ -58,6 +57,12 @@ export function BackPicker({ title, colour, bare, back, random, onPick, onRandom
   );
 }
 
+/** The sheet for your own backs (and faces): what is picked is yours, at every table. */
+export function YourBackPicker({ colour, onClose }: { colour: string; onClose: () => void }) {
+  const prefs = usePrefs();
+  return <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), onClose())} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={onClose} />;
+}
+
 /** Your usual backs, as a card to press: a picture of what you have (a question mark, for a back by lot) and, unless only the card is wanted (`compact`), its name; pressed, the sheet of backs to choose another. */
 /** `locked`: not to be changed just now (a round is being played): the card is greyed and cannot be pressed, and a sheet that was open is put away. */
 export function YourBacks({ colour, compact, locked }: { colour: string; compact?: boolean; locked?: boolean }) {
@@ -70,7 +75,7 @@ export function YourBacks({ colour, compact, locked }: { colour: string; compact
     <>
       <button type="button" className={`mybacks${compact ? ' compact' : ''}`} disabled={locked} aria-label="Choose your card backs" title={locked ? 'You can change card styles between rounds' : 'Your card backs: change them'} onClick={() => setOpen(true)}>
         <span className="mini">
-          <span {...backOf(colour, prefs.random ? 'any' : backNamed(prefs.back, prefs.bare), true)} />
+          <span {...backOf(colour, prefs.random ? null : prefs.back, prefs.bare, true)} />
         </span>
         {!compact && (
           <span className="what">
@@ -79,7 +84,7 @@ export function YourBacks({ colour, compact, locked }: { colour: string; compact
           </span>
         )}
       </button>
-      {open && !locked && <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), setOpen(false))} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={() => setOpen(false)} />}
+      {open && !locked && <YourBackPicker colour={colour} onClose={() => setOpen(false)} />}
     </>
   );
 }

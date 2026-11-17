@@ -1,29 +1,20 @@
 // Table settings: house rules the host chooses between rounds. One flat object
-// of independent options, stored in the room, sent in every RoomView and read
-// when the next round is dealt. To add an option: a field here, its default, a
-// line in `parseSettings`, and a row in client/Settings.tsx (`TableRules`).
-import { TABLE_MODES, type TableMode } from './table';
+// of independent options, stored in the room and sent in every RoomView. To add
+// an option: a field here, its default, a line in `parseSettings`, and a row in
+// client/Settings.tsx (`TableRules`) if the host is to be offered it.
 
 export interface TableSettings {
   /**
-   * How a card is dealt off the stock. Either way it is one card per action
-   * (the same `flip` intent, enforced by the engine); this only chooses the
-   * gesture: 'drag' each card from the stock onto the waste, or 'click' the
-   * stock (or press Space) once per card.
+   * Whether a card can be moved without dragging it: a tap or a click takes it
+   * up, and the next one says where it goes. The same on every screen; off, a
+   * card has to be dragged by mouse and finger alike. Dragging always works. A
+   * card moved so is never seen travelling, but the server cannot tell it from
+   * a drag (the same `hold` and `move`), so this only chooses gestures.
    */
-  stockDeal: StockDeal;
-  /**
-   * The middle of the table: on a 'free' one a pile lies wherever its Ace is
-   * put down, as long as it is clear of every other pile; 'spots' gives every
-   * centre pile a marked place (an Ace goes on an empty one). The lobby's
-   * checkbox for 'spots' reads "Crystallized Nertz".
-   */
-  centre: TableMode;
+  tapToMove: boolean;
 }
 
-export type StockDeal = 'drag' | 'click';
-
-export const DEFAULT_SETTINGS: TableSettings = { stockDeal: 'click', centre: 'free' };
+export const DEFAULT_SETTINGS: TableSettings = { tapToMove: true };
 
 /**
  * How many face-down cards lie under the face-up one in each of the four work piles, by how many are dealt into the
@@ -41,14 +32,9 @@ export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const v = raw as Record<string, unknown>;
   const patch: Partial<TableSettings> = {};
-  if ('stockDeal' in v) {
-    if (v.stockDeal !== 'drag' && v.stockDeal !== 'click') return null;
-    patch.stockDeal = v.stockDeal;
-  }
-  if ('centre' in v) {
-    const centre = TABLE_MODES.find((m) => m === v.centre);
-    if (!centre) return null;
-    patch.centre = centre;
+  if ('tapToMove' in v) {
+    if (typeof v.tapToMove !== 'boolean') return null;
+    patch.tapToMove = v.tapToMove;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 }

@@ -9,13 +9,14 @@
 import { useSyncExternalStore } from 'react';
 import type { VoiceMember } from '../shared/chat';
 import { current, post } from './net';
+import { getPrefs, loudness, watchPrefs } from './prefs';
 
 /**
  * STUN only: enough when at least one side of a pair can be reached directly,
  * which covers most home networks. Two players who are both behind strict
  * (symmetric) NATs or firewalls, as on some company, campus and mobile
- * networks, will not hear each other without a relay. A TURN server goes
- * here: { urls: 'turn:host:3478', username, credential }.
+ * networks, will not hear each other without a relay: a TURN server is given
+ * to the game's server (its `ICE_SERVERS`, server/chat.ts), not put here.
  */
 export const ICE_SERVERS: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
 /** And whatever the game's server knows of besides (a TURN relay, if it was given one): it says so with the chat's state. */
@@ -24,8 +25,6 @@ export function setIce(servers: readonly RTCIceServer[] | undefined): void {
   extraIce = servers ? [...servers] : [];
 }
 
-/** One signalling message is sent in pieces this long, so that a frame stays under the server's 2 KB cap even when escaped. */
-const PIECE = 800;
 const SPEAKING_LEVEL = 0.02;
 const METER_MS = 120;
 
@@ -34,7 +33,7 @@ export interface VoiceState {
   status: 'off' | 'asking' | 'on';
   muted: boolean;
   error: string | null;
-  /** Seats making sound right now (this one included). */
+  /** Players (by id) making sound right now (this one included). */
   speaking: readonly number[];
   /** How the connection to each other player in voice (by id) stands: being set up, up, or not to be had (no path between the two networks). */
   links: Readonly<Record<number, Link>>;
@@ -61,8 +60,6 @@ let ctx: AudioContext | null = null;
 let meterTimer: ReturnType<typeof setInterval> | undefined;
 const peers = new Map<number, Peer>();
 const meters = new Map<number, { node: AnalyserNode; source: MediaStreamAudioSourceNode }>();
-/** Pieces of a signalling message received so far, per sender. */
-const partial = new Map<number, string>();
 /** Counts presses of Join, so an answer to an earlier microphone request is recognised as stale. */
 let asks = 0;
 
@@ -82,25 +79,30 @@ export async function joinVoice(): Promise<void> {
   if (state.status !== 'off') return;
   set({ status: 'asking', error: null });
   const ask = ++asks;
-  // Made inside the click, so the browser lets it (and the audio elements later) play.
-  const made = new AudioContext();
+  // Made inside the click, so the browser lets it (and the audio elements later) play. It only tells who is speaking: voice goes on without one.
+  let made: AudioContext | null = null;
+  try {
+    made = new AudioContext();
+  } catch {
+    // the browser has none to give
+  }
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   } catch {
-    void made.close();
+    void made?.close();
     if (ask === asks && status() === 'asking') set({ status: 'off', error: 'No microphone: check the browser permission.' });
     return;
   }
   if (ask !== asks || status() !== 'asking') {
-    // Left the table, or voice was switched off, while the browser was asking.
+    // Left the table while the browser was asking.
     for (const t of stream.getTracks()) t.stop();
-    void made.close();
+    void made?.close();
     return;
   }
   mic = stream;
   ctx = made;
-  void ctx.resume();
+  void ctx?.resume();
   for (const t of mic.getAudioTracks()) t.enabled = !state.muted;
   const id = myId();
   if (id !== undefined) meter(id, mic);
@@ -130,12 +132,23 @@ export function setMuted(muted: boolean): void {
   if (state.status === 'on') post({ t: 'voice', on: true, muted });
 }
 
+/** Mute yourself if you are not, unmute if you are, from the store as it is now (not as last rendered); answers whether you are now muted. */
+export function toggleMuted(): boolean {
+  setMuted(!state.muted);
+  return state.muted;
+}
+
 // ---------------------------------------------------------------- the mesh
+
+/** How loud the others' voices play: the voice chat's level (the game's mute is not for it). */
+const heard = (): number => loudness(getPrefs(), 'voice');
+watchPrefs(() => {
+  for (const { audio } of peers.values()) audio.volume = heard();
+});
 
 /** The websocket dropped: the connections are closed, the microphone is kept, and `sync` rejoins when we are back. */
 export function hangUp(): void {
   for (const id of [...peers.keys()]) closePeer(id);
-  partial.clear();
 }
 
 /** The server said who is in voice: connect to whoever is new, drop whoever has gone. */
@@ -143,7 +156,7 @@ export function sync(members: readonly VoiceMember[]): void {
   const me = myId();
   if (state.status !== 'on' || me === undefined) return;
   if (!members.some((m) => m.id === me)) {
-    // The server does not have us (this is a new socket after a reconnect): start over and say so.
+    // The server does not have us (a new socket after a reconnect, or our join is still on its way): say so. Were we kept out, it says that instead ({ t: 'outOfVoice' }).
     hangUp();
     post({ t: 'voice', on: true, muted: state.muted });
     return;
@@ -160,6 +173,7 @@ function open(id: number): Peer {
   const pc = new RTCPeerConnection({ iceServers: [...ICE_SERVERS, ...extraIce] });
   const audio = new Audio();
   audio.autoplay = true;
+  audio.volume = heard();
   const peer: Peer = { pc, audio, queued: [] };
   peers.set(id, peer);
   for (const t of mic?.getAudioTracks() ?? []) pc.addTrack(t, mic!);
@@ -207,19 +221,14 @@ async function offer(id: number, peer: Peer, iceRestart = false): Promise<void> 
 }
 
 function signal(to: number, what: Signal): void {
-  const text = JSON.stringify(what);
-  // '+' means more pieces follow, '.' ends the message. One socket keeps them in order.
-  for (let i = 0; i < text.length; i += PIECE) post({ t: 'signal', to, data: (i + PIECE < text.length ? '+' : '.') + text.slice(i, i + PIECE) });
+  post({ t: 'signal', to, data: JSON.stringify(what) });
 }
 
-/** A piece of signalling from id `from` (the server vouches for the id). */
+/** Signalling from id `from` (the server vouches for the id). */
 export async function onSignal(from: number, data: string): Promise<void> {
-  const text = (partial.get(from) ?? '') + data.slice(1);
-  if (data[0] === '+') return void partial.set(from, text.length > 64_000 ? '' : text);
-  partial.delete(from);
   if (state.status !== 'on') return;
   try {
-    const what = JSON.parse(text) as Partial<{ sdp: RTCSessionDescriptionInit; ice: RTCIceCandidateInit }>;
+    const what = JSON.parse(data) as Partial<{ sdp: RTCSessionDescriptionInit; ice: RTCIceCandidateInit }>;
     const peer = peers.get(from) ?? open(from);
     const { pc } = peer;
     if (what.sdp) {

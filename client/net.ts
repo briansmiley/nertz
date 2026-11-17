@@ -7,11 +7,11 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
-import { choiceAt, getPrefs, watchPrefs } from './prefs';
+import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import type { Back, ClientMsg, ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, isRoomCode, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
@@ -75,13 +75,15 @@ export interface NetState {
   error: string | null;
 }
 
-/** Server close code: this seat was taken over by a newer connection with the same token. */
-const CLOSE_REPLACED = 4000;
 const TOKEN_KEY = 'nertz.token';
+const SEAT_KEY = 'nertz.seat';
 
 let state: NetState = { status: 'idle', room: null, error: null };
 const listeners = new Set<() => void>();
-/** `room` is null until the server has told us the code of the table we asked it to open. */
+/**
+ * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
+ * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
+ */
 let session: { room: string | null; name: string } | null = null;
 let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
@@ -109,11 +111,12 @@ function token(): string {
   }
 }
 
-/** You beat someone to a pile (the server says so, to you alone): told to the table (client/Table.tsx). Returns the way to stop listening. */
-const sniperListeners = new Set<(of: number) => void>();
-export const onSniper = (fn: (of: number) => void): (() => void) => {
-  sniperListeners.add(fn);
-  return () => void sniperListeners.delete(fn);
+/** Somebody sniped somebody (the server says so, to everyone): told to the table (client/Table.tsx). Returns the way to stop listening. */
+type SnipeMsg = Extract<ServerMsg, { t: 'snipe' }>;
+const snipeListeners = new Set<(msg: SnipeMsg) => void>();
+export const onSnipe = (fn: (msg: SnipeMsg) => void): (() => void) => {
+  snipeListeners.add(fn);
+  return () => void snipeListeners.delete(fn);
 };
 
 /** Chat and voice messages go to whoever asked for them (client/social.ts); this store only knows the game. */
@@ -130,12 +133,11 @@ export function onDrag(fn: (msg: DragMsg) => void): () => void {
 
 // A change of deck in the settings is passed on to the table.
 let toldDeck: string | null = null;
-/** Tells the table my cards' faces and backs (the backs chosen for this table, if any were: `choiceAt`), if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
+/** Tells the table my cards' faces and backs, if it has not been told just that already. A back by lot is drawn by the table, once: at its first deal after the lot was chosen. */
 function tell(): void {
-  const { deck, night, bare } = getPrefs();
-  const { back, random } = choiceAt(state.room?.code ?? session?.room);
-  const now = `${deck} ${back} ${night} ${bare} ${random}`;
-  if (now !== toldDeck && post({ t: 'deck', deck, back, night, bare, lot: random })) toldDeck = now;
+  const look = lookOf(getPrefs());
+  const now = JSON.stringify(look);
+  if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
 
@@ -146,9 +148,43 @@ export function post(msg: ClientMsg): boolean {
   return true;
 }
 
+/** The table named in the address, if any: the link someone was sent, or the table this window is at. */
+export function roomInUrl(): string {
+  const code = (new URLSearchParams(location.search).get('room') ?? '').trim().toUpperCase();
+  return isRoomCode(code) ? code : '';
+}
+
+/**
+ * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
+ * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone.
+ */
+function keep(seat: { room: string; name: string } | null): void {
+  try {
+    if (seat) sessionStorage.setItem(SEAT_KEY, JSON.stringify(seat));
+    else sessionStorage.removeItem(SEAT_KEY);
+  } catch {
+    // storage unavailable: a reload just lands at home
+  }
+  if (typeof history !== 'undefined') history.replaceState(null, '', seat ? `/?room=${seat.room}` : '/');
+}
+
+/** On page load: if this window was at the table in the address, it sits back down. */
+export function resume(): void {
+  let seat: { room?: unknown; name?: unknown } | null;
+  try {
+    seat = JSON.parse(sessionStorage.getItem(SEAT_KEY) ?? 'null') as typeof seat;
+  } catch {
+    return; // storage unavailable (or not ours): home
+  }
+  const room = roomInUrl();
+  if (room && seat?.room === room && typeof seat.name === 'string') join(room, seat.name);
+}
+
+/** The one way out of a session: leaving, sent away, replaced, refused. */
 function stop(error: string | null): void {
   clearTimeout(retry);
   session = null;
+  keep(null);
   const old = socket;
   socket = null;
   old?.close();
@@ -176,6 +212,34 @@ async function renew(): Promise<void> {
 }
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void renew());
 
+const social = (msg: SocialServerMsg): void => {
+  for (const fn of socialListeners) fn(msg);
+};
+
+/** What each message from the server does, by its type: one that is in `ServerMsg` and not here does not compile. */
+const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => void } = {
+  state: (msg) => {
+    attempts = 0;
+    if (session && !state.room) {
+      session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
+      keep({ room: session.room, name: session.name });
+    }
+    sync = onSnapshot(sync, msg);
+    set({ status: 'online', room: predict(sync), error: null });
+  },
+  error: (msg) => set({ error: msg.message }),
+  snipe: (msg) => {
+    for (const fn of snipeListeners) fn(msg);
+  },
+  drag: (msg) => {
+    for (const fn of dragListeners) fn(msg);
+  },
+  chat: social,
+  social,
+  signal: social,
+  outOfVoice: social,
+};
+
 function connect(): void {
   if (!session) return;
   const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
@@ -196,30 +260,12 @@ function connect(): void {
     } catch {
       return;
     }
-    if (msg.t === 'state') {
-      attempts = 0;
-      if (session) session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
-      sync = onSnapshot(sync, msg);
-      set({ status: 'online', room: predict(sync), error: null });
-      tell(); // (a table just opened has its code only now, and a choice of backs made at a table goes by it)
-    } else if (msg.t === 'error') {
-      // Before the first snapshot an error means we were refused (no such table, table full); afterwards it is only a complaint.
-      if (sync.server) set({ error: msg.message });
-      else stop(msg.message);
-    } else if (msg.t === 'removed') {
-      stop('You were removed from the table by whoever deals.');
-    } else if (msg.t === 'sniper') {
-      for (const fn of sniperListeners) fn(msg.of);
-    } else if (msg.t === 'drag') {
-      for (const fn of dragListeners) fn(msg);
-    } else {
-      for (const fn of socialListeners) fn(msg);
-    }
+    if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
   };
   ws.onclose = (e) => {
     if (socket !== ws) return;
     socket = null;
-    if (e.code === CLOSE_REPLACED) return stop('This seat was opened in another tab.');
+    if (e.code === CLOSE_OVER) return stop(e.reason);
     // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
     sync = { ...sync, pending: [] };
     const room = sync.server ?? state.room;
@@ -229,17 +275,17 @@ function connect(): void {
 }
 
 function open(room: string | null, name: string): void {
-  stop(null);
+  if (session) stop(null);
   session = { room, name };
   attempts = 0;
-  set({ status: 'connecting' });
+  set({ status: 'connecting', error: null });
   connect();
 }
 
 /** Opens a new table. The server picks its code; it arrives as `room.code` in the first snapshot. */
 export const create = (name: string): void => open(null, name);
 
-/** Sits down at an existing table. A code nobody opened comes back as `error`. */
+/** Sits down at an existing table. A code nobody opened is refused: the server closes with CLOSE_OVER and the reason. */
 export const join = (room: string, name: string): void => open(room, name);
 
 export function leave(): void {
@@ -270,11 +316,15 @@ export const kick = (id: number): void => void post({ t: 'kick', id });
 /** Whoever deals: the table is the person `id`'s from now on. */
 export const passHost = (id: number): void => void post({ t: 'host', id });
 export const removeBot = (seat: number): void => void post({ t: 'removeBot', seat });
-/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
+/** Whoever deals, at any point of a round: the round dealt over, unscored, to everyone who is here now. */
 export const redeal = (): void => void post({ t: 'redeal' });
+/** Whoever deals, between rounds: everyone back to nothing, and the table back in its lobby. */
 export const resetTable = (): void => void post({ t: 'reset' });
 /** Whoever deals: the back a bot plays with. */
-export const botBack = (seat: number, to: { back?: Back; lot?: string | null }): void => void post({ t: 'botBack', seat, ...to });
+export const botBack = (seat: number, backs: Backs): void => void post({ t: 'botBack', seat, backs });
+
+/** Host only, between rounds: one seat more or fewer. A step, not a number, so that taps quicker than the snapshots each count. */
+export const setSeats = (step: 1 | -1): void => void post({ t: 'seats', step });
 
 /** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
 export function setTableSettings(patch: Partial<TableSettings>): void {
@@ -282,16 +332,24 @@ export function setTableSettings(patch: Partial<TableSettings>): void {
 }
 
 /**
- * Plays an intent: applied locally at once, sent to the server, reconciled
- * when its ack comes back. Returns false (and sends nothing) if it is not
- * legal in the state we are looking at, or if this connection has not had its
- * first snapshot yet (just reconnected: what is on screen is the table as it
- * was before the drop, and there is nothing to predict over).
+ * Would `send` play this intent right now? Not if it is not legal in the state
+ * we are looking at, or if this connection has not had its first snapshot yet
+ * (just reconnected: what is on screen is the table as it was before the drop,
+ * and there is nothing to predict over).
  */
-export function send(intent: Intent): boolean {
+export function playable(intent: Intent): boolean {
   const room = state.room;
   if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
-  if (room.seat === null || !applyIntent(room.game, room.seat, intent).ok) return false;
+  return room.seat !== null && applyIntent(room.game, room.seat, intent).ok;
+}
+
+/**
+ * Plays an intent: applied locally at once, sent to the server, reconciled
+ * when its ack comes back. Returns false (and sends nothing) if it is not
+ * `playable`.
+ */
+export function send(intent: Intent): boolean {
+  if (!playable(intent)) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });
   set({ room: predict(sync) });

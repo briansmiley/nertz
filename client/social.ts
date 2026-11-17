@@ -1,17 +1,21 @@
-// Chat and voice state for the table we are at: the chat lines, the host's two
-// switches and who is in voice. Fed by the server's chat messages (never by
-// snapshots), and it is what drives voice.ts.
+// Chat and voice state for the table we are at: the chat lines, the host's four
+// switches and who is in voice, fed by the server's chat messages (never by
+// snapshots); and what is open under the chat bar. It is what drives voice.ts.
 import { useSyncExternalStore } from 'react';
 import type { ChatLine, SocialSettings, VoiceMember } from '../shared/chat';
+import { hasSeat } from '../shared/protocol';
 import { current, onSocial, post, subscribe as onNet } from './net';
 import { hangUp, leaveVoice, onSignal, setIce, sync } from './voice';
+
+/** What is open under the chat bar: the line to type in, the voice slip, the slip of those watching, or nothing. */
+export type Open = 'chat' | 'voice' | 'watchers' | null;
 
 export interface SocialState extends SocialSettings {
   lines: readonly ChatLine[];
   inVoice: readonly VoiceMember[];
-  /** Lines from other people that arrived while the panel was closed. */
+  /** Lines from other people that arrived while the chat was not open. */
   unread: number;
-  open: boolean;
+  open: Open;
   /** The lines just said (not the history a newcomer is sent), each with when it came by this window's clock: shown over the table for a while. */
   passing: readonly { line: ChatLine; at: number }[];
 }
@@ -20,7 +24,7 @@ export interface SocialState extends SocialSettings {
 export const PASSING_MS = 9000;
 const PASSING_MOST = 5;
 
-const fresh: SocialState = { lines: [], text: true, voice: true, watchText: true, watchVoice: true, inVoice: [], unread: 0, open: false, passing: [] };
+const fresh: SocialState = { lines: [], text: true, voice: true, watchText: true, watchVoice: true, inVoice: [], unread: 0, open: null, passing: [] };
 let state = fresh;
 const listeners = new Set<() => void>();
 
@@ -31,19 +35,16 @@ function set(next: Partial<SocialState>): void {
 
 onSocial((msg) => {
   if (msg.t === 'chat') {
-    const news = msg.history ? 0 : msg.lines.filter((l) => l.who !== current().room?.me && !l.sniped).length;
+    const news = msg.history ? 0 : msg.lines.filter((l) => l.k === 'said' && l.by.who !== current().room?.me).length;
     const now = Date.now();
-    // (With text chat switched off the table still sends its notices, for the sound and the flash: they pass, and are not kept to read.)
     const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...msg.lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);
-    set({ lines: msg.history ? msg.lines : state.text ? [...state.lines, ...msg.lines] : state.lines, unread: state.open ? 0 : state.unread + news, passing });
+    set({ lines: msg.history ? msg.lines : [...state.lines, ...msg.lines], unread: state.open === 'chat' ? 0 : state.unread + news, passing });
   } else if (msg.t === 'social') {
     setIce(msg.ice);
-    set({ text: msg.text, voice: msg.voice, watchText: msg.watchText !== false, watchVoice: msg.watchVoice !== false, inVoice: msg.inVoice });
-    // (Voice switched off for those watching, and we are one of them: out, like when it is switched off for all.)
-    const me = current().room;
-    const shut = msg.watchVoice === false && !!me && me.seat === null;
-    if (msg.voice && !shut) sync(msg.inVoice);
-    else leaveVoice(false); // the host switched voice off: the microphone is released at once
+    set({ text: msg.text, voice: msg.voice, watchText: msg.watchText, watchVoice: msg.watchVoice, inVoice: msg.inVoice });
+    sync(msg.inVoice);
+  } else if (msg.t === 'outOfVoice') {
+    outOfVoice(false); // the host's switches keep us out: the microphone is released at once
   } else {
     void onSignal(msg.from, msg.data);
   }
@@ -54,18 +55,28 @@ let wasOnline = false;
 onNet(() => {
   const net = current();
   if (!net.room) {
-    leaveVoice(false);
+    outOfVoice(false);
     if (state !== fresh) set(fresh);
-  } else if (wasOnline && net.status !== 'online') {
-    hangUp(); // the others are told we went; `sync` rejoins once the new socket is seated
-    set({ inVoice: [] });
+  } else {
+    if (wasOnline && net.status !== 'online') {
+      hangUp(); // the others are told we went; `sync` rejoins once the new socket is seated
+      set({ inVoice: [] });
+    }
+    // (The last of those watching sat down: their slip has nothing to show, and must not keep the chat's lines hidden.)
+    if (state.open === 'watchers' && net.room.players.every(hasSeat)) set({ open: null });
   }
   wasOnline = net.status === 'online';
 });
 
+/** Out of voice (see `leaveVoice`), and its slip put away with it. */
+export function outOfVoice(tell = true): void {
+  if (state.open === 'voice') set({ open: null });
+  leaveVoice(tell);
+}
+
 export const say = (text: string): boolean => post({ t: 'chat', text });
 export const setSocial = (change: Partial<SocialSettings>): void => void post({ t: 'social', ...change });
-export const setOpen = (open: boolean): void => set({ open, unread: 0 });
+export const setOpen = (open: Open): void => set({ open, unread: open === 'chat' ? 0 : state.unread });
 
 const subscribe = (l: () => void) => {
   listeners.add(l);

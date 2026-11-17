@@ -10,6 +10,7 @@
 //   that is the 'home' cue;
 // - nothing is compared across a reconnect, a reload or a change of table, so
 //   whatever happened meanwhile is not replayed.
+import { calledBy, hasOpened, inGrace } from '../shared/engine';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { GameState, RoomView } from '../shared/types';
 
@@ -24,12 +25,10 @@ export type Cue =
   | { k: 'work'; who: Who }
   /** One card off the stock, face-down onto the waste. */
   | { k: 'stock'; who: Who }
-  /** A group dealt onto the waste turned face-up. */
-  | { k: 'flip'; who: Who }
   /** The waste went back under the stock. */
   | { k: 'recycle'; who: Who }
-  /** A card landed in the middle; `rank` is 1 (Ace) to 12 (Queen). */
-  | { k: 'centre'; who: Who; rank: number }
+  /** A card other than a King landed in the middle. */
+  | { k: 'centre'; who: Who }
   /** A King completed a centre pile. */
   | { k: 'king'; who: Who }
   /** A finished pile went to the tray. */
@@ -37,8 +36,8 @@ export type Cue =
   /** A card went back where it came from: put down nowhere, refused by the server, or taken out of the hand. */
   | { k: 'home'; who: Who }
   /**
-   * Somebody got there first: a move of ours that we showed as made was refused by the server after all. (A card let
-   * go over a pile that someone else has just taken makes the same sound: client/sound.ts `beaten`.)
+   * Somebody got there first: a move of ours that we showed as made was refused by the server after all. (Being told
+   * we were sniped makes the same womp: client/sound.ts `beaten`.)
    */
   | { k: 'lost' }
   /** Nertz is called. `bot`: by a bot (which may say so aloud: client/sound.ts `botSays`). */
@@ -80,9 +79,9 @@ function places(game: GameState): Map<string, Place> {
     for (const c of p.nertz) at.set(c.id, { pile: 'nertz', seat: p.seat, i: 0 });
     for (const c of p.stock) at.set(c.id, { pile: 'stock', seat: p.seat, i: 0 });
     for (const c of p.waste) at.set(c.id, { pile: 'waste', seat: p.seat, i: 0 });
-    p.work.forEach((w, i) => w.forEach((c) => at.set(c.id, { pile: 'work', seat: p.seat, i })));
+    p.work.forEach((w, i) => w.cards.forEach((c) => at.set(c.id, { pile: 'work', seat: p.seat, i })));
   }
-  game.slots.forEach((s, i) => s.forEach((c) => at.set(c.id, { pile: 'slot', seat: -1, i })));
+  game.slots.forEach((s, i) => s?.cards.forEach((c) => at.set(c.id, { pile: 'slot', seat: -1, i })));
   game.tray.forEach((s, i) => s.forEach((c) => at.set(c.id, { pile: 'tray', seat: -1, i })));
   return at;
 }
@@ -95,7 +94,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   if (a.round !== b.round) {
     if (b.phase !== 'playing' || !b.game) return [];
     const hand = b.game.players.find((p) => p.seat === b.seat) ?? b.game.players[0];
-    return [{ k: 'deal', work: hand?.work.flat().length ?? 10 }];
+    return [{ k: 'deal', work: hand?.work.flatMap((w) => w.cards).length ?? 10 }];
   }
   if (!a.game || !b.game || a.phase !== 'playing') return []; // nothing moves on a table that was already scored
   const you = b.seat;
@@ -104,14 +103,12 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const add = (cue: Cue, key = '') => cues.set(`${cue.k}:${'who' in cue ? cue.who : ''}:${key}`, cue);
 
   // The opening: the count starts once (its ticks are scheduled from the duration the snapshot carried), play opens once.
-  if (b.game.stage === 'countdown' && a.game.stage !== 'countdown') add({ k: 'count', at: startBeats(b.startMs ?? START_MS) });
-  if (b.game.stage === 'play' && a.game.stage !== 'play') add({ k: 'open' });
+  if (b.game.status.at === 'countdown' && a.game.status.at !== 'countdown') add({ k: 'count', at: startBeats(b.timerMs ?? START_MS) });
+  if (hasOpened(b.game) && !hasOpened(a.game)) add({ k: 'open' });
 
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
-  /** Cards that came off each seat's stock onto its waste in this step. */
-  const dealt = new Map<number, number>();
   for (const [id, to] of after) {
     const from = before.get(id);
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
@@ -119,51 +116,34 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     if (to.pile === 'slot') {
       if (from.seat < 0) continue;
       const pile = b.game.slots[to.i]!;
-      const rank = pile.find((c) => c.id === id)!.rank;
-      if (rank === 13) add({ k: 'king', who: who(from.seat) }, id);
-      else add({ k: 'centre', who: who(from.seat), rank }, id);
+      if (pile.cards.find((c) => c.id === id)!.rank === 13) add({ k: 'king', who: who(from.seat) }, id);
+      else add({ k: 'centre', who: who(from.seat) }, id);
     } else if (to.pile === 'tray') {
       if (from.pile === 'slot') add({ k: 'clear', who: who(b.game.tray[to.i]!.at(-1)!.owner) }, `${to.i}`);
     } else if (from.pile === 'slot' || (from.pile === 'work' && to.pile !== 'work')) {
       // No move goes that way: a predicted one was undone. Ours: we lost a race for that place. (Not with an Ace:
       // someone started a pile where ours was going, and it has other places to go. It just comes home.)
-      const ace = from.pile === 'slot' && a.game.slots[from.i]?.find((c) => c.id === id)?.rank === 1;
+      const ace = from.pile === 'slot' && a.game.slots[from.i]?.cards.find((c) => c.id === id)?.rank === 1;
       add(who(to.seat) === 'me' && !ace ? { k: 'lost' } : { k: 'home', who: who(to.seat) });
     } else if (to.pile === 'work') {
       add({ k: 'work', who: who(to.seat) }, `${to.seat}.${to.i}`);
     } else if (to.pile === 'waste' && from.pile === 'stock') {
       add({ k: 'stock', who: who(to.seat) }, id); // once per card
-      dealt.set(to.seat, (dealt.get(to.seat) ?? 0) + 1);
     } else if (to.pile === 'stock' && from.pile === 'waste') {
       add({ k: 'recycle', who: who(to.seat) });
     }
   }
 
   for (const p of b.game.players) {
-    // Fewer cards lie face-down on the waste than were there plus those just dealt: a group was completed and turned up.
-    const n = dealt.get(p.seat);
-    if (n && p.dealt < (a.game.players.find((q) => q.seat === p.seat)?.dealt ?? 0) + n) add({ k: 'flip', who: who(p.seat) });
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;
     if (p.holding !== null && p.holding !== was) add({ k: 'pickup', who: who(p.seat) });
     else if (p.holding === null && was !== null && !moved.has(was)) add({ k: 'home', who: who(p.seat) });
   }
 
-  if (a.game.nertzCalledBy === null && b.game.nertzCalledBy !== null) add({ k: 'nertz', ...(b.players.find((p) => p.seat === b.game!.nertzCalledBy)?.bot ? { bot: true } : {}) });
+  const caller = calledBy(b.game);
+  if (calledBy(a.game) === null && caller !== null) add({ k: 'nertz', ...(b.players.find((p) => p.seat === caller)?.bot ? { bot: true } : {}) });
   return [...cues.values()];
 }
 
-/**
- * Putting `card` down on the pile in the middle at `slot` comes too late: someone else's card of the very same suit
- * and rank lies on top of it, so ours would have gone there a moment ago. (Asked by Table.tsx when a card is let go
- * over a pile that will not take it: only then is being beaten to a pile worth a sound. A card still in hand may
- * have somewhere else to go.)
- */
-export function beatenTo(game: GameState, seat: number, card: string, slot: number): boolean {
-  const p = game.players.find((q) => q.seat === seat);
-  const mine = p && [...p.nertz, ...p.waste, ...p.work.flat()].find((c) => c.id === card);
-  const top = game.slots[slot]?.at(-1);
-  return !!mine && !!top && 'suit' in mine && top.owner !== seat && top.suit === mine.suit && top.rank === mine.rank;
-}
-
 /** The grace countdown ticks only for someone who still has a card to put down. */
-export const graceTicking = (room: RoomView | null): boolean => room?.phase === 'playing' && room.seat !== null && !!room.game?.grace.includes(room.seat);
+export const graceTicking = (room: RoomView | null): boolean => !!room?.game && room.seat !== null && inGrace(room.game).includes(room.seat);

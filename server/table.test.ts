@@ -1,112 +1,47 @@
-// The table through the room: the host's choice of how the middle works, a
-// race for the same patch of felt, the relay of card positions while a card is
-// being dragged, and bots playing whole rounds on both kinds of table.
+// The table through the room: the bare middle it is dealt with, a race for the
+// same patch of felt, the relay of card positions while a card is being
+// dragged, and bots playing whole rounds.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkInvariants, feltFree, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, START_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, type DragAt, type ServerMsg } from '../shared/protocol';
-import { cardSize, openPlace, spots, TABLE, type Spot, type TableMode } from '../shared/table';
-import type { Card, GameState, Intent, PileRef } from '../shared/types';
+import { checkInvariants, deal, feltFree, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, START_MS, type DragAt } from '../shared/protocol';
+import { cardSize, openPlace, TABLE, type Spot } from '../shared/table';
+import { felt, move, seeded, upWork } from '../shared/testkit';
+import type { Card, CentrePile, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
-import { Room, type Conn } from './room';
+import type { Room } from './room';
+import { FakeConn, roomWith, startRound } from './testkit';
 
-function seeded(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-type StateMsg = Extract<ServerMsg, { t: 'state' }>;
-type DragMsg = Extract<ServerMsg, { t: 'drag' }>;
-
-/** A connection that records what it was sent, as it would arrive over the wire. */
-class FakeConn implements Conn {
-  states: StateMsg[] = [];
-  drags: DragMsg[] = [];
-  send(msg: ServerMsg): void {
-    const copy = JSON.parse(JSON.stringify(msg)) as ServerMsg;
-    if (copy.t === 'state') this.states.push(copy);
-    if (copy.t === 'drag') this.drags.push(copy);
-  }
-  close(): void {}
-  get room() {
-    return this.states.at(-1)!.room;
-  }
-}
-
-/** A room that only flushes when the test says so, with `n` people in it. */
-function roomWith(n: number, seed = 1): { room: Room; conns: FakeConn[] } {
-  const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
-  const conns = Array.from({ length: n }, (_, i) => {
-    const conn = new FakeConn();
-    expect(room.join(conn, `P${i}`, `tok-000${i}`, true)).toBeNull();
-    return conn;
-  });
-  return { room, conns };
-}
-
-/** Deals, sits through the deal, presses Start and sits through "1, 2, 3": play is open (fake timers must be on). */
-function start(room: Room, dealer: Conn): void {
-  room.handle(dealer, { t: 'start' });
-  vi.advanceTimersByTime(DEAL_MS);
-  room.handle(dealer, { t: 'go' });
-  vi.advanceTimersByTime(START_MS);
-  expect(room.game!.stage).toBe('play');
-}
-
-/** Every player gets an Ace from their stock face-up on their waste, ready to play. Returns the Aces' ids by seat. */
-function acesUp(room: Room): string[] {
-  const game = room.game!;
+/** A deal (the room's `deal`) where every player has an Ace from their stock on top of their nertz pile, ready to play once it is open. */
+function acesUp(seats: readonly number[], rng: Rng): GameState {
+  const game = deal(seats, rng);
   const aces = game.players.map((p) => (p.stock as Card[]).find((c) => c.rank === 1)!);
-  room.game = { ...game, players: game.players.map((p, i) => ({ ...p, stock: p.stock.filter((c) => c !== aces[i]), waste: [aces[i]!] })) };
-  expect(checkInvariants(room.game)).toBeNull();
-  return aces.map((c) => c.id);
+  return { ...game, players: game.players.map((p, i) => ({ ...p, stock: [...p.stock.filter((c) => c !== aces[i]), p.nertz[0]!], nertz: [...p.nertz.slice(1), aces[i]!] })) };
+}
+/** The Aces' ids by seat, on a table dealt by `acesUp`. */
+function aces(room: Room): string[] {
+  expect(checkInvariants(room.game!)).toBeNull();
+  return room.game!.players.map((p) => p.nertz.at(-1)!.id);
 }
 
-const move = (cardId: string, to: PileRef): Intent => ({ k: 'move', cardId, count: 1, to });
-const felt = (x: number, y: number): PileRef => ({ k: 'felt', x, y });
 const at = (id: string, w = 0.5): { t: 'drag' } & DragAt => ({ t: 'drag', id, w, h: [1, 2], p: [0.1, 0.6] });
 
 afterEach(() => void vi.useRealTimers());
 
-describe('the host chooses how the middle works', () => {
-  it('free placement by default; the grid of marked places applies from the next deal, and a round keeps the table it was dealt', () => {
+describe('the middle', () => {
+  it('is dealt bare: no slot has a pile until an Ace starts one there', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
-    const host = conns[0]!;
-    start(room, host);
-    expect(room.game!.table).toBe('free');
-    expect(room.game!.places).toEqual(Array.from({ length: 8 }, () => null));
-    // Mid-round the setting stands still, like every table rule.
-    room.handle(host, { t: 'settings', patch: { centre: 'spots' } });
-    expect(room.settings.centre).toBe('free');
-
-    const next = roomWith(3);
+    startRound(room, conns[0]!);
+    expect(room.game!.slots).toEqual(Array.from({ length: 8 }, () => null));
     room.close();
-    const [h2, g2] = next.conns as [FakeConn, FakeConn, FakeConn];
-    next.room.handle(g2, { t: 'settings', patch: { centre: 'spots' } }); // not the host: ignored
-    expect(next.room.settings.centre).toBe('free');
-    next.room.handle(h2, { t: 'settings', patch: { centre: 'spots' } });
-    next.room.flush();
-    expect(g2.room.settings).toEqual({ stockDeal: 'click', centre: 'spots' });
-    start(next.room, h2);
-    next.room.flush();
-    expect(next.room.game!.table).toBe('spots');
-    expect(g2.room.game!.table).toBe('spots');
-    expect(g2.room.game!.places).toEqual(spots(3));
-    next.room.close();
   });
 
-  it('on a free table two Aces for the same patch of felt are two messages: the first lands, the second goes home', () => {
+  it('two Aces for the same patch of felt are two messages: the first lands, the second goes home', () => {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(3);
+    const { room, conns } = roomWith(3, { deal: acesUp });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    start(room, a); // (free placement is the table's default)
-    const [aceA, aceB, aceC] = acesUp(room) as [string, string, string];
+    startRound(room, a);
+    const [aceA, aceB, aceC] = aces(room) as [string, string, string];
     room.handle(a, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceA } });
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: aceB } });
     // Both aimed at bare felt; B's message arrives first.
@@ -114,18 +49,18 @@ describe('the host chooses how the middle works', () => {
     room.handle(a, { t: 'intent', seq: 2, intent: move(aceA, felt(0.22, 0.12)) });
     room.flush();
     const game = room.game!;
-    expect(game.slots.map((s) => s.map((x) => x.id))[0]).toEqual([aceB]);
-    expect(game.slots.filter((s) => s.length > 0)).toHaveLength(1);
-    expect(game.places[0]).toMatchObject({ x: 0.2, y: 0.1 });
-    expect(game.players[0]!.waste.map((x) => x.id)).toEqual([aceA]); // back where it came from
+    expect(game.slots[0]!.cards.map((x) => x.id)).toEqual([aceB]);
+    expect(game.slots.filter((s) => s !== null)).toHaveLength(1);
+    expect(game.slots[0]!.at).toMatchObject({ x: 0.2, y: 0.1 });
+    expect(game.players[0]!.nertz.at(-1)!.id).toBe(aceA); // back where it came from
     expect(game.players[0]!.holding).toBeNull(); // and out of the hand
     expect(a.states.at(-1)!.ack).toBe(2); // the refusal is an answer too
     // Everyone is shown the one pile, at the same point of the table.
-    for (const conn of [a, b, c]) expect(conn.room.game!.places[0]).toMatchObject({ x: 0.2, y: 0.1 });
+    for (const conn of [a, b, c]) expect(conn.room.game!.slots[0]!.at).toMatchObject({ x: 0.2, y: 0.1 });
     // A is free to put it somewhere else, and C beside that.
     room.handle(a, { t: 'intent', seq: 3, intent: move(aceA, felt(-0.5, 0)) });
     room.handle(c, { t: 'intent', seq: 1, intent: move(aceC, felt(1.6, -0.6)) });
-    expect(room.game!.slots.filter((s) => s.length > 0)).toHaveLength(3);
+    expect(room.game!.slots.filter((s) => s !== null)).toHaveLength(3);
     expect(checkInvariants(room.game!)).toBeNull();
     room.close();
   });
@@ -135,7 +70,7 @@ describe('card positions while dragging', () => {
   function dragging(n = 3) {
     vi.useFakeTimers();
     const { room, conns } = roomWith(n);
-    start(room, conns[0]!);
+    startRound(room, conns[0]!);
     const held = room.game!.players[0]!.nertz.at(-1)!.id;
     room.handle(conns[0]!, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: held } });
     room.flush();
@@ -171,7 +106,7 @@ describe('card positions while dragging', () => {
     expect(room.game!.players[0]!.holding).toBe(held);
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'flip' } });
     room.flush();
-    expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/); // (the table rule `stockDeal: 'click'` is in there, and is not a position)
+    expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/);
     room.close();
   });
 
@@ -214,7 +149,13 @@ describe('card positions while dragging', () => {
 
   it('nothing is forwarded in the lobby, during the deal, before play opens, or once the round is over', () => {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(2);
+    // B is dealt no nertz pile: they can go out.
+    const { room, conns } = roomWith(2, {
+      deal: (seats, rng) => {
+        const game = deal(seats, rng);
+        return { ...game, players: game.players.map((p) => (p.seat === 1 ? { ...p, nertz: [], stock: [...p.nertz, ...p.stock] } : p)) };
+      },
+    });
     const [a, b] = conns as [FakeConn, FakeConn];
     room.handle(a, at('x'));
     room.handle(a, { t: 'start' });
@@ -229,12 +170,10 @@ describe('card positions while dragging', () => {
     room.handle(a, { t: 'go' });
     room.handle(a, { t: 'intent', seq: 3, intent: { k: 'hold', cardId: card } });
     room.handle(a, at(card));
-    expect(room.game!.stage).toBe('countdown');
+    expect(room.game!.status.at).toBe('countdown');
     expect(b.drags).toEqual([]);
     vi.advanceTimersByTime(START_MS);
-    // B goes out and calls; A was not holding anything, so the round is over at once.
-    const game = room.game!;
-    room.game = { ...game, players: game.players.map((p) => (p.seat === 1 ? { ...p, nertz: [], stock: [...p.nertz, ...p.stock] } : p)) };
+    // B calls; A was not holding anything, so the round is over at once.
     room.handle(b, { t: 'intent', seq: 1, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
     room.handle(a, at(card));
@@ -274,22 +213,21 @@ describe('card positions while dragging', () => {
   });
 });
 
-describe('bots on a table without marked places', () => {
-  /** A free table of `n` where seat `seat` has an Ace on its waste. */
+describe('bots starting piles', () => {
+  /** A table of `n` where seat `seat` has an Ace to play. */
   function withAce(n: number, seat: number, seed = 3): { view: GameState; ace: string } {
     vi.useFakeTimers();
-    const { room, conns } = roomWith(n, seed);
-    start(room, conns[0]!);
-    expect(room.game!.table).toBe('free');
-    const ace = acesUp(room)[seat]!;
+    const { room, conns } = roomWith(n, { rng: seeded(seed), deal: acesUp });
+    startRound(room, conns[0]!);
+    const ace = aces(room)[seat]!;
     const view = viewFor(room.game!, seat);
     room.close();
     return { view, ace };
   }
-  /** The same table with nothing for that seat to think about but its waste card: Kings everywhere else, which go nowhere. */
+  /** The same table with nothing for that seat to think about but the Ace, as its waste card: Kings everywhere else, which go nowhere. */
   const wasteOnly = (view: GameState, seat: number): GameState => {
     const king = (id: string): Card => ({ id, owner: seat, suit: 'S', rank: 13 });
-    return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: [[king('w0')], [king('w1')], [king('w2')], [king('w3')]], down: [0, 0, 0, 0] } : p)) };
+    return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: upWork([[king('w0')], [king('w1')], [king('w2')], [king('w3')]]), waste: [p.nertz.at(-1)!] } : p)) };
   };
 
   it('starts its piles anywhere there is room, mostly about the middle, differently each time, and the same way whichever seat it has', () => {
@@ -328,8 +266,8 @@ describe('bots on a table without marked places', () => {
     const taken: Spot[] = [];
     for (let i = 0; i < 6; i++) taken.push({ ...openPlace(taken, 2)!, r: 0 });
     expect(taken).toHaveLength(6);
-    const pile = (i: number): Card[] => [{ id: `pile${i}`, owner: 1, suit: 'D', rank: 1 }];
-    const crowded = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 6 ? pile(i) : s)), places: view.places.map((p, i) => (i < 6 ? taken[i]! : p)) }, 0);
+    const pile = (i: number, at: Spot): CentrePile => ({ cards: [{ id: `pile${i}`, owner: 1, suit: 'D', rank: 1 }], at });
+    const crowded = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 6 ? pile(i, taken[i]!) : s)) }, 0);
     for (let seed = 1; seed <= 10; seed++) {
       const intent = chooseIntent(crowded, 0, freshMemory(), seeded(seed))!.intent;
       expect(intent).toMatchObject({ k: 'move', cardId: ace });
@@ -338,50 +276,46 @@ describe('bots on a table without marked places', () => {
     // A table so full that a glance or two finds nothing: it still finds the one place there is.
     const packed: Spot[] = [...taken];
     for (let at = openPlace(packed, 2); at && packed.length < 7; at = openPlace(packed, 2)) packed.push({ ...at, r: 0 });
-    const seven = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 7 ? pile(i) : s)), places: view.places.map((p, i) => (i < 7 ? packed[i]! : p)) }, 0);
+    const seven = wasteOnly({ ...view, slots: view.slots.map((s, i) => (i < 7 ? pile(i, packed[i]!) : s)) }, 0);
     expect(chooseIntent(seven, 0, freshMemory(), () => 0.999)!.intent).toMatchObject({ k: 'move', cardId: ace, to: { k: 'felt' } }); // (every glance lands off in a corner)
     // All eight slots in use: the Ace has nowhere to go, so the bot does something else (here: flips).
-    const full = { ...crowded, slots: crowded.slots.map((s, i) => (s.length ? s : pile(i))), places: crowded.places.map((p, i) => p ?? { x: -2 + 0.01 * i, y: 0, r: 0 }) };
+    const full = { ...crowded, slots: crowded.slots.map((s, i) => s ?? pile(i, { x: -2 + 0.01 * i, y: 0, r: 0 })) };
     expect(chooseIntent(full, 0, freshMemory(), seeded(1))!.intent).toEqual({ k: 'flip' });
   });
 
-  for (const centre of ['spots', 'free'] as TableMode[]) {
-    it(`tables of 2 to 6 bots play rounds out on a table with ${centre === 'free' ? 'no marked places' : 'the grid of marked places'}, every pile in a legal place throughout`, () => {
-      vi.useFakeTimers();
-      let finished = 0;
-      let dealt = 0;
-      let aces = 0;
-      for (const bots of [2, 3, 4, 5, 6]) {
-        for (const seed of [21, 22, 23]) {
-          const room = new Room('TEST', { rng: seeded(seed * 10 + bots), schedule: () => {} });
-          const host = new FakeConn();
-          room.join(host, 'Ann', 'tok-host', true);
-          room.handle(host, { t: 'settings', patch: { centre } });
-          for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
-          const players = Math.min(6, bots + 1);
-          start(room, host);
-          room.disconnect(host); // the person is away: the bots' stuck votes are the only ones
-          dealt++;
-          const t0 = Date.now();
-          let most = 0;
-          while (room.phase === 'playing' && Date.now() - t0 < 20 * 60_000) {
-            vi.advanceTimersToNextTimer();
-            const game = room.game!;
-            const problem = checkInvariants(game);
-            if (problem) throw new Error(`${players} players, seed ${seed}: ${problem}`);
-            expect(game.table).toBe(centre);
-            most = Math.max(most, game.slots.filter((s) => s.length > 0).length);
-          }
-          aces += most;
-          expect(most).toBeGreaterThan(players); // piles were started, on either kind of table
-          expect(most).toBeLessThanOrEqual(4 * players);
-          if (room.phase === 'results') finished++;
-          room.close();
+  it('tables of 2 to 6 bots play rounds out, every pile in a legal place throughout', () => {
+    vi.useFakeTimers();
+    let finished = 0;
+    let dealt = 0;
+    let aces = 0;
+    for (const bots of [2, 3, 4, 5, 6]) {
+      for (const seed of [21, 22, 23]) {
+        const { room } = roomWith(0, { rng: seeded(seed * 10 + bots) });
+        const host = new FakeConn();
+        room.join(host, 'Ann', 'tok-host', true);
+        for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
+        const players = Math.min(6, bots + 1);
+        startRound(room, host);
+        room.disconnect(host); // the person is away: the bots' stuck votes are the only ones
+        dealt++;
+        const t0 = Date.now();
+        let most = 0;
+        while (room.phase === 'playing' && Date.now() - t0 < 20 * 60_000) {
+          vi.advanceTimersToNextTimer();
+          const game = room.game!;
+          const problem = checkInvariants(game);
+          if (problem) throw new Error(`${players} players, seed ${seed}: ${problem}`);
+          most = Math.max(most, game.slots.filter((s) => s !== null).length);
         }
+        aces += most;
+        expect(most).toBeGreaterThan(players); // piles were started
+        expect(most).toBeLessThanOrEqual(4 * players);
+        if (room.phase === 'results') finished++;
+        room.close();
       }
-      // Not every deal is played out: small tables of this simple bot jam (see the README). Most are, on either table.
-      expect(finished).toBeGreaterThanOrEqual(Math.ceil(dealt * 0.5));
-      expect(aces).toBeGreaterThan(dealt * 6);
-    }, 60_000);
-  }
+    }
+    // Not every deal is played out: small tables of this simple bot jam (see the README). Most are.
+    expect(finished).toBeGreaterThanOrEqual(Math.ceil(dealt * 0.5));
+    expect(aces).toBeGreaterThan(dealt * 6);
+  }, 60_000);
 });

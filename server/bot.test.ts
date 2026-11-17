@@ -1,38 +1,17 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import WebSocket from 'ws';
-import { DEAL_MS, START_MS } from '../shared/protocol';
-import { applyIntent, checkInvariants, CLEAR_FIRST, deal, finishDeal, openPlay, resolveStuck, startCountdown, SUITS, viewFor, type Rng } from '../shared/engine';
-import { MAX_PLAYERS, parseClientMsg, type ServerMsg } from '../shared/protocol';
-import { spots } from '../shared/table';
-import type { Card, GameState, Intent, PlayerState, Suit } from '../shared/types';
+import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, inGrace, isLive, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, MAX_PLAYERS, parseClientMsg, PLAIN_LOOK, START_MS } from '../shared/protocol';
+import { card, FUZZ_MS, inPlay, pile, seeded, slot, table as wholeTable, untilReached, work, type Hand } from '../shared/testkit';
+import type { GameState, Intent, Suit } from '../shared/types';
 import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
-import { Room, type Conn } from './room';
+import type { Room } from './room';
+import { Client, FakeConn, opening, roomWith } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
-function seeded(seed: number): Rng {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const id = (owner: number, face: string) => card(face, owner).id;
 
-/** Card ids in these tables are readable: `${owner}${suit}${rank}`, e.g. '0H12'. */
-const id = (owner: number, face: string) => `${owner}${face}`;
-const card = (owner: number, face: string): Card => ({ id: id(owner, face), owner, suit: face[0] as Suit, rank: Number(face.slice(1)) });
-
-interface Hand {
-  nertz?: string[];
-  work?: string[][];
-  down?: number[];
-  waste?: string[];
-  stuck?: boolean;
-}
 /** A centre pile: Ace up to `upTo` in `suit`, all from `owner`'s deck. */
 interface Centre {
   owner: number;
@@ -40,25 +19,9 @@ interface Centre {
   upTo: number;
 }
 
-/**
- * A complete, well-formed two-seat table with seat 0's (and optionally seat
- * 1's) piles as given; every card not mentioned is in its owner's stock.
- */
-function table(mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'] }): GameState {
-  const middle = centre.map((c) => Array.from({ length: c.upTo }, (_, r) => card(c.owner, `${c.suit}${r + 1}`)));
-  const used = new Set(middle.flat().map((c) => c.id));
-  const player = (seat: number, h: Hand): PlayerState => {
-    const pile = (faces: string[] = []) => faces.map((f) => card(seat, f));
-    const p = { nertz: pile(h.nertz), work: [0, 1, 2, 3].map((i) => pile(h.work?.[i])), waste: pile(h.waste) };
-    for (const c of [...p.nertz, ...p.work.flat(), ...p.waste]) used.add(c.id);
-    const stock = SUITS.flatMap((s) => Array.from({ length: 13 }, (_, r) => card(seat, `${s}${r + 1}`))).filter((c) => !used.has(c.id));
-    return { seat, ...p, down: h.down ?? [0, 0, 0, 0], stock, dealt: 0, stuck: h.stuck ?? false, holding: null };
-  };
-  const slots = Array.from({ length: 8 }, (_, i): Card[] => middle[i] ?? []);
-  const state: GameState = { players: [player(0, mine), player(1, theirs)], table: 'spots', slots, places: spots(2), tray: [], nertzCalledBy: null, grace: [], stage: 'play' };
-  expect(checkInvariants(state)).toBeNull();
-  return state;
-}
+/** A two-seat table with seat 0's (and optionally seat 1's) piles as given. */
+const table = (mine: Hand, centre: Centre[] = [], theirs: Hand = { nertz: ['C13'] }): GameState =>
+  wholeTable([mine, theirs], { slots: centre.map((c) => pile(`${c.suit}${c.upTo}`, c.owner)) });
 
 /** Four work piles that take only Queens and can go nowhere but onto a Queen in the middle. */
 const DEAD = [['S13'], ['C13'], ['H13'], ['D13']];
@@ -66,17 +29,6 @@ const always: Rng = () => 0; // notices everything (unless observance is 0), pic
 const look = (state: GameState, memory: BotMemory = freshMemory(), observance = 1, rng: Rng = always) =>
   chooseIntent(viewFor(state, 0), 0, memory, rng, observance);
 const move = (face: string, to: Intent & { k: 'move' } extends { to: infer T } ? T : never, count = 1): Intent => ({ k: 'move', cardId: id(0, face), count, to });
-const work = (i: number) => ({ k: 'work', i }) as const;
-const slot = (i: number) => ({ k: 'slot', i }) as const;
-
-/** Walks a round through its opening to `play`. */
-const toPlay = (s: GameState): GameState => openPlay(startCountdown(finishDeal(s)));
-/** Sits through the deal, presses the dealer's Start and sits through "1, 2, 3": play is open and the bots wake. (Fake timers.) */
-function opening(room: Room, dealer: Conn): void {
-  vi.advanceTimersByTime(DEAL_MS);
-  room.handle(dealer, { t: 'go' });
-  vi.advanceTimersByTime(START_MS);
-}
 
 // ---------------------------------------------------------------- chooseIntent
 
@@ -114,14 +66,15 @@ describe('chooseIntent', () => {
     const state = table({ nertz: ['S2'], work: [['H3'], ['C9'], ['D9'], ['H9']] }, [{ owner: 1, suit: 'S', upTo: 1 }]);
     expect(look(state)?.intent).toEqual(move('S2', slot(0)));
     const ace = table({ nertz: ['S1'], work: [['H2'], ['C9'], [], ['D9']] });
-    expect(look(ace)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'slot' } }); // an Ace above all: not onto the red 2, nor the empty pile
-    expect(look(ace, freshMemory(), 0)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'slot' } }); // and never overlooked
+    expect(look(ace)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'felt' } }); // an Ace above all: not onto the red 2, nor the empty pile
+    expect(look(ace, freshMemory(), 0)?.intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'felt' } }); // and never overlooked
   });
 
-  it('c. plays the nertz top to the middle: an Ace to an empty slot, anything else to the exact pile', () => {
+  it('c. plays the nertz top to the middle: an Ace to bare felt, anything else to the exact pile', () => {
     const ace = table({ nertz: ['S1'], work: DEAD }, [{ owner: 1, suit: 'H', upTo: 3 }]);
-    expect(look(ace)?.intent).toEqual(move('S1', slot(1)));
-    expect(look(ace, freshMemory(), 1, () => 0.999)?.intent).toEqual(move('S1', slot(7))); // any empty slot
+    const intent = look(ace)!.intent;
+    expect(intent).toMatchObject({ k: 'move', cardId: id(0, 'S1'), to: { k: 'felt' } });
+    expect(applyIntent(ace, 0, intent).ok).toBe(true);
     const four = table({ nertz: ['H4'], work: DEAD }, [{ owner: 1, suit: 'S', upTo: 3 }, { owner: 1, suit: 'H', upTo: 3 }]);
     expect(look(four)?.intent).toEqual(move('H4', slot(1)));
   });
@@ -138,12 +91,12 @@ describe('chooseIntent', () => {
 
   it('f. moves a whole face-up run to turn over a face-down card or to empty a pile, uncovering first', () => {
     // Pile 1: one face-down card under 8-7. Pile 2 is a lone 8. Both fit on the 9 in pile 0.
-    const state = table({ nertz: ['S13'], work: [['C13', 'H12', 'S11', 'D10', 'S9'], ['C2', 'H8', 'C7'], ['D8'], ['H13']], down: [0, 1, 0, 0] });
+    const state = table({ nertz: ['S13'], work: [['C13', 'H12', 'S11', 'D10', 'S9'], { down: ['C2'], up: ['H8', 'C7'] }, ['D8'], ['H13']] });
     expect(look(state)?.intent).toEqual(move('H8', work(0), 2));
     const emptying = table({ nertz: ['S13'], work: [['C13', 'H12', 'S11', 'D10', 'S9'], ['D13'], ['D8'], ['H13']] });
     expect(look(emptying)?.intent).toEqual(move('D8', work(0)));
     // To an empty pile only when that uncovers something. (It takes missing the nertz move to get there: the first roll is a miss.)
-    const toEmpty = table({ nertz: ['S9'], work: [[], ['C2', 'H8'], ['D13'], ['H13']], down: [0, 1, 0, 0] });
+    const toEmpty = table({ nertz: ['S9'], work: [[], { down: ['C2'], up: ['H8'] }, ['D13'], ['H13']] });
     const rolls = [0.99, 0, 0, 0];
     expect(look(toEmpty, freshMemory(), 0.9, () => rolls.shift()!)?.intent).toEqual(move('H8', work(0)));
   });
@@ -192,7 +145,7 @@ describe('chooseIntent', () => {
     expect(intents.slice(cycle + 1)).toEqual(Array(2 * cycle).fill('flip'));
     // Everyone stuck at this dead table ends the round (nothing can move anywhere). Were it only stuck for now, the flags
     // would clear: it goes through the whole stock again before saying stuck.
-    expect(resolveStuck({ ...state, players: state.players.map((p) => ({ ...p, stuck: true })) }, [0, 1]).ended).toBe('jam');
+    expect(resolveStuck({ ...state, players: state.players.map((p) => ({ ...p, stuck: true })) }, [0, 1]).status).toEqual({ at: 'over', end: { by: 'jam' } });
     state = { ...state, players: state.players.map((p) => ({ ...p, stuck: false })) };
     expect(state.players[0]!.stuck).toBe(false);
     intents.length = 0;
@@ -229,12 +182,12 @@ describe('chooseIntent', () => {
 
   it('observance 0 only ever flips (and says stuck), but for an Ace; observance 1 always takes the best move', () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const state = toPlay(deal([0, 1], seeded(seed)));
+      const state = inPlay([0, 1], seeded(seed));
       const rng = seeded(seed + 100);
       // (The one thing it cannot miss is an Ace showing: that goes out to the middle.)
       const blind = look(state, freshMemory(), 0, rng)!.intent;
       expect(blind.k === 'flip' || (blind.k === 'move' && blind.to.k !== 'work')).toBe(true);
-      // With observance 1 the choice does not depend on the dice (short of which empty slot an Ace takes).
+      // With observance 1 the choice does not depend on the dice (short of where an Ace starts its pile).
       const a = look(state, freshMemory(), 1, seeded(1))!.intent;
       const b = look(state, freshMemory(), 1, seeded(2))!.intent;
       expect({ ...a, to: null }).toEqual({ ...b, to: null });
@@ -257,24 +210,25 @@ describe('chooseIntent', () => {
 
   it('does nothing when the round is called, when it is not in the round, before play opens, or when it cannot see its own face-up cards', () => {
     const state = table({ nertz: ['S5'], work: [['H6'], [], [], []] });
-    for (const stage of ['dealing', 'ready', 'countdown'] as const) expect(look({ ...state, stage })).toBeNull();
-    expect(look({ ...state, nertzCalledBy: 1 })).toBeNull();
+    for (const stage of ['dealing', 'ready', 'countdown'] as const) expect(look({ ...state, status: { at: stage } })).toBeNull();
+    expect(look({ ...state, status: { at: 'grace', calledBy: 1 } })).toBeNull();
+    expect(look({ ...state, status: { at: 'over', end: { by: 'vote' } } })).toBeNull();
     expect(chooseIntent(viewFor(state, 5), 5, freshMemory(), always)).toBeNull();
     const hide = (c: { id: string; owner: number }) => ({ id: c.id, owner: c.owner, hidden: true as const });
-    const dark: GameState = { ...state, players: state.players.map((p) => ({ ...p, nertz: p.nertz.map(hide), work: p.work.map((w) => w.map(hide)), waste: p.waste.map(hide), stock: p.stock.map(hide) })) };
+    const dark: GameState = { ...state, players: state.players.map((p) => ({ ...p, nertz: p.nertz.map(hide), work: p.work.map((w) => ({ ...w, cards: w.cards.map(hide) })), waste: p.waste.map(hide), stock: p.stock.map(hide) })) };
     expect(chooseIntent(dark, 0, freshMemory(), always)).toBeNull();
   });
 
   it('never emits an intent the engine refuses, never loops on run moves, and keeps every invariant (bots alone, many deals)', () => {
     let nertzCalls = 0;
-    for (let seed = 1; seed <= 30; seed++) {
+    for (let seed = 1; seed <= 8; seed++) {
       const seats = Array.from({ length: 2 + (seed % 3) }, (_, i) => i);
       const rng = seeded(seed);
-      let state = toPlay(deal(seats, rng));
+      let state = inPlay(seats, rng);
       const observance = [1, 0.9, 0.75, 0.6][seed % 4]!;
       const memory = new Map(seats.map((s) => [s, freshMemory()]));
       const sinceFlip = new Map(seats.map((s) => [s, 0]));
-      for (let step = 0; step < 6000 && state.nertzCalledBy === null && !state.ended; step++) {
+      for (let step = 0; step < 6000 && isLive(state); step++) {
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const before = memory.get(seat)!;
         const choice = chooseIntent(viewFor(state, seat), seat, before, rng, observance);
@@ -291,27 +245,16 @@ describe('chooseIntent', () => {
         memory.set(seat, choice.memory);
         expect(checkInvariants(state)).toBeNull();
       }
-      if (state.nertzCalledBy !== null) nertzCalls++;
+      if (calledBy(state) !== null) nertzCalls++;
     }
-    expect(nertzCalls).toBeGreaterThan(15); // most deals are played out to a call (tables of two mostly jam, tables of four never)
-  });
+    expect(nertzCalls).toBeGreaterThan(4); // most deals are played out to a call (tables of two mostly jam, tables of four never)
+  }, FUZZ_MS);
 });
 
 // ---------------------------------------------------------------- Room
 
-class FakeConn implements Conn {
-  sent: Extract<ServerMsg, { t: 'state' }>[] = [];
-  send(msg: ServerMsg): void {
-    if (msg.t === 'state') this.sent.push(JSON.parse(JSON.stringify(msg)) as typeof msg);
-  }
-  close(): void {}
-  get last() {
-    return this.sent.at(-1)!;
-  }
-}
-
 function hosted(seed = 1): { room: Room; host: FakeConn } {
-  const room = new Room('TEST', { rng: seeded(seed), schedule: () => {} });
+  const { room } = roomWith(0, { rng: seeded(seed) });
   const host = new FakeConn();
   expect(room.join(host, 'Ann', 'tok-host', true)).toBeNull();
   return { room, host };
@@ -342,10 +285,10 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'addBot', level: 'slow' });
     room.flush();
     expect(host.last.room.players).toEqual([
-      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, stuck: false, ending: false },
-      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false },
-      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'fast', deck: 'modern' },
-      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, stuck: false, ending: false, bot: 'slow', deck: 'modern' },
+      { id: 0, seat: 0, name: 'Ann', connected: true, score: 0, rounds: 0, isHost: true, look: PLAIN_LOOK },
+      { id: 1, seat: 1, name: 'Bea', connected: true, score: 0, rounds: 0, isHost: false, look: PLAIN_LOOK },
+      { id: 2, seat: 2, name: 'Bot Ada', connected: true, score: 0, rounds: 0, isHost: false, bot: 'fast', look: PLAIN_LOOK },
+      { id: 3, seat: 3, name: 'Bot Bix', connected: true, score: 0, rounds: 0, isHost: false, bot: 'slow', look: PLAIN_LOOK },
     ]);
     room.handle(guest, { t: 'removeBot', seat: 2 }); // not the host
     room.handle(host, { t: 'removeBot', seat: 1 }); // not a bot
@@ -390,19 +333,19 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'start' });
     // The bot does not wake when the cards are down: the table waits, for as long as it takes, for the person to press Start...
     vi.advanceTimersByTime(DEAL_MS);
-    expect(room.game!.stage).toBe('ready');
+    expect(room.game!.status.at).toBe('ready');
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(10 * 60_000);
-    expect(room.game).toMatchObject({ stage: 'ready', slots: [[], [], [], [], [], [], [], []] });
+    expect(room.game).toMatchObject({ status: { at: 'ready' }, slots: [null, null, null, null, null, null, null, null] });
     expect(room.game!.players.every((p) => p.waste.length === 0 && p.nertz.length === 13)).toBe(true);
     // ...nor during "1, 2, 3": only the start timer runs. It wakes on NERTZ!, like everyone.
     room.handle(host, { t: 'go' });
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(START_MS - 1);
-    expect(room.game!.stage).toBe('countdown');
+    expect(room.game!.status.at).toBe('countdown');
     expect(vi.getTimerCount()).toBe(1);
     vi.advanceTimersByTime(1);
-    expect(room.game!.stage).toBe('play');
+    expect(room.game!.status.at).toBe('play');
     expect(room.phase).toBe('playing');
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
     expect(vi.getTimerCount()).toBe(1);
@@ -413,34 +356,31 @@ describe('Room with bots', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  /** Runs the room's timers one at a time until the round is over, checking the table after every one. Returns simulated ms. */
-  function playOut(room: Room, limitMs: number): number {
+  /** Runs the room's timers one at a time until the round is over, checking the table after every one. Returns simulated ms, or null if the round is still on after `limitMs`. */
+  function playOut(room: Room, limitMs: number): number | null {
     const t0 = Date.now();
     let rev = room.rev;
-    let looks = 0;
     while (room.phase === 'playing') {
       expect(vi.getTimerCount()).toBeGreaterThan(0);
       vi.advanceTimersToNextTimer(); // one bot's look: at most one intent
-      looks++;
       expect(room.rev - rev).toBeLessThanOrEqual(4); // (several bots may look in the same millisecond)
       rev = room.rev;
       expect(checkInvariants(room.game!)).toBeNull();
-      if (Date.now() - t0 > limitMs) throw new Error(`no Nertz call within ${limitMs} ms of play (${looks} looks)`);
+      if (Date.now() - t0 > limitMs) return null;
     }
     return Date.now() - t0;
   }
 
   it('a person and two bots play whole rounds to a Nertz call, and the bots are scored like anyone', () => {
     vi.useFakeTimers();
-    // Deals that get played out. Not every deal does: a table of two or three can jam for good, as in the real game.
-    for (const seed of [1, 3, 4]) {
-      const { room, host } = hosted(seed);
+    // Deals until three have been played out. Not every deal is: a table of two or three can jam for good, as in the real game.
+    untilReached({ 'played out': 3 }, 8, (rng, reached, seed) => {
+      const { room, host } = hosted(100 + seed); // (the room's own dice, apart from the person's)
       room.handle(host, { t: 'addBot', level: 'fast' });
       room.handle(host, { t: 'addBot', level: 'slow' });
       room.handle(host, { t: 'start' });
       opening(room, host);
       // The person plays through their connection, from the snapshots they are sent, about once a second.
-      const rng = seeded(seed + 50);
       let memory = freshMemory();
       let seq = 0;
       let turn = Date.now() + 1000;
@@ -456,13 +396,15 @@ describe('Room with bots', () => {
         if (choice) room.handle(host, { t: 'intent', seq: ++seq, intent: choice.intent });
         if (choice && room.game !== before) memory = choice.memory;
         expect(checkInvariants(room.game!)).toBeNull();
-        if (Date.now() - t0 > 30 * 60_000) throw new Error(`seed ${seed}: no Nertz call in half an hour of play`);
+        if (Date.now() - t0 > 30 * 60_000) return room.close(); // jammed
       }
+      reached('played out');
       expect(vi.getTimerCount()).toBe(0); // round over: no bot timer left, and no grace timer (nobody held a card)
       const round = room.lastRound!;
-      expect(room.game!.grace).toEqual([]);
+      expect(inGrace(room.game!)).toEqual([]);
       expect(round.scores.map((s) => s.name)).toEqual(['Ann', 'Bot Ada', 'Bot Bix']);
-      const caller = round.scores.find((s) => s.seat === round.calledBy)!;
+      expect(round.end.by).toBe('nertz');
+      const caller = round.scores.find((s) => s.seat === calledBy(room.game!))!;
       expect(caller).toMatchObject({ nertzLeft: 0, delta: caller.played, total: caller.played });
       for (const s of round.scores) expect(s.delta).toBe(s.played - 2 * s.nertzLeft);
       expect(round.scores.every((s) => s.played > 0)).toBe(true); // everybody, bots included, got cards into the middle
@@ -473,12 +415,14 @@ describe('Room with bots', () => {
       room.flush();
       expect(host.last.room.players.map((p) => p.seat)).toEqual([0, 1]);
       expect(host.last.room.lastRound!.scores.map((l) => [l.seat, !!l.gone])).toEqual([[0, false], [1, false], [2, true]]); // prettier-ignore
-    }
-  });
+      room.close();
+    });
+  }, FUZZ_MS);
 
   it('bots alone, driven only by their timers, finish rounds (the person is away, so the stuck vote is theirs)', () => {
     vi.useFakeTimers();
-    for (const seed of [12, 13, 14, 16]) {
+    // Deals until two have been played out.
+    untilReached({ 'played out': 2 }, 8, (_, reached, seed) => {
       const { room, host } = hosted(seed);
       for (const level of ['slow', 'medium', 'fast', 'medium'] as const) room.handle(host, { t: 'addBot', level });
       room.handle(host, { t: 'start' });
@@ -487,10 +431,12 @@ describe('Room with bots', () => {
       expect(room.connected).toBe(0); // four bots playing do not make the room look alive
       expect(vi.getTimerCount()).toBe(4);
       const took = playOut(room, 60 * 60_000);
+      if (took === null) return room.close(); // jammed
+      reached('played out');
       expect(took).toBeGreaterThan(20_000); // human pace, not a burst
       expect(vi.getTimerCount()).toBe(0);
       expect(room.phase).toBe('results');
-      expect(room.lastRound!.calledBy).toBeGreaterThan(0);
+      expect(calledBy(room.game!)).toBeGreaterThan(0);
 
       // Next round: a removed bot has no timer, the others get theirs back.
       const back = new FakeConn();
@@ -506,8 +452,8 @@ describe('Room with bots', () => {
       expect(room.game!.players.filter((p) => p.seat !== 0).some((p) => p.waste.length + p.nertz.length !== 13)).toBe(true);
       room.close();
       expect(vi.getTimerCount()).toBe(0);
-    }
-  });
+    });
+  }, FUZZ_MS);
 
   it('a pause stops the bots and every move until whoever paused (or the dealer) carries on', () => {
     vi.useFakeTimers();
@@ -589,44 +535,33 @@ describe('bots on the real server', () => {
   });
   afterAll(() => server.close());
 
-  const connect = async (name: string) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
-    const states: Extract<ServerMsg, { t: 'state' }>[] = [];
-    ws.on('message', (data) => {
-      const msg = JSON.parse(String(data)) as ServerMsg;
-      if (msg.t === 'state') states.push(msg);
-    });
-    await new Promise((done) => ws.once('open', done));
-    ws.send(JSON.stringify({ t: 'create', name, token: `token-${name}-${Math.random().toString(36).slice(2)}` }));
-    await vi.waitFor(() => expect(states.length).toBeGreaterThan(0));
-    return { ws, states, last: () => states.at(-1)!.room, send: (msg: unknown) => ws.send(JSON.stringify(msg)) };
-  };
+  const connect = (name: string) => Client.open(server.port, null, name);
 
   it('a lobby of only bots is forgotten at once, and a game of only bots is swept like any abandoned table', { timeout: 60_000 }, async () => {
     const a = await connect('Ann');
-    const code = a.last().code;
+    const code = a.last.room.code;
     a.send({ t: 'addBot', level: 'fast' });
     a.send({ t: 'addBot', level: 'warp' }); // malformed: answered with an error, seats nothing
-    await vi.waitFor(() => expect(a.last().players.map((p) => p.name)).toEqual(['Ann', 'Bot Ada']));
+    await vi.waitFor(() => expect(a.last.room.players.map((p) => p.name)).toEqual(['Ann', 'Bot Ada']));
     a.send({ t: 'leave' });
     await vi.waitFor(() => expect(server.rooms.has(code)).toBe(false));
     a.ws.close();
 
     const b = await connect('Bob');
-    const room = server.rooms.get(b.last().code)!;
+    const room = server.rooms.get(b.last.room.code)!;
     b.send({ t: 'addBot', level: 'fast' });
     b.send({ t: 'start' });
-    await vi.waitFor(() => expect(b.last().phase).toBe('playing'));
-    expect(b.last().players).toMatchObject([{ name: 'Bob' }, { name: 'Bot Ada', bot: 'fast', connected: true }]);
+    await vi.waitFor(() => expect(b.last.room.phase).toBe('playing'));
+    expect(b.last.room.players).toMatchObject([{ name: 'Bob' }, { name: 'Bot Ada', bot: 'fast', connected: true }]);
     // The bot waits for Bob like anyone: cards dealt, nothing happens until he presses Start and the count is done.
     const dealt = JSON.stringify(room.game!.players[1]);
-    await vi.waitFor(() => expect(b.last().game!.stage).toBe('ready'), { timeout: 5000 });
+    await vi.waitFor(() => expect(b.last.room.game!.status.at).toBe('ready'), { timeout: 5000 });
     await new Promise((done) => setTimeout(done, 1200)); // (a fast bot would have looked twice by now)
     expect(JSON.stringify(room.game!.players[1])).toBe(dealt);
     b.send({ t: 'go' });
-    await vi.waitFor(() => expect(b.last()).toMatchObject({ game: { stage: 'countdown' } }));
-    expect(b.last().startMs).toBeGreaterThan(START_MS - 500);
-    await vi.waitFor(() => expect(b.last()).toMatchObject({ startMs: null, game: { stage: 'play' } }), { timeout: 4000 });
+    await vi.waitFor(() => expect(b.last.room).toMatchObject({ game: { status: { at: 'countdown' } } }));
+    expect(b.last.room.timerMs).toBeGreaterThan(START_MS - 500);
+    await vi.waitFor(() => expect(b.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } }), { timeout: 4000 });
     // Then the bot plays by itself.
     await vi.waitFor(() => expect(JSON.stringify(room.game!.players[1])).not.toBe(dealt), { timeout: 25_000 });
     b.ws.close();

@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { SLOTS_PER_PLAYER } from './protocol';
-import { cardSize, CARD_RATIO, clash, feltHw, offFelt, onTable, openPlace, pileGap, roomAt, spots, TABLE, tiltAt, type Pt } from './table';
+import { cardSize, CARD_RATIO, clash, feltHw, offFelt, onTable, openPlace, pileGap, roomAt, TABLE, tiltAt, type Pt } from './table';
+import { lcg } from './testkit';
 
 const COUNTS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 2 ** 32;
-  };
-}
 /** Somewhere in the box round the felt. */
 const anywhere = (r: () => number, reach = 1, n = 2): Pt => ({ x: (r() * 2 - 1) * feltHw(n) * reach, y: (r() * 2 - 1) * reach });
 
@@ -42,7 +37,7 @@ describe('the felt', () => {
       expect(hw).toBeGreaterThanOrEqual(2);
       expect(hw).toBeLessThanOrEqual(TABLE.hw); // what a message may name
       if (n > 2) expect(hw).toBeLessThanOrEqual(feltHw(n - 1));
-      const r = rng(n);
+      const r = lcg(n);
       for (let k = 0; k < 4000; k++) {
         const p = anywhere(r, 1.3, n);
         expect(offFelt(p, n) <= 0, `${p.x}, ${p.y}`).toBe(onFelt(p, n));
@@ -79,7 +74,7 @@ describe('the felt', () => {
 describe('where piles may go', () => {
   it('two piles clash exactly when their cards, grown by half the gap each, overlap: what everyone sees', () => {
     for (const n of COUNTS) {
-      const r = rng(n);
+      const r = lcg(n);
       const { w, h } = cardSize(n);
       const gap = pileGap(n);
       let clashes = 0;
@@ -109,7 +104,7 @@ describe('where piles may go', () => {
   it('a pile is on the table exactly when all four corners of its card are on the felt', () => {
     for (const n of COUNTS) {
       const { w, h } = cardSize(n);
-      const r = rng(50 + n);
+      const r = lcg(50 + n);
       let on = 0;
       for (let k = 0; k < 4000; k++) {
         const p = anywhere(r, 1.1, n);
@@ -150,7 +145,7 @@ describe('where piles may go', () => {
       }
       expect(covered / felt, `${n} players`).toBeGreaterThan(0.97); // (asked for: more than 0.85)
       // And the rule is exactly the shape: no place where a card fits on the felt is refused, none where it does not is allowed.
-      const r = rng(70 + n);
+      const r = lcg(70 + n);
       for (let k = 0; k < 2000; k++) {
         const p = anywhere(r, 1, n);
         expect(roomAt(p, [], n)).toBe(corners(p, n).every((c) => onFelt(c, n)));
@@ -168,7 +163,7 @@ describe('where piles may go', () => {
       expect(roomAt({ x: w * 0.3, y: h + gap + 0.001 }, [pile], n)).toBe(true); // (even under a pile in the very middle, with the largest cards)
       expect(roomAt({ x: w + gap - 0.001, y: 0 }, [pile], n)).toBe(false);
       // The share of the felt's places that one pile takes away: about four cards' worth, a few per cent.
-      const r = rng(90 + n);
+      const r = lcg(90 + n);
       let free = 0;
       let shut = 0;
       for (let k = 0; k < 6000; k++) {
@@ -182,7 +177,7 @@ describe('where piles may go', () => {
     }
   });
 
-  it('there is room on a free table for every pile the round can have, even put down carelessly', () => {
+  it('there is room on the table for every pile the round can have, even put down carelessly', () => {
     for (const n of COUNTS) {
       const all = SLOTS_PER_PLAYER * n;
       // Tidy: always the nearest clear place to the middle. Room for a third as many again.
@@ -196,13 +191,13 @@ describe('where piles may go', () => {
       // still room for the rest above and below it.
       const row: Pt[] = [];
       const { w } = cardSize(n);
-      const jog = rng(40 + n);
+      const jog = lcg(40 + n);
       for (let x = -feltHw(n) + w; x < feltHw(n) - w; x += w * 1.7) row.push({ x, y: (jog() - 0.5) * 0.18 });
       expect(row.every((p, i) => roomAt(p, row.slice(0, i), n))).toBe(true);
       for (let at = openPlace(row, n); at && row.length < 60; at = openPlace(row, n)) row.push(at);
       expect(row.length, `${n} players, after a careless row`).toBeGreaterThanOrEqual(all);
       // Careless: each pile anywhere at random that happens to be free. All four per player fit, nearly every time.
-      const r = rng(100 + n);
+      const r = lcg(100 + n);
       const trials = 60;
       let full = 0;
       let fitted = 0;
@@ -220,11 +215,9 @@ describe('where piles may go', () => {
     }
   });
 
-  it('openPlace finds the clear place nearest to where it is asked, or says the table is full', () => {
+  it('openPlace finds the clear place nearest to the middle, or says the table is full', () => {
     const n = 4;
     expect(openPlace([], n)).toEqual({ x: 0, y: 0 });
-    const near = openPlace([], n, { x: 1.4, y: -0.3 })!;
-    expect(Math.hypot(near.x - 1.4, near.y + 0.3)).toBeLessThan(0.05);
     const taken = [{ x: 0, y: 0 }];
     const next = openPlace(taken, n)!;
     expect(clash(next, taken[0]!, n)).toBe(false);
@@ -232,7 +225,6 @@ describe('where piles may go', () => {
     const full: Pt[] = [];
     for (let at = openPlace(full, n); at; at = openPlace(full, n)) full.push(at);
     expect(openPlace(full, n)).toBeNull();
-    expect(openPlace(full, n, { x: 0.2, y: 0.2 })).toBeNull();
     expect(roomAt({ x: 0.2, y: 0.2 }, full, n)).toBe(false);
   });
 
@@ -241,45 +233,7 @@ describe('where piles may go', () => {
     const tilts = [0.1, 0.2, 0.3, 0.4, 0.5].map((x) => tiltAt({ x, y: 0.1 }));
     expect(new Set(tilts).size).toBeGreaterThan(2);
     for (const t of tilts) expect(Math.abs(t)).toBeLessThanOrEqual(2.5);
-  });
-});
-
-describe('the marked places', () => {
-  it('are four per player, on the table, no two clashing, the same every time', () => {
-    for (const n of COUNTS) {
-      const s = spots(n);
-      expect(s).toHaveLength(SLOTS_PER_PLAYER * n);
-      expect(spots(n)).toEqual(s); // deterministic
-      for (const [i, a] of s.entries()) {
-        expect(onTable(a, n), `${n} players, spot ${i}`).toBe(true);
-        expect(Math.abs(a.r)).toBeLessThanOrEqual(2.5);
-        for (const [j, b] of s.entries()) if (j > i) expect(clash(a, b, n), `${n} players, spots ${i} and ${j}`).toBe(false);
-        // Tilted as far as it is, a card still keeps clear of its neighbours and on the felt.
-        const lean = Math.sin((2.5 * Math.PI) / 180) * (cardSize(n).h / 2);
-        expect(lean).toBeLessThan(pileGap(n) / 2);
-      }
-    }
-  });
-
-  it('are a loose cluster about the middle: rows, but not a single row, not a ruled grid, and not the whole felt', () => {
-    for (const n of COUNTS) {
-      const s = spots(n);
-      const { w, h } = cardSize(n);
-      // About the middle.
-      const mid = { x: s.reduce((a, p) => a + p.x, 0) / s.length, y: s.reduce((a, p) => a + p.y, 0) / s.length };
-      expect(Math.abs(mid.x)).toBeLessThan(w * 0.5);
-      expect(Math.abs(mid.y)).toBeLessThan(h * 0.2);
-      // More than one row (places a card apart in height), and no row or column ruled straight.
-      const rows = new Set(s.map((p) => Math.round(p.y / h)));
-      expect(rows.size).toBeGreaterThan(1);
-      expect(new Set(s.map((p) => p.y)).size).toBeGreaterThan(s.length * (n > 6 ? 0.6 : 0.7));
-      expect(new Set(s.map((p) => p.x)).size).toBeGreaterThan(s.length * 0.7);
-      // Neighbouring rows are staggered: no place sits squarely above another.
-      for (const a of s) for (const b of s) if (a !== b && Math.abs(a.y - b.y) > h * 0.5 && Math.abs(a.y - b.y) < h * 1.5) expect(Math.abs(a.x - b.x)).toBeGreaterThan(w * 0.2);
-      // Compact: everyone can reach it, and there is felt left round it.
-      expect(Math.max(...s.map((p) => Math.abs(p.x))) + w / 2).toBeLessThan(feltHw(n) * 0.85);
-      // Every place has a neighbour close by.
-      for (const a of s) expect(Math.min(...s.filter((b) => b !== a).map((b) => Math.hypot(a.x - b.x, a.y - b.y)))).toBeLessThan(h * 1.5);
-    }
+    // Tilted as far as it ever is, a card still keeps clear of its neighbours and on the felt.
+    for (const n of COUNTS) expect(Math.sin((2.5 * Math.PI) / 180) * (cardSize(n).h / 2)).toBeLessThan(pileGap(n) / 2);
   });
 });

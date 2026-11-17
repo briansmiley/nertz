@@ -1,0 +1,117 @@
+import { describe, expect, it } from 'vitest';
+import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, takeKey, type Levels, type Prefs } from './prefs';
+
+describe('cleanPrefs: hotkeys', () => {
+  it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
+    expect(cleanPrefs(null)).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV' });
+    expect(cleanPrefs({ muted: true, voiceKey: 'KeyB' })).toMatchObject({ muted: true, soundKey: 'KeyM', voiceKey: 'KeyB' });
+    expect(cleanPrefs({ voiceKey: null })).toMatchObject({ soundKey: 'KeyM', voiceKey: null });
+  });
+
+  it('keeps a key chosen, and none', () => {
+    expect(cleanPrefs({ soundKey: 'KeyS', voiceKey: 'Digit7' })).toMatchObject({ soundKey: 'KeyS', voiceKey: 'Digit7' });
+    expect(cleanPrefs({ soundKey: null, voiceKey: null })).toMatchObject({ soundKey: null, voiceKey: null });
+  });
+
+  it('puts back the default for a key the game uses, a modifier, or anything damaged', () => {
+    for (const bad of ['KeyP', 'Space', 'Enter', 'Escape', 'Tab', 'ShiftLeft', 'MetaRight', 'Backspace', 'Delete', '', 'Key-M', 'x'.repeat(21), 7, true, {}])
+      expect(cleanPrefs({ soundKey: bad, voiceKey: bad })).toMatchObject({ soundKey: DEFAULT_PREFS.soundKey, voiceKey: DEFAULT_PREFS.voiceKey });
+  });
+
+  it('never gives both the same key', () => {
+    expect(cleanPrefs({ soundKey: 'KeyX', voiceKey: 'KeyX' })).toMatchObject({ soundKey: 'KeyX', voiceKey: 'KeyV' });
+    expect(cleanPrefs({ soundKey: 'KeyV', voiceKey: 'KeyV' })).toMatchObject({ soundKey: 'KeyV', voiceKey: null });
+    expect(cleanPrefs({ soundKey: 'KeyV' })).toMatchObject({ soundKey: 'KeyV', voiceKey: null });
+    expect(cleanPrefs({ voiceKey: 'KeyM' })).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV' });
+  });
+});
+
+describe('cleanPrefs: levels', () => {
+  const close = (got: Levels, want: Levels) => {
+    for (const k of ['master', 'mine', 'others', 'voice'] as const) expect(got[k]).toBeCloseTo(want[k], 9);
+  };
+  /** What played before there were levels: the game's sounds at volume², other players' cards at volume² × others (× sound.ts's OTHERS), voice chat at full. */
+  const before = (volume: number, others: number) => ({ mine: volume ** 2, others: volume ** 2 * others, voice: 1 });
+  const now = (p: Prefs) => ({ mine: loudness(p, 'mine'), others: loudness(p, 'others'), voice: loudness(p, 'voice') });
+
+  it('carries a volume and a share for other players over just as loud, and defaults as loud as they were', () => {
+    for (const [volume, others] of [[0.8, 0.25], [0.3, 1], [1, 0], [0.55, 0.6], [0, 0.5]] as const) {
+      const p = cleanPrefs({ volume, others });
+      const was = before(volume, others);
+      const is = now(p);
+      expect(is.mine).toBeCloseTo(was.mine, 9);
+      expect(is.others).toBeCloseTo(was.others, 9);
+      expect(is.voice).toBe(1);
+      expect(p).not.toHaveProperty('volume');
+    }
+    const fresh = now(cleanPrefs(null));
+    expect(fresh.mine).toBeCloseTo(before(0.8, 0.25).mine, 9);
+    expect(fresh.others).toBeCloseTo(before(0.8, 0.25).others, 9);
+    expect(DEFAULT_PREFS.levels).toMatchObject({ master: 1, voice: 1 });
+    close(cleanPrefs({ volume: 0.5 }).levels, cleanPrefs({ volume: 0.5, others: 0.25 }).levels);
+  });
+
+  it('keeps levels stored as such, over any old volume, and mends a damaged one', () => {
+    const levels = { master: 0.6, mine: 0.2, others: 0.9, voice: 0.45 };
+    expect(cleanPrefs({ levels, volume: 0.1, others: 0.1 }).levels).toEqual(levels);
+    expect(cleanPrefs({ levels: { ...levels, voice: 7, mine: 'loud' } }).levels).toEqual({ ...levels, voice: 1, mine: DEFAULT_PREFS.levels.mine });
+    expect(cleanPrefs({ levels: { master: -1 } }).levels).toEqual({ ...DEFAULT_PREFS.levels, master: 0 });
+    expect(cleanPrefs({ levels: 'all of them' }).levels).toEqual(DEFAULT_PREFS.levels);
+    expect(cleanPrefs(cleanPrefs({ volume: 0.3, others: 0.7 }))).toEqual(cleanPrefs({ volume: 0.3, others: 0.7 }));
+  });
+});
+
+describe('loudness', () => {
+  const levels = { master: 0.5, mine: 0.8, others: 0.4, voice: 1 };
+  it('is the master times the channel, squared', () => {
+    expect(loudness({ muted: false, levels }, 'mine')).toBeCloseTo(0.16, 9);
+    expect(loudness({ muted: false, levels }, 'others')).toBeCloseTo(0.04, 9);
+    expect(loudness({ muted: false, levels }, 'voice')).toBeCloseTo(0.25, 9);
+    expect(loudness({ muted: false, levels: { ...levels, master: 0 } }, 'voice')).toBe(0);
+  });
+  it('mutes the game, not voice chat', () => {
+    expect(loudness({ muted: true, levels }, 'mine')).toBe(0);
+    expect(loudness({ muted: true, levels }, 'others')).toBe(0);
+    expect(loudness({ muted: true, levels }, 'voice')).toBeCloseTo(0.25, 9);
+  });
+});
+
+describe('keyFree', () => {
+  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV' };
+  it('refuses the other hotkey, but not the key the same one already has', () => {
+    expect(keyFree(keys, 'soundKey', 'KeyV')).toBe(false);
+    expect(keyFree(keys, 'voiceKey', 'KeyM')).toBe(false);
+    expect(keyFree(keys, 'soundKey', 'KeyM')).toBe(true);
+    expect(keyFree({ soundKey: 'KeyM', voiceKey: null }, 'voiceKey', 'KeyN')).toBe(true);
+  });
+  it('refuses the keys the game uses', () => {
+    for (const code of ['KeyP', 'Space', 'Enter', 'Escape', 'Tab']) expect(keyFree({ soundKey: null, voiceKey: null }, 'soundKey', code)).toBe(false);
+  });
+});
+
+describe('takeKey', () => {
+  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV' };
+  it('takes a key the other hotkey has, and leaves that one with none', () => {
+    expect(takeKey(keys, 'soundKey', 'KeyV')).toEqual({ soundKey: 'KeyV', voiceKey: null });
+    expect(takeKey(keys, 'voiceKey', 'KeyM')).toEqual({ voiceKey: 'KeyM', soundKey: null });
+  });
+  it('takes a key nobody has, and touches nothing else', () => {
+    expect(takeKey(keys, 'soundKey', 'KeyB')).toEqual({ soundKey: 'KeyB' });
+    expect(takeKey(keys, 'soundKey', 'KeyM')).toEqual({ soundKey: 'KeyM' });
+  });
+  it('refuses a key the game uses, and a modifier', () => {
+    for (const code of ['KeyP', 'Space', 'Escape', 'ShiftLeft', 'Backspace']) expect(takeKey(keys, 'soundKey', code)).toBeNull();
+  });
+});
+
+describe('hotkeyPressed', () => {
+  const press = (over: Partial<KeyboardEvent> = {}) => ({ code: 'KeyM', repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, target: null, ...over }) as KeyboardEvent;
+  it('is the key pressed bare', () => {
+    expect(hotkeyPressed(press(), 'KeyM')).toBe(true);
+    expect(hotkeyPressed(press(), 'KeyV')).toBe(false);
+    expect(hotkeyPressed(press(), null)).toBe(false);
+  });
+  it('is not the key with a modifier, or held down', () => {
+    for (const over of [{ shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { repeat: true }]) expect(hotkeyPressed(press(over), 'KeyM')).toBe(false);
+  });
+});

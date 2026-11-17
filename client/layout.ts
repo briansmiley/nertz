@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
-import { DEAL_MS, isHidden } from '../shared/engine';
+import { DEAL_MS, isHidden, WORK_PILES } from '../shared/engine';
 import { cardSize, feltHw, pileGap, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -26,9 +26,19 @@ export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'slot' | 'tray';
  *
  * In full: the centre piles turn face-down where they lie ('flip'); they are spread out over the felt ('spread': from
  * here on they are drawn on the finale's canvas); the finished piles come out of the tray onto the spread cards, as
- * loose, tilted stacks ('out'); those are spread out too and everything is sorted ('wash'); the scores ('sheet').
+ * loose, tilted stacks ('out'); those are spread out too ('wash'); everything is sorted into a pile per player ('sort'); the scores ('sheet').
  */
-export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sheet';
+export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sort' | 'sheet';
+const STAGES: readonly Stage[] = ['live', 'flip', 'spread', 'out', 'wash', 'sort', 'sheet'];
+/** The wash lies spread out and the piles are about to be gathered ('sort'), or have been ('sheet'). On a phone that is when the table is cleared. */
+export const sorting = (stage: Stage): boolean => STAGES.indexOf(stage) >= STAGES.indexOf('sort');
+
+/**
+ * Whether the middle's cards are the finale's canvas's to draw at `stage`, and no longer this layer's: the centre
+ * piles from when they are spread out, the finished piles of the tray a step later, when they are. Both layers ask
+ * here and nowhere else (not a clock of their own), so at every stage a card is drawn by exactly one of the two.
+ */
+export const onCanvas = (stage: Stage, pile: 'slot' | 'tray'): boolean => STAGES.indexOf(stage) >= STAGES.indexOf(pile === 'slot' ? 'spread' : 'wash');
 
 export interface Placed {
   card: AnyCard;
@@ -116,7 +126,7 @@ export interface Layout {
   opponents: Seat[];
   /** The middle of the table: where table space is on this screen. */
   felt: Felt;
-  /** One per centre slot, in slot order; null for a slot that has no place (an unused one on a 'free' table). */
+  /** One per centre slot, in slot order; null for a slot with no pile in it. */
   slots: (SlotRect | null)[];
   /** Drop area of each slot: the slot plus a margin smaller than half the gap, so neighbours never touch. */
   slotHit: (Rect | null)[];
@@ -140,8 +150,15 @@ export interface Layout {
   bar: number;
   /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
   low: boolean;
-  /** The seats of those who sit at the table but are not in the round: their hands (yours, or among `opponents`) are places with no cards. */
-  empty: number[];
+  /** A phone, upright or on its side. At the end of a round its table is cleared for the sorted piles. */
+  phone: boolean;
+  /**
+   * The end of a round on a phone, once the middle's cards have been washed on the felt: the table is cleared. The
+   * hands and the felt are not shown, and the sorted piles have the whole window (Finale.tsx).
+   */
+  cleared: boolean;
+  /** What the screen keeps for itself at its sides (a notch). */
+  keep: Insets;
 }
 
 const RATIO = CARD_H / CARD_W;
@@ -259,8 +276,6 @@ interface HandSpec {
   flip?: boolean;
   /** A work pile being looked at (hovered, or tapped on a touch screen): fanned out in full, rising as far as it needs to over the felt. */
   peek?: number | null;
-  /** A group dealt off the stock is counted off into a held fan, card by card, and turned over onto the waste (the table deals by click, not by carrying each card). */
-  packet?: boolean;
   /** A group just completed, this many cards, still drawn held for a beat before it turns over (see STOCK_TURN_MS). */
   hold?: number;
   /**
@@ -318,9 +333,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const margin = h.gap * 0.4;
   const workHit: Rect[] = [];
   const workAt = p.work.map((_, i) => rect(workX + i * (h.w + h.gap), h.y));
-  const work = p.work.map((pile, i) => {
+  const work = p.work.map(({ cards: pile, down }, i) => {
     const x = workX + i * (h.w + h.gap);
-    const down = p.down[i] ?? 0;
     const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
     // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
     const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
@@ -345,7 +359,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just above the
   // stock, not quite square, so three separate cards are seen to be pulled. The complete group is held there a beat
   // longer (`hold`, kept by Table.tsx), then lands on the waste, every card turning over as it goes, the last on top.
-  const lifted = h.packet ? Math.min(p.waste.length, Math.max(p.dealt, h.hold ?? 0)) : 0;
+  const lifted = Math.min(p.waste.length, Math.max(p.dealt, h.hold ?? 0));
   const top = p.stock.length - 1;
   const stockLow = STOCK_FULL_EDGES * lean * 2; // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
@@ -362,9 +376,9 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     // (The first has nothing to slip under: it comes up over everything, like any card on the move.)
     Object.assign(out.at(-1)!, { rot: (h.flip ? -1 : 1) * o.rot, low: k > 0 });
   });
-  // The waste is one squared-up pile: only its top card shows, face-down while a group is being dealt onto it.
-  // (The few cards under the top are drawn too, exactly beneath it, so there is something there when the top leaves.)
-  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, ny, 30 + (i - (n - WASTE_SHOWN)), 'waste', i >= n - (lifted ? 0 : p.dealt)); // half-dealt: face-down even when the client knows it (a turned-over waste, predicted)
+  // The waste is one squared-up pile: only its top card shows. (The few cards under the top are drawn too, exactly
+  // beneath it, so there is something there when the top leaves.)
+  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, ny, 30 + (i - (n - WASTE_SHOWN)), 'waste');
 
   return {
     seat: p.seat,
@@ -426,8 +440,13 @@ const OWN_MAX = 150;
 const OPP_MAX = 96;
 /** The widest a card in the middle is drawn, in widths of your own. */
 const CENTRE_MAX = 1.2;
-/** A work pile being looked at is drawn above the middle's cards (z 5000 and up) and below anything flying or held. */
-const PEEK_Z = 4000;
+/**
+ * Your own hand lies over the middle's cards (z 5000 and up, the tray's among them): what of it reaches onto the felt
+ * (the group held over the stock, above all) covers a pile lying at your edge of it.
+ */
+const OWN_Z = 6000;
+/** A work pile being looked at is drawn above the rest of your hand and below anything flying or held. */
+const PEEK_Z = 1000;
 /** Width of a hand in card widths, for the gaps used below. */
 const OWN = { gap: 0.2, wide: 0.5, fan: 0.3 };
 const OWN_UNITS = 7 + 4 * OWN.gap + 2 * OWN.wide + 2 * OWN.fan;
@@ -486,7 +505,7 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, packet = true, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = []): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = []): Layout {
   const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
   const n = game.players.length; // (the felt and its cards are sized for those in the round)
@@ -494,7 +513,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // the deal) has a place round it all the same, in seat order with the rest: a hand with no cards in it.
   const empty = sitting.filter((seat) => !game.players.some((p) => p.seat === seat));
   const ring: PlayerState[] = empty.length
-    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: [[], [], [], []], down: [0, 0, 0, 0], stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
+    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
     : game.players;
   const mine = ring.find((p) => p.seat === you);
   // Someone who has no seat at the table at all watches from the first player's chair.
@@ -602,7 +621,6 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       mine: false,
       // Across the table a hand is seen from the other side: its owner's left is your right.
       flip: where === 'top',
-      packet,
       hold: held?.get(p.seat),
     };
     if (where === 'side') {
@@ -645,10 +663,10 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const fh = fw * RATIO;
   const fs = fw / CARD_W;
   const middle: Rect = { x: felt.cx - hw * u, y: cy - u, w: 2 * hw * u, h: 2 * u };
-  const slots = game.places.map((at): SlotRect | null => {
-    if (!at) return null;
-    const c = toScreen(felt, at);
-    return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: at.r };
+  const slots = game.slots.map((pile): SlotRect | null => {
+    if (!pile) return null;
+    const c = toScreen(felt, pile.at);
+    return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: pile.at.r };
   });
 
   // The tray lies beside your hand, off the right edge: piles cascade down it, face-down, a strip of each showing
@@ -686,12 +704,11 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
           workRoom: tall ? oh * TALL.room : H - 8 - ownTop - oh,
           rows: tall ? { y: rowY, nertzX: edge, stockX: W - edge - 2 * ow - gapT, box: { x: edge, y: ownTop, w: W - 2 * edge, h: H - 10 - ownTop } } : undefined,
           // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
-          workRise: stage === 'wash' || stage === 'sheet' ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
+          workRise: onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
           minStrip: oh * 0.21,
-          z: 3000,
+          z: OWN_Z,
           mine: true,
           peek,
-          packet,
           hold: held?.get(you),
         },
         cards,
@@ -703,21 +720,21 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // (`stackOffset`), so each pile is a stack you can see the size of. Once the wash starts they are drawn on the
   // finale's canvas instead.
   // The centre piles are drawn here until they are spread out; the tray's until they are, a step later.
-  if (stage === 'live' || stage === 'flip') {
+  if (!onCanvas(stage, 'slot')) {
     game.slots.forEach((pile, i) => {
       const r = slots[i];
-      if (!r) return;
+      if (!pile || !r) return;
       if (stage === 'live') {
-        pile.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, up: true, pile: 'slot', mine: false, at: i, rot: r.rot }));
+        pile.cards.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, up: true, pile: 'slot', mine: false, at: i, rot: r.rot }));
         return;
       }
-      pile.forEach((card, j) => {
+      pile.cards.forEach((card, j) => {
         const o = slotStack(i, j, r.w);
         cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5000 + i * 14 + j, up: false, pile: 'slot', mine: false, at: i, rot: r.rot + o.rot });
       });
     });
   }
-  if (stage !== 'wash' && stage !== 'sheet') {
+  if (!onCanvas(stage, 'tray')) {
     game.tray.forEach((pile, k) => {
       const home: Rect = { x: tray.x + pad + TRAY_JOG[k % TRAY_JOG.length]! * tw, y: tray.y + pad + k * trayStep, w: tw, h: th };
       // A finished pile is turned face-down as it is put aside: it is out of the game, and solid like any other card.
@@ -733,10 +750,12 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, empty };
+  const phone = tall || isLow(W, H);
+  const cleared = phone && sorting(stage);
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, phone, cleared, keep };
 }
 
-// ---------------------------------------------------------------- an Ace in hand on a table without marked places
+// ---------------------------------------------------------------- an Ace in hand
 
 /**
  * What is drawn while an Ace that may start a pile anywhere is in hand. The
@@ -827,4 +846,9 @@ export function dealWait(i: number, dealMs: number, work = 10): number | null {
   const at = i < work ? i * DEAL.step : work * DEAL.step + DEAL.pause + (i - work) * DEAL.stream;
   const wait = DEAL.lead + at - (DEAL_MS - dealMs);
   return wait >= 0 ? wait : null;
+}
+
+/** When each card of a full deal lands and flicks (work-pile cards first, then the nertz pile), in seconds from now. */
+export function dealTimes(work = 10, nertz = 13): number[] {
+  return Array.from({ length: work + nertz }, (_, i) => ((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
 }

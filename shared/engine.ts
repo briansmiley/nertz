@@ -5,8 +5,8 @@
 // Pile convention: the TOP of every pile is the LAST array element.
 import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
 import { faceDown } from './settings';
-import { openPlace, roomAt, spots, tiltAt, type Pt, type Spot, type TableMode } from './table';
-import type { AnyCard, Card, GameState, HiddenCard, Intent, PileRef, PlayerState, RoundScore, Suit } from './types';
+import { openPlace, roomAt, tiltAt, type Pt } from './table';
+import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
@@ -31,17 +31,27 @@ export const isHidden = (c: AnyCard): c is HiddenCard => 'hidden' in c;
 export const isRed = (suit: Suit): boolean => suit === 'H' || suit === 'D';
 /** A centre pile that has its King: nothing more goes on it. */
 export const isComplete = (pile: readonly Card[]): boolean => pile.length === KING;
-/** The seat that placed the King of a complete centre pile (the only one who may clear it), else null. */
-export const completedBy = (pile: readonly Card[]): number | null => (isComplete(pile) ? pile[KING - 1]!.owner : null);
+/** The seat that placed the King of a complete centre pile (the only one who may clear it), else null. (Null too for a slot with no pile in it.) */
+export const completedBy = (pile: CentrePile | null | undefined): number | null => (pile && isComplete(pile.cards) ? pile.cards[KING - 1]!.owner : null);
+/** The round is live: play is open and nobody has ended it. Only then can a card be picked up, a pile cleared, a vote taken or the round paused. */
+export const isLive = (state: GameState): boolean => state.status.at === 'play';
+/** Play has opened, whether or not it is over since: the nertz tops are turned up. */
+export const hasOpened = (state: GameState): boolean => state.status.at === 'play' || state.status.at === 'grace' || state.status.at === 'over';
+/** The round is over, however it ended: nothing can change any more. */
+export const isOver = (state: GameState): boolean => state.status.at === 'over';
+/** The seat that called Nertz, while cards in hand may still land and once the round is over by that call; null if nobody has (yet, or at all). */
+export const calledBy = ({ status }: GameState): number | null => (status.at === 'grace' ? status.calledBy : status.at === 'over' && status.end.by === 'nertz' ? status.end.seat : null);
+/** The seats in the held-card grace window: after a call everyone else's hand is emptied, so exactly those still holding a card. */
+export const inGrace = (state: GameState): number[] => (state.status.at === 'grace' ? state.players.filter((p) => p.holding !== null).map((p) => p.seat) : []);
 /**
  * Clear-first: `seat` put a King on a centre pile and has not carried the pile to the tray yet. Until they do,
- * `applyIntent` refuses everything else from them. (While the round is on: once Nertz is called nothing can be cleared.)
+ * `applyIntent` refuses everything else from them. (While the round is live: once it is called or over nothing can be cleared.)
  */
-export const mustClear = (state: GameState, seat: number): boolean => state.nertzCalledBy === null && state.slots.some((pile) => completedBy(pile) === seat);
+export const mustClear = (state: GameState, seat: number): boolean => isLive(state) && state.slots.some((pile) => completedBy(pile) === seat);
 export const CLEAR_FIRST = 'Move your finished pile to the tray first';
-/** Nertz has been called and nobody is left in the held-card grace window: nothing can change any more. */
-export const isOver = (state: GameState): boolean => state.nertzCalledBy !== null && state.grace.length === 0;
 const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
+/** The face-up run of a work pile, bottom first: what can be picked up off it. */
+export const faceUp = (pile: WorkPile): AnyCard[] => pile.cards.slice(pile.down);
 
 // ---------------------------------------------------------------- dealing
 
@@ -49,17 +59,15 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * Deals a fresh round: one shuffled 52-card deck per seat, with opaque random
  * card ids. Per seat: 13 in the nertz pile, work piles of 1, 2, 3 and 4 cards
  * (0 to 3 face-down under one face-up), and the other 29 as stock. The middle
- * gets 4 empty slots per seat: with `rules.centre` 'free' none has a place
- * yet, with 'spots' (also when it is left out) each has its marked place on the
- * table. The round
- * starts out in stage `dealing`: closed to every intent and fully redacted
- * until `finishDeal`; see `openPlay`.
+ * gets 4 empty slots per seat. The round starts out
+ * `dealing`: closed to every intent and fully redacted until
+ * `finishDeal`; see `openPlay`.
  *
  * A small table buries fewer cards (`faceDown` in settings.ts): with two seats
  * no work pile has a face-down card (4 cards in the work piles, 35 in the
  * stock), with three they have 0/0/1/2 (7 and 32), from four up 0/1/2/3.
  */
-export function deal(seats: readonly number[], rng: Rng, rules: { centre?: TableMode } = {}): GameState {
+export function deal(seats: readonly number[], rng: Rng): GameState {
   const pick = (n: number) => Math.min(n - 1, Math.max(0, Math.floor(rng() * n)));
   const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const used = new Set<string>();
@@ -80,14 +88,11 @@ export function deal(seats: readonly number[], rng: Rng, rules: { centre?: Table
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
     }
     const nertz = deck.splice(0, NERTZ_SIZE);
-    const down = faceDown(seats.length).slice(0, WORK_PILES);
-    const work = down.map((n) => deck.splice(0, n + 1));
-    return { seat, nertz, work, down, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
+    const work = faceDown(seats.length).slice(0, WORK_PILES).map((down): WorkPile => ({ cards: deck.splice(0, down + 1), down }));
+    return { seat, nertz, work, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
-  const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, (): Card[] => []);
-  const table: TableMode = rules.centre === 'free' ? 'free' : 'spots';
-  const places: (Spot | null)[] = table === 'spots' ? spots(seats.length) : slots.map(() => null);
-  return { players, stage: 'dealing', table, slots, places, tray: [], nertzCalledBy: null, grace: [] };
+  const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
+  return { players, status: { at: 'dealing' }, slots, tray: [] };
 }
 
 // ---------------------------------------------------------------- legality
@@ -98,21 +103,20 @@ function stacksOn(card: Card, onto: AnyCard | undefined): boolean {
   return !isHidden(onto) && card.rank === onto.rank - 1 && isRed(card.suit) !== isRed(onto.suit);
 }
 
-/** Does this centre pile take `card`? An Ace needs the slot empty; anything else needs the same suit one rank below on top. */
-const slotAccepts = (pile: readonly Card[], card: Card): boolean =>
-  pile.length === card.rank - 1 && (pile.length === 0 || pile[0]!.suit === card.suit);
+/** Does this centre pile take `card`? It needs the same suit one rank below on top (so never an Ace: that starts a pile of its own). */
+const slotAccepts = ({ cards }: CentrePile, card: Card): boolean => cards.length === card.rank - 1 && cards[0].suit === card.suit;
 
-/** The places of the piles lying in the middle right now (on a 'free' table: the only places there are). */
-const piled = (state: GameState): Pt[] => state.places.filter((at, i): at is Spot => at !== null && state.slots[i]!.length > 0);
+/** The places of the piles lying in these slots. */
+const piled = (slots: GameState['slots']): Pt[] => slots.flatMap((pile) => (pile ? [pile.at] : []));
 
 /**
- * On a 'free' table: may a new pile be started at `at` (table space)? There
- * must be a slot left (4 per player), the whole card must lie on the felt, and
- * it must keep the gap to every pile that is there (shared/table.ts): exactly
- * what everyone sees on their screen.
+ * May a new pile be started at `at` (table space)? There must be a slot left
+ * (4 per player), the whole card must lie on the felt, and it must keep the
+ * gap to every pile that is there (shared/table.ts): exactly what everyone
+ * sees on their screen.
  */
 export const feltFree = (state: GameState, at: Pt): boolean =>
-  state.table === 'free' && state.slots.some((s) => s.length === 0) && roomAt(at, piled(state), state.players.length);
+  state.slots.includes(null) && roomAt(at, piled(state.slots), state.players.length);
 
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
@@ -127,8 +131,8 @@ export function grab(state: GameState, seat: number, cardId: string): Grab | nul
   if (top(p.nertz)?.id === cardId) return lift({ k: 'nertz' }, p.nertz.slice(-1));
   if (top(p.waste)?.id === cardId) return p.dealt > 0 ? null : lift({ k: 'waste' }, p.waste.slice(-1));
   for (const [i, pile] of p.work.entries()) {
-    const at = pile.findIndex((c) => c.id === cardId);
-    if (at >= 0) return at >= p.down[i]! ? lift({ k: 'work', i }, pile.slice(at)) : null;
+    const at = pile.cards.findIndex((c) => c.id === cardId);
+    if (at >= 0) return at >= pile.down ? lift({ k: 'work', i }, pile.cards.slice(at)) : null;
   }
   return null;
 }
@@ -148,32 +152,31 @@ function planMove(state: GameState, seat: number, cardId: string, to: PileRef, c
   const card = g.cards[0]!;
   if (to.k !== 'work' && g.cards.length > 1) return 'Only single cards go to the middle';
   if (to.k === 'felt') {
-    if (state.table !== 'free') return 'Piles have their places at this table';
     if (card.rank !== 1) return 'Only an Ace starts a pile';
     return feltFree(state, to) ? g : 'No room for a pile there';
   }
   if (to.k === 'slot') {
     const pile = state.slots[to.i];
-    if (!pile) return 'No such slot';
-    if (pile.length === 0 && state.table === 'free') return 'No pile there';
+    if (pile === undefined) return 'No such slot';
+    if (pile === null) return 'No pile there';
     return slotAccepts(pile, card) ? g : 'Does not fit there';
   }
   const pile = me.work[to.i];
   if (!pile) return 'No such pile';
   if (g.from.k === 'work') {
     if (g.from.i === to.i) return 'Already there';
-    const whole = me.work[g.from.i]!.length === g.cards.length;
-    if (whole && pile.length === 0) return 'Pointless move';
+    const whole = me.work[g.from.i]!.cards.length === g.cards.length;
+    if (whole && pile.cards.length === 0) return 'Pointless move';
   }
-  return stacksOn(card, top(pile)) ? g : 'Does not fit there';
+  return stacksOn(card, top(pile.cards)) ? g : 'Does not fit there';
 }
 
 /**
  * Every pile on which `seat` could legally put `cardId` (with any run on top
  * of it), going purely by the cards: it ignores whether the round is still on
  * or whose turn the grace window allows. Empty if the card cannot be picked up.
- * On a 'free' table an Ace can go to any clear patch of felt: that is listed
- * as ONE such place (the clear one nearest the middle), if there is any.
+ * An Ace can go to any clear patch of felt: that is listed as ONE such place
+ * (the clear one nearest the middle), if there is any.
  */
 export function legalDrops(state: GameState, seat: number, cardId: string): PileRef[] {
   const targets: PileRef[] = [
@@ -181,8 +184,8 @@ export function legalDrops(state: GameState, seat: number, cardId: string): Pile
     ...state.slots.map((_, i): PileRef => ({ k: 'slot', i })),
   ];
   const drops = targets.filter((to) => typeof planMove(state, seat, cardId, to) !== 'string');
-  if (state.table === 'free' && state.slots.some((s) => s.length === 0) && grab(state, seat, cardId)?.cards[0]?.rank === 1) {
-    const at = openPlace(piled(state), state.players.length);
+  if (state.slots.includes(null) && grab(state, seat, cardId)?.cards[0]?.rank === 1) {
+    const at = openPlace(piled(state.slots), state.players.length);
     if (at && typeof planMove(state, seat, cardId, { k: 'felt', ...at }) !== 'string') drops.push({ k: 'felt', ...at });
   }
   return drops;
@@ -202,6 +205,14 @@ export function canDrop(state: GameState, seat: number, cardId: string, to: Pile
 
 const fail = (reason: string): Result => ({ ok: false, reason });
 
+/** The top `n` cards lifted off a work pile. If that leaves only face-down cards, the top one of them turns over. */
+function liftOff(pile: WorkPile, n: number): WorkPile {
+  const cards = pile.cards.slice(0, pile.cards.length - n);
+  return { cards, down: pile.down > 0 && cards.length === pile.down ? pile.down - 1 : pile.down };
+}
+/** Cards put on a work pile: face-up, on top. */
+const putOn = (pile: WorkPile, cards: readonly Card[]): WorkPile => ({ ...pile, cards: [...pile.cards, ...cards] });
+
 /**
  * One intent from the player at `index`, by the ordinary rules of play (the
  * caller has already dealt with the round being over or in grace). Returns the
@@ -213,8 +224,7 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
   const me: PlayerState = {
     ...old,
     nertz: [...old.nertz],
-    work: old.work.map((w) => [...w]),
-    down: [...old.down],
+    work: [...old.work],
     stock: [...old.stock],
     waste: [...old.waste],
   };
@@ -246,7 +256,7 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
     case 'nertz': {
       if (me.nertz.length > 0) return 'Your nertz pile is not empty';
       me.holding = null; // the caller pressed a button, they are not dragging: the caller is never in grace
-      next = { ...state, nertzCalledBy: seat };
+      next = { ...state, status: { at: 'grace', calledBy: seat } };
       break;
     }
     case 'hold': {
@@ -265,10 +275,9 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
       me.stuck = false;
       next = {
         ...state,
-        slots: state.slots.map((s, i) => (i === intent.slot ? [] : s)),
-        // On a free table the felt it lay on is anybody's again.
-        places: state.table === 'free' ? state.places.map((at, i) => (i === intent.slot ? null : at)) : state.places,
-        tray: [...state.tray, pile],
+        // The felt it lay on is anybody's again.
+        slots: state.slots.map((s, i) => (i === intent.slot ? null : s)),
+        tray: [...state.tray, pile.cards],
       };
       break;
     }
@@ -276,25 +285,19 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
       const g = planMove(state, seat, intent.cardId, intent.to, intent.count);
       if (typeof g === 'string') return g;
       const { from, cards } = g;
-      if (from.k === 'work') {
-        const pile = me.work[from.i]!;
-        pile.splice(-cards.length);
-        // The face-up cards are gone: the next face-down card turns over. (On a redacted view its face stays unknown until the next snapshot.)
-        const down = me.down[from.i]!;
-        if (down > 0 && pile.length === down) me.down[from.i] = down - 1;
-      } else {
-        me[from.k].pop();
-      }
+      // (A card turned over on a redacted view keeps its face unknown until the next snapshot.)
+      if (from.k === 'work') me.work[from.i] = liftOff(me.work[from.i]!, cards.length);
+      else me[from.k].pop();
       me.stuck = false;
       me.holding = null;
       const to = intent.to;
-      if (to.k === 'work') me.work[to.i]!.push(...cards);
-      else if (to.k === 'slot') next = { ...state, slots: state.slots.map((s, i) => (i === to.i ? [...s, cards[0]!] : s)) };
+      if (to.k === 'work') me.work[to.i] = putOn(me.work[to.i]!, cards);
+      else if (to.k === 'slot') next = { ...state, slots: state.slots.map((s, i): CentrePile | null => (s && i === to.i ? { ...s, cards: [...s.cards, cards[0]!] } : s)) };
       else {
         // A new pile, in the first slot nobody is using, at the very place the Ace was put down.
-        const slot = state.slots.findIndex((s) => s.length === 0);
-        const place: Spot = { x: to.x, y: to.y, r: tiltAt(to) };
-        next = { ...state, slots: state.slots.map((s, i) => (i === slot ? [cards[0]!] : s)), places: state.places.map((at, i) => (i === slot ? place : at)) };
+        const slot = state.slots.indexOf(null);
+        const pile: CentrePile = { cards: [cards[0]!], at: { x: to.x, y: to.y, r: tiltAt(to) } };
+        next = { ...state, slots: state.slots.map((s, i) => (i === slot ? pile : s)) };
       }
       break;
     }
@@ -305,34 +308,38 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
   return next;
 }
 
-/**
- * Narrows the grace list to those of `candidates` who are holding a card that
- * still has somewhere legal to go, and takes the card out of everyone else's
- * hand (their drag is cancelled).
- */
-function settleGrace(state: GameState, candidates: readonly number[]): GameState {
-  const grace = state.players
-    .filter((p) => candidates.includes(p.seat) && p.holding !== null && legalDrops(state, p.seat, p.holding).length > 0)
-    .map((p) => p.seat);
-  return { ...state, grace, players: state.players.map((p) => (grace.includes(p.seat) || p.holding === null ? p : { ...p, holding: null })) };
+/** The round is over, in the one way every round ends: whatever is in anyone's hand goes back, and nothing changes after. */
+function endRound(state: GameState, end: RoundEnd): GameState {
+  return { ...state, status: { at: 'over', end }, players: state.players.map((p) => (p.holding === null ? p : { ...p, holding: null })) };
 }
 
-// The opening of a round is one small state machine: dealing -> ready -> countdown -> play. Each step is taken by
+/**
+ * After a Nertz call, and after each thing done in grace: whoever holds a card that has nowhere legal to go has it
+ * taken out of their hand (their drag is cancelled), which leaves in grace those still holding one. With nobody left
+ * in it the round is over: the one way out of grace.
+ */
+function settleGrace(state: GameState): GameState {
+  if (state.status.at !== 'grace') return state;
+  const players = state.players.map((p) => (p.holding === null || legalDrops(state, p.seat, p.holding).length > 0 ? p : { ...p, holding: null }));
+  return players.some((p) => p.holding !== null) ? { ...state, players } : endRound(state, { by: 'nertz', seat: state.status.calledBy });
+}
+
+// The opening of a round is the first steps of its status: dealing -> ready -> countdown -> play. Each step is taken by
 // the server (two timers and the dealer's button); each function returns the same object when it is not its turn.
 
 /** The deal is over (the server's deal timer fired): the work piles show their tops and the table waits for the dealer. */
 export function finishDeal(state: GameState): GameState {
-  return state.stage === 'dealing' ? { ...state, stage: 'ready' } : state;
+  return state.status.at === 'dealing' ? { ...state, status: { at: 'ready' } } : state;
 }
 
 /** The dealer pressed Start: "1, 2, 3...". */
 export function startCountdown(state: GameState): GameState {
-  return state.stage === 'ready' ? { ...state, stage: 'countdown' } : state;
+  return state.status.at === 'ready' ? { ...state, status: { at: 'countdown' } } : state;
 }
 
 /** "...NERTZ!" (the server's start timer fired): the nertz tops turn over and play opens, for everyone at once. */
 export function openPlay(state: GameState): GameState {
-  return state.stage === 'countdown' ? { ...state, stage: 'play' } : state;
+  return state.status.at === 'countdown' ? { ...state, status: { at: 'play' } } : state;
 }
 
 const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for the dealer to start', countdown: 'Wait for it' } as const;
@@ -342,13 +349,15 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  * never mutates `state`. Works on redacted views too: face-down cards can be
  * dealt, recycled or uncovered, but can never be the subject or target of a move.
  *
+ * What is taken goes by `state.status`, and by nothing else. Before play opens
+ * everything is rejected, and once the round is over.
+ *
  * Held-card grace: a `nertz` call freezes the table except for the seats that
- * are holding a card with at least one legal destination (`state.grace`).
+ * are holding a card with at least one legal destination (`inGrace`).
  * Each of them may make exactly one more intent: a `move` of the held card, or
  * a `release`. Either takes them out of grace (a refused move too, see `refused`), and anyone else in grace whose
- * card now has nowhere to go is cut off with them. When `grace` is empty the
- * round is over and everything is rejected. Before play opens (`state.stage`)
- * everything is rejected too.
+ * card now has nowhere to go is cut off with them. When nobody is left in it the
+ * round is over.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
  * (`mustClear`) may only `clear` it; every other intent is refused until it has.
@@ -362,20 +371,24 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent): 
   if (!intent) return fail('Malformed intent');
   const index = state.players.findIndex((p) => p.seat === seat);
   if (index < 0) return fail('Not playing in this round');
-  if (state.stage !== 'play') return fail(CLOSED[state.stage]);
-  if (state.ended) return fail('The round is over');
-  const called = state.nertzCalledBy !== null;
-  if (called) {
-    if (!state.grace.includes(seat)) return fail('The round is over');
-    const held = state.players[index]!.holding;
-    if (intent.k !== 'release' && !(intent.k === 'move' && intent.cardId === held)) return fail('Only the held card may be played');
+  switch (state.status.at) {
+    case 'dealing':
+    case 'ready':
+    case 'countdown':
+      return fail(CLOSED[state.status.at]);
+    case 'over':
+      return fail('The round is over');
+    case 'grace': {
+      const held = state.players[index]!.holding;
+      if (held === null) return fail('The round is over');
+      if (intent.k !== 'release' && !(intent.k === 'move' && intent.cardId === held)) return fail('Only the held card may be played');
+      break;
+    }
+    case 'play':
+      if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   }
-  if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   const next = play(state, index, intent);
-  if (typeof next === 'string') return fail(next);
-  if (called) return { ok: true, state: settleGrace(next, state.grace) };
-  if (next.nertzCalledBy !== null) return { ok: true, state: settleGrace(next, next.players.map((p) => p.seat)) };
-  return { ok: true, state: next };
+  return typeof next === 'string' ? fail(next) : { ok: true, state: settleGrace(next) };
 }
 
 /**
@@ -393,9 +406,29 @@ export function refused(state: GameState, seat: number, intent: Intent): GameSta
   return result.ok ? result.state : state;
 }
 
-/** Ends the grace window (the server's 4-second timer fired): everyone still in it is cut off. Same object if there is none. */
+/**
+ * Was `seat` sniped, putting its one card `cardId` on the pile in `slot` (which does not take it)? Only if someone
+ * else put the very same card (suit and rank) there since `seat` took its card up: that card is the pile's top, and
+ * `seen`, the top `seat` saw there then, lies under it. `seen` is null if there was no pile there yet, and for a
+ * move that was sent: on its sender's screen the pile was still waiting for the card. The same card lying there
+ * already, or a card that never went there, is no snipe, only a card with nowhere to go. Returns who did it and with
+ * which card. (The server's question: the full state, and the pile is the record of who played what on it.)
+ */
+export function snipedBy(state: GameState, seat: number, cardId: string, slot: number, seen: string | null): { by: number; card: string } | null {
+  const lifted = grab(state, seat, cardId)?.cards;
+  const pile = state.slots[slot]?.cards;
+  if (lifted?.length !== 1 || !pile) return null;
+  const card = lifted[0]!;
+  const top = pile.at(-1)!;
+  if (card.rank === 1) return null; // an Ace beaten to a place has others to go to
+  if (top.owner === seat || top.suit !== card.suit || top.rank !== card.rank) return null;
+  if (seen !== null && !pile.slice(0, -1).some((c) => c.id === seen)) return null;
+  return { by: top.owner, card: top.id };
+}
+
+/** Ends the grace window (the server's 4-second timer fired): everyone still in it is cut off, and the round is over. Same object if there is none. */
 export function expireGrace(state: GameState): GameState {
-  return state.grace.length === 0 ? state : settleGrace(state, []);
+  return state.status.at === 'grace' ? endRound(state, { by: 'nertz', seat: state.status.calledBy }) : state;
 }
 
 // ---------------------------------------------------------------- stuck
@@ -422,16 +455,16 @@ export function canProgress(state: GameState, seat: number): boolean {
   if (nertzTop && !isHidden(nertzTop) && legalDrops(state, seat, nertzTop.id).length > 0) return true;
   if ([...p.stock, ...p.waste].some((c) => !isHidden(c) && stockCardMoves(state, seat, c))) return true;
   return p.work.some((pile, i) => {
-    const down = p.down[i]!;
-    const last = top(pile);
+    const { cards, down } = pile;
+    const last = top(cards);
     if (last && !isHidden(last) && legalDrops(state, seat, last.id).some((to) => to.k !== 'work')) return true;
     // A run onto another work pile: the whole face-up part (turning up a face-down card, or emptying the pile), or
     // part of it when the card it uncovers can then go to the middle.
-    return pile.some((c, j) => {
+    return cards.some((c, j) => {
       if (j < down || isHidden(c) || !legalDrops(state, seat, c.id).some((to) => to.k === 'work')) return false;
       if (j === down) return true;
-      const under = pile[j - 1]!;
-      const trial: GameState = { ...state, players: state.players.map((q) => (q.seat === seat ? { ...q, work: q.work.map((w, k) => (k === i ? w.slice(0, j) : w)) } : q)) };
+      const under = cards[j - 1]!;
+      const trial: GameState = { ...state, players: state.players.map((q) => (q.seat === seat ? { ...q, work: q.work.map((w, k) => (k === i ? liftOff(pile, cards.length - j) : w)) } : q)) };
       return legalDrops(trial, seat, under.id).some((to) => to.k !== 'work');
     });
   });
@@ -440,18 +473,18 @@ export function canProgress(state: GameState, seat: number): boolean {
 /**
  * If every seat in `activeSeats` (the connected players) has flagged "stuck":
  * - when nobody at the table can make a move that gets anywhere (`canProgress`), the table is jammed: the round ends
- *   there (`jammed`), to be scored as it stands;
+ *   there (over by a `jam`), to be scored as it stands;
  * - otherwise every player's waste is turned back onto their stock (restoring the original order; a half-dealt group
  *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently, and
  *   all flags clear.
- * Returns the SAME state object when nothing happens (always, once Nertz has been called).
+ * Returns the SAME state object when nothing happens (always, unless the round is live).
  */
 export function resolveStuck(state: GameState, activeSeats: Iterable<number>): GameState {
-  if (state.nertzCalledBy !== null || state.ended) return state;
+  if (!isLive(state)) return state;
   const active = new Set(activeSeats);
   const voters = state.players.filter((p) => active.has(p.seat));
   if (voters.length === 0 || !voters.every((p) => p.stuck)) return state;
-  if (!state.players.some((p) => canProgress(state, p.seat))) return { ...state, ended: 'jam', players: state.players.map((p) => ({ ...p, stuck: false })) };
+  if (!state.players.some((p) => canProgress(state, p.seat))) return endRound({ ...state, players: state.players.map((p) => ({ ...p, stuck: false })) }, { by: 'jam' });
   const players = state.players.map((p): PlayerState => {
     const stock = [...p.stock, ...p.waste.toReversed()];
     // The top card goes to the bottom, so the next pass of threes brings up different cards (and the one after that
@@ -465,15 +498,27 @@ export function resolveStuck(state: GameState, activeSeats: Iterable<number>): G
 }
 
 /**
- * If every seat in `people` (the connected players who are not bots: a bot goes along with it) has voted to end the
- * round, it ends there, to be scored as it stands (`ended: 'vote'`). Same state object otherwise.
+ * The vote to end the round: how many have a say, and how many of them have voted. Those with a say are the seats in
+ * `people` (the connected players who are not bots: a bot goes along with it) that were dealt into this round.
+ */
+export function endVote(state: GameState, people: Iterable<number>): { voters: number; voted: number } {
+  const here = new Set(people);
+  const voters = state.players.filter((p) => here.has(p.seat));
+  return { voters: voters.length, voted: voters.filter((p) => p.ending).length };
+}
+
+/** The `people` of `endVote` as a room view lists them: those with a seat who are here and are not bots. */
+export const seatedPeople = (players: readonly PlayerView[]): number[] => players.flatMap((p) => (p.seat !== null && p.connected && !p.bot ? [p.seat] : []));
+
+/**
+ * If everyone with a say in the `endVote` has voted to end the round, it ends there, to be scored as it stands
+ * (over by a `vote`). Same state object otherwise.
  */
 export function resolveEndVote(state: GameState, people: Iterable<number>): GameState {
-  if (state.nertzCalledBy !== null || state.ended || state.stage !== 'play') return state;
-  const voters = new Set(people);
-  const them = state.players.filter((p) => voters.has(p.seat));
-  if (them.length === 0 || !them.every((p) => p.ending)) return state;
-  return { ...state, ended: 'vote' };
+  if (!isLive(state)) return state;
+  const { voters, voted } = endVote(state, people);
+  if (voters === 0 || voted < voters) return state;
+  return endRound(state, { by: 'vote' });
 }
 
 // ---------------------------------------------------------------- views, scoring, invariants
@@ -491,13 +536,14 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
  * is kept so that can change without touching callers.
  */
 export function viewFor(state: GameState, _seat: number): GameState {
-  const dealing = state.stage === 'dealing';
+  const dealing = state.status.at === 'dealing';
+  const opened = hasOpened(state);
   return {
     ...state,
     players: state.players.map((p) => ({
       ...p,
-      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && state.stage === 'play' ? c : hide(c))),
-      work: p.work.map((w, i) => w.map((c, j) => (j < p.down[i]! || dealing ? hide(c) : c))),
+      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && opened ? c : hide(c))),
+      work: p.work.map(({ cards, down }) => ({ cards: cards.map((c, j) => (j < down || dealing ? hide(c) : c)), down })),
       stock: p.stock.map(hide),
       waste: p.waste.map((c, i) => (dealing || i >= p.waste.length - p.dealt ? hide(c) : c)),
     })),
@@ -506,7 +552,7 @@ export function viewFor(state: GameState, _seat: number): GameState {
 
 /** Strictly: +1 per own card in the middle (centre slots and tray), -2 per card left in the nertz pile. */
 export function scoreRound(state: GameState): RoundScore[] {
-  const middle = [...state.slots, ...state.tray].flat();
+  const middle = [...state.slots.map((pile) => pile?.cards ?? []), ...state.tray].flat();
   return state.players.map((p) => {
     const played = middle.filter((c) => c.owner === p.seat).length;
     const nertzLeft = p.nertz.length;
@@ -540,10 +586,10 @@ export function checkInvariants(state: GameState): string | null {
   };
   for (const p of state.players) {
     const at = `seat ${p.seat}`;
-    if (p.work.length !== WORK_PILES || p.down.length !== WORK_PILES) return `${at}: expected ${WORK_PILES} work piles`;
+    if (p.work.length !== WORK_PILES) return `${at}: expected ${WORK_PILES} work piles`;
     if (p.nertz.length > NERTZ_SIZE) return `${at}: nertz pile too big`;
     const piles: [string, AnyCard[]][] = [['nertz', p.nertz], ['stock', p.stock], ['waste', p.waste]];
-    p.work.forEach((w, i) => piles.push([`work ${i}`, w]));
+    p.work.forEach((w, i) => piles.push([`work ${i}`, w.cards]));
     for (const [name, pile] of piles) {
       for (const c of pile) {
         const bad = count(c, `${at} ${name}`);
@@ -551,8 +597,7 @@ export function checkInvariants(state: GameState): string | null {
         if (c.owner !== p.seat) return `${at} ${name}: holds a card owned by seat ${c.owner}`;
       }
     }
-    for (const [i, w] of p.work.entries()) {
-      const down = p.down[i]!;
+    for (const [i, { cards: w, down }] of p.work.entries()) {
       if (!Number.isInteger(down) || down < 0 || down > Math.max(0, w.length - 1)) return `${at} work ${i}: no face-up card on top`;
       // The face-up part must be a run. (A lone top card may be hidden in a predicted view: just turned over, face not yet sent.)
       for (let j = down + 1; j < w.length; j++) {
@@ -566,14 +611,10 @@ export function checkInvariants(state: GameState): string | null {
     if (p.holding !== null && !grab(state, p.seat, p.holding)) return `${at}: holding a card they cannot pick up`;
   }
   if (state.slots.length !== SLOTS_PER_PLAYER * state.players.length) return 'wrong number of centre slots';
-  if (state.places.length !== state.slots.length) return 'wrong number of places';
-  const n = state.players.length;
-  for (const [i, at] of state.places.entries()) {
-    const used = state.slots[i]!.length > 0;
-    if (state.table === 'free' ? used !== (at !== null) : at === null) return `slot ${i}: ${at ? 'a place without a pile' : 'no place'}`;
-    if (at && !roomAt(at, state.places.filter((other, j): other is Spot => j < i && other !== null), n)) return `slot ${i}: off the table or overlapping another pile`;
+  for (const [i, pile] of state.slots.entries()) {
+    if (pile && !roomAt(pile.at, piled(state.slots.slice(0, i)), state.players.length)) return `slot ${i}: off the table or overlapping another pile`;
   }
-  const middle: [string, Card[]][] = [...state.slots.map((s, i): [string, Card[]] => [`slot ${i}`, s]), ...state.tray.map((s, i): [string, Card[]] => [`tray ${i}`, s])];
+  const middle: [string, Card[]][] = [...state.slots.map((s, i): [string, Card[]] => [`slot ${i}`, s?.cards ?? []]), ...state.tray.map((s, i): [string, Card[]] => [`tray ${i}`, s])];
   for (const [name, pile] of middle) {
     if (pile.length > KING) return `${name}: too many cards`;
     for (const [j, c] of pile.entries()) {
@@ -586,22 +627,18 @@ export function checkInvariants(state: GameState): string | null {
   for (const seat of seats) {
     if (perOwner.get(seat) !== DECK_SIZE) return `seat ${seat}: has ${perOwner.get(seat) ?? 0} cards, expected ${DECK_SIZE}`;
   }
-  if (state.nertzCalledBy !== null) {
-    const caller = state.players.find((p) => p.seat === state.nertzCalledBy);
-    if (!caller || caller.nertz.length > 0) return 'nertz called by a seat with cards left';
-  }
-  if (state.stage !== 'play' && (state.nertzCalledBy !== null || middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
+  const caller = calledBy(state);
+  if (caller !== null && state.players.find((p) => p.seat === caller)?.nertz.length !== 0) return 'nertz called by a seat with cards left';
+  if (!hasOpened(state) && (middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
     return 'play began before the round was open';
   }
   if (state.players.some((p) => p.holding !== null && mustClear(state, p.seat))) return 'holding a card with a finished pile still to clear';
-  if (new Set(state.grace).size !== state.grace.length) return 'duplicate seat in grace';
-  if (state.grace.length > 0 && state.nertzCalledBy === null) return 'grace without a nertz call';
-  for (const seat of state.grace) {
-    const p = state.players.find((p) => p.seat === seat);
-    if (!p || p.holding === null || legalDrops(state, seat, p.holding).length === 0) return `seat ${seat}: in grace without a playable held card`;
+  if (state.status.at === 'grace') {
+    if (inGrace(state).length === 0) return 'grace with nobody holding a card';
+    for (const p of state.players) {
+      if (p.holding !== null && legalDrops(state, p.seat, p.holding).length === 0) return `seat ${p.seat}: in grace without a playable held card`;
+    }
   }
-  if (state.nertzCalledBy !== null && state.players.some((p) => p.holding !== null && !state.grace.includes(p.seat))) {
-    return 'a frozen player is holding a card';
-  }
+  if (isOver(state) && state.players.some((p) => p.holding !== null)) return 'a frozen player is holding a card';
   return null;
 }

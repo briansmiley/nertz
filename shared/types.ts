@@ -2,8 +2,9 @@
 //
 // Pile convention, everywhere: the TOP of a pile is the LAST array element.
 
+import type { Look } from './protocol';
 import type { TableSettings } from './settings';
-import type { Spot, TableMode } from './table';
+import type { Spot } from './table';
 
 export type Suit ='S' | 'H' | 'D' | 'C';
 
@@ -28,17 +29,8 @@ export interface PlayerState {
   seat: number;
   /** Up to 13 cards; only the top (last) one is face-up. */
   nertz: AnyCard[];
-  /**
-   * Always exactly 4 piles. In pile i the bottom `down[i]` cards are face-down;
-   * everything above them is a face-up descending alternating-colour run.
-   */
-  work: AnyCard[][];
-  /**
-   * How many cards at the bottom of each work pile are still face-down. A
-   * non-empty pile always has a face-up top: when the face-up cards leave, the
-   * next card turns over (down[i] drops by one).
-   */
-  down: number[];
+  /** Always exactly 4 piles. */
+  work: WorkPile[];
   /** Face-down. */
   stock: AnyCard[];
   /** Face-up, except the top `dealt` cards; only the top is playable, and only when `dealt` is 0. */
@@ -51,7 +43,7 @@ export interface PlayerState {
    */
   dealt: number;
   stuck: boolean;
-  /** Has voted to end the round where it stands (see `GameState.ended`). */
+  /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
   /**
    * Id of the card this player is dragging right now (the bottom card of the
@@ -60,62 +52,70 @@ export interface PlayerState {
   holding: string | null;
 }
 
+/**
+ * One of a player's work piles: its cards, and how many of them, from the bottom,
+ * are still face-down. Everything above those is a face-up descending
+ * alternating-colour run. A non-empty pile always has a face-up top: when the
+ * face-up cards leave, the next card turns over (`down` drops by one).
+ */
+export interface WorkPile {
+  cards: AnyCard[];
+  down: number;
+}
+
+/**
+ * A pile in the middle: its cards, Ace up to King in one suit (never none: the
+ * Ace starts it), and where it lies. A pile of 13 is complete: it takes nothing
+ * more and stays until the player who placed its King (that King's `owner`)
+ * clears it.
+ */
+export interface CentrePile {
+  cards: [Card, ...Card[]];
+  /**
+   * In table space (the same for every player, and drawn at the same place of
+   * the felt on every screen): the very point its Ace was put down.
+   */
+  at: Spot;
+}
+
 /** One round. The server holds it with every card known; clients get it via `viewFor`. */
 export interface GameState {
   players: PlayerState[];
+  /** Where the round is: the one field that says so. */
+  status: RoundStatus;
   /**
-   * How far the opening of the round has got. Only `play` accepts intents.
-   * - `dealing`: the cards are being dealt out; no face is shown to anyone. Until the server's deal timer (`finishDeal`).
-   * - `ready`: the work piles' tops are face-up, every nertz top is still face-down. Waits, without limit, for the dealer (`startCountdown`).
-   * - `countdown`: "1, 2, 3": as `ready`, until the server's start timer (`openPlay`).
-   * - `play`: the nertz tops are turned over and the round is on.
+   * The shared middle: 4 x players slots, each holding one centre pile or
+   * nothing (null). A pile takes the first empty slot when its Ace is put
+   * down and keeps it until it is cleared: the slot's index is how everyone
+   * names the pile meanwhile.
    */
-  stage: RoundStage;
-  /**
-   * How the middle of this round's table works (see shared/table.ts): on a
-   * 'free' table a pile lies wherever its Ace was put down, 'spots' has a
-   * marked place for every pile.
-   */
-  table: TableMode;
-  /**
-   * The shared middle: 4 x players slots. Each entry is one centre pile, Ace
-   * up to King in one suit; an empty array is an empty slot. A pile of 13 is
-   * complete: it takes nothing more and stays in its slot until the player
-   * who placed its King (that King's `owner`) clears it.
-   */
-  slots: Card[][];
-  /**
-   * Where each slot's pile lies on the table, in table space (the same for
-   * every player, and drawn at the same place of the felt on every screen). On a 'spots' table
-   * every slot has its place for the whole round. On a 'free' table a slot
-   * has a place only while it holds a pile: the place is set by the Ace that
-   * starts it and given up when the finished pile is cleared.
-   */
-  places: (Spot | null)[];
+  slots: (CentrePile | null)[];
   /** Completed piles cleared off the table, oldest first. Each has 13 cards, King on top. Still scores. */
   tray: Card[][];
-  /** Seat that called "Nertz!", or null while the round is in full swing. */
-  nertzCalledBy: number | null;
-  /**
-   * Set when the round ended without a Nertz call, scored as it stands: 'jam' when everyone said they were stuck and
-   * no card could move anywhere, at any shift of any stock; 'vote' when every connected person voted to end it.
-   */
-  ended?: 'jam' | 'vote';
-  /**
-   * Held-card grace. Empty until Nertz is called. From then on: the seats that
-   * were holding a playable card at the call and may still make exactly one
-   * move with it. Everyone else is frozen. The round is over once Nertz has
-   * been called and this is empty again (`isOver`).
-   */
-  grace: number[];
 }
 
-export type RoundStage = 'dealing' | 'ready' | 'countdown' | 'play';
+/**
+ * How far a round has got. Only `play` takes every intent; `grace` takes one move of a card already in hand.
+ * - `dealing`: the cards are being dealt out; no face is shown to anyone. Until the server's deal timer (`finishDeal`).
+ * - `ready`: the work piles' tops are face-up, every nertz top is still face-down. Waits, without limit, for the dealer (`startCountdown`).
+ * - `countdown`: "1, 2, 3": as `ready`, until the server's start timer (`openPlay`).
+ * - `play`: the nertz tops are turned over and the round is on.
+ * - `grace`: `calledBy` called "Nertz!". Everyone is frozen but those who were holding a playable card at the call:
+ *   each may still make exactly one move with it. Who they are is not kept here: exactly the seats holding a card (`inGrace`).
+ * - `over`: nothing can change any more; `end` says how it came to that.
+ */
+export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | { at: 'grace'; calledBy: number } | { at: 'over'; end: RoundEnd };
+
+/**
+ * How a round ended: a seat called Nertz; or without a call, scored as it stands: a 'jam' when everyone said they were
+ * stuck and no card could move anywhere, at any shift of any stock; a 'vote' when every connected person voted to end it.
+ */
+export type RoundEnd = { by: 'nertz'; seat: number } | { by: 'jam' } | { by: 'vote' };
 
 /**
  * Where a card can be dropped: one of your own work piles, one specific centre
- * slot, or (an Ace on a 'free' table) a point of the bare felt, in table
- * space, where a new pile is to start.
+ * slot, or (an Ace) a point of the bare felt, in table space, where a new
+ * pile is to start.
  */
 export type PileRef = { k: 'work'; i: number } | { k: 'slot'; i: number } | { k: 'felt'; x: number; y: number };
 
@@ -165,15 +165,13 @@ export interface RoundLine extends RoundScore {
   rounds: number;
   /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
-  /** Their faces and backs when the round ended, named as in `PlayerView`. */
-  deck?: string;
-  back?: string;
+  /** Their faces and backs when the round ended. */
+  look?: Look;
 }
 
 export interface RoundResult {
-  /** Who called Nertz; null if the round ended without a call (`ended` says how). */
-  calledBy: number | null;
-  ended?: 'jam' | 'vote';
+  /** How the round ended: what its `status` came to. */
+  end: RoundEnd;
   scores: RoundLine[];
   /** Who beat whom to a pile in the middle with the very card the other was about to put there, and how often (`n`): most first. Absent if nobody did. */
   snipes?: { by: number; of: number; n: number }[];
@@ -195,26 +193,32 @@ export interface PlayerView {
   seat: number | null;
   name: string;
   connected: boolean;
+  /** Gone for good (they left, or were sent away) while their cards are in the round: those lie there until it is over. Never back: someone back by the same token is someone new. */
+  left?: true;
   /** Total across finished rounds. */
   score: number;
   /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */
   rounds: number;
   isHost: boolean;
-  stuck: boolean;
-  /** Has voted to end the round where it stands. */
-  ending: boolean;
   /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */
   ready?: boolean;
   /** Without a seat, and waiting for one: it is theirs when one is free and no round is being played, in the order they asked (the order of the list). Without a seat and without this: watching by choice. */
   queued?: boolean;
   /** Set for a bot the host added (it always counts as connected); absent for a person. */
   bot?: BotLevel;
-  /** The card faces this player chose (shared/protocol.ts `DECKS`, with `:night` after it for the dark ones): the cards of their deck are drawn so for everyone. A bot's are the plain ones. Absent (they have not said yet): the plain one. */
-  deck?: string;
-  /** The backs of this player's cards (`CARD_BACKS`, with `:bare` after it for one without its white edge), for everyone likewise. Absent: the plain one. */
-  back?: string;
-  /** Set if their back is drawn by lot (once for the table, at its first deal after the lot was chosen): the lot ('all', or a kind of back). `back` is then 'any' until a round is on. */
-  lot?: string;
+  /** The faces and backs this player chose: the cards of their deck are drawn so for everyone. A bot's, and anyone's who has not said yet, are the plain ones. */
+  look: Look;
+}
+
+/**
+ * The seats at a table: how many it has (`of`: the host's to set, between rounds, from `MIN_PLAYERS` to `MAX_PLAYERS`)
+ * and how many of them are taken. Taken is held by someone at the table, but not by anyone gone whose cards are still in
+ * the round (they keep only those). Not a house rule: what it may be set to, and who sits down when it changes, depend
+ * on who is at the table. See `freeSeats` and `fewestSeats`.
+ */
+export interface Seats {
+  of: number;
+  taken: number;
 }
 
 /** Everything one client needs to render, personalised for the player `me`. */
@@ -229,8 +233,9 @@ export interface RoomView {
   seat: number | null;
   /** Those at the table by seat; then those waiting for a seat, first to be seated first; then those just watching. */
   players: PlayerView[];
-  /** The table's house rules, as the next deal will read them. Only the host changes them, between rounds. */
+  /** The table's house rules. Only the host changes them, between rounds. */
   settings: TableSettings;
+  seats: Seats;
   /**
    * Redacted current round; null in the lobby. Kept through 'results' as the
    * final table (centre slots, tray, hands), so the client can play the
@@ -238,21 +243,12 @@ export interface RoomView {
    */
   game: GameState | null;
   /**
-   * Milliseconds left in the held-card grace window at the moment this
-   * snapshot was sent; null when no grace window is running. A duration, not
-   * a timestamp: count it down locally from when the snapshot arrives.
+   * Milliseconds left of the round's timed status when this snapshot was sent, which `game.status` names: the deal
+   * (`dealing`), the "1, 2, 3" (`countdown`: play opens, on the word NERTZ!, when it reaches 0) or the held-card
+   * window (`grace`). Null in any other status. A duration, not a timestamp: count it down locally from when the
+   * snapshot arrives.
    */
-  graceMs: number | null;
-  /**
-   * Milliseconds of the deal left when this snapshot was sent (`game.stage` is
-   * `dealing`); null otherwise. Like `graceMs`, a duration to count down locally.
-   */
-  dealMs: number | null;
-  /**
-   * Milliseconds of the "1, 2, 3" left when this snapshot was sent (`game.stage`
-   * is `countdown`): play opens, on the word NERTZ!, when it reaches 0. Null otherwise.
-   */
-  startMs: number | null;
+  timerMs: number | null;
   /**
    * The round's clock: how long it had been played when this snapshot was sent (from the word NERTZ!, not counting
    * time paused), and whether it is running: count on locally while it is. It stops when the round ends, and stays
@@ -262,4 +258,22 @@ export interface RoomView {
   /** The round is paused (by this player, an `id`): every card is hidden, no move is taken and the bots wait. Null otherwise. */
   paused: { by: number } | null;
   lastRound: RoundResult | null;
+}
+
+/**
+ * A table as the home page lists it (`GET /tables`), for anyone to see before coming to it: what it is doing and who is
+ * at it by the names they go by. Nothing that says who anyone is beyond that (no `id`, never a token).
+ */
+export interface TableSummary {
+  code: string;
+  /** Those at the table, by seat. */
+  names: string[];
+  /** How many it seats. */
+  seats: number;
+  /** Those here without a seat: watching, or waiting for one. */
+  watching: number;
+  /** Rounds started so far (0: none yet). */
+  round: number;
+  /** Round `round` is on: dealt, and not yet scored. */
+  playing: boolean;
 }

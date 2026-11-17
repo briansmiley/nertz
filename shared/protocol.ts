@@ -2,12 +2,12 @@
 import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isPlayerId } from './chat';
 import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
-import type { BotLevel, Intent, PileRef, PlayerView, RoomView } from './types';
+import type { BotLevel, Intent, PileRef, PlayerView, RoomView, Seats } from './types';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
- * its suit marks, and a traditional deck of picture files. Any of them can also be had dark (`night`): light on a
- * dark card. Where a deck is named for drawing, a dark one is its name with `:night` after it. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
+ * its suit marks, and a traditional deck of picture files. Any of them can also be had dark (`Look.night`): light on a
+ * dark card. (Every deck keeps the usual two colours: everyone sees everyone's cards, and a
  * suit must not be one colour in your hand and another in your neighbour's.)
  */
 export const DECKS = { modern: 'Nertz', big: 'Big print', classic: 'Classic', pixel: 'Pixel', cute: 'Cute' } as const;
@@ -16,8 +16,7 @@ export const isDeck = (v: unknown): v is Deck => typeof v === 'string' && Object
 
 /**
  * The backs there are to choose from (drawn by `backOf` in client/cards/Face.tsx; where each is from: CREDITS.md). The
- * plain cross-hatch; patterns drawn in code; patterns of one colour, each a single picture printed in the player's own colour; and pictures
- * with colours of their own, framed in the player's colour.
+ * plain cross-hatch; patterns drawn in code; and patterns of one colour, each a single picture printed in the player's own colour.
  */
 export const CARD_BACKS = {
   plain: 'Plain',
@@ -107,13 +106,6 @@ export const CARD_BACKS = {
   'tarot-eye-tint': 'Vision',
 } as const;
 export type Back = keyof typeof CARD_BACKS;
-/**
- * A back can be had without its white edge (`bare`): what is inside the edge is drawn larger, out to the edge of the
- * card. Where a back is named for drawing, such a one is its name with `:bare` after it (as a dark deck has `:night`).
- */
-/** A deck as it is named for drawing: its name, with `:night` after it for the dark one. */
-export const deckNamed = (deck: Deck, night: boolean | undefined): string => `${deck}${night ? ':night' : ''}`;
-export const backNamed = (back: Back | undefined, bare: boolean | undefined): string | undefined => (bare ? `${back ?? 'plain'}:bare` : back);
 /** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
 export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
   { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life'] },
@@ -127,13 +119,33 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
 /**
  * A lot: backs to draw one from by chance, in place of a back of one's own choosing: once for a table, when its first
  * round is dealt (or the first after the lot was chosen), and kept there for every round after. 'all' is every back;
- * otherwise the name of a kind (a group above, or "Other" if there are backs in none: `backGroups`). Until it is drawn, such a player's back is shown as `ANY_BACK`: a
+ * otherwise the name of a kind (a group above, or "Other" if there are backs in none: `backGroups`). Until it is drawn, such a player's back is shown as a
  * card with a question mark.
  */
-export const isLot = (v: unknown): v is string => typeof v === 'string' && (v === 'all' || backGroups().some((g) => g.name === v));
-export const backPool = (lot: string): readonly Back[] => backGroups().find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
-/** What a back not yet drawn is called where backs are named for drawing. */
-export const ANY_BACK = 'any';
+export type Lot = string;
+export const isLot = (v: unknown): v is Lot => typeof v === 'string' && (v === 'all' || backGroups().some((g) => g.name === v));
+export const backPool = (lot: Lot): readonly Back[] => backGroups().find((g) => g.name === lot)?.backs ?? (Object.keys(CARD_BACKS) as Back[]);
+
+/**
+ * Where a player's backs come from: their own choice, or a lot. A back is drawn from a lot once for the table and kept
+ * for every round there: `drawn` is null until it is, which is at the next deal, or at once if a round is on. Only
+ * the table draws: a lot said by a client is always undrawn.
+ */
+export type Backs = { k: 'own'; back: Back } | { k: 'lot'; lot: Lot; drawn: Back | null };
+/** The back `backs` come to: null for a lot not drawn yet (a card with a question mark). */
+export const shownBack = (backs: Backs): Back | null => (backs.k === 'own' ? backs.back : backs.drawn);
+/**
+ * How a player's cards look, for everyone: their faces (`deck`, dark if `night`) and their backs (`bare`: without the
+ * white edge, what is inside it drawn larger, out to the edge of the card).
+ */
+export interface Look {
+  deck: Deck;
+  night: boolean;
+  backs: Backs;
+  bare: boolean;
+}
+/** The look of a bot's cards, and of anyone's until they say theirs. */
+export const PLAIN_LOOK: Look = { deck: 'modern', night: false, backs: { k: 'own', back: 'plain' }, bare: false };
 
 /** `BACK_GROUPS`, with any back that is in none of them gathered at the end. */
 export function backGroups(): { name: string; backs: Back[] }[] {
@@ -142,6 +154,14 @@ export function backGroups(): { name: string; backs: Back[] }[] {
   return [...BACK_GROUPS.map((g) => ({ name: g.name, backs: [...g.backs] })), ...(rest.length ? [{ name: 'Other', backs: rest }] : [])];
 }
 export const isBack = (v: unknown): v is Back => typeof v === 'string' && Object.hasOwn(CARD_BACKS, v);
+/**
+ * A back drawn by chance from `pool` (all of them, unless a lot is given), never `had` while the pool has another:
+ * what a card turned over shows (the hand on the home page), and a player's draw from their lot. `roll` is in [0, 1).
+ */
+export function anotherBack(had: Back | undefined, pool: readonly Back[] = Object.keys(CARD_BACKS) as Back[], roll: number = Math.random()): Back {
+  const others = pool.length > 1 ? pool.filter((b) => b !== had) : pool;
+  return others[Math.min(others.length - 1, Math.floor(roll * others.length))]!;
+}
 
 export type ClientMsg =
   /** Open a new table, and sit down at it; the server picks the code and answers with the first snapshot (`room.code`). */
@@ -149,12 +169,14 @@ export type ClientMsg =
   /** Come into (or reconnect to) an existing table: to watch, until you ask for a seat (`sit`). An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
-  /** Dealer only, once the cards are dealt and the table is waiting (`game.stage` is `ready`): count "1, 2, 3, Nertz!" and open play. */
+  /** Dealer only, once the cards are dealt and the table is waiting (`game.status` is `ready`): count "1, 2, 3, Nertz!" and open play. */
   | { t: 'go' }
   /** Once the cards are dealt, before Start: I am ready (or, off, not after all). Shown to everyone; the dealer still says when. */
   | { t: 'ready'; on: boolean }
   /** Host only, between rounds: change some table settings. They apply from the next deal. */
   | { t: 'settings'; patch: Partial<TableSettings> }
+  /** Host only, between rounds: one seat more (1) or fewer (-1). The server keeps the number within `fewestSeats` and `MAX_PLAYERS`, so taps sent faster than the snapshots come back each count. */
+  | { t: 'seats'; step: 1 | -1 }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
   /** Whoever deals, between rounds: start over. Everyone's score goes back to nothing and the table to its lobby, as before the first deal. */
@@ -165,13 +187,15 @@ export type ClientMsg =
   | { t: 'redeal' }
   /** Pause the round for everyone (on), or carry on (off). */
   | { t: 'pause'; on: boolean }
-  /** Which card faces I play with: everyone sees the cards of my deck drawn that way. */
-  | { t: 'deck'; deck: Deck; back?: Back; night?: boolean; bare?: boolean; lot?: string | null }
+  /** How my cards look: everyone sees the cards of my deck drawn that way. Every part of it is said, every time. */
+  | { t: 'deck'; look: Look }
   /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
   | { t: 'addBot'; level: BotLevel }
   | { t: 'removeBot'; seat: number }
-  /** I let a card go over the pile at `slot` and it was too late: someone else's very same card had just been put there. (Counted, if the table agrees.) */
-  | { t: 'sniped'; slot: number }
+  /** I let my one card `card` go over the pile at `slot`, which would not take it; its top was `seen` when I took the card up (null: there was no pile). The server judges whether I was sniped (`snipedBy`). */
+  | { t: 'tried'; card: string; slot: number; seen: string | null }
+  /** From a window older than the server's own judgement of snipes. Ignored. */
+  | { t: 'sniped' }
   /** Ask for a seat (on: it is yours at once if one is free and no round is being played, and otherwise when your turn in the queue comes), or give up your seat or your place in the queue and just watch (off): yourself, or as whoever deals the person `id`. Not out of a round you hold cards in. */
   | { t: 'sit'; on: boolean; id?: number }
   /** Whoever deals: hand the table on to the person `id` (someone at it), who hosts it from then on. */
@@ -180,8 +204,8 @@ export type ClientMsg =
   | { t: 'kick'; id: number }
   /** Whoever deals: what the bot in `seat` is called. */
   | { t: 'botName'; seat: number; name: string }
-  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table (`lot`; null: no lot, the back it has). */
-  | { t: 'botBack'; seat: number; back?: Back; lot?: string | null }
+  /** Host only: the back the bot in `seat` plays with, or the lot it is drawn from, once for the table. */
+  | { t: 'botBack'; seat: number; backs: Backs }
   /** In the lobby: move to another seat nobody has, which is to take its colour. */
   | { t: 'seat'; seat: number }
   /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
@@ -192,14 +216,20 @@ export type ClientMsg =
 export type ServerMsg =
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
   | { t: 'state'; rev: number; ack: number; room: RoomView }
+  /** A complaint about something this connection sent. It changes nothing: the connection goes on. */
   | { t: 'error'; message: string }
-  /** Whoever deals has sent you away from the table: the connection is closed next, and is not to be made again. */
-  | { t: 'removed' }
-  /** To you alone: you have just beaten the player in seat `of` to a pile in the middle with the very card they were about to put there. */
-  | { t: 'sniper'; of: number }
+  /** To everyone in the room: seat `by` has just beaten seat `of` to the pile at `slot` with the very card `of` was about to put there. */
+  | { t: 'snipe'; by: number; of: number; slot: number }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
   | SocialServerMsg;
+
+/**
+ * The close code of a connection the server is done with for good: refused a table, its seat opened in another tab, or
+ * sent away by whoever deals. The close reason is what to tell the player (at most 123 bytes). The window goes home and
+ * does not come back by itself; any other close is a dropped line, and the window reconnects.
+ */
+export const CLOSE_OVER = 4000;
 
 /**
  * Where a held card (the one named by the sender's `hold`) is, in two frames
@@ -231,7 +261,8 @@ export const DRAG_HZ = 18;
 export const DRAG_RATE = 30;
 export const DRAG_BURST = 12;
 
-export const MAX_MESSAGE_BYTES = 2048;
+/** The largest frame a client may send. Each message is bounded field by field in `parseClientMsg`; this is room for a voice offer in one message. */
+export const MAX_MESSAGE_BYTES = 16_384;
 export const MAX_NAME_LENGTH = 20;
 export const MIN_PLAYERS = 2;
 /** Beyond the seats, this many more may be in the room to watch (and wait for a seat). */
@@ -240,6 +271,10 @@ export const MAX_WATCHERS = 20;
 export type SeatedView = PlayerView & { seat: number };
 export const hasSeat = (p: PlayerView): p is SeatedView => p.seat !== null;
 export const MAX_PLAYERS = 10; // (more than six is new: the table was drawn for six, and is laid out more tightly beyond)
+/** How many seats are still to be had: none when as many are taken as the table has (or more, if it was lowered while they were). */
+export const freeSeats = (s: Seats): number => Math.max(0, s.of - s.taken);
+/** The fewest seats the table may be set to: never fewer than are taken (nobody is stood up), nor than a round needs. */
+export const fewestSeats = (s: Seats): number => Math.max(MIN_PLAYERS, s.taken);
 export const WORK_PILES = 4;
 /** Centre slots per player in the round. */
 export const SLOTS_PER_PLAYER = 4;
@@ -335,6 +370,19 @@ export function parseIntent(raw: unknown): Intent | null {
   }
 }
 
+function parseBacks(raw: unknown): Backs | null {
+  if (!isObj(raw)) return null;
+  if (raw.k === 'own') return isBack(raw.back) ? { k: 'own', back: raw.back } : null;
+  if (raw.k === 'lot') return isLot(raw.lot) ? { k: 'lot', lot: raw.lot, drawn: null } : null;
+  return null;
+}
+
+function parseLook(raw: unknown): Look | null {
+  if (!isObj(raw)) return null;
+  const backs = parseBacks(raw.backs);
+  return isDeck(raw.deck) && typeof raw.night === 'boolean' && typeof raw.bare === 'boolean' && backs ? { deck: raw.deck, night: raw.night, backs, bare: raw.bare } : null;
+}
+
 /** Strips control characters, collapses whitespace, trims and caps length. May return ''. */
 export function cleanName(raw: string): string {
   return raw
@@ -389,16 +437,20 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return typeof v.on === 'boolean' && (v.id === undefined || isPlayerId(v.id)) ? { t: 'sit', on: v.on, ...(v.id === undefined ? {} : { id: v.id }) } : null;
     case 'pause':
       return typeof v.on === 'boolean' ? { t: 'pause', on: v.on } : null;
-    case 'deck':
-      return isDeck(v.deck) ? { t: 'deck', deck: v.deck, ...(isBack(v.back) ? { back: v.back } : {}), ...(typeof v.night === 'boolean' ? { night: v.night } : {}), ...(typeof v.bare === 'boolean' ? { bare: v.bare } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
+    case 'deck': {
+      const look = parseLook(v.look);
+      return look ? { t: 'deck', look } : null;
+    }
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
       return level ? { t: 'addBot', level } : null;
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
+    case 'tried':
+      return isId(v.card) && isIndex(v.slot, MAX_SLOTS) && (v.seen === null || isId(v.seen)) ? { t: 'tried', card: v.card, slot: v.slot, seen: v.seen } : null;
     case 'sniped':
-      return isIndex(v.slot, MAX_SLOTS) ? { t: 'sniped', slot: v.slot } : null;
+      return { t: 'sniped' };
     case 'host':
       return isPlayerId(v.id) ? { t: 'host', id: v.id } : null;
     case 'kick':
@@ -407,10 +459,14 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
       return isIndex(v.seat, MAX_PLAYERS) && name ? { t: 'botName', seat: v.seat, name } : null;
     }
-    case 'botBack':
-      return isIndex(v.seat, MAX_PLAYERS) && (isBack(v.back) || v.lot === null || isLot(v.lot)) ? { t: 'botBack', seat: v.seat, ...(isBack(v.back) ? { back: v.back } : {}), ...(v.lot === null || isLot(v.lot) ? { lot: v.lot } : {}) } : null;
+    case 'botBack': {
+      const backs = parseBacks(v.backs);
+      return isIndex(v.seat, MAX_PLAYERS) && backs ? { t: 'botBack', seat: v.seat, backs } : null;
+    }
     case 'seat':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
+    case 'seats':
+      return v.step === 1 || v.step === -1 ? { t: 'seats', step: v.step } : null;
     case 'settings': {
       const patch = parseSettings(v.patch);
       return patch ? { t: 'settings', patch } : null;

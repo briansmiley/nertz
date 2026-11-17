@@ -23,8 +23,8 @@ export const FEEDBACK_MAX_TEXT = 2000;
 /** The whole request: the text and one picture (the client scales it down first). */
 const MAX_BODY_BYTES = 3 << 20;
 /** Per address: this many reports in this long. */
-const RATE_MAX = 5;
-const RATE_WINDOW_MS = 10 * 60_000;
+const RATE_MAX = 10;
+const RATE_WINDOW_MS = 60_000;
 const IMAGE_RE = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/;
 
 export interface Report {
@@ -255,7 +255,7 @@ export function feedbackHandler(options: FeedbackOptions = {}) {
     const from = String(req.headers['fly-client-ip'] ?? req.socket.remoteAddress ?? '');
     const now = Date.now();
     const times = (recent.get(from) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-    if (times.length >= RATE_MAX) return answer(429, 'That is a lot of reports. Try again in a few minutes.');
+    if (times.length >= RATE_MAX) return answer(429, 'That is a lot of reports. Try again in a minute.');
     recent.set(from, [...times, now]);
     if (recent.size > 5000) for (const [k, v] of recent) if (v.every((t) => now - t >= RATE_WINDOW_MS)) recent.delete(k);
 

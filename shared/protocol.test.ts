@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, DRAG_HZ, DRAG_RATE, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, randomRoomCode } from './protocol';
+import { anotherBack, CARD_BACKS, cleanName, DRAG_HZ, DRAG_RATE, isBack, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, PLAIN_LOOK, randomRoomCode } from './protocol';
 import { TABLE } from './table';
 
 const TOKEN = 'abcDEF123_-xyz';
@@ -25,6 +25,16 @@ describe('parseClientMsg', () => {
     for (const intent of [{ k: 'move', cardId: 'c1', count: 1, to: { k: 'slot', i: 23 } }, { k: 'hold', cardId: 'c1' }, { k: 'release' }, { k: 'clear', slot: 0 }, { k: 'nertz' }]) {
       expect(parseClientMsg({ t: 'intent', seq: 1, intent: { ...intent, extra: true } })).toEqual({ t: 'intent', seq: 1, intent });
     }
+    expect(parseClientMsg({ t: 'tried', card: 'c1', slot: 3, seen: 'c2', by: 0 })).toEqual({ t: 'tried', card: 'c1', slot: 3, seen: 'c2' }); // (who did it is the server's to say)
+    expect(parseClientMsg({ t: 'tried', card: 'c1', slot: 0, seen: null })).toEqual({ t: 'tried', card: 'c1', slot: 0, seen: null });
+    expect(parseClientMsg({ t: 'sniped', slot: 2 })).toEqual({ t: 'sniped' }); // a window from before the server judged snipes: taken, and ignored
+  });
+
+  it('takes a look whole, with every part said, and a lot always undrawn', () => {
+    const look = { deck: 'classic', night: true, backs: { k: 'own', back: 'fern', lot: 'all' }, bare: true, x: 1 };
+    expect(parseClientMsg({ t: 'deck', look })).toEqual({ t: 'deck', look: { deck: 'classic', night: true, backs: { k: 'own', back: 'fern' }, bare: true } });
+    expect(parseClientMsg({ t: 'botBack', seat: 2, backs: { k: 'lot', lot: 'Plants', drawn: 'fern' } })).toEqual({ t: 'botBack', seat: 2, backs: { k: 'lot', lot: 'Plants', drawn: null } });
+    for (const bad of [{ ...PLAIN_LOOK, night: undefined }, { ...PLAIN_LOOK, deck: 'modern:night' }, { ...PLAIN_LOOK, backs: 'fern:bare' }, { ...PLAIN_LOOK, backs: { k: 'own', back: 'any' } }, { ...PLAIN_LOOK, backs: { k: 'lot' } }]) expect(parseClientMsg({ t: 'deck', look: bad })).toBeNull();
   });
 
   it('caps the name length', () => {
@@ -49,6 +59,7 @@ describe('parseClientMsg', () => {
       { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'foundation', id: 'f' } } }, { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'newFoundation' } } },
       { t: 'intent', seq: 1, intent: { k: 'hold' } }, { t: 'intent', seq: 1, intent: { k: 'hold', cardId: 'x'.repeat(65) } },
       { t: 'intent', seq: 1, intent: { k: 'clear' } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: 40 } }, { t: 'intent', seq: 1, intent: { k: 'clear', slot: -1 } },
+      { t: 'tried', slot: 0, seen: null }, { t: 'tried', card: 'c', slot: 40, seen: null }, { t: 'tried', card: 'c', slot: 0 }, { t: 'tried', card: 'c', slot: 0, seen: 7 },
       { t: 'create' }, { t: 'create', name: 'A' }, { t: 'create', name: '  ', token: TOKEN }, { t: 'create', name: 'A', token: 'short' }, { t: 'create', name: 7, token: TOKEN },
       `{"t":"start","pad":"${'x'.repeat(MAX_MESSAGE_BYTES)}"}`,
     ];
@@ -138,5 +149,17 @@ describe('small helpers', () => {
     expect(isRoomCode(randomRoomCode(() => 1))).toBe(true);
     expect(isRoomCode('abcd')).toBe(false);
     expect(isRoomCode('ABCDE')).toBe(false);
+  });
+
+  it('anotherBack is any back but the one the card had', () => {
+    const all = Object.keys(CARD_BACKS) as (keyof typeof CARD_BACKS)[];
+    for (const had of all) {
+      const seen = new Set([0, 0.25, 0.5, 0.75, 0.999999, 1].map((roll) => anotherBack(had, undefined, roll)));
+      for (const b of seen) expect(isBack(b) && b !== had).toBe(true);
+    }
+    const reached = new Set(Array.from({ length: all.length - 1 }, (_, i) => anotherBack('plain', undefined, (i + 0.5) / (all.length - 1))));
+    expect(reached.size).toBe(all.length - 1); // every other back can come up
+    expect(anotherBack('plain', ['plain'], 0.5)).toBe('plain'); // a lot of one: that one
+    expect(anotherBack('plain', ['plain', all[1]!], 0)).toBe(all[1]); // never the one it had while there is another
   });
 });

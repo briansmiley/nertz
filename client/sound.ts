@@ -3,23 +3,23 @@
 //
 // Card noises are short recordings (sounds/, see sounds/CREDITS.md); tones are
 // synthesised. Everything is a one-shot through its own gain envelope into
-// one master gain and a limiter, and at most MAX_VOICES play at once, so a
+// the gain of its channel (yours, or other players' cards: prefs.ts `Levels`)
+// and one limiter, and at most MAX_VOICES play at once, so a
 // busy table gets denser but never clicks or clips. Nothing sounds before the
 // first click or key press: browsers do not let a page start audio by itself.
 import { useEffect, useRef } from 'react';
 import type { RoomView } from '../shared/types';
-import { TIMING } from './Finale';
-import { DEAL, dealWait, type Stage } from './layout';
-import { DEAL_MS } from '../shared/protocol';
-import { getPrefs, watchPrefs } from './prefs';
+import type { Sorting } from './Finale';
+import { dealTimes, type Stage } from './layout';
+import { getPrefs, loudness, watchPrefs } from './prefs';
 import { graceTicking, soundCues, type Cue, type Frame, type Who } from './soundEvents';
+import { Voices, type Voice } from './voices';
 
 const FILES = import.meta.glob<string>('./sounds/*.mp3', { eager: true, query: '?url', import: 'default' });
 
 const MAX_VOICES = 18;
 /** Other players' cards at "100%" are still well under your own. */
 const OTHERS = 0.7;
-const { sortEach: SORT_MS } = TIMING; // flicks while the first couple of piles are gathered
 
 interface Sample {
   buffer: AudioBuffer;
@@ -28,16 +28,17 @@ interface Sample {
 }
 
 let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-let voices = 0;
+/** Where a one-shot goes, by whose it is. */
+let buses: Record<Who, GainNode> | null = null;
+const cap = new Voices(MAX_VOICES);
 const samples = new Map<string, Sample>();
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 const pick = <T>(of: readonly T[]): T => of[Math.floor(Math.random() * of.length)]!;
 
-function level(): number {
+function level(who: Who): number {
   const p = getPrefs();
-  return p.muted ? 0 : p.volume * p.volume; // squared: the slider feels even
+  return who === 'other' ? OTHERS * loudness(p, 'others') : loudness(p, 'mine');
 }
 
 function onset(buffer: AudioBuffer): number {
@@ -65,9 +66,14 @@ function wake(): void {
     limiter.ratio.value = 12;
     limiter.attack.value = 0.002;
     limiter.release.value = 0.12;
-    master = ctx.createGain();
-    master.gain.value = level();
-    master.connect(limiter).connect(ctx.destination);
+    limiter.connect(ctx.destination);
+    const bus = (who: Who): GainNode => {
+      const g = ctx!.createGain();
+      g.gain.value = level(who);
+      g.connect(limiter);
+      return g;
+    };
+    buses = { me: bus('me'), other: bus('other') };
     const audio = ctx;
     for (const [path, url] of Object.entries(FILES)) {
       const name = path.slice(path.lastIndexOf('/') + 1, -4);
@@ -84,7 +90,7 @@ function wake(): void {
 if (typeof window !== 'undefined') {
   for (const type of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(type, wake, { capture: true, passive: true });
   watchPrefs(() => {
-    if (ctx && master) master.gain.setTargetAtTime(level(), ctx.currentTime, 0.015);
+    if (ctx && buses) for (const who of ['me', 'other'] as const) buses[who].gain.setTargetAtTime(level(who), ctx.currentTime, 0.015);
   });
 }
 
@@ -95,11 +101,14 @@ interface Shot {
   who?: Who;
 }
 
-/** Whether a one-shot at this gain may start now, and at what level. 0 = stay silent. */
-function admit(o: Shot): number {
-  if (!ctx || !master || ctx.state !== 'running' || level() === 0 || voices >= MAX_VOICES) return 0;
-  const g = (o.gain ?? 1) * (o.who === 'other' ? OTHERS * getPrefs().others : 1);
-  return g < 0.003 ? 0 : g;
+/** Whether a one-shot `length` seconds long may sound: when it starts, at what gain (before its channel's), and its place under the cap. Null = stay silent. */
+function admit(o: Shot, length: number): { t: number; g: number; voice: Voice } | null {
+  if (!ctx || !buses || ctx.state !== 'running') return null;
+  const g = o.gain ?? 1;
+  if (g * level(o.who ?? 'me') < 0.002) return null;
+  const t = ctx.currentTime + (o.delay ?? 0);
+  const voice = cap.take(ctx.currentTime, t, t + length);
+  return voice && { t, g, voice };
 }
 
 type Stop = () => void;
@@ -112,11 +121,12 @@ const NOTHING: Stop = () => {};
  */
 function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: number; attack?: number } = {}): Stop {
   const s = samples.get(name);
-  const g = admit(o);
-  if (!s || !g || !ctx || !master) return NOTHING;
+  if (!s) return NOTHING;
   const rate = o.rate ?? 1;
-  const t = ctx.currentTime + (o.delay ?? 0);
   const length = (s.buffer.duration - s.at) / rate;
+  const a = admit(o, length);
+  if (!a || !ctx || !buses) return NOTHING;
+  const { t, g, voice } = a;
   const src = ctx.createBufferSource();
   src.buffer = s.buffer;
   src.playbackRate.value = rate;
@@ -139,35 +149,32 @@ function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: numb
     filter.frequency.value = o.thin;
     last = last.connect(filter);
   }
-  last.connect(env).connect(master);
-  voices++;
-  src.onended = () => {
-    voices--;
-    env.disconnect();
-  };
+  last.connect(env).connect(buses[o.who ?? 'me']);
+  src.onended = () => env.disconnect();
   src.start(t, s.at);
   const audio = ctx;
   return () => {
     const now = audio.currentTime;
     env.gain.cancelScheduledValues(now);
     env.gain.setTargetAtTime(0, now, 0.02);
-    src.stop(Math.max(now, t) + 0.1);
+    const end = Math.max(now, t) + 0.1;
+    src.stop(end);
+    voice.end = Math.min(voice.end, end);
   };
 }
 
 /** A soft bell-like tone: a few sine partials under one fast-attack, exponential-decay envelope. */
 function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
-  const g = admit(o);
-  if (!g || !ctx || !master) return;
-  const t = ctx.currentTime + (o.delay ?? 0);
   const dur = o.dur ?? 0.45;
+  const a = admit(o, dur + 0.03);
+  if (!a || !ctx || !buses) return;
+  const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
   env.gain.linearRampToValueAtTime(g, t + 0.006);
   env.gain.exponentialRampToValueAtTime(0.0005, t + dur);
   env.gain.linearRampToValueAtTime(0, t + dur + 0.02);
-  env.connect(master);
-  voices++;
+  env.connect(buses[o.who ?? 'me']);
   (o.partials ?? BELL).forEach(([ratio, amp], i) => {
     const osc = ctx!.createOscillator();
     osc.frequency.value = freq * ratio;
@@ -177,27 +184,23 @@ function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (reado
     osc.start(t);
     osc.stop(t + dur + 0.03);
     if (i === 0) {
-      osc.onended = () => {
-        voices--;
-        env.disconnect();
-      };
+      osc.onended = () => env.disconnect();
     }
   });
 }
 
 /** A note that slides from `from` to `to` (Hz) as it sounds, fading out as it goes. */
 function glide(from: number, to: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
-  const g = admit(o);
-  if (!g || !ctx || !master) return;
-  const t = ctx.currentTime + (o.delay ?? 0);
   const dur = o.dur ?? 0.2;
+  const a = admit(o, dur + 0.03);
+  if (!a || !ctx || !buses) return;
+  const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
   env.gain.linearRampToValueAtTime(g, t + 0.004);
   env.gain.linearRampToValueAtTime(g * 0.5, t + dur * 0.6);
   env.gain.linearRampToValueAtTime(0, t + dur);
-  env.connect(master);
-  voices++;
+  env.connect(buses[o.who ?? 'me']);
   (o.partials ?? ([[1, 1], [2, 0.2]] as const)).forEach(([ratio, amp], i) => {
     const osc = ctx!.createOscillator();
     osc.frequency.setValueAtTime(from * ratio, t);
@@ -208,10 +211,7 @@ function glide(from: number, to: number, o: Shot & { dur?: number; partials?: re
     osc.start(t);
     osc.stop(t + dur + 0.03);
     if (i === 0) {
-      osc.onended = () => {
-        voices--;
-        env.disconnect();
-      };
+      osc.onended = () => env.disconnect();
     }
   });
 }
@@ -221,13 +221,6 @@ const CHIME = [[1, 1], [2, 0.45], [3, 0.22], [4, 0.1], [5.4, 0.05]] as const;
 const TICK = [[1, 1], [2.4, 0.35]] as const;
 /** A dull, low voice: little but the note itself. */
 const DULL = [[1, 1], [2, 0.12]] as const;
-
-/**
- * One note per rank, Ace low to King high: a major pentatonic scale over two
- * and a half octaves (E4 .. A6), so any piles being built at once ring together.
- */
-const STEPS = [4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33]; // semitones above C4
-export const rankHz = (rank: number): number => 261.63 * 2 ** (STEPS[Math.max(1, Math.min(13, rank)) - 1]! / 12);
 
 const FLICKS = ['flick-1', 'flick-2', 'flick-3'];
 const PLACES = ['place-1', 'place-2', 'place-3'];
@@ -241,8 +234,8 @@ export function deal(delay = 0): void {
 }
 
 /** The deal at the start of a round: a flick as each card of your layout lands, on the animation's own schedule. */
-export function dealBurst(work = 10, nertz = 13): void {
-  for (let i = 0; i < work + nertz; i++) deal(((dealWait(i, DEAL_MS, work) ?? 0) + DEAL.duration * 700) / 1000);
+export function dealBurst(work: number): void {
+  dealTimes(work).forEach((t) => deal(t));
 }
 
 export function pickup(who: Who = 'me'): void {
@@ -253,9 +246,14 @@ export function workDrop(who: Who = 'me'): void {
   hit(pick(PLACES), { gain: 0.5, rate: rand(0.94, 1.06), who });
 }
 
-/** One card counted off the stock: a faint papery whisper, thinned and eased in so there is no knock in it. */
+/** One card's faint papery whisper, thinned and eased in so there is no knock in it: never twice quite the same. */
+function whisper(o: Shot = {}): Stop {
+  return hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, ...o });
+}
+
+/** One card counted off the stock. */
 export function stockCard(who: Who = 'me'): void {
-  hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, who });
+  whisper({ who });
 }
 
 /** A hand opened out (the decks page): one soft sweep of cards (the start of the fanning sound, quick and quiet), not a run of clicks. */
@@ -274,7 +272,7 @@ export function recycle(who: Who = 'me'): void {
 }
 
 /** A card to the middle: the same firm card sound whatever its rank. */
-export function centre(_rank: number, who: Who = 'me'): void {
+export function centre(who: Who = 'me'): void {
   hit('place-2', { gain: 0.58, rate: rand(0.97, 1.03), who });
 }
 
@@ -296,9 +294,23 @@ export function home(who: Who = 'me'): void {
   hit(pick(TAPS), { gain: 0.36, rate: rand(0.8, 0.9), dull: 900, who });
 }
 
-/** Somebody got there first: the card's tap, then a womp: two low, dull notes, each sagging as it sounds, the second lower and longer. */
+/** Somebody got there first: the card's tap, then a womp. */
 export function lost(): void {
   home('me');
+  womp();
+}
+
+/**
+ * Two low, dull notes, each sagging as it sounds, the second lower and longer. Once for a race lost, though it is
+ * told twice when the move was sent (the snapshot that refuses it, and the server's word of the snipe): whichever
+ * comes first.
+ */
+const WOMP_MS = 500;
+let wompAt = -Infinity;
+function womp(): void {
+  const now = performance.now();
+  if (now - wompAt < WOMP_MS) return;
+  wompAt = now;
   glide(196, 150, { gain: 0.26, dur: 0.16, delay: 0.03, partials: DULL });
   glide(156, 110, { gain: 0.28, dur: 0.42, delay: 0.2, partials: DULL });
 }
@@ -314,25 +326,22 @@ export function sniped(who: Who = 'me'): void {
   tone(2400, { gain: 0.05, dur: 0.04, delay: 0.1, partials: TICK, who });
 }
 
-/**
- * Table.tsx says so when a card is let go over a pile in the middle that someone else got to first: the card's way
- * home, which follows at once, then sounds as a lost race and not as a plain tap.
- */
-const BEATEN_MS = 500;
-let beatenAt = -Infinity;
+/** You were sniped (the server says so: client/Table.tsx): the womp of a race lost, after the card's tap home. */
 export function beaten(): void {
-  beatenAt = performance.now();
+  womp();
 }
 
 /**
  * A bot that goes out says so: "Nertz", in the browser's own speech, in as mechanical a voice as it has (one of the
  * old novelty voices of macOS if there is one; otherwise whatever voice there is, pitched down and slowed). Only if
- * you have it switched on, and no louder than the rest. Where the browser cannot speak, nothing happens.
+ * you have it switched on, and no louder than the rest: it is the table's call of Nertz, so it goes by your own level
+ * (not other players' cards, nor voice chat: it is not a person). Where the browser cannot speak, nothing happens.
  */
 const ROBOTS = ['Zarvox', 'Trinoids', 'Cellos', 'Fred', 'Ralph', 'Albert', 'Junior'];
 export function botSays(): void {
   const p = getPrefs();
-  if (!p.botVoice || p.muted || p.volume <= 0 || typeof speechSynthesis === 'undefined') return;
+  const loud = Math.sqrt(loudness(p, 'mine')); // (speech by the slider itself, not squared, as it always was)
+  if (!p.botVoice || loud <= 0 || typeof speechSynthesis === 'undefined') return;
   try {
     const say = new SpeechSynthesisUtterance('Nertz');
     const voices = speechSynthesis.getVoices();
@@ -342,7 +351,7 @@ export function botSays(): void {
       say.pitch = 0.1;
       say.rate = 0.8;
     }
-    say.volume = Math.min(1, p.volume);
+    say.volume = Math.min(1, loud);
     speechSynthesis.cancel(); // (never two at once: a second table's call, or one still queued)
     speechSynthesis.speak(say);
   } catch {
@@ -382,14 +391,15 @@ function hush(): void {
   for (const stop of finale.splice(0)) stop();
 }
 
-/** The wash: a riffle while the cards swirl, then quick flicks as they sort into their piles. */
-export function wash(sortIn = 2000): void {
+/**
+ * The wash: a riffle while the cards are mixed up, then a whisper for each card as it lands on its owner's pile, on
+ * the canvas's own schedule (`sortings`, ms from now: the finale's clock starts as the wash does). A player whose cards
+ * never reached the middle is silent. The table's sound, like the wash: on your own channel, whoever's cards they are.
+ */
+export function wash(sorts: readonly Sorting[]): void {
   hush();
   finale.push(hit('shuffle', { gain: 0.5 }));
-  const flicks = 16;
-  for (let i = 0; i < flicks; i++) {
-    finale.push(hit(pick(FLICKS), { gain: rand(0.16, 0.28), rate: rand(0.95, 1.25), delay: (sortIn + (i / flicks) * SORT_MS * 2) / 1000 + rand(0, 0.03) }));
-  }
+  for (const { lands } of sorts) for (const at of lands) finale.push(whisper({ delay: at / 1000 }));
 }
 
 /** The score sheet is up. */
@@ -400,9 +410,9 @@ export function flourish(): void {
 }
 
 /** The end-of-round sequence moved on (Table.tsx calls this as its stage changes). */
-export function stage(from: Stage, to: Stage, sortIn = 2000): void {
+export function stage(from: Stage, to: Stage, sorts: readonly Sorting[]): void {
   if (from === to) return;
-  if (to === 'spread') wash(sortIn);
+  if (to === 'spread') wash(sorts);
   else if (to === 'sheet') flourish();
   else if (to === 'live') hush();
 }
@@ -417,19 +427,15 @@ function play(cue: Cue): void {
       return workDrop(cue.who);
     case 'stock':
       return stockCard(cue.who);
-    case 'flip':
-      return; // the group turning up makes no noise of its own: each of its cards has already flicked
     case 'recycle':
       return recycle(cue.who);
     case 'centre':
-      return centre(cue.rank, cue.who);
+      return centre(cue.who);
     case 'king':
       return king(cue.who);
     case 'clear':
       return clearPile(cue.who);
     case 'home':
-      // Our card going back because it was let go over a pile someone else had just taken: the disappointed sound.
-      if (cue.who === 'me' && performance.now() - beatenAt < BEATEN_MS) return void ((beatenAt = -Infinity), lost());
       return home(cue.who);
     case 'lost':
       return lost();

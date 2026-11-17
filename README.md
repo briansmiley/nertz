@@ -4,8 +4,7 @@ Real-time multiplayer [Nertz](https://en.wikipedia.org/wiki/Nertz) for 2 to 6 fr
 solitaire at the same time and races to play onto shared piles in the middle. One person starts a table, sends the link, and
 everyone else joins from it. No accounts, no database: one small Node process holds every table in memory.
 
-Status: runs locally. **Nothing has been deployed and no cloud resources exist.** The `Dockerfile` and `fly.toml` in this repo
-are a proposal (see [Hosting plan](#hosting-plan)) and have never been run against a real service.
+Deployed to Fly.io from this repo on every push to `staging` and to `main`: see [Hosting](#hosting).
 
 ## Run the two-window demo
 
@@ -20,7 +19,7 @@ Then open **http://localhost:5173** in two browser windows (two tabs of the same
 
 1. Window 1: type a name, press **New Table**. The server picks the table code; you land in the lobby with an
    invite link like `http://localhost:5173/?room=ABCD`.
-2. Window 2: paste the invite link (or open the home page and type the code), type a different name, press **Join table**.
+2. Window 2: paste the invite link (or open the home page and type the code, or pick the table under **Tables**), type a different name, press **Join table**.
    A code that no table has is refused with a message; it never opens a new table.
 3. Window 1: press **Deal the first round**. The cards are dealt and the table waits.
 4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays. Cards come off the stock one at a
@@ -37,24 +36,31 @@ Controls:
 | Do this | To |
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
+| ...or tap or click it, then the pile (if the table moves without dragging) | the same, without carrying it |
 | Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there |
-| ...or, at a table with "Crystallized Nertz", drag an Ace onto an empty marked place | start a centre pile on that place |
-| Drag a finished pile (one you put the King on) to the tray, bottom right | clear it and free its place. Until you have, you can do nothing else |
+| Drag a finished pile (one you put the King on) to the tray, bottom right (or tap or click it, then the tray, if the table moves without dragging) | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
 | Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
-| Press M, or the speaker button bottom left | mute or unmute |
-| The gear beside it | your own settings: volume, other players' volume, reduce motion |
+| Press M (or the key you set under Hotkeys in the settings), or the speaker button bottom left | mute or unmute |
+| The gear beside it | your own settings: volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion |
 | The bug beside that | report a bug or ask for a feature: a few words and, if you like, a screenshot |
 
-There is no click-to-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
-Nothing shows where a card in hand may go: no pile is outlined for it. (On a touch screen a tap takes a card up and the
-next tap puts it down, and a finger that lets go a little off a pile still lands on it.) What counts is
+There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
+Nothing shows where a card in hand may go: no pile is outlined for it. (A finger that lets go a little off a pile still
+lands on it.) What counts is
 where the pointer is when you let go; only if the pointer is over no pile at all does the centre of the card you grabbed
 decide. Each pile's drop area is the pile plus a small margin (a whole column, for a work pile), neighbouring areas never
 touch, and a card let go between two piles goes back where it came from.
+
+At a table that moves without dragging (the table rule "Move without dragging", on by default) a tap or a click also
+takes a card up without carrying it: it stands lifted where it was, and the next tap or click puts it down, on the pile
+it points at (or, for an Ace, that spot of the felt). A pile you finished is taken up the same way, and the next tap or
+click on the tray clears it. Anywhere else, or Escape, puts it back and does nothing more: a click on the stock with a
+card taken up does not deal. A mouse does exactly what a finger does. A card moved so is never seen crossing the table. With the rule off, every card is dragged, on a touch
+screen too.
 
 What you see around a round:
 
@@ -115,7 +121,7 @@ What you see around a round:
 Other scripts:
 
 ```sh
-npm test          # vitest: rules engine, protocol, room, real-socket server tests (a hostile hand-written client among them), client prediction
+npm test          # vitest: rules engine, protocol, room, real-socket server tests (a hostile hand-written client among them), client prediction, the pointer (press, carry, tap)
 npm run typecheck # tsc --noEmit, strict
 npm run build     # builds the client into dist/
 npm start         # production mode: one process serves dist/ and the websocket on PORT (default 8787)
@@ -139,19 +145,15 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
 - **The middle** holds up to 4 piles per player in the round, shared by everyone. Every card but an Ace goes on the
-  specific pile it extends, up by suit to the King, one card at a time. Where an Ace goes is the host's choice (a table
-  rule, see [The table](#the-table)):
-  - **Anywhere** (the default): an Ace starts a pile at the very point of the felt where it is let go. The whole card
-    must lie on the felt, and clear of every other pile by a small gap (0.14 of a card's width): exactly what you
-    see, and the same on everyone's screen. While you carry the Ace over the felt it is the size of a pile in the
-    middle, with an outline on it that says whether there is room (a gold ring and a tick) or not (a broken red ring,
-    struck through, and a cross), and every pile shows the room it keeps round itself. Let go where there is no room
-    and the Ace goes back. Two Aces for the same patch of felt: the first lands, the second goes back. The table
-    still holds at most 4 piles per player.
-  - **Crystallized Nertz**: the middle has a marked place for every pile, laid out as a loose cluster. An Ace starts
-    a pile on the specific empty place it is dropped on.
+  specific pile it extends, up by suit to the King, one card at a time. An Ace starts a pile at the very point of the
+  felt where it is let go (see [The table](#the-table)). The whole card must lie on the felt, and clear of every other
+  pile by a small gap (0.14 of a card's width): exactly what you see, and the same on everyone's screen. While you
+  carry the Ace over the felt it is the size of a pile in the middle, with an outline on it that says whether there is
+  room (a gold ring and a tick) or not (a broken red ring, struck through, and a cross), and every pile shows the room
+  it keeps round itself. Let go where there is no room and the Ace goes back. Two Aces for the same patch of felt: the
+  first lands, the second goes back. The table still holds at most 4 piles per player.
 - **Precise placement.** A card lands only when released on the one pile where it legally fits. If someone got there first
-  (the pile moved on, or the empty place was taken), the card returns to where it came from. Nothing is ever rerouted.
+  (the pile moved on, or the felt was taken), the card returns to where it came from. Nothing is ever rerouted.
 - **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King
   drags it to the **tray** at the side. Its place is then free for a new Ace. Tray piles still count for scoring.
 - **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in
@@ -171,8 +173,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   waste back over into the stock.
 - **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
   one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
-  gains nothing. (The old "drag each card" rule still exists as the table setting `stockDeal: 'drag'`, but is no longer
-  offered in the table rules.)
+  gains nothing.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player is stuck, the server (which knows every
   card) checks whether anybody can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
   waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
@@ -214,7 +215,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 rectangle with rounded corners, 2 units high and 5.6 wide with up to three players, 4.4 wide from four on (`feltHw`:
 there are hands at its sides then, and a squarer felt can be taller on the screen), corner radius 0.62, centre (0, 0), y down the screen, one
 unit the same distance both ways. A centre pile is a point of it (the middle of its cards), kept in the game state
-(`GameState.places`, one per slot, in every snapshot). Nothing in the state says where anything is on a screen.
+on the pile itself (each pile in `GameState.slots` is its `cards` and where it lies, `at`: in every snapshot). Nothing in the state says where anything is on a screen.
 
 **The same way up for everyone.** The felt is not turned for anybody. A client only chooses where on its screen the
 centre of the felt goes and how many pixels a unit is: a point (x, y) of the table is drawn at
@@ -236,17 +237,13 @@ the felt, and never more than 0.4 units wide however few the players, so that a 
 middle still leaves room for a pile above and below every one of them. Put down anywhere at random that happens to
 be free, all four piles per player fit at least 99 times in 100 (`shared/table.test.ts`).
 
-**Crystallized Nertz.** Four marked places per player, the same for everyone: two rows for up to three players, three
-for more, each row set half a place to one side of the next like bricks, each place nudged a little off its mark and
-given up to two and a half degrees of tilt, always the same way. Same card size as without.
-
 **Hands.** Your own hand is laid out as it always was. Everyone else's is a compact row where they sit as you see
 it, in seat order clockwise from your left: along the top edge for seats across from you, at the left or right edge (turned to face the felt)
 for your neighbours (turned a quarter turn to face the felt, running down the edge), lower down the nearer they sit to you. A hand across the table is drawn the other way round
 (its owner's left is your right, as at a real table), a neighbour's the same way round as yours. The top corners are
 kept free for the chat button and the grace countdown, the bottom corners for the settings and the tray.
 
-**Card sizes** (width in pixels of a centre card, and of an opponent's card; the same with and without the grid):
+**Card sizes** (width in pixels of a centre card, and of an opponent's card):
 
 | Window | 2 players | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- |
@@ -259,8 +256,7 @@ Your own cards are 0.108 of the window's height wide (with room for 0.85 of a ca
 than about eight cards squeezes its older cards to slivers), up to 150 px; an opponent's up to 96 px; a centre card up to 1.2
 times your own. `npx tsx scripts/sizes.ts` prints this table.
 
-(While the felt was a round table turned to each chair these were, at 1280 x 720, 65/52/45/29/38 with marked places
-and 49/37/36/25/28 without. Two players with the grid is the one case that got smaller.)
+(While the felt was a round table turned to each chair these were, at 1280 x 720, 49/37/36/25/28.)
 
 ### Seeing cards move
 
@@ -325,7 +321,7 @@ the first of these that applies:
 2. Its nertz pile is empty: call Nertz.
 3. Nertz top to the middle (anything but an Ace to the exact pile). An Ace starts its pile anywhere there is room: of
    a handful of places it glances at all over the felt, the clear one nearest the middle, and if none of them is
-   clear, wherever the engine says there is room. (At a table with the grid: any empty marked place.)
+   clear, wherever the engine says there is room.
 4. Nertz top to a work pile: one it builds down on, or an empty one if there is none.
 5. Waste top, or the top of a work pile, to the middle.
 6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
@@ -374,27 +370,32 @@ tray, a dull tap when a card goes back (put down nowhere, or beaten to its pile,
 yours is waiting for the tray), a knock for each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud
 hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, and a
 riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
-else's much quieter (a quarter, until you move the slider).
+else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 
 - The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
   tones are synthesised. Sources and licence: [`client/sounds/CREDITS.md`](client/sounds/CREDITS.md).
-- `client/sound.ts` has one function per cue (Web Audio: each sound a one-shot with its own short envelope, into a master
-  gain and a limiter, at most 18 at once). The audio context is made on the first click or key press, as browsers require.
+- `client/sound.ts` has one function per cue (Web Audio: each sound a one-shot with its own short envelope, into a gain for
+  its channel, yours or other players' cards, and from both into one limiter, at most 18 at once). The audio context is
+  made on the first click or key press, as browsers require.
 - Which cue fires is decided by `client/soundEvents.ts`, a pure function that compares two successive *rendered* states by
   card id. So a move sounds once, when it is predicted, and not again when the server confirms it; a predicted move that is
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
 
-**Your settings** (the gear, bottom left on every screen): sound on or off, volume, other players' volume, reduce motion.
+**Your settings** (the gear, bottom left on every screen): sound on or off, the levels, reduce motion.
+Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
+bot's spoken "Nertz"), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
+opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
 Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
 storage they last until the page closes.
 
-**Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in every
-snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from whoever may
-deal and only between rounds. `shared/settings.ts` holds the one object and its validation. Two options today, listed
-together under "Table rules": "Crystallized Nertz" (`centre`: unticked is
-`'free'`, the default, an Ace starts its pile wherever it is put down; ticked is `'spots'`, the marked places); and how
-cards are dealt off the stock (`stockDeal`: `'drag'`, the default, or `'click'`; see the rules). The last is only a choice of gesture for the client. The next deal reads them,
-and a round keeps what it was dealt under, because settings cannot change during a round.
+**Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in
+every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
+whoever may deal and only between rounds, so a round keeps the rules it was dealt under. An option the server does not
+know is dropped (an older client asking for one changes nothing). `shared/settings.ts` holds the one object and its
+validation. One option today, only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
+default: a tap or a click takes a card up and the next puts it down, on every screen alike; off, every card is
+dragged), listed under "Table rules". The server cannot hold anyone to `tapToMove`: a card taken up by a tap and one
+picked up to be dragged are the same `hold` and `move`.
 
 ## How concurrency works
 
@@ -429,9 +430,9 @@ that no longer apply. So your card moves the instant you let go, and if you lost
 supports your move: the card animates back. There is no rollback code. (`client/net.ts`: `onSnapshot`, `onSend`, `predict`.)
 
 **No fallback.** A move names its destination exactly: `{ k: 'work', i }` (one of your own piles), `{ k: 'slot', i }` (one
-pile or marked place of the middle) or, for an Ace at a table without the grid, `{ k: 'felt', x, y }` (a point of the
-table, to a thousandth of a unit). The engine judges that pile, or that point, and nothing else. Two players dropping on
-the same pile, two Aces on the same empty place, or two Aces on overlapping patches of felt are simply two messages: the
+pile of the middle) or, for an Ace, `{ k: 'felt', x, y }` (a point of the table, to a thousandth of a unit). The engine
+judges that pile, or that point, and nothing else. Two players dropping on the same pile, or two Aces on overlapping
+patches of felt, are simply two messages: the
 first to arrive lands, the second is rejected and its sender's next snapshot no longer supports the predicted move, so
 the card animates home. A pile started on the felt takes the first slot nobody is using; if another Ace got in first
 the server may file it under a different slot than the client predicted, at the same place, which nobody can see.
@@ -444,45 +445,55 @@ connection. So the server never believes in a held card that went home. (A stock
 not a hold: it is face-down and cannot be played, so nothing is sent until it lands, and then only `{ k: 'flip' }`.) `PlayerState.holding` is part of every view, and
 the client's replay applies the same rule. All the rules of grace live in the pure engine:
 
-- `nertz` sets `nertzCalledBy` and fills `GameState.grace` with the seats that are holding a card with at least one legal
-  destination. Everyone else's hold is dropped and all their intents are rejected from then on.
-- A seat in `grace` may send exactly one more intent: a `move` of its held card, or a `release`. Either removes it from
-  `grace`, the move even when it is refused; any other seat whose held card now has nowhere to go is removed with it.
-- `isOver(state)` is "Nertz was called and `grace` is empty". `expireGrace(state)` empties it.
+- `nertz` takes the round's status to `grace` (with who called), and the hold of everyone whose card has no legal
+  destination is dropped. Who is in grace is not kept anywhere: it is exactly the seats still holding a card
+  (`inGrace`). All of everyone else's intents are rejected from then on.
+- A seat in grace may send exactly one more intent: a `move` of its held card, or a `release`. Either empties its hand
+  and so takes it out of grace, the move even when it is refused; any other seat whose held card now has nowhere to go
+  is taken out with it.
+- When nobody is left in grace the status is `over`, by that Nertz. `expireGrace(state)` takes it there at once.
 
-The server owns only the clock: when a call leaves someone in grace it starts one 4-second timer, and on expiry applies
-`expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to `results`. Snapshots carry
-`graceMs`, the milliseconds left when the snapshot was sent (a duration to count down locally, not a timestamp), or `null`.
+The server owns only the clock. The room keeps one round timer for whichever timed status is current (`dealing`,
+`countdown` or `grace`); grace is timed on the call itself, the change into `grace` in the room's `intent`, for 4 seconds,
+and on expiry the room applies `expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to
+`results`. Snapshots carry one `timerMs`, the milliseconds left of the timed status when the snapshot was sent (a
+duration to count down locally, not a timestamp), or `null`; `game.status` names the stage it belongs to.
 
-**The opening is a small state machine, and it is the same for everyone.** `GameState.stage` goes `dealing` → `ready` →
+**One status.** How far a round has got is one field, `GameState.status`: `dealing`, `ready`, `countdown`, `play`,
+`grace` (who called) or `over` (how it ended: a Nertz by a seat, a jam, or a vote). The reducer switches on it once, and
+every round ends through the same step, which empties every hand. What others ask of it has one name each in the
+engine: `isLive` (the room, the bots, pause, the vote to end the round, the table), `hasOpened` (the nertz tops are
+shown), `isOver`, `calledBy`, `inGrace`. The round's result (`RoundResult.end`) is the very value the status ended on.
+
+**The opening is a small state machine, and it is the same for everyone.** `GameState.status` goes `dealing` → `ready` →
 `countdown` → `play`, one pure function per step (`finishDeal`, `startCountdown`, `openPlay`; each returns the same object
 when it is not its turn). Only `play` accepts intents: before it `applyIntent` refuses every intent from every seat (the
 sender's `ack` still advances), so a client predicts nothing either. `viewFor` redacts by stage: while `dealing` every
 card, the face-up ones included, so no layout can be read early, not even off the network tab; in `ready` and `countdown`
 the work tops are shown and every nertz top is still hidden, the owner's included. Ids never change, so the cards on
-screen are the ones that turn over later. The server owns the two clocks and the button, exactly as for grace:
+screen are the ones that turn over later. The server owns the clock and the button, exactly as for grace, with the same one round timer:
 
-- one `DEAL_MS` (3 s) timer per round; when it fires, `finishDeal` and one flush. Snapshots carry `dealMs`.
+- `dealing` is timed for `DEAL_MS` (3 s); when it runs out, `finishDeal` and one flush. Snapshots carry `timerMs`.
 - `ready` has no timer at all. `{ t: 'go' }` from whoever may deal (the host, or the acting dealer while the host is away,
   even if they are sitting the round out) applies `startCountdown`; from anyone else, or in any other stage, it is ignored.
-- one `START_MS` timer (3 beats of `START_BEAT_MS`, 2.1 s); when it fires, `openPlay`, the bots are woken, and every
-  player's view with the nertz tops goes out in the same flush. Snapshots carry `startMs`, a duration like `dealMs`, so a
+- `countdown` is timed for `START_MS` (3 beats of `START_BEAT_MS`, 2.1 s); when it runs out, `openPlay`, the bots are
+  woken, and every player's view with the nertz tops goes out in the same flush. Snapshots carry the same `timerMs`, so a
   window that reloads mid-count shows the right number and nothing is replayed.
 
-A table left in `ready` with nobody connected runs no timer and expires like any abandoned table. Both timers are stopped
-when the room is forgotten. The
+A table left in `ready` with nobody connected runs no timer and expires like any abandoned table. The round timer is
+stopped when the room is forgotten. The
 client animates from it and never decides anything: its input is off because the shared reducer says no, and a window that
 arrives late (a reload or reconnect mid-deal) puts the cards already dealt in place and deals the rest on schedule
 (`dealWait` in `client/layout.ts`). A card is dealt only when its element first appears during a deal, and only once, so
 later snapshots, reconnects, the end of the round and coming back from the score sheet never replay it. Disconnecting during the deal changes nothing: the deal ends on time.
 
 **Clear-first is a rule of the reducer.** `mustClear(state, seat)` is "some centre pile was completed by this seat and
-Nertz has not been called". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
+the round is live". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
 pile to the tray is a single intent; it never used `hold`). The client's replay applies the same rule, so after a
 predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the nudge and the notice.
 
 **The final table.** During `results` the snapshot still holds the finished round (`game`: piles and their places, tray, hands) next to
-`lastRound` (who called, and per player the name, the cards played, the nertz cards left and the running total), so the
+`lastRound` (how it ended, and per player the name, the cards played, the nertz cards left and the running total), so the
 client can play the end-of-round sequence and draw the score sheet from it, even if a player has left since.
 
 **One card per `flip`.** `{ k: 'flip' }` moves the top stock card onto the waste and counts it in `PlayerState.dealt`
@@ -545,8 +556,8 @@ by ear), and not in Safari or Firefox or across real networks.
 ```
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
-  table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, the marked places
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, legalDrops, feltFree, expireGrace, isOver, resolveStuck, viewFor, scoreRound, checkInvariants
+  table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
@@ -554,16 +565,18 @@ server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, the relay of card positions, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
-  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz
+  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list)
+  guard.ts      what every message, timer, snapshot and socket close runs inside: a throw is logged, and every other table carries on
 client/   Vite + React
   net.ts        websocket store and prediction
   layout.ts     pure geometry: where the felt, every hand, card, pile, tray pile, drop area and the countdown goes for a given window size; where another player's held card is drawn; the deal's schedule
-  Table.tsx     the table: the deal, drag and drop, other players' cards in the air, the Nertz call, the grace countdown, the steps of the end-of-round sequence
+  Table.tsx     the table: the deal, the card in your hand (it listens to the pointer and carries out what hand.ts decides), other players' cards in the air, the Nertz call, the grace countdown, the steps of the end-of-round sequence
+  hand.ts       pure: the card or finished pile in your hand (pressed, carried or tapped), and what a press, a move, a release or a tap does
   Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
-  Settings.tsx  the mute button and gear (your settings), and the table rules on the lobby and score sheets
+  Settings.tsx  the mute button and gear (your settings), the table rules on the lobby and score sheets, and the small icon buttons the sheets share
   prefs.ts      your settings: sound levels, reduced motion; localStorage
   sound.ts      Web Audio: one function per cue, and the hook that plays them
   soundEvents.ts  pure: which cues a change of the rendered table calls for
@@ -577,38 +590,30 @@ client/   Vite + React
 Dependencies at runtime: `ws`, `react`, `react-dom`, `motion` (card animation) and `tsx` (runs the TypeScript server
 directly, so there is no server build step).
 
-## Hosting plan
-
-Nothing here has been deployed. This is the plan I would follow.
+## Hosting
 
 **What the game needs.** One long-lived process that holds websockets open and keeps every table in memory. All players of a
 table must reach the *same* process, because that process's event loop is what orders their moves. Load is tiny: a snapshot
 is a few kilobytes and a busy table is a few messages a second.
 
-### Recommended start: one Fly.io machine
+### What runs: one Fly.io machine per app
 
-- One always-on `shared-cpu-1x` machine in one region near the players, serving the built client and the websocket from the
-  same origin. Expect a few dollars a month; check Fly's current pricing.
-- Auto-stop off and exactly one machine. `fly launch` likes to create two machines for availability; that would split tables
-  across processes, so scale to one (`fly scale count 1`). Auto-stop must stay off because a stopped machine forgets every
-  table.
-- The included `Dockerfile` and `fly.toml` match this: port 8080, health check on `/healthz`, connection-based concurrency,
-  no auto-stop.
+- Two apps, each one `shared-cpu-1x` machine serving the built client and the websocket from the same origin: `nertz` and
+  `nertz-staging`. The `Dockerfile` and `fly.toml` are their whole configuration: port 8080, health check on `/healthz`,
+  connection-based concurrency.
+- `.github/workflows/deploy.yml` deploys them: a push to `staging` runs the checks and deploys staging; a push to `main`
+  runs the checks and then waits until `/healthz` says nobody is connected before it deploys. Exactly one machine each
+  (`--ha=false`): two would split tables across processes.
+- An idle machine is suspended, memory kept (`auto_stop_machines = "suspend"`), and resumed on the next request. Fly only
+  suspends a machine with no open connections, and every player at a table holds a websocket, so a game in progress keeps
+  it up.
 - **What a deploy or restart does to live games:** the process is replaced, so every table and score is gone. Clients notice
   the dropped socket, reconnect with backoff and try to rejoin their table code, which no longer exists, so they are told
-  there is no such table and someone has to start a new one. For a game among friends, deploying when nobody is playing is enough. If that ever stops being
-  acceptable, the fix is to write each room's state to a volume or Redis on change and reload it on boot; `GameState` is
-  plain JSON, so that is a small change.
+  there is no such table and someone has to start a new one. Hence `main` deploys only when nobody is connected. If that
+  ever stops being enough, the fix is to write each room's state to a volume or Redis on change and reload it on boot;
+  `GameState` is plain JSON, so that is a small change.
 - Outgrowing one machine (unlikely) means routing by table code, for example with Fly's `fly-replay` header, so that a table
   always lands on the machine that owns it.
-
-First deploy would look like this (not run):
-
-```sh
-fly launch --no-deploy     # pick a unique app name and region; keep the fly.toml in this repo
-fly deploy
-fly scale count 1
-```
 
 ### Railway or Render
 
@@ -652,6 +657,8 @@ would still need one of the options above, and serving both from one origin is s
 
 - **Someone who never comes back** keeps their seat until they press Leave or the table expires. They are not dealt cards
   while away, but they count towards the six seats. There is no kick.
+- **Every table is on the home page.** **Tables** lists, to anyone, each table someone is at just now (the twenty where
+  something happened last): its code, the names at it, and its round. There is no private table.
 - **An abandoned lobby lasts a minute.** If you open a table and everyone's connection drops for more than a minute before
   the first deal, the table is gone and the invite link reports no such table.
 - **Only the dealer can start.** Once the cards are dealt the table waits for the dealer's Start with no time limit. If
@@ -672,8 +679,6 @@ would still need one of the options above, and serving both from one origin is s
 - **The felt has one shape per table size** (2.8 times as wide as high up to three players, 2.2 times from four
   on), the same for every window: a window much taller or wider than 16:9 leaves some of its room unused, and a
   window narrower than 1280 px leaves the felt little between the side hands.
-- **Two players with the grid have smaller cards than on the old round table** (57 px at 1280 x 720, from 65): both kinds of table
-  now share one card size, chosen so that eight piles put down anywhere still fit.
 - **A table can fill up before every Ace is out** if piles are put down wastefully enough: at random they all fit
   at least 99 times in 100, but it is not impossible to shut the last Ace out. It then waits until a pile is
   finished and cleared.
@@ -688,7 +693,7 @@ would still need one of the options above, and serving both from one origin is s
   NERTZ! stamp across your own hand is large and stays up through the sequence.
 - **Face-down cards of a half-dealt group** at the call stay face-down on the waste through the end of the round.
 - **In drag mode nothing on the table says the stock must be dragged**: a click on a stock that still has cards does
-  nothing. The rule is in the table rules and in this file.
+  nothing. The rule is only in this file.
 - **The wash is a canvas.** At the end of a round up to ~300 card backs move at once, so they are drawn on one canvas
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late
@@ -732,4 +737,4 @@ The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever
 
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
-Five reports per address per ten minutes; a screenshot is scaled down in the browser first.
+Ten reports per address per minute; a screenshot is scaled down in the browser first.

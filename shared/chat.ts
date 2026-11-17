@@ -10,36 +10,54 @@ export const CHAT_HISTORY = 200;
 export const CHAT_RATE_COUNT = 5;
 export const CHAT_RATE_MS = 5000;
 /**
- * Longest `data` of one signalling message. A WebRTC offer is bigger than one
- * websocket frame may be (MAX_MESSAGE_BYTES), so clients send it in pieces
- * (see client/voice.ts); the server forwards each piece as opaque text.
+ * Longest `data` of one signalling message (an offer, an answer or an ICE
+ * candidate, as JSON text), which the server forwards as it is. An audio offer
+ * is a few KB. Escaped as badly as JSON can (every character doubled), it
+ * still fits one websocket frame (MAX_MESSAGE_BYTES).
  */
-export const SIGNAL_MAX_LENGTH = 1200;
+export const SIGNAL_MAX_LENGTH = 8000;
 
 /** Is `v` a player's id (`PlayerView.id`), as far as its shape goes? */
 export const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 
-export interface ChatLine {
-  /** Rises by one per message in a room. */
-  id: number;
-  /** Who said it: their `PlayerView.id`. (Its colour is that of the seat they have now, if any.) */
+/** Someone, as a line names them: their `PlayerView.id` (its colour is that of the seat they have now, if any), and their name when it was written, so the line stays right after they leave. */
+export interface Named {
   who: number;
-  /** The sender's name when it was said, so the line stays right after they leave. */
   name: string;
-  text: string;
-  /** Server clock, ms since the epoch. */
-  at: number;
-  /** Not something said, but a notice from the table: `who`/`name` beat this player to a pile in the middle (`text` is then empty). */
-  sniped?: { who: number; name: string };
 }
 
-/** The host's two switches. Both default to on. */
+/** Someone and their points for a round, as the score sheet's Round column has them (`RoundScore.delta`). */
+export type Scored = Named & { points: number };
+
+/** What a line of the chat is: something someone said, or a notice from the table. */
+export type ChatEvent =
+  | { k: 'said'; by: Named; text: string }
+  /** `by` beat `of` to a pile in the middle. */
+  | { k: 'sniped'; by: Named; of: Named }
+  /** Round `round` has started: play is open (once a round: not again when it is dealt over and started anew). */
+  | { k: 'started'; round: number }
+  /**
+   * Round `round` is over: called by `end` (with their points), or ended without a call (`RoundResult.end`). `best`
+   * scored the most in it and so won it, all of them if it is a tie; the one who called is not always among them.
+   */
+  | { k: 'over'; round: number; end: Scored | 'jam' | 'vote'; best: Scored[] }
+  /** `by` started the table over: every score back to nothing. */
+  | { k: 'reset'; by: Named };
+
+export type ChatLine = ChatEvent & {
+  /** Rises by one per line in a room. */
+  id: number;
+  /** Server clock, ms since the epoch. */
+  at: number;
+};
+
+/** The host's four switches. All default to on. */
 export interface SocialSettings {
   text: boolean;
   voice: boolean;
-  /** May those watching a full table (no seat) take part in the text chat, and in voice? Left out: they may. */
-  watchText?: boolean;
-  watchVoice?: boolean;
+  /** May those watching a full table (no seat) take part in the text chat, and in voice? */
+  watchText: boolean;
+  watchVoice: boolean;
 }
 
 export interface VoiceMember {
@@ -69,6 +87,8 @@ export type SocialServerMsg =
   | { t: 'chat'; lines: ChatLine[]; history: boolean }
   /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
   | ({ t: 'social'; inVoice: VoiceMember[]; ice?: IceServer[] } & SocialSettings)
+  /** To one connection: the host's switches keep it out of voice. Its `voice` on was refused, or it has just been put out (sent before the `social` without it). */
+  | { t: 'outOfVoice' }
   /** `from` (an id) is stamped by the server. */
   | { t: 'signal'; from: number; data: string };
 

@@ -11,6 +11,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/feedback': `http://localhost:${Number(process.env.PORT) || 8787}`,
+      '/tables': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/ws': { target: `ws://localhost:${Number(process.env.PORT) || 8787}`, ws: true },
     },
   },
@@ -18,5 +19,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['shared/**/*.test.ts', 'server/**/*.test.ts', 'client/**/*.test.ts'],
+    setupFiles: ['server/testsetup.ts'], // a throw the guard catches fails the test it happened in
   },
 });
