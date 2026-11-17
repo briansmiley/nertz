@@ -27,7 +27,7 @@ const ART = 2;
  * How much larger a picture back is shown on a small card (another player's pile), so that only its middle shows:
  * a fine pattern needs more, and one that is a single figure (the two circles of the Rider back) is shown whole (1).
  */
-const SMALL: Record<string, number> = { 'carpet-tint': 1.8, waterlily: 1.2, lilypads: 1.2, maple: 1.2, 'dandelion-1': 1.1, daisy: 1.2, tulip: 1.2, poppies: 1.2, sequoia: 1.25, fronds: 1.15, oak: 1.3, thistle: 1.2, lily: 1.2, rose: 1.25, iris: 1.15, sunflower: 1.15, acanthus: 1.7, fern: 1.5, ginkgo: 1, 'ginkgo-ring': 1.4, 'ginkgo-scatter': 2, piatnik: 1.5, atlas: 1.4, bicycle: 1, lion: 1, ornate: 1.8, rosette: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, 'tarot-star-tint': 2, 'tarot-eye-tint': 1.9 };
+const SMALL: Record<string, number> = { 'carpet-tint': 1.8, waterlily: 1.2, lilypads: 1.2, maple: 1.2, 'dandelion-1': 1.1, daisy: 1.2, tulip: 1.2, poppies: 1.2, sequoia: 1.25, fronds: 1.15, oak: 1.3, thistle: 1.2, clover: 1.2, 'clover-2': 1.2, lily: 1.2, rose: 1.25, iris: 1.15, sunflower: 1.15, acanthus: 1.7, fern: 1.5, ginkgo: 1, 'ginkgo-ring': 1.4, 'ginkgo-scatter': 2, piatnik: 1.5, atlas: 1.4, bicycle: 1, lion: 1, ornate: 1.8, rosette: 1.8, check: 2.2, stars: 2.4, cobble: 2.8, 'tarot-star-tint': 2, 'tarot-eye-tint': 1.9 };
 
 /**
  * The picture a back is made of (none for the plain one, nor for a back by lot not drawn yet: null), printed in the
