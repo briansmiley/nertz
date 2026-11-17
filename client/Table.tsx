@@ -108,6 +108,8 @@ interface CardProps {
   slow: boolean;
   /** Travels at its own level, not above everything: a card coming up under the ones already held. */
   low: boolean;
+  /** Which of its hand's work piles it lies in, if any. */
+  work: number | null;
   cls: string;
   reg: Registry;
   /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
@@ -131,16 +133,17 @@ const CardView = memo(function CardView(p: CardProps) {
   const upWas = useRef(p.up);
   const low = useRef(p.low);
   low.current = p.low;
+  const work = useRef(p.work);
   const el = useRef<HTMLDivElement>(null);
   const flying = useRef(!!dealt); // a card waiting in the deck keeps the deck's stacking until it has landed
   /** When this card leaves the deck (performance clock). 0 once it has, or if it was never in one: it is dealt once. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0);
 
-  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false, passing = false) => {
+  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false, passing = false, lift = !low.current) => {
     const g = goal.current;
     const n = ++flight.current;
     flying.current = true;
-    z.set(g.z + (low.current ? 0 : Z_FLYING)); // travel above everything that is lying still (unless it is slipping in under)
+    z.set(g.z + (lift ? Z_FLYING : 0)); // travel above everything that is lying still (unless it is slipping in under, or only shifting in its pile)
     if (veiled) o.set(ALOFT);
     // Somebody else's card crossing the table is not in the pointer's way either (styles.css `.card[data-passing]`).
     if (passing) el.current?.setAttribute('data-passing', '');
@@ -165,16 +168,20 @@ const CardView = memo(function CardView(p: CardProps) {
    * bot's, a click, a lost report, or one let go before it was drawn where it really was) crosses the table at a
    * pace the eye can follow, see-through while it is in the air.
    */
-  const go = useCallback((own: boolean) => {
+  const go = useCallback((own: boolean, lift?: boolean) => {
     const g = goal.current;
     const far = Math.hypot(x.get() - g.x, y.get() - g.y);
-    if (own || p.slow || calm() || far < 4) fly();
-    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s, true);
+    if (own || p.slow || calm() || far < 4) fly(undefined, false, false, lift);
+    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s, true, lift);
   }, [fly, x, y, p.slow]);
 
   useEffect(() => {
     const was = goal.current;
     const wasMine = mine.current;
+    // A work pile fanning out or closing up moves some of its cards and not others: none of them is going anywhere,
+    // so each keeps its level in the pile. (Lifted, the ones that move would cover the ones that stay.)
+    const shifts = p.work !== null && p.work === work.current;
+    work.current = p.work;
     goal.current = { x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot };
     mine.current = p.mine;
     if (p.reg.held.has(p.id)) return; // in a player's hand (yours, or someone else's as reported); settles when it is let go
@@ -184,7 +191,7 @@ const CardView = memo(function CardView(p: CardProps) {
       return;
     }
     if (was.x !== p.x || was.y !== p.y || was.s !== p.s || was.rot !== p.rot) {
-      go(wasMine || p.mine);
+      go(wasMine || p.mine, shifts ? false : undefined);
       // Turning face-up on the way (a group off the stock going over onto the waste): a stack turned over shows the
       // back of the card that was on top of it until the faces come round, and only then the card that ends on top.
       // So for the first half of the turn the cards keep the order they were held in, which is the other way round.
@@ -194,7 +201,7 @@ const CardView = memo(function CardView(p: CardProps) {
         setTimeout(() => flight.current === n && z.set(goal.current.z + Z_FLYING), FLIP().duration * 500);
       }
     } else if (!flying.current) z.set(p.z);
-  }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.slow, p.id, p.reg, p.deal?.x, p.deal?.y, go, x, y, s, z]);
+  }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.work, p.slow, p.id, p.reg, p.deal?.x, p.deal?.y, go, x, y, s, z]);
 
   useEffect(() => {
     upWas.current = p.up; // (after the effect above, which asks what it was)
@@ -1045,6 +1052,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             low={!!c.low}
+            work={c.pile === 'work' ? c.at : null}
             cls={cardClass(c)}
             reg={reg}
             deal={deck.get(c.card.id)}

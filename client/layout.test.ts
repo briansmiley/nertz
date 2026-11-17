@@ -423,6 +423,20 @@ describe('table layout', () => {
     }
   });
 
+  it('every work card says which pile of its hand it lies in, looked at or not: a pile fanning out is cards shifting where they are, not travelling', () => {
+    const game = viewFor(inPlay(seats(3), lcg(9)), 0);
+    for (const peek of [null, 2]) {
+      const L = computeLayout(1280, 800, game, 0, 'live', peek);
+      for (const p of game.players) {
+        p.work.forEach(({ cards: pile }, i) => {
+          const placed = pile.map((c) => L.cards.find((x) => x.card.id === c.id)!);
+          expect(placed.map((c) => [c.pile, c.at])).toEqual(pile.map(() => ['work', i]));
+          for (let j = 1; j < placed.length; j++) expect(placed[j]!.z).toBeGreaterThan(placed[j - 1]!.z);
+        });
+      }
+    }
+  });
+
   it('cascades tray piles so that a strip of each shows, face-down, and brings them out for the end of the round', () => {
     const game = played(inPlay(seats(4), lcg(11)));
     const live = computeLayout(1280, 800, game, 0);

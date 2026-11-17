@@ -52,7 +52,7 @@ export interface Placed {
   pile: PileKind;
   /** In one of the viewing player's own piles. */
   mine: boolean;
-  /** For 'slot' and 'tray' cards: which slot, or which tray pile. */
+  /** Which pile of its kind: which slot, which tray pile, which work pile of the hand. */
   at: number;
   /** Tilt in degrees: a pile in the middle is never quite square. */
   rot: number;
@@ -319,8 +319,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const span = 7 * h.w + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const mx = (x: number, w = h.w): number => (h.flip ? 2 * h.x + span - x - w : x);
   const rect = (x: number, y: number): Rect => ({ x: mx(x), y, w: h.w, h: ch });
-  const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind, down = false) =>
-    out.push({ card, x: mx(x), y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock' && !down, pile, mine: h.mine, at: 0, rot: 0 });
+  const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind, down = false, at = 0) =>
+    out.push({ card, x: mx(x), y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock' && !down, pile, mine: h.mine, at, rot: 0 });
 
   // Nertz pile: lower cards peek out underneath so the pile shows its thickness.
   const lean = 0.55 * s;
@@ -345,8 +345,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
       // middle's cards) as far as the top of the window. Its drop area and its top card stay where they were.
       const up = clamp(wanted - h.workRoom, 0, h.y - 8);
       const full = fanOut(show, h.workFan, h.minStrip, h.workRoom + up);
-      pile.forEach((c, j) => put(c, x, h.y - up + full[j]!, PEEK_Z + j, 'work'));
-    } else pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work'));
+      pile.forEach((c, j) => put(c, x, h.y - up + full[j]!, PEEK_Z + j, 'work', false, i));
+    } else pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work', false, i));
     workHit.push({ x: mx(x - margin, h.w + 2 * margin), y: h.y - rise - margin, w: h.w + 2 * margin, h: ch + h.workRoom + rise + 2 * margin });
     return rect(x, h.y - rise + (at.at(-1) ?? 0));
   });
