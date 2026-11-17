@@ -18,6 +18,8 @@ import { MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
+import { useCorners } from './fittings';
+import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
@@ -200,8 +202,8 @@ function WholeScreen() {
   );
 }
 
-/** The round's clock, m:ss: counted on locally from what the last snapshot said while it runs (not while paused, nor once the round is over). */
-function Clock({ clock }: { clock: NonNullable<RoomView['clock']> }) {
+/** The round's clock, m:ss: counted on locally from what the last snapshot said while it runs (not while paused, nor once the round is over). It stands where the table has room for it (layout.ts, `Layout.clock`). */
+export function Clock({ clock, at }: { clock: NonNullable<RoomView['clock']>; at: ClockAt }) {
   const [ms, setMs] = useState(clock.ms);
   useEffect(() => {
     setMs(clock.ms);
@@ -213,7 +215,7 @@ function Clock({ clock }: { clock: NonNullable<RoomView['clock']> }) {
   const s = Math.floor(ms / 1000);
   const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   return (
-    <time className={`clock${clock.running ? '' : ' stopped'}`} role="timer" aria-label={`Round time ${text}`} title="This round">
+    <time className={`clock${at.small ? ' small' : ''}${clock.running ? '' : ' stopped'}`} style={{ left: at.x, top: at.y }} role="timer" aria-label={`Round time ${text}`} title="This round">
       {text}
     </time>
   );
@@ -273,9 +275,10 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const actions = room ? tableActions(room) : [];
   useDismiss(root, !!open, () => setOpen(null));
 
+  /** Where the button stands (layout.ts: the table keeps clear of exactly that). */
+  const at = useCorners(room);
   return (
-    <div className="corner" ref={root}>
-      {room?.clock && room.phase !== 'lobby' && <Clock clock={room.clock} />}
+    <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} ref={root} style={{ left: at.knobs.x, top: at.knobs.y }}>
       <button
         type="button"
         className={`knob${open ? ' on' : ''}`}

@@ -7,7 +7,6 @@
 // each dragging client reports where its card is (`drag` messages, about 18 a
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
-import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive } from '../shared/engine';
@@ -16,13 +15,15 @@ import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
-import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Stage } from './layout';
+import { useFittings, useWindow } from './fittings';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
+import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
@@ -305,10 +306,10 @@ interface Flight {
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
-/** Room for the stuck button at its widest, on a phone on its side. */
-const STUCK_W = 124;
 /** How wide the name line of a neighbour whose hand runs down the side may be. */
 const TAG_SIDE_W = 210;
+/** A plain place: just where and how large. */
+const box0 = (r: Rect): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h });
 const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(r.w, r.h) * 0.08, rotate: r.rot ? `${r.rot}deg` : undefined });
 
 /**
@@ -348,7 +349,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** Your seat; or, watching without one, a seat that nobody has. */
   const you = room.seat ?? -1;
   const results = room.phase === 'results';
-  const [W, H] = useViewport();
+  const { W, H, pad } = useWindow();
   const prefs = usePrefs();
   // Whatever decks are at the table are fetched before their cards are turned up.
   const decks = room.players.map((p) => p.look.deck).join();
@@ -409,25 +410,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const t = setTimeout(() => setTurned((n) => n + 1), Math.max(0, until - performance.now()) + 1);
     return () => clearTimeout(t);
   }, [groupHeld, turning]);
-  // (The screen's own edges are read again whenever the window changes: turning a phone moves its notch.)
-  const pad = useMemo(() => insets(), [W, H]);
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
   const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting), [W, H, game, you, stage, peek, groupHeld, pad, sitting]);
+  // What stands round the cards (the buttons in the corners, the clock, your name, "I'm stuck" and the vote) is placed
+  // by the layout too, and the cards round it: nothing here is measured off the page or put down by hand.
+  const fit = useFittings(room);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting, fit), [W, H, game, you, stage, peek, groupHeld, pad, sitting, fit]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
-  // Upright, Skip stands in the bar at the top, right after the chat's button: after all of it, which is wider when you
-  // are in voice (the microphone and its mute button stand there too), so that it is never under them.
-  const [besideChat, setBesideChat] = useState(74);
-  useEffect(() => {
-    const chat = document.querySelector('.chat');
-    if (!chat || typeof ResizeObserver === 'undefined') return;
-    const measure = () => setBesideChat(Math.max(74, Math.round(chat.getBoundingClientRect().right) + 8));
-    const seen = new ResizeObserver(measure);
-    seen.observe(chat);
-    measure();
-    return () => seen.disconnect();
-  }, []);
   const handles = useRef<Handles>(new Map()).current;
   /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
   const grasp = useRef<Grasp>(EMPTY);
@@ -826,15 +816,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const say = new Set(room.players.filter(hasSay).map((p) => p.seat));
   const active = game.players.filter((p) => say.has(p.seat));
   const waitingOn = active.filter((p) => !p.stuck).length;
-  const oh = me ? me.nertz.h : 0;
   /** The vote to end the round: stands at the table once the round drags on, or once anyone has voted (the same vote as in the table's menu). */
   const vote = ballot(room);
   /** You have stood up from your cards for now (actions.ts `standing`): as good as away, until you sit back down. */
   const up = !!standing(room);
-  /** On its side: is there room for the stuck button between your hand and the edge of the screen? */
-  const besideHand = me ? me.box.x + me.box.w + 10 + STUCK_W <= W - 8 - pad.r : false;
-  /** Upright: the room between your nertz pile and your stock, for your name, and under it for saying you are stuck. */
-  const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
+  /** Your own line, where the layout has room for it: in full under your nertz pile, or as one line. */
+  const mineAt = L.name && { className: `mine ${L.name.full ? 'full' : 'line'} ${L.name.align}`, style: { left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h } };
+  const pill = L.pills ? ' pill' : '';
   // The NERTZ! stamp comes down on the place the caller's nertz pile stood (now empty), not across their whole hand:
   // large enough to read at any seat, and kept inside the window.
   const callerPile = called ? (caller === you ? me?.nertz : L.opponents.find((o) => o.seat === caller)?.nertz) : undefined;
@@ -853,9 +841,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
   /** How many cards a hand's nertz pile has, on the pile (`Seat.count`), kept inside the window. */
   const count = (s: Seat) => {
-    const r = s.count.d / 2 + 2;
+    const at = countBox(s.count, W, H, pad); // (as the layout kept clear of it)
     return (
-      <b className="count" style={{ left: clamp(s.count.x, r, W - r), top: clamp(s.count.y, r, H - r), '--d': `${s.count.d}px` } as CSSProperties}>
+      <b className="count" style={{ left: at.x + at.w / 2, top: at.y + at.h / 2, '--d': `${s.count.d}px` } as CSSProperties}>
         {s.nertzCount}
       </b>
     );
@@ -923,15 +911,17 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           {[me.nertz, ...me.workAt, me.stockPad, me.waste].map((r, i) => (
             <div key={i} className="slot" style={box(r)} />
           ))}
-          <div className="mine" style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + 2 } : { right: W - (me.nertz.x + me.nertz.w), top: me.nertz.y + oh + 14 }}>
-            <span className="who">
-              <i className="chip" style={{ background: backColour(you) }} />
-              {name(you)} <b>{points(total(you))}</b>
-            </span>
-            <span className="where">
-              Round {room.round} at table {room.code}
-            </span>
-          </div>
+          {mineAt && (
+            <div {...mineAt}>
+              <span className="who">
+                <i className="chip" style={{ background: backColour(you) }} />
+                {name(you)} <b>{points(total(you))}</b>
+              </span>
+              <span className="where">
+                Round {room.round} at table {room.code}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -950,76 +940,69 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           {/* Your pile wears its count as everyone else's does. (None left: the call stands there instead.) */}
           {!dealing && me.nertzCount > 0 && count(me)}
 
-          <div className="mine" style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + 2 } : { right: W - (me.nertz.x + me.nertz.w), top: me.count.y + me.count.d / 2 + 4 }}>
-            <span className="who">
-              <i className="chip" style={{ background: backColour(you) }} />
-              {name(you)} <b>{points(total(you))}</b>
-            </span>
-            <span className="where">
-              Round {room.round} at table {room.code}
-            </span>
-          </div>
-
-          {/* Saying you are stuck, and beside it, once the round drags on, voting to end it. Upright, under your name;
-              on its side, beside your hand, or along the bottom when there is no room beside it; else under your stock. */}
-          {!frozen && (
-            <div
-              className={`stuck-at${L.low && !besideHand ? ' under' : ''}`}
-              style={
-                L.tall
-                  ? { left: between.x, width: between.w, top: me.nertz.y + 25 }
-                  : !L.low
-                    ? { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }
-                    : besideHand
-                      ? { left: me.box.x + me.box.w + 10, top: me.stock.y + oh - 32 }
-                      : { right: 8 + pad.r, bottom: 6 + pad.b }
-              }
-            >
-              {/* Standing up for now (from the menu): the one thing to say here is that you are coming back. */}
-              {up ? (
-                <button
-                  type="button"
-                  className="stuck on"
-                  onClick={(e) => {
-                    perform('stand', room);
-                    e.currentTarget.blur();
-                  }}
-                >
-                  Sit back down
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={`stuck${mine.stuck ? ' on' : ''}`}
-                  onClick={(e) => {
-                    send({ k: 'stuck', on: !mine.stuck });
-                    e.currentTarget.blur(); // keep Space for dealing
-                  }}
-                >
-                  {mine.stuck ? (
-                    <>
-                      Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
-                    </>
-                  ) : (
-                    <>
-                      I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
-                    </>
-                  )}
-                </button>
-              )}
-              {!up && vote?.pressing && (
-                <button
-                  type="button"
-                  className={`stuck${vote.mine ? ' on' : ''}`}
-                  onClick={(e) => {
-                    perform('vote', room);
-                    e.currentTarget.blur();
-                  }}
-                >
-                  End round {vote.voted > 0 && <small>{vote.voted}/{vote.voters}</small>}
-                </button>
-              )}
+          {mineAt && (
+            <div {...mineAt}>
+              <span className="who">
+                <i className="chip" style={{ background: backColour(you) }} />
+                {name(you)} <b>{points(total(you))}</b>
+              </span>
+              <span className="where">
+                Round {room.round} at table {room.code}
+              </span>
             </div>
+          )}
+
+          {/* Saying you are stuck, and beside it, once the round drags on, voting to end it: each in the place the
+              layout keeps for it by your stock, clear of your cards and of everything else. */}
+          {/* Standing up for now (from the menu): in the place of "I'm stuck", the one thing to say is that you are coming back. */}
+          {!frozen && L.stuck && up && (
+            <button
+              type="button"
+              className={`stuck${pill} on`}
+              style={box0(L.stuck)}
+              onClick={(e) => {
+                perform('stand', room);
+                e.currentTarget.blur();
+              }}
+            >
+              Sit back down
+            </button>
+          )}
+          {!frozen && L.stuck && !up && (
+            <button
+              type="button"
+              className={`stuck${pill}${mine.stuck ? ' on' : ''}`}
+              style={box0(L.stuck)}
+              aria-pressed={mine.stuck}
+              onClick={(e) => {
+                send({ k: 'stuck', on: !mine.stuck });
+                e.currentTarget.blur(); // keep Space for dealing
+              }}
+            >
+              {mine.stuck ? (
+                <>
+                  Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
+                </>
+              ) : (
+                <>
+                  I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
+                </>
+              )}
+            </button>
+          )}
+          {!frozen && L.vote && vote?.pressing && (
+            <button
+              type="button"
+              className={`stuck${pill}${vote.mine ? ' on' : ''}`}
+              style={box0(L.vote)}
+              aria-pressed={vote.mine}
+              onClick={(e) => {
+                perform('vote', room);
+                e.currentTarget.blur();
+              }}
+            >
+              End round {vote.voted > 0 && <small>{vote.voted}/{vote.voters}</small>}
+            </button>
           )}
 
           {/* Going out is a call, made from the very place the nertz pile stood. */}
@@ -1110,7 +1093,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // (On a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the sound and settings buttons on its side.)
-        <button type="button" className={`skip${phone ? ' aside' : ''}`} style={L.tall ? { left: besideChat } : phone ? { left: Math.max(12, pad.l) + 136 } : undefined} onClick={skip}>
+        <button type="button" className={`skip${phone ? ' aside' : ''}`} style={L.tall ? { left: L.at.chat.x + L.at.chat.w + 8 } : phone ? { left: L.at.knobs.x + L.at.knobs.w + 8 } : undefined} onClick={skip}>
           {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>
         </button>
       )}
@@ -1129,6 +1112,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       </div>
     )}
     {stage === 'sheet' && sheet}
+    {/* The round's clock, where the layout has a free place for it. (Over the score sheet too: it has stopped.) */}
+    {L.clock && room.clock && <Clock clock={room.clock} at={L.clock} />}
     </>
   );
 }

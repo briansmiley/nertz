@@ -570,17 +570,34 @@ button {
   pointer-events: none;
 }
 
-/* Your own line, under the nertz pile. */
+/* Your own line, in the place the layout keeps for it (client/layout.ts, `furnish`): under the nertz pile in full
+   (how many are left in it, your name and total, the round and the table), or one line (your name and total). It is
+   written from the end of its place that the layout says, and never past it. */
 .mine {
   position: absolute;
   display: grid;
   justify-items: end;
-  gap: 5px;
+  align-content: center;
   white-space: nowrap;
   font-size: 14px;
   line-height: 1.1;
   color: var(--chalk-dim);
   pointer-events: none;
+  overflow: hidden;
+}
+
+.mine.start {
+  justify-items: start;
+}
+
+.mine.centre {
+  justify-items: center;
+}
+
+.mine > * {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mine b {
@@ -589,9 +606,27 @@ button {
 }
 
 .mine .who {
-  margin-top: 6px;
+  line-height: 20px;
   color: var(--chalk);
   font-weight: 600;
+}
+
+/* In full: two lines, your name and the table under it; in a low window they close up. */
+.mine.full {
+  grid-template-rows: auto 1fr auto;
+  align-content: stretch;
+}
+
+.mine.full .who {
+  grid-row: 1;
+}
+
+.mine.full .where {
+  grid-row: 3;
+}
+
+.mine.line .where {
+  display: none;
 }
 
 .mine .who .chip {
@@ -607,15 +642,11 @@ button {
   font-size: 12.5px;
 }
 
-.stuck-at {
+/* "I'm stuck", and the vote to end the round: each in the place the layout keeps for it (client/layout.ts,
+   `furnish`), as a full button or, where there is less room, a small pill. Wording too long for its place is cut. */
+.stuck {
   position: absolute;
   z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.stuck {
   display: flex;
   align-items: baseline;
   justify-content: center;
@@ -627,6 +658,16 @@ button {
   color: var(--chalk);
   font-weight: 600;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.stuck.pill {
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  border-radius: 16px;
+  font-size: 13px;
 }
 
 .stuck:hover {
@@ -634,9 +675,16 @@ button {
 }
 
 .stuck small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 500;
   font-size: 12.5px;
   opacity: 0.75;
+}
+
+.stuck.pill small {
+  font-size: 10.5px;
 }
 
 .stuck.on {
@@ -2125,32 +2173,34 @@ button {
 
 /* ------------------------------------------------------------ settings */
 
-/* Your own settings, bottom left on every screen: mute, and a gear. */
+/* Your own settings, on every screen: mute, a gear, the door to the table's actions, feedback. Bottom left, or in the
+   bar across the top of a phone held upright (`.top`): where exactly is the layout's to say (client/layout.ts,
+   `corners`), clear of a notch and of the bar at the bottom of the screen. */
 .corner {
   position: fixed;
   z-index: 45000; /* over the score sheet, under the connection banner */
-  /* (The page runs to the edges of the screen, viewport-fit=cover: clear of a notch and of the bar at the bottom.) */
-  left: max(12px, env(safe-area-inset-left, 0px));
-  bottom: max(10px, env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
-/* The round's clock, just above them. */
-.corner .clock {
-  position: absolute;
-  left: 4px;
-  bottom: calc(100% + 8px);
+/* The round's clock: above them, or in small figures after the chat's buttons, wherever the table has a free place for it. */
+.clock {
+  position: fixed;
+  z-index: 45000;
   font: 700 22px/1 var(--num);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+  white-space: nowrap;
   color: var(--chalk);
   opacity: 0.8;
   pointer-events: none;
 }
 
-.corner .clock.stopped {
+.clock.small {
+  font-size: 16px;
+}
+
+.clock.stopped {
   opacity: 0.45;
 }
 
@@ -2479,12 +2529,11 @@ label.check {
 
 /* ------------------------------------------------------------ chat (Chat.tsx) */
 
-/* Top-left on every screen of a table, above the score sheet and under the connection banner. */
+/* Top-left on every screen of a table, above the score sheet and under the connection banner: where exactly, and how
+   wide each of its buttons is, is the layout's to say (client/layout.ts, `corners`). */
 .chat {
   position: fixed;
   z-index: 45000;
-  left: max(10px, env(safe-area-inset-left, 0px));
-  top: 10px; /* the bottom-left corner belongs to the mute button and the gear */
   font-size: 14px;
   line-height: 1.35;
 }
@@ -2635,6 +2684,13 @@ label.check {
   stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Each button of the bar is as wide as the layout says (a width set on it), what is on it in the middle. */
+.chat-bar > button {
+  justify-content: center;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 /* Voice, one press away beside the chat button. While others are in it, it beckons. */
@@ -2911,43 +2967,6 @@ label.check {
 /* ------------------------------------------------------------ a phone held upright */
 
 /* The table lays itself out for a narrow upright screen (client/layout.ts, TALL): what stands around it follows. */
-.table.tall .mine {
-  justify-items: center;
-  gap: 3px;
-  font-size: 13px;
-  overflow: hidden;
-}
-
-.table.tall .mine .where {
-  display: none;
-}
-
-.table.tall .mine .who {
-  max-width: 100%;
-  margin-top: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.table.tall .stuck-at {
-  align-items: center;
-  gap: 6px;
-}
-
-.table.tall .stuck {
-  height: 28px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 16px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.table.tall .stuck small {
-  font-size: 10.5px;
-}
-
 .table.tall .tag {
   gap: 5px;
   font-size: 13px;
@@ -2957,39 +2976,19 @@ label.check {
   font-size: 15px;
 }
 
-@media (max-width: 639px) and (min-aspect-ratio: 0/1) and (max-aspect-ratio: 5/6) {
-  /* The buttons go to the bar across the top: the bottom of the screen is your hand. */
-  .corner {
-    left: auto;
-    right: 8px;
-    top: 7px;
-    bottom: auto;
-  }
+/* The buttons are in the bar across the top (the bottom of the screen is your hand): their slips hang under it, and
+   the chat's are high enough for a thumb. */
+.corner.top .slip {
+  left: auto;
+  right: 0;
+  top: 46px;
+  bottom: auto;
+  max-height: calc(100dvh - 70px);
+  overflow: auto;
+}
 
-  /* (No room in the bar for the round's clock.) */
-  .corner .clock {
-    display: none;
-  }
-
-  .slip {
-    left: auto;
-    right: 0;
-    top: 46px;
-    bottom: auto;
-    max-height: calc(100dvh - 70px);
-    overflow: auto;
-  }
-
-  .chat {
-    left: 8px;
-    top: 7px;
-  }
-
-  .chat-bar button,
-  .chat-bar .mic {
-    min-height: 36px;
-    padding: 4px 14px 5px;
-  }
+.chat.top .chat-bar > button {
+  min-height: 36px;
 }
 
 .skip.aside {
@@ -3067,46 +3066,13 @@ label.check {
   }
 }
 
-/* A phone on its side: the stuck button is a small pill beside your hand (under your stock, when there is no room
-   beside it); the clock stands in line after the buttons. */
-.table.short .stuck-at.under {
-  flex-direction: row-reverse;
-  gap: 6px;
-}
-
-.table.short .stuck-at.under .stuck {
-  padding: 0 10px;
-}
-
-.table.short .stuck {
-  height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border-radius: 16px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.table.short .stuck small {
-  font-size: 10.5px;
-}
-
+/* A phone on its side. */
 .table.short .tag {
   gap: 5px;
   font-size: 12px;
 }
 
 @media (max-height: 499px) and (orientation: landscape) {
-  /* The clock stands beside the chat button: above the sound and settings buttons is a neighbour's hand. */
-  .corner .clock {
-    position: fixed;
-    left: calc(max(10px, env(safe-area-inset-left, 0px)) + 68px);
-    top: 20px;
-    bottom: auto;
-    font-size: 16px;
-  }
-
   .slip {
     max-height: calc(100dvh - 64px);
     overflow-y: auto;
@@ -3135,15 +3101,6 @@ label.check {
   justify-self: start;
   padding: 6px 12px;
   font-size: 13px;
-}
-
-/* Under your hand there is room for your name and nothing else. */
-.table.short .mine .where {
-  display: none;
-}
-
-.table.short .mine .who {
-  margin-top: 0;
 }
 
 /* ------------------------------------------------------------ the lobby's top corner, two columns of players */

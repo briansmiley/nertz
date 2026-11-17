@@ -8,6 +8,7 @@ import { backColour } from './cards/Face';
 import { SaidWord, Slash, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { Speaker } from './icons';
+import { useCorners } from './fittings';
 import { kick, takeSeat } from './net';
 import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
 import { joinVoice, toggleMuted, useVoice } from './voice';
@@ -108,6 +109,10 @@ export function Chat({ room }: { room: RoomView }) {
   const mayText = social.text && (!watching || social.watchText);
   const mayVoice = social.voice && (!watching || social.watchVoice);
   const typing = open === 'chat' && mayText;
+  /** Where the buttons stand, and how wide each is, left to right (layout.ts: the table keeps clear of exactly that). */
+  const at = useCorners(room);
+  const wide = (i: number) => ({ minWidth: at.chatParts[i] });
+  const voiceAt = mayText ? 1 : 0;
   // A press anywhere else puts a slip away.
   const slip = open === 'voice' || open === 'watchers';
   useEffect(() => {
@@ -155,7 +160,7 @@ export function Chat({ room }: { room: RoomView }) {
 
   /** Mute yourself: in the bar, a microphone (yellow, with a line through it, while muted). */
   const mute = inVoice && (
-    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
+    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} style={wide(voiceAt + 1)} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
       {mic(voice.muted)}
       <SaidWord said={said} />
     </button>
@@ -164,7 +169,8 @@ export function Chat({ room }: { room: RoomView }) {
   return (
     <aside
       ref={root}
-      className={`chat${holding ? ' aside' : ''}`}
+      className={`chat${holding ? ' aside' : ''}${at.shape === 'tall' ? ' top' : ''}`}
+      style={{ left: at.chat.x, top: at.chat.y }}
       aria-label="Chat"
       // Keys typed here are not game hotkeys (Space flips the stock), and a button pressed here must not keep the focus for the same reason.
       onKeyDown={(e) => {
@@ -175,7 +181,7 @@ export function Chat({ room }: { room: RoomView }) {
     >
       <div className="chat-bar">
         {mayText && (
-          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} aria-expanded={typing} onClick={() => toggle('chat')}>
+          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} style={wide(0)} aria-expanded={typing} onClick={() => toggle('chat')}>
             Chat
             {!typing && social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
           </button>
@@ -185,6 +191,7 @@ export function Chat({ room }: { room: RoomView }) {
           <button
             type="button"
             className={`mic join${social.inVoice.length ? ' calling' : ''}`}
+            style={wide(voiceAt)}
             disabled={voice.status === 'asking'}
             aria-label={social.inVoice.length ? `Join voice: ${social.inVoice.length} in it` : 'Join voice'}
             title={social.inVoice.length ? `Join voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}` : 'Join voice'}
@@ -199,6 +206,7 @@ export function Chat({ room }: { room: RoomView }) {
           <button
             type="button"
             className={`mic${voice.speaking.includes(room.me) && !voice.muted ? ' speaking' : ''}${open === 'voice' ? ' open' : ''}`}
+            style={wide(voiceAt)}
             aria-expanded={open === 'voice'}
             aria-label={`In voice: ${social.inVoice.length}. Who is there, mute yourself, leave`}
             title={`In voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}`}
@@ -217,7 +225,7 @@ export function Chat({ room }: { room: RoomView }) {
         )}
         {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
         {watchers.length > 0 && (
-          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
+          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} style={wide(at.chatParts.length - 1)} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
               <circle cx="12" cy="12" r="2.8" />
