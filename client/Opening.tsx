@@ -12,6 +12,14 @@ import { go, ready } from './net';
 const WORD_MS = 650;
 /** How long a warned Start waits for the second press before it is forgotten. */
 const WARN_MS = 5000;
+/** How soon after the warning a press is still the same one (a double click, a held key): too soon to have read it. */
+const SAME_PRESS_MS = 400;
+
+/**
+ * What a press of Start does: goes at once when nobody is waited on; else the first one only warns, and one after
+ * it (not the same press again) goes ahead. `warnedAt` is when the warning went up, or null with none showing.
+ */
+export const pressStart = (late: number, warnedAt: number | null, now: number): 'go' | 'warn' | 'same' => (late === 0 ? 'go' : warnedAt === null ? 'warn' : now - warnedAt < SAME_PRESS_MS ? 'same' : 'go');
 
 /**
  * Who the dealer is waiting on: everyone dealt in (bots count as ready, the server says so in `ready`) who has not
@@ -67,16 +75,21 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
 
   // Start goes at once when everyone is ready. If not, the first press only shows who is not (`warned`), and the
   // next one goes ahead: never a block. It lapses after a while, and whenever the ones not ready change.
-  const [warned, setWarned] = useState(false);
+  const [warnedAt, setWarnedAt] = useState<number | null>(null);
+  const warned = warnedAt !== null;
   useEffect(() => {
-    setWarned(false);
+    setWarnedAt(null);
   }, [lateKey]);
   useEffect(() => {
-    if (!warned) return;
-    const lapse = setTimeout(() => setWarned(false), WARN_MS);
+    if (warnedAt === null) return;
+    const lapse = setTimeout(() => setWarnedAt(null), WARN_MS);
     return () => clearTimeout(lapse);
-  }, [warned]);
-  const press = () => (late.length > 0 && !warned ? setWarned(true) : go());
+  }, [warnedAt]);
+  const press = () => {
+    const does = pressStart(late.length, warnedAt, Date.now());
+    if (does === 'go') go();
+    else if (does === 'warn') setWarnedAt(Date.now());
+  };
 
   // Space or Enter is the dealer's Start. (A focused button or the chat box keeps its own keys.)
   useEffect(() => {
@@ -110,7 +123,7 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
           <>
             <ul className="readies" aria-label="Who is ready">
               {waiting.map((p) => (
-                <li key={p.id} className={p.ready ? 'on' : warned && p.connected ? 'late' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
+                <li key={p.id} className={p.ready ? 'on' : warned && late.includes(p) ? 'late' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
                   <i style={{ background: backColour(p.seat ?? 0) }} />
                   {p.name}
                   {p.ready ? (

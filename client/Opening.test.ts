@@ -3,7 +3,7 @@ import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { deal, finishDeal } from '../shared/engine';
 import { lcg, roomOf } from '../shared/testkit';
 import type { RoomView } from '../shared/types';
-import { beatAt, notReady } from './Opening';
+import { beatAt, notReady, pressStart } from './Opening';
 
 describe('the opening count', () => {
   it('says 1, 2, 3, one beat each, from the duration left; a window that arrives late starts on the right number', () => {
@@ -44,5 +44,23 @@ describe('who the dealer is waiting on', () => {
     expect(notReady({ ...r, game: null })).toEqual([]);
     const sitting = { ...r.players[3]!, seat: 7 };
     expect(notReady({ ...r, players: [...r.players.slice(0, 3), sitting] }).map((p) => p.seat)).toEqual([1, 2]);
+  });
+});
+
+describe('a press of Start', () => {
+  it('goes at once when nobody is waited on', () => {
+    expect(pressStart(0, null, 1000)).toBe('go');
+    expect(pressStart(0, 900, 1000)).toBe('go');
+  });
+
+  it('with someone not ready only warns, and the next press goes ahead', () => {
+    expect(pressStart(2, null, 1000)).toBe('warn');
+    expect(pressStart(2, 1000, 3000)).toBe('go');
+  });
+
+  it('is not two presses for a double click or a held key: the warning has to have been up a moment', () => {
+    expect(pressStart(2, 1000, 1100)).toBe('same');
+    expect(pressStart(2, 1000, 1399)).toBe('same');
+    expect(pressStart(2, 1000, 1400)).toBe('go');
   });
 });
