@@ -728,16 +728,23 @@ verification) in one SQLite file, `nertz.db` under `DATA_DIR`, brought up to dat
 Node's own `node:sqlite`: nothing to compile. Everything of Better Auth's is served under `/api/auth`.
 
 Accounts are **off unless set up**. With any of the settings below missing, `/api/auth` answers 404, and the client
-takes that to mean there is no signing in and shows nothing about it.
+takes that to mean there is no signing in and shows nothing about it. The same if the database cannot be opened: the
+game runs without accounts, and the log says why (`accounts are off: ...`). With them on, the boot line ends
+`, with accounts`.
+
+Of someone signed in, the name, email address and picture Google has are kept, taken afresh each time they sign in, and
+nothing else: not the address or browser they signed in from, and not Google's tokens for their account
+(`public/privacy.html` says so, to them).
 
 To turn them on (names as in `.env.example`; on Fly, `fly secrets set NAME=value -a <app>`, once per app):
 
 1. In the Google Cloud console make an OAuth client of type "Web application", with one authorised redirect URI per
-   place the app runs: `https://nertz.fly.dev/api/auth/callback/google`,
-   `https://nertz-staging.fly.dev/api/auth/callback/google`, `http://localhost:5173/api/auth/callback/google`. Publish
-   the consent screen, or only the test users listed on it can sign in.
+   place the app runs: `https://nertz.binarysmile.com/api/auth/callback/google`,
+   `https://nertz-staging.binarysmile.com/api/auth/callback/google`, `http://localhost:5173/api/auth/callback/google`.
+   Publish the consent screen, or only the test users listed on it can sign in.
 2. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from it, `AUTH_SECRET` to a long random string
-   (`openssl rand -base64 32`), and `PUBLIC_URL` to where that app is reached (`https://nertz.fly.dev`).
+   (`openssl rand -base64 32`), and `PUBLIC_URL` to where that app is reached (`https://nertz.binarysmile.com`).
+   Signing in works only from that address: at the app's `fly.dev` one a guest can play, and nobody can sign in.
 3. On Fly the database lives on a volume mounted at `/data` (`fly.toml`, `[mounts]`). Each app needs one, made once,
    **before** the first deploy that mounts it: `fly volumes create nertz_data --size 1 -r sjc -a <app>`.
 

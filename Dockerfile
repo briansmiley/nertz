@@ -14,6 +14,8 @@ RUN npm ci --omit=dev
 COPY shared shared
 COPY server server
 COPY --from=build /app/dist dist
+# (The start below needs setpriv: better the build fails than the boot.)
+RUN command -v setpriv
 EXPOSE 8080
 # One process: serves dist/ and the websocket. tsx runs the TypeScript directly.
 # It runs as `node`. A volume (fly.toml, [mounts]) is mounted owned by root, so the container starts as root only to

@@ -365,8 +365,8 @@ function Who() {
   }
   return (
     <span className="who in">
-      {account.image && <img src={account.image} alt="" referrerPolicy="no-referrer" />}
-      {account.name}
+      {account.image && <img src={account.image} alt="" referrerPolicy="no-referrer" onError={(e) => (e.currentTarget.hidden = true)} />}
+      <span>{account.name}</span>
       <button type="button" onClick={() => void signOut()}>
         Sign out
       </button>

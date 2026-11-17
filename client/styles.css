@@ -4683,9 +4683,25 @@ button.who:hover,
 }
 
 .who img {
+  flex: none;
   width: 1.4rem;
   height: 1.4rem;
   border-radius: 50%;
+}
+
+.who.in {
+  min-width: 0;
+}
+
+.who.in span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.who.in button {
+  flex: none;
 }
 
 .whofoot {

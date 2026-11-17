@@ -8,21 +8,15 @@
 // verification) in the SQLite file, which it brings up to date on boot. This file is the only one that knows it.
 import { mkdirSync } from 'node:fs';
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
+import type { Account } from '../shared/types';
 
 /** Every route of Better Auth's is under this path. Google is told to come back to `${url}${AUTH_PATH}/callback/google`. */
 export const AUTH_PATH = '/api/auth';
-
-/** Someone signed in: `id` is who they are, for good. Their name and picture are what Google says, and may change. */
-export interface Account {
-  id: string;
-  name: string;
-  image: string | null;
-}
 
 export interface Accounts {
   /** Answers a request under `AUTH_PATH`. */
@@ -35,24 +29,33 @@ export interface Accounts {
 export interface AccountsOptions {
   /** The SQLite file: a path, or ':memory:'. */
   file: string;
-  /** Where the app is reached from outside, with no trailing slash: `https://nertz.fly.dev`. */
+  /** Where the app is reached from outside, with no trailing slash: `https://nertz.binarysmile.com`. */
   url: string;
   /** Signs the session cookies. */
   secret: string;
   google: { id: string; secret: string };
 }
 
-/** What the environment asks for: null unless all of it is there. */
-export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsOptions | null {
+/**
+ * What the environment asks for: the options, or the names of what it would still take. (With all three of the Google
+ * client and the secret missing, nobody meant to set accounts up; with only some of it there, somebody did.)
+ */
+export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsOptions | { missing: string[] } {
   const dev = env.NODE_ENV !== 'production';
   const dir = env.DATA_DIR ?? (dev ? 'data' : undefined);
   const url = env.PUBLIC_URL ?? (dev ? `http://localhost:${Number(env.VITE_PORT) || 5173}` : undefined);
-  if (!dir || !url || !env.AUTH_SECRET || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
-  mkdirSync(dir, { recursive: true });
-  return { file: join(dir, 'nertz.db'), url: url.replace(/\/+$/, ''), secret: env.AUTH_SECRET, google: { id: env.GOOGLE_CLIENT_ID, secret: env.GOOGLE_CLIENT_SECRET } };
+  const { AUTH_SECRET: secret, GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: googleSecret } = env;
+  if (!dir || !url || !secret || !id || !googleSecret) {
+    return { missing: [!id && 'GOOGLE_CLIENT_ID', !googleSecret && 'GOOGLE_CLIENT_SECRET', !secret && 'AUTH_SECRET', !url && 'PUBLIC_URL', !dir && 'DATA_DIR'].filter((name) => typeof name === 'string') };
+  }
+  return { file: join(dir, 'nertz.db'), url: url.replace(/\/+$/, ''), secret, google: { id, secret: googleSecret } };
 }
 
+/** Google's keys to someone's account, which signing in hands over and nothing here needs. */
+const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
+
 export async function openAccounts(options: AccountsOptions): Promise<Accounts> {
+  if (options.file !== ':memory:') mkdirSync(dirname(options.file), { recursive: true });
   const db = new DatabaseSync(options.file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   const config = {
@@ -63,8 +66,20 @@ export async function openAccounts(options: AccountsOptions): Promise<Accounts> 
     database: db,
     telemetry: { enabled: false },
     // (Said outright because Better Auth leaves these checks off by itself when it is run by a test.)
-    advanced: { disableOriginCheck: false, disableCSRFCheck: false },
-    socialProviders: { google: { clientId: options.google.id, clientSecret: options.google.secret } },
+    // Whose request it is, for the limit on how often anyone may try to sign in: Fly's word for it, which a client cannot forge.
+    advanced: { disableOriginCheck: false, disableCSRFCheck: false, ipAddress: { ipAddressHeaders: ['fly-client-ip'] } },
+    // Name and picture are Google's, taken afresh at each signing in: nobody sets their own.
+    socialProviders: { google: { clientId: options.google.id, clientSecret: options.google.secret, overrideUserInfoOnSignIn: true } },
+    disabledPaths: ['/update-user', '/change-email', '/delete-user', '/link-social', '/unlink-account', '/list-accounts'],
+    // Kept: who someone is (name, email, picture). Not kept: where they signed in from and on what, nor Google's own
+    // keys to their account, which nothing here has a use for. (public/privacy.html says as much.)
+    databaseHooks: {
+      session: { create: { before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }) } },
+      account: {
+        create: { before: async (account) => ({ data: { ...account, ...NO_KEYS } }) },
+        update: { before: async (account) => ({ data: { ...account, ...NO_KEYS } }) },
+      },
+    },
     // A cookie that is good for five minutes without asking the database: a socket reconnecting does not cost a query.
     session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
   } satisfies Parameters<typeof betterAuth>[0];
