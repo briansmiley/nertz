@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, viewFor } from '../shared/engine';
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
-import { inPlay, lcg, seats, withPile } from '../shared/testkit';
+import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
 import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
@@ -13,11 +13,11 @@ function aced(game: GameState): GameState {
   const aces: Card[] = [];
   const players = game.players.map((p) => {
     const ace = (c: AnyCard) => !isHidden(c) && c.rank === 1;
-    aces.push(...([...p.nertz, ...p.work.flat(), ...p.waste, ...p.stock].filter(ace) as Card[]));
+    aces.push(...([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.waste, ...p.stock].filter(ace) as Card[]));
     // (Whatever lay where an Ace was gets a card off the stock in its place.)
     const stock = p.stock.filter((c) => !ace(c));
     const swap = (c: AnyCard) => (ace(c) ? stock.pop()! : c);
-    return { ...p, nertz: p.nertz.map(swap), work: p.work.map((w) => w.map(swap)), waste: p.waste.map(swap), stock };
+    return { ...p, nertz: p.nertz.map(swap), work: p.work.map((w) => ({ ...w, cards: w.cards.map(swap) })), waste: p.waste.map(swap), stock };
   });
   const placed: Spot[] = [];
   const slots = aces.map((c): CentrePile => {
@@ -60,14 +60,14 @@ const DESKTOPS: [number, number][] = [
 /** Moves every player's whole spade suit into the tray and three hearts into slot 1, as if they had been played. */
 function played(game: GameState): GameState {
   const g = withPile(game, 1, 0, 'H', 3);
-  const hand = (p: GameState['players'][number]) => [...p.nertz, ...p.work.flat(), ...p.stock] as Card[];
+  const hand = (p: GameState['players'][number]) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock] as Card[];
   const tray = g.players.map((p) => hand(p).filter((c) => c.suit === 'S').sort((a, b) => a.rank - b.rank));
   return {
     ...g,
     tray,
     players: g.players.map((p) => {
       const rest = hand(p).filter((c) => c.suit !== 'S');
-      return { ...p, nertz: rest.slice(0, 3), work: [[rest[3]!], [rest[4]!], [rest[5]!], [rest[6]!]], down: [0, 0, 0, 0], stock: rest.slice(7) };
+      return { ...p, nertz: rest.slice(0, 3), work: upWork([[rest[3]!], [rest[4]!], [rest[5]!], [rest[6]!]]), stock: rest.slice(7) };
     }),
   };
 }
@@ -313,7 +313,7 @@ describe('table layout', () => {
         game = { ...game, slots: game.slots.map((_, i) => (at[i] ? { cards: [ace(i)], at: { ...at[i]!, r: tiltAt(at[i]!) } } : null)) };
         // Seat 0 has an Ace on top of a work pile.
         const mine: Card = { id: 'mine', owner: 0, suit: 'H', rank: 1 };
-        game = { ...game, players: game.players.map((p, i) => (i === 0 ? { ...p, work: [[...p.work[0]!, mine], ...p.work.slice(1)] } : p)) };
+        game = { ...game, players: game.players.map((p, i) => (i === 0 ? { ...p, work: [{ ...p.work[0]!, cards: [...p.work[0]!.cards, mine] }, ...p.work.slice(1)] } : p)) };
         const u0 = computeLayout(W, H, game, 0).felt.u;
         const eps = 0.75 / u0; // three quarters of a px either side of a line
         const points: { x: number; y: number }[] = [];
@@ -415,9 +415,9 @@ describe('table layout', () => {
     const game = viewFor(inPlay(seats(3), lcg(9)), 0); // what a client is actually sent
     const L = computeLayout(1280, 800, game, 0);
     for (const p of game.players) {
-      p.work.forEach((pile, i) => {
+      p.work.forEach(({ cards: pile, down }) => {
         const placed = pile.map((c) => L.cards.find((x) => x.card.id === c.id)!);
-        expect(placed.map((c) => c.up)).toEqual(pile.map((_, j) => j >= p.down[i]!));
+        expect(placed.map((c) => c.up)).toEqual(pile.map((_, j) => j >= down));
         for (let j = 1; j < placed.length; j++) expect(placed[j]!.y).toBeGreaterThan(placed[j - 1]!.y);
       });
     }
@@ -645,13 +645,13 @@ describe('table layout', () => {
         ...g,
         players: g.players.map((p) => {
           if (p.seat !== 0) return p;
-          const take = down + up - p.work[1]!.length;
-          return { ...p, work: p.work.map((w, i) => (i === 1 ? [...w, ...p.stock.slice(0, take)] : w)), down: p.down.map((d, i) => (i === 1 ? down : d)), stock: p.stock.slice(take) };
+          const take = down + up - p.work[1]!.cards.length;
+          return { ...p, work: p.work.map((w, i) => (i === 1 ? { cards: [...w.cards, ...p.stock.slice(0, take)], down } : w)), stock: p.stock.slice(take) };
         }),
       };
     }
     const strips = (L: ReturnType<typeof computeLayout>, game: GameState) => {
-      const ys = game.players[0]!.work[1]!.map((c) => L.cards.find((x) => x.card.id === c.id)!.y);
+      const ys = game.players[0]!.work[1]!.cards.map((c) => L.cards.find((x) => x.card.id === c.id)!.y);
       return ys.slice(1).map((y, j) => y - ys[j]!);
     };
 
@@ -681,7 +681,7 @@ describe('table layout', () => {
       expect(s.every((step) => step > 4)).toBe(true);
       expect(L.slots).toEqual(short.slots);
       expect(L.tray).toEqual(short.tray);
-      const first = L.cards.find((c) => c.card.id === game.players[0]!.work[1]![0]!.id)!;
+      const first = L.cards.find((c) => c.card.id === game.players[0]!.work[1]!.cards[0]!.id)!;
       expect(first.y).toBeLessThan(L.me!.nertz.y); // it starts above the row...
       expect(first.y).toBeGreaterThan(L.middle.y + L.middle.h); // ...and stops short of the felt,
       for (const hit of L.slotHit) expect(overlap(hit!, L.me!.workHit[1]!)).toBe(false); // as do the drop areas
@@ -691,7 +691,7 @@ describe('table layout', () => {
       expect([L.me!.nertz, L.me!.stock, L.me!.work[0], L.me!.work[2]]).toEqual([short.me!.nertz, short.me!.stock, short.me!.work[0], short.me!.work[2]]);
       // A pile of ordinary length is not lifted at all.
       const usual = longPile(2, 1, 3);
-      expect(computeLayout(W, H, usual, 0).cards.find((c) => c.card.id === usual.players[0]!.work[1]![0]!.id)!.y).toBe(L.me!.nertz.y);
+      expect(computeLayout(W, H, usual, 0).cards.find((c) => c.card.id === usual.players[0]!.work[1]!.cards[0]!.id)!.y).toBe(L.me!.nertz.y);
     });
 
     it('in a low window (1280x720), where there is hardly any felt to rise into, the newest cards keep their whole rank', () => {
@@ -717,7 +717,7 @@ describe('table layout', () => {
         const full = strips(P, game);
         expect(full.slice(2).every((step) => step >= cardH * 0.29)).toBe(true); // ...and in full when looked at (after its two face-down cards)
         expect(full.slice(0, 2).every((step) => step >= cardH * 0.13)).toBe(true);
-        const ids = new Set(game.players[0]!.work[1]!.map((c) => c.id));
+        const ids = new Set(game.players[0]!.work[1]!.cards.map((c) => c.id));
         const zs = P.cards.filter((c) => ids.has(c.card.id)).map((c) => c.z);
         expect(Math.min(...zs)).toBeGreaterThan(Math.max(...P.cards.filter((c) => !ids.has(c.card.id)).map((c) => c.z), 0)); // and above the rest of your hand
         expect(Math.min(...P.cards.filter((c) => ids.has(c.card.id)).map((c) => c.y))).toBeGreaterThanOrEqual(8);

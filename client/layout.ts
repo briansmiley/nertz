@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
-import { DEAL_MS, isHidden } from '../shared/engine';
+import { DEAL_MS, isHidden, WORK_PILES } from '../shared/engine';
 import { cardSize, feltHw, pileGap, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -333,9 +333,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const margin = h.gap * 0.4;
   const workHit: Rect[] = [];
   const workAt = p.work.map((_, i) => rect(workX + i * (h.w + h.gap), h.y));
-  const work = p.work.map((pile, i) => {
+  const work = p.work.map(({ cards: pile, down }, i) => {
     const x = workX + i * (h.w + h.gap);
-    const down = p.down[i] ?? 0;
     const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
     // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
     const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
@@ -514,7 +513,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // the deal) has a place round it all the same, in seat order with the rest: a hand with no cards in it.
   const empty = sitting.filter((seat) => !game.players.some((p) => p.seat === seat));
   const ring: PlayerState[] = empty.length
-    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: [[], [], [], []], down: [0, 0, 0, 0], stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
+    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
     : game.players;
   const mine = ring.find((p) => p.seat === you);
   // Someone who has no seat at the table at all watches from the first player's chair.

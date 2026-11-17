@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, deal, type Rng } from '../shared/engine';
 import { MAX_PLAYERS, MIN_PLAYERS, parseClientMsg } from '../shared/protocol';
 import { DEFAULT_SETTINGS, parseSettings } from '../shared/settings';
-import { lcg, seats } from '../shared/testkit';
+import { downs, lcg, seats } from '../shared/testkit';
 import type { GameState } from '../shared/types';
 import type { Room } from './room';
 import { FakeConn, opening, roomWith, startRound } from './testkit';
@@ -20,11 +20,11 @@ describe('the small-table deal', () => {
       expect(checkInvariants(game)).toBeNull();
       expect(game.players).toHaveLength(n);
       for (const p of game.players) {
-        expect(p.down, `${n} players`).toEqual(down);
-        expect(p.work.map((w) => w.length)).toEqual(down.map((d) => d + 1));
+        expect(downs(p), `${n} players`).toEqual(down);
+        expect(p.work.map((w) => w.cards.length)).toEqual(down.map((d) => d + 1));
         expect(p.nertz).toHaveLength(13);
         expect(p.stock).toHaveLength(39 - inWork);
-        expect(p.nertz.length + p.work.flat().length + p.stock.length).toBe(52);
+        expect(p.nertz.length + p.work.flatMap((w) => w.cards).length + p.stock.length).toBe(52);
       }
     }
   });
@@ -137,13 +137,13 @@ describe('table settings in a room', () => {
   it('deals a small table fewer face-down cards, by how many are dealt in', () => {
     const { room, conns } = roomWith(2, { rng: lcg(3) });
     room.handle(conns[0]!, { t: 'start' });
-    expect(room.game!.players.map((p) => p.down)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]);
+    expect(room.game!.players.map(downs)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]);
     expect(room.game!.players[0]!.stock).toHaveLength(35);
     expect(checkInvariants(room.game!)).toBeNull();
 
     const four = roomWith(4, { rng: lcg(3) });
     four.room.handle(four.conns[0]!, { t: 'start' });
-    for (const p of four.room.game!.players) expect(p.down).toEqual([0, 1, 2, 3]);
+    for (const p of four.room.game!.players) expect(downs(p)).toEqual([0, 1, 2, 3]);
   });
 
   it('counts the players dealt in, not the seats: two of four present get the small-table deal', () => {
@@ -152,7 +152,7 @@ describe('table settings in a room', () => {
     room.disconnect(conns[3]!);
     room.handle(conns[0]!, { t: 'start' });
     expect(room.game!.players).toHaveLength(2);
-    for (const p of room.game!.players) expect(p.down).toEqual([0, 0, 0, 0]);
+    for (const p of room.game!.players) expect(downs(p)).toEqual([0, 0, 0, 0]);
   });
 });
 

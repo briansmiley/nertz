@@ -3,7 +3,7 @@
 // intent, or nothing. The Room owns the timers and submits the intent through
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
-import { completedBy, feltFree, isHidden, isLive, legalDrops, type Rng } from '../shared/engine';
+import { completedBy, faceUp, feltFree, isHidden, isLive, legalDrops, type Rng } from '../shared/engine';
 import { feltHw, type Pt } from '../shared/table';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
@@ -77,7 +77,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const nertz = top(me.nertz);
   const waste = me.dealt > 0 ? undefined : top(me.waste); // a group is half-dealt: the waste's top is face-down and out of play
   // Cards that are face-up in play but hidden in this view: the table is not open yet. Look again later.
-  if ([nertz, waste, ...me.work.map(top)].some((c) => c && isHidden(c))) return null;
+  if ([nertz, waste, ...me.work.map((w) => top(w.cards))].some((c) => c && isHidden(c))) return null;
 
   const noticed = (focus = 1): boolean => rng() < observance ** focus;
   /** Nobody overlooks an Ace: it always goes out to the middle. */
@@ -88,7 +88,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   /** The work pile a single card should go to: one it builds down on, else an empty one. */
   const workFor = (card: AnyCard): Extract<PileRef, { k: 'work' }> | undefined => {
     const piles = drops(card).filter((to): to is Extract<PileRef, { k: 'work' }> => to.k === 'work');
-    return piles.find((to) => me.work[to.i]!.length > 0) ?? piles[0];
+    return piles.find((to) => me.work[to.i]!.cards.length > 0) ?? piles[0];
   };
   /**
    * A place in the middle that takes the card: any of them, if several do. An
@@ -123,12 +123,12 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const home = workFor(nertz);
   if (home && noticed(NERTZ_FOCUS)) return acted(move(nertz, home));
   // e
-  for (const card of [waste, ...me.work.map(top)]) {
+  for (const card of [waste, ...me.work.map((w) => top(w.cards))]) {
     const to = card && slotFor(card);
     if (to && (ace(card) || noticed(CENTRE_FOCUS))) return acted(move(card, to));
   }
   // f: only a whole face-up run can uncover or empty anything. Uncovering first.
-  const runs = me.work.map((pile, i) => ({ i, down: me.down[i]!, cards: pile.slice(me.down[i]!) })).filter((r) => r.cards.length > 0);
+  const runs = me.work.map((pile, i) => ({ i, down: pile.down, cards: faceUp(pile) })).filter((r) => r.cards.length > 0);
   for (const { i, cards } of runs.sort((a, b) => b.down - a.down)) {
     const first = cards[0]!;
     // Onto an empty pile it uncovers but empties nothing; the engine refuses a whole pile going to an empty one.
@@ -138,7 +138,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
     if (noticed()) return acted(move(first, to, cards.length), { cardId: first.id, from: i });
   }
   // g: only where it builds down. Empty piles are kept for the nertz card.
-  const shelf = waste && drops(waste).find((to) => to.k === 'work' && me.work[to.i]!.length > 0);
+  const shelf = waste && drops(waste).find((to) => to.k === 'work' && me.work[to.i]!.cards.length > 0);
   if (shelf && noticed()) return acted(move(waste, shelf));
   // h
   if (me.stuck) return me.stock.length + me.waste.length > 0 ? { intent: { k: 'flip' }, memory } : null;

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkInvariants, deal, feltFree, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, DRAG_BURST, DRAG_HZ, DRAG_RATE, START_MS, type DragAt } from '../shared/protocol';
 import { cardSize, openPlace, TABLE, type Spot } from '../shared/table';
-import { felt, move, seeded } from '../shared/testkit';
+import { felt, move, seeded, upWork } from '../shared/testkit';
 import type { Card, CentrePile, GameState, Intent, PileRef } from '../shared/types';
 import { chooseIntent, freshMemory } from './bot';
 import type { Room } from './room';
@@ -227,7 +227,7 @@ describe('bots starting piles', () => {
   /** The same table with nothing for that seat to think about but the Ace, as its waste card: Kings everywhere else, which go nowhere. */
   const wasteOnly = (view: GameState, seat: number): GameState => {
     const king = (id: string): Card => ({ id, owner: seat, suit: 'S', rank: 13 });
-    return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: [[king('w0')], [king('w1')], [king('w2')], [king('w3')]], down: [0, 0, 0, 0], waste: [p.nertz.at(-1)!] } : p)) };
+    return { ...view, players: view.players.map((p) => (p.seat === seat ? { ...p, nertz: [king('n')], work: upWork([[king('w0')], [king('w1')], [king('w2')], [king('w3')]]), waste: [p.nertz.at(-1)!] } : p)) };
   };
 
   it('starts its piles anywhere there is room, mostly about the middle, differently each time, and the same way whichever seat it has', () => {

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
-import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, withPile, work, workTop } from '../shared/testkit';
+import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, upWork, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
 import { freshSync, onSend, onSnapshot, predict, type Sync } from './net';
 import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
@@ -100,7 +100,7 @@ describe('sound cues from rendered state', () => {
     expect(lost).toContainEqual({ k: 'centre', who: 'other' });
     expect(lost).toHaveLength(2);
     expect(s.confirm()).toEqual([]); // the refusal itself changes nothing more
-    expect(s.game.players[0]!.work[1]!.at(-1)!.id).toBe(two);
+    expect(s.game.players[0]!.work[1]!.cards.at(-1)!.id).toBe(two);
     expect(mine).toBe(workTop(s.game, 0, 0));
   });
 
@@ -143,9 +143,9 @@ describe('sound cues from rendered state', () => {
     expect(s.them({ k: 'flip' })).toEqual(Array<Cue>(4).fill({ k: 'stock', who: 'other' }));
     expect(s.game.players[1]!.dealt).toBe(1);
     // A run of two cards moved together is one drop, not two.
-    const run = s.game.players[0]!.work[3]![0]!.id;
+    const run = s.game.players[0]!.work[3]!.cards[0]!.id;
     s.me({ k: 'hold', cardId: run });
-    expect(s.game.players[0]!.work[3]).toHaveLength(2);
+    expect(s.game.players[0]!.work[3]!.cards).toHaveLength(2);
     // Deal until the stock is gone, then once more: the waste goes back under.
     let cues: Cue[] = [];
     for (let i = 0; i < 60 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) cues = s.me({ k: 'flip' });
@@ -162,7 +162,7 @@ describe('sound cues from rendered state', () => {
       players: g.players.map((p) => {
         if (p.seat !== 0) return p;
         const keep = (pile: readonly (typeof p.stock)[number][]) => pile.filter((c) => c.id !== kingCard.id);
-        return { ...p, nertz: keep(p.nertz), stock: keep(p.stock), waste: keep(p.waste), work: [[kingCard], [], p.work[2]!, p.work[3]!] };
+        return { ...p, nertz: keep(p.nertz), stock: keep(p.stock), waste: keep(p.waste), work: [...upWork([[kingCard], []]), p.work[2]!, p.work[3]!] };
       }),
     };
     const s = session(start);
