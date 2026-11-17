@@ -56,8 +56,6 @@ export interface Placed {
   at: number;
   /** Tilt in degrees: a pile in the middle is never quite square. */
   rot: number;
-  /** Moves without rising above the cards lying still: it slips in under what is over it. */
-  low?: boolean;
 }
 
 /** A centre pile's place on this screen: where its card lies, and its tilt in degrees. */
@@ -369,12 +367,12 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const wasteX = stockX + h.w + h.gap;
   const n = p.waste.length - lifted;
   // In the order dealt, each UNDER the one before, as cards counted off into a hand are: the first stays on top, and
-  // turning the stack over is what leaves the last one showing. (`low`: it comes up beneath the ones already held.)
+  // turning the stack over is what leaves the last one showing. (Still cards of the stock, they come up at the level
+  // they are held at: each under the ones already held. See level.ts.)
   p.waste.slice(n).forEach((c, k) => {
     const o = HELD_OFF[k % HELD_OFF.length]!;
     put(c, stockX + h.w * (HELD.x + o.x), ny - ch * (HELD.y - o.y), Math.max(20 + p.stock.length, 34) + HELD_Z + (lifted - 1 - k), 'stock', true); // well above the stock and the waste
-    // (The first has nothing to slip under: it comes up over everything, like any card on the move.)
-    Object.assign(out.at(-1)!, { rot: (h.flip ? -1 : 1) * o.rot, low: k > 0 });
+    out.at(-1)!.rot = (h.flip ? -1 : 1) * o.rot;
   });
   // The waste is one squared-up pile: only its top card shows. (The few cards under the top are drawn too, exactly
   // beneath it, so there is something there when the top leaves.)

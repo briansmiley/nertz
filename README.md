@@ -584,6 +584,7 @@ client/   Vite + React
   net.ts        websocket store and prediction
   layout.ts     pure geometry: where the felt, every hand, card, pile, tray pile, drop area and the countdown goes for a given window size; where another player's held card is drawn; the deal's schedule
   Table.tsx     the table: the deal, the card in your hand (it listens to the pointer and carries out what hand.ts decides), other players' cards in the air, the Nertz call, the grace countdown, the steps of the end-of-round sequence
+  level.ts      pure: a card's stacking level, from the level the layout gives it and what it is doing (in its pile, travelling, turning over, in the deck, in a hand)
   hand.ts       pure: the card or finished pile in your hand (pressed, carried or tapped), and what a press, a move, a release or a tap does
   Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
