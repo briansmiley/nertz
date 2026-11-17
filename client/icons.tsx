@@ -78,29 +78,15 @@ export function Flag() {
   );
 }
 
-/** How far each card of a fanned hand is turned, front first: about the front card's bottom left corner. */
-const FAN = [0, -13, -26, -39];
+/** How far each card of a fanned hand is turned, about the front card's bottom left corner: the back one first. */
+const FAN = [-45, -30, -15, 0];
 
-/**
- * Dealing again: a hand fanned out. Each card behind shows only its edge, the cards before it masked out of it (with a
- * little room round them), so the lines never cross.
- */
+/** Dealing again: a hand fanned out. Laid back to front, each card filled with the paper it is drawn on, so it covers the ones behind. */
 export function Redeal() {
-  const card = (turn: number) => ({ x: 10, y: 5, width: 10, height: 14, rx: 1.8, transform: `rotate(${turn} 10 19)` });
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <defs>
-        {FAN.slice(1).map((_, i) => (
-          <mask key={i} id={`fan-${i + 1}`} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
-            <rect width="24" height="24" fill="white" stroke="none" />
-            {FAN.slice(0, i + 1).map((turn) => (
-              <rect key={turn} {...card(turn)} fill="black" stroke="black" strokeWidth="1.6" />
-            ))}
-          </mask>
-        ))}
-      </defs>
-      {[...FAN.keys()].reverse().map((i) => (
-        <rect key={i} {...card(FAN[i]!)} mask={i ? `url(#fan-${i})` : undefined} />
+      {FAN.map((turn) => (
+        <rect key={turn} x="12" y="4" width="9.5" height="14.5" rx="1.8" transform={`rotate(${turn} 12 18.5)`} style={{ fill: 'var(--paper)' }} />
       ))}
     </svg>
   );
