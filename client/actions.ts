@@ -70,7 +70,7 @@ export function tableActions(room: RoomView): TableAction[] {
     canPause(room) && { id: 'pause' as const, label: 'Pause' },
     canResume(room) && { id: 'resume' as const, label: 'Carry on' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
-    canRedeal(room) && { id: 'redeal' as const, label: 'Deal again', sure: 'Really deal again?' },
+    canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Really restart?' },
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: 'Really leave?' },
   ].filter((a) => !!a);
