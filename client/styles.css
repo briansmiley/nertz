@@ -4709,3 +4709,41 @@ button.who:hover,
   justify-content: flex-end;
   margin-top: -0.4rem;
 }
+
+/* Start pressed with someone not ready: the ones the table waits on, and the button that will go ahead. */
+.opening .readies li.late {
+  color: var(--marigold);
+  animation: nudge 0.5s ease-in-out 2;
+}
+
+.opening .readies li.late .dots i {
+  background: var(--marigold);
+}
+
+.opening .tally.late {
+  color: var(--marigold);
+}
+
+.opening .kickoff.warned {
+  animation: none;
+  white-space: nowrap;
+  font-size: clamp(26px, 4.4vw, 46px);
+  background: var(--chalk);
+  box-shadow:
+    inset 0 0 0 3px var(--card),
+    0 7px 0 #a79f8a,
+    0 16px 32px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes nudge {
+  25% {
+    translate: -4px 0;
+  }
+  75% {
+    translate: 4px 0;
+  }
+}
+
+.calm .opening .readies li.late {
+  animation: none;
+}
