@@ -78,13 +78,30 @@ export function Flag() {
   );
 }
 
-/** Dealing again: two cards, and the turn of the deal round them. */
+/** How far each card of a fanned hand is turned, front first: about the front card's bottom left corner. */
+const FAN = [0, -13, -26, -39];
+
+/**
+ * Dealing again: a hand fanned out. Each card behind shows only its edge, the cards before it masked out of it (with a
+ * little room round them), so the lines never cross.
+ */
 export function Redeal() {
+  const card = (turn: number) => ({ x: 10, y: 5, width: 10, height: 14, rx: 1.8, transform: `rotate(${turn} 10 19)` });
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="5.5" y="6.5" width="8" height="11.5" rx="1.4" transform="rotate(-10 9.5 12)" />
-      <rect x="10.5" y="6" width="8" height="11.5" rx="1.4" transform="rotate(8 14.5 12)" />
-      <path d="M4.5 3.5a9 9 0 0 1 5-1.2M4.5 3.5l.2 2.8M4.5 3.5l2.8-.2" />
+      <defs>
+        {FAN.slice(1).map((_, i) => (
+          <mask key={i} id={`fan-${i + 1}`} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+            <rect width="24" height="24" fill="white" stroke="none" />
+            {FAN.slice(0, i + 1).map((turn) => (
+              <rect key={turn} {...card(turn)} fill="black" stroke="black" strokeWidth="1.6" />
+            ))}
+          </mask>
+        ))}
+      </defs>
+      {[...FAN.keys()].reverse().map((i) => (
+        <rect key={i} {...card(FAN[i]!)} mask={i ? `url(#fan-${i})` : undefined} />
+      ))}
     </svg>
   );
 }
