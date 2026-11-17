@@ -1,6 +1,6 @@
 // What can be done to the table during a round, as opposed to your own settings (Settings.tsx): pause it or carry
 // on, vote to end it, deal it again, leave. Each has one rule here for whether it is open to you now; the menu
-// (TableMenu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here.
+// (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here.
 import { dragsOn, endVote, isLive, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';

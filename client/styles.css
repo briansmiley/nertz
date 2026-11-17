@@ -4821,9 +4821,44 @@ button.who:hover,
   animation: none;
 }
 
-/* ------------------------------------------------------------ the table's actions (TableMenu.tsx) */
+/* ------------------------------------------------------------ the corner's menu (Menu.tsx) */
 
-/* A narrow slip off the same pad as your settings: a ruled line an action, nothing else on it. */
+/* The head of a slip the menu leads to: back to the menu, then its name. */
+.slip-head {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: -0.5rem;
+}
+
+.slip-head .back {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.slip-head .back:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.slip-head .back svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A narrow slip off the same pad as your settings: a ruled line a thing to do, nothing else on it. */
 .slip.acts {
   gap: 0;
   width: auto;

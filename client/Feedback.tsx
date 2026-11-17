@@ -1,7 +1,8 @@
-// The bug button in the corner: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent to the
-// server's /feedback (server/feedback.ts), which passes it on. Bug report or feature request: the same slip.
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
+// Feedback, from the corner's menu: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent
+// to the server's /feedback (server/feedback.ts), which passes it on. Bug report or feature request: the same slip.
+import { useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
+import { Back } from './Menu';
 
 const MAX_TEXT = 2000;
 /** A screenshot is scaled down to fit this (the longer side) and sent as a JPEG: small enough for the server's cap. */
@@ -36,27 +37,12 @@ async function shrink(file: Blob): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-export function Feedback({ room }: { room?: RoomView | null }) {
-  const [open, setOpen] = useState(false);
+/** The slip, as the corner's menu opens it (Settings.tsx `Corner`, which puts it away). `back`: to the menu. */
+export function FeedbackSlip({ room, back }: { room?: RoomView | null; back: () => void }) {
   const [kind, setKind] = useState<'bug' | 'idea'>('bug');
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [state, setState] = useState<{ k: 'idle' | 'sending' | 'sent' } | { k: 'error'; message: string }>({ k: 'idle' });
-  const root = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.code === 'Escape' && setOpen(false);
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
 
   const attach = async (file: Blob | null | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -97,77 +83,62 @@ export function Feedback({ room }: { room?: RoomView | null }) {
   };
 
   return (
-    <span className="pop-at" ref={root}>
-      <button
-        type="button"
-        className={`knob${open ? ' on' : ''}`}
-        aria-expanded={open}
-        aria-label="Report a bug or ask for a feature"
-        title="Report a bug or ask for a feature"
-        onClick={(e) => {
-          setOpen(!open);
-          if (state.k !== 'sending') setState({ k: 'idle' });
-          e.currentTarget.blur();
-        }}
-      >
-        <BugIcon />
-      </button>
-      {open && (
-        // (Keys typed here are not the game's: Space deals, M mutes.)
-        <form className="slip feedback" aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
-          <h3>Feedback</h3>
-          {state.k === 'sent' ? (
-            <>
-              <p className="hint">Got it, thank you.</p>
-              <button type="button" className="plain" onClick={() => setState({ k: 'idle' })}>
-                Send more
+    // (Keys typed here are not the game's: Space deals, M mutes.)
+    <form className="slip feedback" aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
+      <header className="slip-head">
+        <Back onClick={back} />
+        <h3>Feedback</h3>
+      </header>
+      {state.k === 'sent' ? (
+        <>
+          <p className="hint">Got it, thank you.</p>
+          <button type="button" className="plain" onClick={() => setState({ k: 'idle' })}>
+            Send more
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="kinds" role="radiogroup" aria-label="What kind">
+            <button type="button" role="radio" aria-checked={kind === 'bug'} className={kind === 'bug' ? 'on' : ''} onClick={() => setKind('bug')}>
+              <BugIcon />
+              Bug
+            </button>
+            <button type="button" role="radio" aria-checked={kind === 'idea'} className={kind === 'idea' ? 'on' : ''} onClick={() => setKind('idea')}>
+              <BulbIcon />
+              Idea
+            </button>
+          </div>
+          <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'} aria-label="Your report" />
+          {image ? (
+            <div className="shot">
+              <img src={image} alt="The attached screenshot" />
+              <button type="button" className="trash" aria-label="Remove the screenshot" title="Remove the screenshot" onClick={() => setImage(null)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 7h14M10 7V4.8h4V7M7 7l.8 12.2h8.4L17 7M10.3 10.5v5.5M13.7 10.5v5.5" />
+                </svg>
               </button>
-            </>
+            </div>
           ) : (
-            <>
-              <div className="kinds" role="radiogroup" aria-label="What kind">
-                <button type="button" role="radio" aria-checked={kind === 'bug'} className={kind === 'bug' ? 'on' : ''} onClick={() => setKind('bug')}>
-                  <BugIcon />
-                  Bug
-                </button>
-                <button type="button" role="radio" aria-checked={kind === 'idea'} className={kind === 'idea' ? 'on' : ''} onClick={() => setKind('idea')}>
-                  <BulbIcon />
-                  Idea
-                </button>
-              </div>
-              <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'} aria-label="Your report" />
-              {image ? (
-                <div className="shot">
-                  <img src={image} alt="The attached screenshot" />
-                  <button type="button" className="trash" aria-label="Remove the screenshot" title="Remove the screenshot" onClick={() => setImage(null)}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 7h14M10 7V4.8h4V7M7 7l.8 12.2h8.4L17 7M10.3 10.5v5.5M13.7 10.5v5.5" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <label className="attach">
-                  <input type="file" accept="image/*" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="3" y="5" width="18" height="14" rx="2" />
-                    <circle cx="8.5" cy="10" r="1.6" />
-                    <path d="M4 17.5l5-5 3.5 3.5 2.5-2.5 5 4.5" />
-                  </svg>
-                  Screenshot <small>(click, drag, or paste)</small>
-                </label>
-              )}
-              {state.k === 'error' && (
-                <p className="error" role="alert">
-                  {state.message}
-                </p>
-              )}
-              <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending'}>
-                {state.k === 'sending' ? 'Sending…' : kind === 'bug' ? 'Report bug' : 'Suggest'}
-              </button>
-            </>
+            <label className="attach">
+              <input type="file" accept="image/*" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <circle cx="8.5" cy="10" r="1.6" />
+                <path d="M4 17.5l5-5 3.5 3.5 2.5-2.5 5 4.5" />
+              </svg>
+              Screenshot <small>(click, drag, or paste)</small>
+            </label>
           )}
-        </form>
+          {state.k === 'error' && (
+            <p className="error" role="alert">
+              {state.message}
+            </p>
+          )}
+          <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending'}>
+            {state.k === 'sending' ? 'Sending…' : kind === 'bug' ? 'Report bug' : 'Suggest'}
+          </button>
+        </>
       )}
-    </span>
+    </form>
   );
 }

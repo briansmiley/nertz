@@ -1,8 +1,9 @@
 // Settings. Two kinds, kept apart:
-// - `Corner`: your own (sound, motion), on every screen, bottom left: a
-//   one-click mute button (also a key of your choosing, M at first) and a gear
-//   that opens a small slip. Beside the gear during a round, a door: what can be
-//   done to the table (actions.ts), which is not a setting.
+// - `Corner`: on every screen, bottom left, one button (☰) and the menu it opens
+//   (Menu.tsx): sound on or off (also a key of your choosing, M at first), what
+//   can be done to the table during a round (actions.ts), and from there your
+//   settings (sound, motion) and feedback. While the sound is off a crossed-out
+//   speaker stands beside it, and turns it back on.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Eye`, `Door`).
@@ -12,10 +13,10 @@ import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { pause, setSeats, setTableSettings } from './net';
 import { canPause, canResume, tableActions } from './actions';
-import { TableMenu } from './TableMenu';
+import { Back, Menu, MenuIcon, type Panel } from './Menu';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
-import { Feedback } from './Feedback';
+import { FeedbackSlip } from './Feedback';
 import { SaidWord, Slash, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
@@ -259,8 +260,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
   const social = useSocial();
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
-  /** The slip that is open: your settings (the gear), or the table's actions (the door). One at a time. */
-  const [open, setOpen] = useState<'settings' | 'table' | null>(null);
+  /** The slip that is open: the menu, or your settings or feedback (which it leads to). One at a time. */
+  const [open, setOpen] = useState<Panel | null>(null);
   const root = useRef<HTMLDivElement>(null);
   /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
   const [keying, setKeying] = useState<Hotkey | null>(null);
@@ -304,43 +305,42 @@ export function Corner({ room }: { room?: RoomView | null }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [pausable, resumable]);
 
-  /** What can be done to the table now (actions.ts): none between rounds, and then no door. */
+  /** What can be done to the table now (actions.ts): none between rounds. */
   const actions = room ? tableActions(room) : [];
-  const acting = open === 'table' && actions.length > 0;
   useDismiss(root, !!open, () => setOpen(null));
 
-  const sound = prefs.muted ? 'Sound is off' : 'Sound is on';
   const soundKey = hotkeyName(prefs.soundKey);
   return (
     <div className="corner" ref={root}>
       {room?.clock && room.phase !== 'lobby' && <Clock clock={room.clock} />}
       <button
         type="button"
-        className={`knob${prefs.muted ? ' off' : ''}`}
-        aria-pressed={prefs.muted}
-        aria-label={`${sound}. ${prefs.muted ? 'Unmute' : 'Mute'}`}
-        title={soundKey ? `${sound} (${soundKey})` : sound}
+        className={`knob${open ? ' on' : ''}`}
+        aria-expanded={!!open}
+        aria-controls="menu"
+        aria-label="Menu"
+        title="Menu"
         onClick={(e) => {
-          setPrefs({ muted: !prefs.muted });
+          setOpen(open ? null : 'menu');
           e.currentTarget.blur(); // keep Space for flipping
         }}
       >
-        <Speaker off={prefs.muted} />
+        <MenuIcon />
         <SaidWord said={said} />
       </button>
-      <button type="button" className={`knob${open === 'settings' ? ' on' : ''}`} aria-expanded={open === 'settings'} aria-controls="your-settings" aria-label="Settings" title="Settings" onClick={() => setOpen(open === 'settings' ? null : 'settings')}>
-        <Gear />
-      </button>
-      {actions.length > 0 && (
-        <button type="button" className={`knob${acting ? ' on' : ''}`} aria-expanded={acting} aria-controls="table-actions" aria-label="Table" title="Table" onClick={() => setOpen(acting ? null : 'table')}>
-          <Door />
+      {prefs.muted && (
+        <button type="button" className="knob off" aria-label="Sound is off. Unmute" title={soundKey ? `Sound is off (${soundKey})` : 'Sound is off'} onClick={(e) => (setPrefs({ muted: false }), e.currentTarget.blur())}>
+          <Speaker off />
         </button>
       )}
-      <Feedback room={room} />
-      {room && acting && <TableMenu room={room} actions={actions} onDone={() => setOpen(null)} />}
+      {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={setOpen} onDone={() => setOpen(null)} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => setOpen('menu')} />}
       {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
-          <h3>Settings</h3>
+          <header className="slip-head">
+            <Back onClick={() => setOpen('menu')} />
+            <h3>Settings</h3>
+          </header>
           <Volume prefs={prefs} />
           <label className="check">
             <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
