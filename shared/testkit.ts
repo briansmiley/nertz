@@ -182,7 +182,7 @@ export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra 
     }
     return { seat, ...p, dealt: 0, stuck: h.stuck ?? false, holding: null };
   });
-  const state: GameState = { players, status: { at: 'play' }, slots: laid, tray: tray.map((t) => [...t]), ...extra };
+  const state: GameState = { players, status: { at: 'play' }, slots: laid, tray: tray.map((t) => [...t]), reshuffles: 0, ...extra };
   expect(checkInvariants(state)).toBeNull();
   return state;
 }

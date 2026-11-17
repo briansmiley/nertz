@@ -796,6 +796,12 @@ describe('Room', () => {
     expect(p0.stock[0]!.id).toBe(firstTop); // old top card went to the bottom
     expect(a.last.room.game!.players.map((p) => p.stuck)).toEqual([false, false, false]);
     expect(checkInvariants(room.game!)).toBeNull();
+    // Everyone is told how often that has happened this round; the next deal starts from none.
+    expect(a.last.room.game!.reshuffles).toBe(1);
+    sendIntent(room, a, 2, { k: 'stuck', on: true });
+    sendIntent(room, b, 1, { k: 'stuck', on: true });
+    room.flush();
+    expect(b.last.room.game!.reshuffles).toBe(2);
   });
 
   it('the round clock starts on the word, stands still while the round is paused, and stops when it is over', () => {

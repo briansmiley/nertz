@@ -92,7 +92,7 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
     return { seat, nertz, work, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
-  return { players, status: { at: 'dealing' }, slots, tray: [] };
+  return { players, status: { at: 'dealing' }, slots, tray: [], reshuffles: 0 };
 }
 
 // ---------------------------------------------------------------- legality
@@ -433,52 +433,74 @@ export function expireGrace(state: GameState): GameState {
 
 // ---------------------------------------------------------------- stuck
 
-/**
- * Could `card`, one of `seat`'s stock or waste cards, do anything if it were on top of their waste? Go to the middle,
- * or onto one of their work piles. (Judged on the full state: the server's question, not a client's.)
- */
-function stockCardMoves(state: GameState, seat: number, card: Card): boolean {
-  const trial: GameState = { ...state, players: state.players.map((p) => (p.seat === seat ? { ...p, stock: [], waste: [card], dealt: 0, holding: null } : p)) };
-  return legalDrops(trial, seat, card.id).length > 0;
-}
+/** How many times the whole table must have been stuck in a round (`GameState.reshuffles`) before ending it is offered at the table. */
+export const RESHUFFLES_BEFORE_VOTE = 3;
+
+/** The round drags: the whole table has been stuck, and had its stocks turned over, `RESHUFFLES_BEFORE_VOTE` times. */
+export const dragsOn = (state: GameState): boolean => isLive(state) && state.reshuffles >= RESHUFFLES_BEFORE_VOTE;
 
 /**
- * Is there a move for `seat` that gets anywhere? Their nertz top to the middle or a work pile; any card of their stock
- * or waste (wherever it lies in them: shifting the stock brings any of them up) likewise; or from a work pile, a
- * card to the middle, or a run onto another pile when that turns up a face-down card, empties the pile, or uncovers a
- * card that can go to the middle. Shuffling runs between work piles to no purpose does not count.
+ * Could `seat`, whatever they do with their own cards, ever get anywhere: put a card in the middle, or take one off
+ * their nertz pile? The only two things that count: both score, and nothing else does. (Judged on the full state:
+ * the server's question, not a client's. A face-down card counts for what it is.)
+ *
+ * Before the first of those, all a hand can do is put stock cards on its work piles and move runs between them, and
+ * nobody else's cards come into it. So it is asked of that alone, and generously: every card that could ever come to
+ * lie on top of a work pile is taken to lie there at once and for good, and an empty pile, once one can be had, to
+ * stay. Whatever can really be reached is reached this way too (every real move is one of the steps below, and what
+ * it needs was on top at the time), so a hand that gets nowhere here gets nowhere at all; a hand that seems to get
+ * somewhere here may not (two cards wanting the same pile, say), which only leaves a dead table playing.
+ * - A card goes off where it lies when it has somewhere to go: a card that can be on top and takes it, or an empty
+ *   pile. A stock or waste card (any of them: shifting the stock brings each one up) then lies on top itself; a work
+ *   card leaves on top the card it was dealt onto, turned up if it was face-down, or leaves its pile empty.
+ * - It gets somewhere when the nertz top has somewhere to go, or a card that is loose (the nertz top, any stock or
+ *   waste card, any card that can be on top of a work pile) goes to the middle: on a pile there, or an Ace anywhere
+ *   (there is a slot for every Ace, and room for it once a finished pile is cleared).
  */
 export function canProgress(state: GameState, seat: number): boolean {
   const p = state.players.find((q) => q.seat === seat);
   if (!p) return false;
+  const known = (c: AnyCard | undefined): c is Card => c !== undefined && !isHidden(c);
+  const toMiddle = (c: Card): boolean => c.rank === 1 || state.slots.some((pile) => pile !== null && slotAccepts(pile, c));
   const nertzTop = top(p.nertz);
-  if (nertzTop && !isHidden(nertzTop) && legalDrops(state, seat, nertzTop.id).length > 0) return true;
-  if ([...p.stock, ...p.waste].some((c) => !isHidden(c) && stockCardMoves(state, seat, c))) return true;
-  return p.work.some((pile, i) => {
-    const { cards, down } = pile;
-    const last = top(cards);
-    if (last && !isHidden(last) && legalDrops(state, seat, last.id).some((to) => to.k !== 'work')) return true;
-    // A run onto another work pile: the whole face-up part (turning up a face-down card, or emptying the pile), or
-    // part of it when the card it uncovers can then go to the middle.
-    return cards.some((c, j) => {
-      if (j < down || isHidden(c) || !legalDrops(state, seat, c.id).some((to) => to.k === 'work')) return false;
-      if (j === down) return true;
-      const under = cards[j - 1]!;
-      const trial: GameState = { ...state, players: state.players.map((q) => (q.seat === seat ? { ...q, work: q.work.map((w, k) => (k === i ? liftOff(pile, cards.length - j) : w)) } : q)) };
-      return legalDrops(trial, seat, under.id).some((to) => to.k !== 'work');
+  const loose = [...p.stock, ...p.waste].filter(known);
+  if ([nertzTop, ...loose].some((c) => known(c) && toMiddle(c))) return true;
+
+  /** Every card that can come to lie on top of a work pile, and whether a pile can be had empty. */
+  const tops = p.work.map((w) => top(w.cards)).filter(known);
+  let empty = p.work.some((w) => w.cards.length === 0);
+  const takes = (c: Card): boolean => empty || tops.some((t) => stacksOn(c, t));
+  /** The cards still where they were dealt, each with what its going leaves behind: a stock card itself, a work card the one under it (none: an empty pile). */
+  let lying: { card: Card; leaves: AnyCard | undefined }[] = [
+    ...loose.map((card) => ({ card, leaves: card })),
+    ...p.work.flatMap((w) => w.cards.flatMap((card, j) => (known(card) ? [{ card, leaves: w.cards[j - 1] }] : []))),
+  ];
+  /** The work cards that can be picked up: face-up, as the ones under them become when they come to the top. */
+  const up = new Set([...loose, ...p.work.flatMap(faceUp)].map((c) => c.id));
+  for (let before = -1; before !== lying.length; ) {
+    before = lying.length;
+    lying = lying.filter(({ card, leaves }) => {
+      if (!up.has(card.id) || !takes(card)) return true;
+      if (leaves === undefined) empty = true;
+      else if (known(leaves)) {
+        up.add(leaves.id);
+        tops.push(leaves);
+      }
+      return false;
     });
-  });
+  }
+  return (known(nertzTop) && takes(nertzTop)) || tops.some(toMiddle);
 }
 
 /**
  * If every seat in `activeSeats` (the connected players) has flagged "stuck":
  * - when no hand that is still played (`played`: by default every hand; not one whose player is up from it, which
- *   nobody will ever move) has a move that gets anywhere (`canProgress`), the table is jammed: the round ends there
+ *   nobody will ever move) can ever get anywhere (`canProgress`), the table is jammed: the round ends there
  *   (over by a `jam`), to be scored as it stands;
  *   With no hand played at all it is jammed whoever has or has not said so.
  * - otherwise every player's waste is turned back onto their stock (restoring the original order; a half-dealt group
- *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently, and
- *   all flags clear.
+ *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently,
+ *   all flags clear, and the round has one more reshuffle to its count (`GameState.reshuffles`).
  * Returns the SAME state object when nothing happens (always, unless the round is live).
  */
 export function resolveStuck(state: GameState, activeSeats: Iterable<number>, played: Iterable<number> = state.players.map((p) => p.seat)): GameState {
@@ -499,7 +521,7 @@ export function resolveStuck(state: GameState, activeSeats: Iterable<number>, pl
     const holding = p.waste.some((c) => c.id === p.holding) ? null : p.holding;
     return { ...p, stock, waste: [], dealt: 0, stuck: false, holding };
   });
-  return { ...state, players };
+  return { ...state, players, reshuffles: state.reshuffles + 1 };
 }
 
 /**
@@ -635,6 +657,7 @@ export function checkInvariants(state: GameState): string | null {
     }
   }
   if (state.tray.some((pile) => !isComplete(pile))) return 'unfinished pile in the tray';
+  if (!Number.isInteger(state.reshuffles) || state.reshuffles < 0) return 'bad count of reshuffles';
   for (const seat of seats) {
     if (perOwner.get(seat) !== DECK_SIZE) return `seat ${seat}: has ${perOwner.get(seat) ?? 0} cards, expected ${DECK_SIZE}`;
   }

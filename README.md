@@ -176,15 +176,17 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   gains nothing.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player who plays the round is stuck (not anyone
   who has got up from their cards: see table management), the server (which knows every card) checks whether any hand
-  still played, here or away, can still make a move that gets anywhere (`canProgress`): a card to the middle, a stock,
-  waste or nertz card onto a work pile (any card of the stock counts: shifting it brings any card up), or a work-pile
-  run that turns up a face-down card or empties a pile. If nobody can, **the table is jammed** and the round ends there,
+  still played, here or away, can ever get anywhere (`canProgress`): put a card in the middle, or take one off its nertz
+  pile, now or however many moves on (stock cards onto work piles, runs between them, face-down cards turned up; any
+  card of the stock counts: shifting it brings any card up). A move that leads to neither does not count. It errs one
+  way only: a hand that can get somewhere is never taken for dead. If nobody can, **the table is jammed** and the round ends there,
   scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
-  flags clear. Making any move clears your own flag.
+  flags clear, and the round counts one more reshuffle. Making any move clears your own flag.
 - **Voting to end a round**: in the gear menu, while a round is on, anyone can vote to end it where it stands. When
   every connected person who plays the round has voted (bots go along), it ends and is scored as usual. A vote can be
-  taken back.
+  taken back. Once a round has been reshuffled three times, or once anyone has voted, the same vote stands on the
+  table too: **End round**, beside "I'm stuck".
 - **Ending a round**: once your nertz pile is empty you may press **NERTZ!**. It is a deliberate action, so you can keep
   playing cards to the middle first if you think it pays. Everyone is frozen at once, with one exception:
 - **Held-card grace.** A player who was in the middle of dragging a card at the moment of the call, and whose card has at

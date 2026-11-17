@@ -606,9 +606,15 @@ button {
   font-size: 12.5px;
 }
 
-.stuck {
+.stuck-at {
   position: absolute;
   z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stuck {
   display: flex;
   align-items: baseline;
   justify-content: center;
@@ -2897,10 +2903,16 @@ label.check {
   text-overflow: ellipsis;
 }
 
-.table.tall .stuck {
+.table.tall .stuck-at {
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
+}
+
+.table.tall .stuck {
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
   border-radius: 16px;
   font-size: 13px;
   white-space: nowrap;
@@ -3029,8 +3041,19 @@ label.check {
   }
 }
 
-/* A phone on its side: the stuck button is a small pill beside your hand; the clock stands in line after the buttons. */
+/* A phone on its side: the stuck button is a small pill beside your hand (under your stock, when there is no room
+   beside it); the clock stands in line after the buttons. */
+.table.short .stuck-at.under {
+  flex-direction: row-reverse;
+  gap: 6px;
+}
+
+.table.short .stuck-at.under .stuck {
+  padding: 0 10px;
+}
+
 .table.short .stuck {
+  height: 32px;
   align-items: center;
   gap: 6px;
   padding: 0 12px;
