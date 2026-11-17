@@ -5,6 +5,7 @@ import { expect } from 'vitest';
 import { checkInvariants, deal, finishDeal, isHidden, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
 import { PLAIN_LOOK } from './protocol';
 import { DEFAULT_SETTINGS } from './settings';
+import { MAX_PLAYERS } from './protocol';
 import { openPlace, type Spot } from './table';
 import type { AnyCard, Card, CentrePile, GameState, Intent, PileRef, PlayerState, RoomView, Suit, WorkPile } from './types';
 
@@ -67,6 +68,30 @@ export function rig(g: GameState, hand: { work: [Face, Face, Face, Face]; waste?
       const waste = (hand.waste ?? []).map(take);
       const nertz = hand.emptyNertz?.includes(p.seat) ? [] : cards.splice(0, 13);
       return { ...p, work, nertz, stock: cards, waste, dealt: 0, holding: null };
+    }),
+  };
+}
+
+/** `suit` from rank `from` to rank `to`, one by one, as faces: run('S', 13, 1) is the spades from the King down to the Ace. */
+export const run = (suit: Suit, from: number, to: number): Face[] =>
+  Array.from({ length: Math.abs(from - to) + 1 }, (_, i) => `${suit}${from + (to < from ? -i : i)}` as Face);
+
+/**
+ * `g` with `seat`'s nertz pile exactly `faces`, bottom first (the last is its top), taken from its nertz pile and
+ * stock; whatever else was in its nertz pile goes under its stock. A deal that leaves a run to be played out.
+ */
+export function nertzOf(g: GameState, seat: number, faces: readonly Face[]): GameState {
+  return {
+    ...g,
+    players: g.players.map((p) => {
+      if (p.seat !== seat) return p;
+      const cards = [...p.nertz, ...p.stock] as Card[];
+      const nertz = faces.map((face) => {
+        const i = cards.findIndex(is(face));
+        if (i < 0) throw new Error(`nertzOf: no ${face} in seat ${seat}'s nertz pile or stock`);
+        return cards.splice(i, 1)[0]!;
+      });
+      return { ...p, nertz, stock: cards };
     }),
   };
 }
@@ -193,6 +218,7 @@ export const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = 
   seat: you,
   players: game.players.map((p) => ({ id: p.seat, seat: p.seat, name: `p${p.seat}`, connected: true, score: 0, rounds: 0, isHost: p.seat === 0, look: PLAIN_LOOK })),
   settings: DEFAULT_SETTINGS,
+  seats: { of: MAX_PLAYERS, taken: game.players.length },
   game: viewFor(game, you),
   timerMs: null,
   clock: null,

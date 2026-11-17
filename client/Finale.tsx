@@ -33,7 +33,47 @@ export const sortAt = (trayPiles: number, clear = false): number => washedAt(tra
 /** The piles are gathered one player at a time: this long for `n` players. */
 export const sortMs = (n: number): number => n * TIMING.sortEach;
 const SPREAD_MS = 950; // a card's trip from its pile out into the wash: unhurried, so the mess is made, not thrown
-const LAND_MS = 620; // a card's trip from the wash onto its owner's pile
+export const LAND_MS = 620; // a card's trip from the wash onto its owner's pile
+
+/**
+ * The order the players' piles are gathered in, the round's lowest score first and its best last: `turn[i]` is the
+ * place in that order of the player whose score is `deltas[i]` (ties in seating order).
+ */
+export function gatherOrder(deltas: readonly number[]): number[] {
+  const turn: number[] = [];
+  deltas
+    .map((_, i) => i)
+    .sort((a, b) => deltas[a]! - deltas[b]! || a - b)
+    .forEach((i, k) => (turn[i] = k));
+  return turn;
+}
+
+/**
+ * When card `k` of the `of` cards of the pile gathered `turn`th sets out from the wash for it, ms on the finale's
+ * clock (sorting from `sortAt`); it lands LAND_MS later. The one schedule of the sorting: the canvas draws to it, and
+ * the sound of each player's cards arriving is timed by it (`sortings`).
+ */
+export const setsOut = (sortAt: number, turn: number, k: number, of: number): number => sortAt + turn * TIMING.sortEach + (k / of) * (TIMING.sortEach - LAND_MS - 250);
+
+/** One player's cards sorted out to them: whose, and when each lands (ms on the finale's clock, earliest first; none: no card of theirs reached the middle). */
+export interface Sorting {
+  seat: number;
+  lands: number[];
+}
+
+/**
+ * The sorting of `game` (its scores `scores`, on a table that is cleared first if `clear`): one per player of the
+ * round, in the order of `game.players`, as `planFinale` and `frameAt` lay it out.
+ */
+export function sortings(game: GameState, scores: readonly RoundScore[], clear: boolean): Sorting[] {
+  const from = sortAt(game.tray.length, clear);
+  const cards = [...game.slots.flatMap((s) => s?.cards ?? []), ...game.tray.flat()];
+  const turn = gatherOrder(game.players.map((p) => scores.find((s) => s.seat === p.seat)?.delta ?? 0));
+  return game.players.map((p, i) => {
+    const of = cards.filter((c) => c.owner === p.seat).length;
+    return { seat: p.seat, lands: Array.from({ length: of }, (_, k) => setsOut(from, turn[i]!, k, of) + LAND_MS) };
+  });
+}
 /** The cards of a pile do not all leave at once: the last sets out this long after the first. */
 const SPREAD_STAGGER_MS = 480;
 /** How much of the table's width and height the mixed-up wash spreads over. */
@@ -116,7 +156,7 @@ function noise(i: number, salt: number): number {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
-interface Mover {
+export interface Mover {
   id: string;
   owner: number;
   /** Start: the pile it lay in. */
@@ -592,7 +632,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
     if (!onCanvas(stage, mv.tray ? 'tray' : 'slot')) continue; // still a pile in the tray, or on its way out of it: drawn by the table
-    const q = glideEase(clamp01((t - plan.sortAt - (order[mv.pile] ?? mv.pile) * TIMING.sortEach - (mv.k / mv.of) * (TIMING.sortEach - LAND_MS - 250)) / LAND_MS));
+    const q = glideEase(clamp01((t - setsOut(plan.sortAt, order[mv.pile] ?? mv.pile, mv.k, mv.of)) / LAND_MS));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
@@ -679,12 +719,7 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
   const [done, setDone] = useState(instant ? n : -1);
   // The round's lowest score is gathered first and its best last.
   const delta = (seat: number) => scores.find((s) => s.seat === seat)?.delta ?? 0;
-  const turn = useMemo(() => {
-    const by = plan.piles.map((_, i) => i).sort((a, b) => delta(plan.piles[a]!.seat) - delta(plan.piles[b]!.seat) || a - b);
-    const at: number[] = [];
-    by.forEach((i, k) => (at[i] = k));
-    return at;
-  }, [plan, scores]);
+  const turn = useMemo(() => gatherOrder(plan.piles.map((p) => delta(p.seat))), [plan, scores]);
   const best = Math.max(...plan.piles.map((p) => delta(p.seat)));
 
   // Before the browser paints: the commit that takes a pile's cards off the table is the one that draws them here.
