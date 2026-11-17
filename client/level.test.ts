@@ -1,20 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { inHand, levelOf, moving, SHIFTING, STILL, TRAVELLING, TURNING } from './level';
+import { IN_PILE, inHand, levelOf, moving, TRAVELLING, TURNING } from './level';
 
 /** Levels the layout gives cards in play: an opponent's hand, the middle, your own hand, a work pile being looked at. */
 const LYING = [1000, 1234, 5000, 5215, 6000, 6134, 7000, 7013];
 
 describe('a card\'s level', () => {
-  it('is the layout\'s while it lies still, and while it only shifts within its own pile', () => {
-    for (const z of LYING) {
-      expect(levelOf(z, STILL)).toBe(z);
-      expect(levelOf(z, SHIFTING)).toBe(z);
-    }
+  it('is the layout\'s while it is in its pile, lying still or shifting within it', () => {
+    for (const z of LYING) expect(levelOf(z, IN_PILE)).toBe(z);
   });
 
   it('only a card that changes pile is travelling', () => {
-    expect(moving('work 2', 'work 2')).toBe(SHIFTING);
-    expect(moving('stock 0', 'stock 0')).toBe(SHIFTING);
+    expect(moving('work 2', 'work 2')).toBe(IN_PILE);
+    expect(moving('stock 0', 'stock 0')).toBe(IN_PILE);
     expect(moving('work 2', 'work 3')).toBe(TRAVELLING);
     expect(moving('stock 0', 'waste 0')).toBe(TRAVELLING);
   });

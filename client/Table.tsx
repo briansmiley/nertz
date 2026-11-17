@@ -19,7 +19,7 @@ import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
-import { inHand, levelOf, moving, STILL, TRAVELLING, TURNING, type Doing } from './level';
+import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
@@ -115,7 +115,7 @@ const drawn = (look: Look): Pick<CardProps, 'deck' | 'night' | 'back' | 'bare'> 
 const CardView = memo(function CardView(p: CardProps) {
   const dealt = useRef(p.deal).current;
   /** What it is doing: in the deck until it is dealt, if it was in one when it first appeared (it is dealt once). */
-  const doing = useRef<Doing>(dealt ? { k: 'deck', under: dealt.under } : STILL);
+  const doing = useRef<Doing>(dealt ? { k: 'deck', under: dealt.under } : IN_PILE);
   const x = useMotionValue(dealt?.x ?? p.x);
   const y = useMotionValue(dealt?.y ?? p.y);
   const s = useMotionValue(p.s);
@@ -137,7 +137,7 @@ const CardView = memo(function CardView(p: CardProps) {
     z.set(levelOf(goal.current.z, d));
   }, [z]);
 
-  /** Moves it to where the layout wants it, and has it lie still once it is there. */
+  /** Moves it to where the layout wants it, and has it lie in its pile once it is there. */
   const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false, passing = false) => {
     const g = goal.current;
     const n = ++flight.current;
@@ -153,7 +153,7 @@ const CardView = memo(function CardView(p: CardProps) {
     animate(r, g.rot, passing ? { ...move, duration: move.duration * 0.3 } : move);
     setTimeout(() => {
       if (flight.current !== n) return;
-      be(STILL);
+      be(IN_PILE);
       o.set(1); // landed: solid again, whatever it was in the air
       el.current?.removeAttribute('data-passing');
     }, move.duration * 1000 + 30);

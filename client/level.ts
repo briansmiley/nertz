@@ -3,10 +3,11 @@
 
 /** What a card is doing, as far as its level goes. */
 export type Doing =
-  /** Lying where the layout put it. */
-  | { k: 'still' }
-  /** Moving, and staying in its own pile (a work pile fanning out, a pile closing up after its top card left, a group counted off the stock): going nowhere, so it keeps its place in the pile. */
-  | { k: 'shifting' }
+  /**
+   * In its pile: lying where the layout put it, or moving within the pile (a work pile fanning out, a pile closing up
+   * after its top card left, a group counted off the stock). Going nowhere, it keeps its place in the pile.
+   */
+  | { k: 'pile' }
   /** On its way to another pile, or back to its own out of a hand. */
   | { k: 'travelling' }
   /** The first half of turning face-up on the way. */
@@ -16,18 +17,17 @@ export type Doing =
   /** In your own hand ('held') or, as reported, in someone else's ('carried'): the `i`th of the cards in it. */
   | { k: 'held' | 'carried'; i: number };
 
-export const STILL: Doing = { k: 'still' };
-export const SHIFTING: Doing = { k: 'shifting' };
+export const IN_PILE: Doing = { k: 'pile' };
 export const TRAVELLING: Doing = { k: 'travelling' };
 export const TURNING: Doing = { k: 'turning' };
 
 /** A card that the layout moves: within its pile, or from `from` to another. */
-export const moving = (from: string, to: string): Doing => (from === to ? SHIFTING : TRAVELLING);
+export const moving = (from: string, to: string): Doing => (from === to ? IN_PILE : TRAVELLING);
 
 /** In a player's hand: the pointer (or that player's reports) says where it is, not the layout. */
 export const inHand = (d: Doing): d is Doing & { k: 'held' | 'carried' } => d.k === 'held' || d.k === 'carried';
 
-/** Above every card lying still: in play none lies higher than 7500 (layout.ts). */
+/** Above every card in its pile: in play none lies higher than 7500 (layout.ts). */
 const FLYING = 10000;
 /** Someone else's card in the air: over every card of the layout, lying still or flying, and under the one in your own hand. */
 const CARRIED = FLYING + 7500;
@@ -36,8 +36,7 @@ const HELD = 30000;
 /** The level of a card that lies at `lies` in the layout and is doing `d`. */
 export function levelOf(lies: number, d: Doing): number {
   switch (d.k) {
-    case 'still':
-    case 'shifting':
+    case 'pile':
       return lies;
     case 'travelling':
       return lies + FLYING;
