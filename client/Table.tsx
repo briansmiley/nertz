@@ -19,6 +19,7 @@ import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
+import { inHand, levelOf, moving, STILL, TRAVELLING, TURNING, type Doing } from './level';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
@@ -33,10 +34,6 @@ const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
 const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const;
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
-const Z_FLYING = 10000;
-/** Someone else's card in the air: over every card of the layout, lying still or flying (in play none lies higher than 7500), and under the one in your own hand. */
-const Z_ALOFT = Z_FLYING + 7500;
-const Z_HELD = 30000;
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
@@ -60,29 +57,27 @@ const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v)
 interface Handle {
   x: MotionValue<number>;
   y: MotionValue<number>;
-  z: MotionValue<number>;
   s: MotionValue<number>;
   /** Opacity. */
   o: MotionValue<number>;
   /** Tilt, degrees. */
   r: MotionValue<number>;
-  /** Animate to wherever the layout currently wants this card. */
+  /** Into a hand, yours ('held') or someone else's ('carried'), as the `i`th card in it: from here on whoever has it says where it is, not the layout. */
+  take(k: 'held' | 'carried', i: number): void;
+  /** Out of the hand: animate to wherever the layout currently wants this card. */
   settle(): void;
 }
 
-/** A card that is still in the deck when it first appears: where the deck is, and how long until it is dealt. */
+/** A card that is still in the deck when it first appears: where the deck is, how many cards under it are dealt after it, and how long until it is dealt. */
 interface Dealt {
   x: number;
   y: number;
-  z: number;
+  under: number;
   wait: number;
 }
 
 /** Lets the drag code move card elements directly, without re-rendering React on every pointer event. */
-interface Registry {
-  handles: Map<string, Handle>;
-  held: Set<string>;
-}
+type Handles = Map<string, Handle>;
 
 interface CardProps {
   id: string;
@@ -106,12 +101,10 @@ interface CardProps {
   back: Back | null;
   bare: boolean;
   slow: boolean;
-  /** Travels at its own level, not above everything: a card coming up under the ones already held. */
-  low: boolean;
-  /** Which of its hand's work piles it lies in, if any. */
-  work: number | null;
+  /** The pile it lies in. */
+  pile: string;
   cls: string;
-  reg: Registry;
+  handles: Handles;
   /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
   deal: Dealt | undefined;
 }
@@ -121,29 +114,33 @@ const drawn = (look: Look): Pick<CardProps, 'deck' | 'night' | 'back' | 'bare'> 
 
 const CardView = memo(function CardView(p: CardProps) {
   const dealt = useRef(p.deal).current;
+  /** What it is doing: in the deck until it is dealt, if it was in one when it first appeared (it is dealt once). */
+  const doing = useRef<Doing>(dealt ? { k: 'deck', under: dealt.under } : STILL);
   const x = useMotionValue(dealt?.x ?? p.x);
   const y = useMotionValue(dealt?.y ?? p.y);
   const s = useMotionValue(p.s);
-  const z = useMotionValue(dealt?.z ?? p.z);
+  const z = useMotionValue(levelOf(p.z, doing.current));
   const r = useMotionValue(p.rot);
   const o = useMotionValue(1);
   const goal = useRef({ x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot });
   const mine = useRef(p.mine);
+  const pile = useRef(p.pile);
   const flight = useRef(0);
   const upWas = useRef(p.up);
-  const low = useRef(p.low);
-  low.current = p.low;
-  const work = useRef(p.work);
   const el = useRef<HTMLDivElement>(null);
-  const flying = useRef(!!dealt); // a card waiting in the deck keeps the deck's stacking until it has landed
-  /** When this card leaves the deck (performance clock). 0 once it has, or if it was never in one: it is dealt once. */
-  const leaves = useRef(dealt ? performance.now() + dealt.wait : 0);
+  /** When this card leaves the deck (performance clock), if it is in one. */
+  const leaves = useRef(dealt ? performance.now() + dealt.wait : 0).current;
 
-  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false, passing = false, lift = !low.current) => {
+  /** The card takes up something else, or the layout has it lie at another level: the one place its level is set. */
+  const be = useCallback((d: Doing) => {
+    doing.current = d;
+    z.set(levelOf(goal.current.z, d));
+  }, [z]);
+
+  /** Moves it to where the layout wants it, and has it lie still once it is there. */
+  const fly = useCallback((move: { duration: number } = p.slow ? TURN() : MOVE(), veiled = false, passing = false) => {
     const g = goal.current;
     const n = ++flight.current;
-    flying.current = true;
-    z.set(g.z + (lift ? Z_FLYING : 0)); // travel above everything that is lying still (unless it is slipping in under, or only shifting in its pile)
     if (veiled) o.set(ALOFT);
     // Somebody else's card crossing the table is not in the pointer's way either (styles.css `.card[data-passing]`).
     if (passing) el.current?.setAttribute('data-passing', '');
@@ -156,52 +153,47 @@ const CardView = memo(function CardView(p: CardProps) {
     animate(r, g.rot, passing ? { ...move, duration: move.duration * 0.3 } : move);
     setTimeout(() => {
       if (flight.current !== n) return;
-      flying.current = false;
-      z.set(goal.current.z);
+      be(STILL);
       o.set(1); // landed: solid again, whatever it was in the air
       el.current?.removeAttribute('data-passing');
     }, move.duration * 1000 + 30);
-  }, [x, y, s, z, r, o, p.slow]);
+  }, [x, y, s, r, o, be, p.slow]);
 
   /**
    * To wherever the layout wants it. Your own cards snap to it. Anyone else's card that has some way to go (a
    * bot's, a click, a lost report, or one let go before it was drawn where it really was) crosses the table at a
    * pace the eye can follow, see-through while it is in the air.
    */
-  const go = useCallback((own: boolean, lift?: boolean) => {
+  const go = useCallback((own: boolean) => {
     const g = goal.current;
     const far = Math.hypot(x.get() - g.x, y.get() - g.y);
-    if (own || p.slow || calm() || far < 4) fly(undefined, false, false, lift);
-    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s, true, lift);
+    if (own || p.slow || calm() || far < 4) fly();
+    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s, true);
   }, [fly, x, y, p.slow]);
 
   useEffect(() => {
     const was = goal.current;
     const wasMine = mine.current;
-    // A work pile fanning out or closing up moves some of its cards and not others: none of them is going anywhere,
-    // so each keeps its level in the pile. (Lifted, the ones that move would cover the ones that stay.)
-    const shifts = p.work !== null && p.work === work.current;
-    work.current = p.work;
+    const from = pile.current;
     goal.current = { x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot };
     mine.current = p.mine;
-    if (p.reg.held.has(p.id)) return; // in a player's hand (yours, or someone else's as reported); settles when it is let go
-    if (leaves.current) {
-      // Still in the deck. If the window was resized it stays with the deck, and is dealt to its new place in its turn.
+    pile.current = p.pile;
+    if (inHand(doing.current)) return; // settles when it is let go
+    if (doing.current.k === 'deck') {
+      // If the window was resized it stays with the deck, and is dealt to its new place in its turn.
       if (p.deal) [x, y, s].forEach((v, i) => v.set([p.deal!.x, p.deal!.y, p.s][i]!));
       return;
     }
-    if (was.x !== p.x || was.y !== p.y || was.s !== p.s || was.rot !== p.rot) {
-      go(wasMine || p.mine, shifts ? false : undefined);
-      // Turning face-up on the way (a group off the stock going over onto the waste): a stack turned over shows the
-      // back of the card that was on top of it until the faces come round, and only then the card that ends on top.
-      // So for the first half of the turn the cards keep the order they were held in, which is the other way round.
-      if (!upWas.current && p.up && !calm()) {
-        const n = flight.current;
-        z.set(p.z - 2 * (p.z % 100) + 99 + Z_FLYING);
-        setTimeout(() => flight.current === n && z.set(goal.current.z + Z_FLYING), FLIP().duration * 500);
-      }
-    } else if (!flying.current) z.set(p.z);
-  }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.work, p.slow, p.id, p.reg, p.deal?.x, p.deal?.y, go, x, y, s, z]);
+    if (was.x === p.x && was.y === p.y && was.s === p.s && was.rot === p.rot) return be(doing.current); // (the level it lies at may be another)
+    const on = moving(from, p.pile);
+    go(wasMine || p.mine);
+    // Turning face-up on the way (a group off the stock going over onto the waste): see `levelOf`.
+    if (!upWas.current && p.up && !calm()) {
+      const n = flight.current;
+      be(TURNING);
+      setTimeout(() => flight.current === n && be(on), FLIP().duration * 500);
+    } else be(on);
+  }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.pile, p.slow, p.deal?.x, p.deal?.y, go, be, x, y, s]);
 
   useEffect(() => {
     upWas.current = p.up; // (after the effect above, which asks what it was)
@@ -209,18 +201,26 @@ const CardView = memo(function CardView(p: CardProps) {
 
   // Its turn to be dealt: out of the deck, to its place in the layout.
   useEffect(() => {
-    if (!leaves.current) return;
+    if (doing.current.k !== 'deck') return;
     const turn = setTimeout(() => {
-      leaves.current = 0;
+      be(TRAVELLING);
       fly(DEAL);
-    }, leaves.current - performance.now());
+    }, leaves - performance.now());
     return () => clearTimeout(turn);
-  }, [fly]);
+  }, [fly, be, leaves]);
 
   useEffect(() => {
-    p.reg.handles.set(p.id, { x, y, z, s, o, r, settle: () => go(mine.current) });
-    return () => void p.reg.handles.delete(p.id);
-  }, [p.id, p.reg, x, y, z, s, o, r, go]);
+    const take = (k: 'held' | 'carried', i: number) => {
+      flight.current++; // whatever flight it was on is over
+      be({ k, i });
+    };
+    const settle = () => {
+      be(TRAVELLING);
+      go(mine.current);
+    };
+    p.handles.set(p.id, { x, y, s, o, r, take, settle });
+    return () => void p.handles.delete(p.id);
+  }, [p.id, p.handles, x, y, s, o, r, go, be]);
 
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
@@ -427,7 +427,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     measure();
     return () => seen.disconnect();
   }, []);
-  const reg = useRef<Registry>({ handles: new Map(), held: new Set() }).current;
+  const handles = useRef<Handles>(new Map()).current;
   /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
   const grasp = useRef<Grasp>(EMPTY);
   const [held, setHeld] = useState<Held | null>(null);
@@ -487,10 +487,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       if (stage === 'live' && game.players.find((p) => p.seat === seat)?.holding === f.id) continue;
       flights.delete(seat);
       if (reports.get(seat)?.id === f.id) reports.delete(seat);
-      for (const id of f.ids) {
-        reg.held.delete(id);
-        reg.handles.get(id)?.settle();
-      }
+      for (const id of f.ids) handles.get(id)?.settle();
     }
     for (const p of stage === 'live' ? game.players : []) {
       if (p.seat === you || p.holding === null) continue;
@@ -503,7 +500,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         if (time - at.at > STALE_MS) continue;
         f = { id: p.holding, ids: grab(game, p.seat, p.holding)?.cards.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, dwell: 0 };
         flights.set(p.seat, f);
-        for (const id of f.ids) reg.held.add(id);
       }
       const hw = home.s * CARD_W;
       const table = { x: at.p[0], y: at.p[1] };
@@ -530,12 +526,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       f.s += (s - f.s) * k;
       f.ids.forEach((id, i) => {
         const c = byId.get(id);
-        const h = reg.handles.get(id);
+        const h = handles.get(id);
         if (!c || !h) return;
         h.x.set(f.x + ((c.x - home.x) * f.s) / home.s);
         h.y.set(f.y + ((c.y - home.y) * f.s) / home.s);
         h.s.set(f.s);
-        h.z.set(Z_ALOFT + i);
+        h.take('carried', i);
         h.o.set(ALOFT);
         // Upright for whoever is watching once it is out of the hand (a neighbour's hand is turned to face the felt).
         h.r.set(c.rot * (1 - clamp(Math.max(at.h[1] / 0.6, at.w * 4, linger), 0, 1)));
@@ -614,7 +610,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       out.forEach((c, i) => {
         const wait = dealWait(i, dealMs, work.length);
         const under = out.length - i; // cards of the deck beneath this one that are also on their way out
-        if (wait !== null) plan.set(c.id, { x: hand.stock.x, y: hand.stock.y - under * 0.3 * hand.s, z: Z_FLYING + under, wait });
+        if (wait !== null) plan.set(c.id, { x: hand.stock.x, y: hand.stock.y - under * 0.3 * hand.s, under, wait });
       });
     }
     return plan;
@@ -691,7 +687,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** After every movement of the hand, and whenever the table changes under it: whether the card lets the middle show through, the report to the others, the tray's outline for a pile, and where an Ace would start one. */
   const aim = (d: InHand) => {
     const see = sight(d, scene);
-    for (const id of d.ids) reg.handles.get(id)?.o.set(see.over ? OVER_FELT : 1);
+    for (const id of d.ids) handles.get(id)?.o.set(see.over ? OVER_FELT : 1);
     if (see.report) telling.tell(see.report);
     setHot(see.tray);
     const el = preview.current;
@@ -705,10 +701,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** The hand opens: whatever was in it goes to wherever the layout now wants it (its new pile, or back home). */
   const letGo = (d: Hand) => {
     telling.stop();
-    for (const id of d.ids) {
-      reg.held.delete(id);
-      reg.handles.get(id)?.settle();
-    }
+    for (const id of d.ids) handles.get(id)?.settle();
     if (preview.current) preview.current.hidden = true;
     setHeld(null);
     setHot(false);
@@ -735,15 +728,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (d && d.phase !== 'pressed') {
       if (!was || was.phase === 'pressed') {
         stopPeek();
-        for (const id of d.ids) reg.held.add(id);
         setHeld(d.held);
       }
       d.ids.forEach((id, i) => {
-        const h = reg.handles.get(id);
+        const h = handles.get(id);
         const at = drawnAt(d, i);
         h?.x.set(at.x);
         h?.y.set(at.y);
-        h?.z.set(Z_HELD + i);
+        h?.take('held', i);
         if (d.held.k === 'card' && d.held.ace) h?.s.set(d.s);
       });
       if (d.phase === 'carried') aim(d);
@@ -1051,10 +1043,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
             {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
-            low={!!c.low}
-            work={c.pile === 'work' ? c.at : null}
+            pile={`${c.pile} ${c.at}`}
             cls={cardClass(c)}
-            reg={reg}
+            handles={handles}
             deal={deck.get(c.card.id)}
           />
         );
