@@ -6,18 +6,19 @@
 //   speaker stands beside it, and turns it back on.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
-// Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Eye`, `Door`).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`, `Eye`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { pause, setSeats, setTableSettings } from './net';
 import { canPause, canResume, tableActions } from './actions';
-import { Back, Menu, MenuIcon, type Panel } from './Menu';
+import { Back, Menu, type Panel } from './Menu';
+import { MenuIcon, Speaker } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
-import { SaidWord, Slash, useHotkey } from './hotkey';
+import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
@@ -27,26 +28,6 @@ const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElem
 
 /** Each hotkey as the settings list it. */
 const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic' };
-
-function Speaker({ off }: { off: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" fill="currentColor" stroke="none" />
-      <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />
-      <Slash on={off} />
-    </svg>
-  );
-}
-
-export function Gear() {
-  const teeth = Array.from({ length: 8 }, (_, i) => <rect key={i} x="10.6" y="2.6" width="2.8" height="4.4" rx="0.9" transform={`rotate(${i * 45} 12 12)`} fill="currentColor" stroke="none" />);
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      {teeth}
-      <circle cx="12" cy="12" r="5.1" strokeWidth="3" />
-    </svg>
-  );
-}
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
@@ -91,15 +72,6 @@ export function Eye() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
       <circle cx="12" cy="12" r="2.8" />
-    </svg>
-  );
-}
-
-export function Door() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M13 4.5h5.5v15H13" />
-      <path d="M14.5 12H4.5M8 8.5 4.5 12 8 15.5" />
     </svg>
   );
 }

@@ -4,17 +4,13 @@
 import { useState } from 'react';
 import type { RoomView } from '../shared/types';
 import { perform, type ActionId, type TableAction } from './actions';
+import { Bug, Door, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu, or one of the slips it leads to. */
 export type Panel = 'menu' | 'settings' | 'feedback';
 
-export function MenuIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4.5 7h15M4.5 12h15M4.5 17h15" />
-    </svg>
-  );
-}
+/** Each action's icon, before its name. */
+const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {
@@ -36,31 +32,38 @@ export function Menu({ room, actions, muted, onMute, go, onDone }: { room: RoomV
   return (
     <section className="slip acts" id="menu" aria-label="Menu">
       <button type="button" aria-pressed={muted} onClick={(e) => (e.currentTarget.blur(), setSure(null), onMute())}>
+        <Speaker off={muted} />
         {muted ? 'Unmute' : 'Mute'}
       </button>
       {room &&
-        actions.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            className={`${a.on ? 'on' : ''}${sure === a.id ? ' sure' : ''}`}
-            aria-pressed={a.on}
-            onClick={(e) => {
-              e.currentTarget.blur(); // keep Space for the cards
-              setSure(a.sure && sure !== a.id ? a.id : null);
-              if (a.sure && sure !== a.id) return;
-              perform(a.id, room);
-              if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
-            }}
-          >
-            {sure === a.id ? a.sure : a.label}
-            {a.tally && <small>{a.tally}</small>}
-          </button>
-        ))}
+        actions.map((a) => {
+          const Icon = ICONS[a.id];
+          return (
+            <button
+              key={a.id}
+              type="button"
+              className={`${a.on ? 'on' : ''}${sure === a.id ? ' sure' : ''}`}
+              aria-pressed={a.on}
+              onClick={(e) => {
+                e.currentTarget.blur(); // keep Space for the cards
+                setSure(a.sure && sure !== a.id ? a.id : null);
+                if (a.sure && sure !== a.id) return;
+                perform(a.id, room);
+                if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
+              }}
+            >
+              <Icon />
+              {sure === a.id ? a.sure : a.label}
+              {a.tally && <small>{a.tally}</small>}
+            </button>
+          );
+        })}
       <button type="button" onClick={() => go('settings')}>
+        <Gear />
         Settings
       </button>
       <button type="button" onClick={() => go('feedback')}>
+        <Bug />
         Feedback
       </button>
     </section>

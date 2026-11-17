@@ -3,19 +3,11 @@
 import { useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';
+import { Bug as BugIcon } from './icons';
 
 const MAX_TEXT = 2000;
 /** A screenshot is scaled down to fit this (the longer side) and sent as a JPEG: small enough for the server's cap. */
 const MAX_SIDE = 1600;
-
-function BugIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <ellipse cx="12" cy="14" rx="4.6" ry="5.8" />
-      <path d="M9.2 8.6a2.9 2.9 0 0 1 5.6 0M9.5 5 8 3.3M14.5 5 16 3.3M12 9v10.6M7.4 12.5H3.8M7.4 16H4.3l-.9 2.6M16.6 12.5h3.6M16.6 16h3.1l.9 2.6M7.8 10.2 5 8.4M16.2 10.2 19 8.4" />
-    </svg>
-  );
-}
 
 function BulbIcon() {
   return (
