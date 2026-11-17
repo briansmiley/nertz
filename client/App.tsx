@@ -1,4 +1,5 @@
 // Screens around the table: home, lobby, round results.
+import { signIn, signOut, useAccount } from './account';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
@@ -351,9 +352,37 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
+/** Who is signed in, and the way in or out. Nothing at all where the server keeps no accounts, or has not said yet. */
+function Who() {
+  const account = useAccount();
+  if (account === 'unknown' || account === 'off') return null;
+  if (account === 'out') {
+    return (
+      <button type="button" className="who" onClick={() => void signIn()}>
+        Sign in with Google
+      </button>
+    );
+  }
+  return (
+    <span className="who in">
+      {account.image && <img src={account.image} alt="" referrerPolicy="no-referrer" />}
+      {account.name}
+      <button type="button" onClick={() => void signOut()}>
+        Sign out
+      </button>
+    </span>
+  );
+}
+
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(remembered);
+  const account = useAccount();
+  // Signed in, and no name of their own yet: the first name Google has for them, to keep or change.
+  const given = typeof account === 'object' ? cleanName(account.name.split(' ')[0] ?? '') : '';
+  useEffect(() => {
+    if (given) setName((was) => was || given);
+  }, [given]);
   const [code, setCode] = useState(invited);
   const nameField = useRef<HTMLInputElement>(null);
   const clean = cleanName(name);
@@ -433,6 +462,9 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
           </div>
           <Tables onPick={pick} />
         </form>
+        <div className="whofoot">
+          <Who />
+        </div>
       </Pad>
     </main>
   );

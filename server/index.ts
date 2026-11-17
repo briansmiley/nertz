@@ -1,5 +1,5 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz and the home page's list of /tables; websockets on /ws carry the game.
+// built client (when dist/ exists), /healthz, the home page's list of /tables and signing in (/api/auth: server/accounts.ts); websockets on /ws carry the game.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { TableSummary } from '../shared/types';
+import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
 import { Room, type Conn, type RoomOptions } from './room';
@@ -64,9 +65,11 @@ export interface ServerOptions {
   deal?: RoomOptions['deal'];
   /** Where bug reports go (server/feedback.ts). Defaults to what the environment says. */
   feedback?: FeedbackOptions;
+  /** Where accounts are kept and how people sign in (server/accounts.ts): null for no accounts. Defaults to what the environment says. */
+  accounts?: AccountsOptions | null;
 }
 
-export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
+export async function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const dist = resolve(options.dist ?? fileURLToPath(new URL('../dist', import.meta.url)));
   const rate = options.rate ?? RATE_PER_SECOND;
   const flipMs = options.flipMs ?? STOCK_CARD_MS - FLIP_SLACK_MS;
@@ -106,6 +109,8 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   // ---------------------------------------------------------------- http
 
   const feedback = feedbackHandler(options.feedback);
+  const setUp = options.accounts === undefined ? accountsFromEnv() : options.accounts;
+  const accounts = setUp && (await openAccounts(setUp));
   const http = createServer((req, res) => {
     try {
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
@@ -129,6 +134,13 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
         feedback(req, res).catch(() => {
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
           res.end('{"ok":false}');
+        });
+      } else if (path.startsWith(`${AUTH_PATH}/`)) {
+        // With no accounts set up there is nothing here: the client takes the 404 to mean nobody can sign in.
+        if (!accounts) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
+        accounts.handle(req, res).catch(() => {
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('null');
         });
       } else {
         serveStatic(dist, path, req, res);
@@ -248,7 +260,7 @@ export function startServer(options: ServerOptions = {}): Promise<NertzServer> {
       for (const ws of wss.clients) ws.terminate();
       for (const room of rooms.values()) room.close();
       wss.close();
-      http.close(() => done());
+      http.close(() => (accounts?.close(), done()));
       http.closeAllConnections();
     });
 
