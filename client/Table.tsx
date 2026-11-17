@@ -10,10 +10,10 @@
 import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, inGrace, isHidden, isLive } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
-import type { Intent, RoomView, Suit } from '../shared/types';
+import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
@@ -21,8 +21,9 @@ import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount } from './stage';
-import { onDrag, onSnipe, pause, playable, post, send as play } from './net';
-import { canResume } from './Settings';
+import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
+import { canResume, Eye } from './Settings';
+import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { calm, lookOf, usePrefs } from './prefs';
 import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
@@ -299,6 +300,34 @@ const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
 /** How wide the name line of a neighbour whose hand runs down the side may be. */
 const TAG_SIDE_W = 210;
 const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(r.w, r.h) * 0.08, rotate: r.rot ? `${r.rot}deg` : undefined });
+
+/**
+ * For whoever deals, someone else's name at the table, in the middle of a round too: pressed, the eye and the × beside
+ * it, as on the score sheet. The eye stands them up (their cards lie there for the round, and they watch); the × sends
+ * them away.
+ */
+function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  useDismiss(root, open, () => setOpen(false));
+  return (
+    <span className="hosting" ref={root} onPointerDown={(e) => e.stopPropagation()}>
+      <button type="button" className="who" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {children}
+      </button>
+      {open && (
+        <>
+          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} title={`Stand ${who.name} up`} onClick={() => (takeSeat(false, who.id), setOpen(false))}>
+            <Eye />
+          </button>
+          <button type="button" className="unseat" aria-label={`Send ${who.name} away`} title={`Send ${who.name} away`} onClick={() => (kick(who.id), setOpen(false))}>
+            ×
+          </button>
+        </>
+      )}
+    </span>
+  );
+}
 
 /** `sheet` (the scores) is laid over the table when the end-of-round sequence has played out. */
 export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
@@ -580,6 +609,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   }, [dealing, dealMs, game.players, L, you]);
   const grace = inGrace(game);
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
+  const hosting = !!room.players.find((p) => p.id === room.me)?.isHost;
   /** My own faces and backs: my choice, shown at once; or, if my backs are by lot, the one the table drew for me (it comes with the deal). */
   const chosen = lookOf(prefs);
   const myLook: Look = chosen.backs.k === 'lot' ? { ...chosen, backs: info(you)?.look.backs ?? chosen.backs } : chosen;
@@ -788,7 +818,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   };
 
   const me = L.me;
-  const active = game.players.filter((p) => info(p.seat)?.connected);
+  const say = new Set(room.players.filter(hasSay).map((p) => p.seat));
+  const active = game.players.filter((p) => say.has(p.seat));
   const waitingOn = active.filter((p) => !p.stuck).length;
   const oh = me ? me.nertz.h : 0;
   /** Upright: the room between your nertz pile and your stock, for your name. (The stuck button is a small pill in the top bar, after Chat.) */
@@ -838,13 +869,21 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         return (
           <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
-              className={`tag${p?.connected === false ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
+              className={`tag${p?.connected === false || p?.left ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <i className="chip" style={{ background: backColour(o.seat) }} />
-              <Name host={p?.isHost} className="name">
-                {name(o.seat)}
-              </Name>
+              {hosting && p && !p.bot && !p.left && !results ? (
+                <Hosting who={p}>
+                  <Name host={p.isHost} className="name">
+                    {name(o.seat)}
+                  </Name>
+                </Hosting>
+              ) : (
+                <Name host={p?.isHost} className="name">
+                  {name(o.seat)}
+                </Name>
+              )}
               <span className="pts">{points(total(o.seat))}</span>
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">left</em> : p?.connected === false ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}

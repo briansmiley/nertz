@@ -339,11 +339,12 @@ describe('Room', () => {
     sitDown(room, c); // the cards are dealt, nothing is played: dealt again with them
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     expect(room.game!.status.at).toBe('dealing');
-    standUp(room, c); // (not out of a round they hold cards in: so, on the next score sheet)
+    standUp(room, c); // up from cards that are dealt: they lie there for the round (the seat is held for them), and C watches once it is over
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2']);
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     opening(room, a);
     sendIntent(room, a, 0, { k: 'nertz' });
-    standUp(room, c);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
     startRound(room, a);
     room.disconnect(b);
     const before = room.game;
@@ -445,6 +446,84 @@ describe('Room', () => {
     room.handle(a, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 2]);
     expect(checkInvariants(room.game!)).toBeNull();
+  });
+
+  it('whoever deals may stand someone up in the middle of a round: their cards lie there, the votes go on without them, and they watch once it is over', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    startRound(room, a);
+    const held = room.game!.players[2]!.nertz.at(-1)!.id;
+    sendIntent(room, c, 0, hold(held)); // C picks a card up, and then is no longer looking
+    sendIntent(room, a, 0, { k: 'flip' });
+    sendIntent(room, a, 1, { k: 'stuck', on: true });
+    sendIntent(room, b, 0, { k: 'stuck', on: true });
+    standUp(room, b, 2); // not theirs to do
+    expect(room.game!.players.map((p) => p.stuck)).toEqual([true, true, false]); // C, here, holds the table up
+    standUp(room, a, 2);
+    // Those who remain were all stuck: the stocks are turned over. C's card went home.
+    expect(room.game!.players.map((p) => p.stuck)).toEqual([false, false, false]);
+    expect(room.game!.players[0]!.waste).toHaveLength(0);
+    expect(room.game!.players[2]!).toMatchObject({ holding: null });
+    expect(room.game!.players[2]!.nertz.at(-1)!.id).toBe(held);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2']); // the seat is held for their cards, which lie there
+    expect(a.last.room.players.filter((p) => p.left).map((p) => p.name)).toEqual(['P2']);
+    expect(c.closed).toBe(false);
+    expect(c.last.room).toMatchObject({ me: 2, seat: null }); // here, watching
+    expect(endVote(a.last.room.game!, seatedPeople(a.last.room.players))).toEqual({ voters: 2, voted: 0 }); // (as every window counts it)
+    // Their cards are not theirs to play any more, nor to sit back down to until the round is over; nor are they back in them by a reload.
+    const before = room.game;
+    sendIntent(room, c, 1, { k: 'flip' });
+    sitDown(room, c);
+    sitDown(room, a, 2);
+    room.disconnect(c);
+    const c2 = new FakeConn();
+    room.join(c2, 'P2', 'tok-0002');
+    room.flush();
+    expect(c2.last.room).toMatchObject({ me: 2, seat: null });
+    expect(room.game).toBe(before);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2']);
+    // The vote to end the round is had between the two who play it.
+    sendIntent(room, a, 2, { k: 'end', on: true });
+    sendIntent(room, b, 1, { k: 'end', on: true });
+    expect(room.phase).toBe('results');
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    // Scored as they lie, as theirs; and watching now, free to sit down again.
+    const line = room.lastRound!.scores.find((s) => s.seat === 2)!;
+    expect(line).toMatchObject({ id: 2, name: 'P2', delta: -26, total: -26, rounds: 1 });
+    expect(line).not.toHaveProperty('gone');
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
+    sitDown(room, c2);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2@2']);
+  });
+
+  it('whoever deals may send away someone who holds a round up: the vote to end it is had among those who remain', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    sendIntent(room, b, 0, { k: 'end', on: true });
+    expect(room.phase).toBe('playing'); // C, here, has not voted
+    room.handle(b, { t: 'kick', id: 2 }); // not theirs to do
+    expect(c.closed).toBe(false);
+    room.handle(a, { t: 'kick', id: 2 });
+    expect(c.closed).toBe(true);
+    expect(room.phase).toBe('results');
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    expect(room.lastRound!.scores.find((s) => s.seat === 2)).toMatchObject({ id: 2, gone: true }); // scored as they lie, and off the sheet
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1']);
+    // Someone stood up from their cards may still be sent away before the round is over: then it is as if they had been at once.
+    const d = new FakeConn();
+    room.join(d, 'D', 'tok-dddd', true);
+    startRound(room, a);
+    standUp(room, a, 3);
+    room.handle(a, { t: 'kick', id: 3 });
+    expect(d.closed).toBe(true);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'D@2']); // (their cards lie there till the round is over)
+    sendIntent(room, a, 1, { k: 'end', on: true });
+    sendIntent(room, b, 1, { k: 'end', on: true });
+    expect(room.phase).toBe('results');
+    expect(room.lastRound!.scores.find((s) => s.id === 3)).toMatchObject({ gone: true });
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1']);
   });
 
   it('a host who stands up still hosts, unless they hand the table on: to a person at it, who has it for good', () => {
