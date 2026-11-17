@@ -10,7 +10,7 @@
 import { insets, useViewport } from './viewport';
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, dragsOn, endVote, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, seatedPeople } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
@@ -297,6 +297,8 @@ interface Flight {
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
+/** Room for the stuck button at its widest, on a phone on its side. */
+const STUCK_W = 124;
 /** How wide the name line of a neighbour whose hand runs down the side may be. */
 const TAG_SIDE_W = 210;
 const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(r.w, r.h) * 0.08, rotate: r.rot ? `${r.rot}deg` : undefined });
@@ -406,8 +408,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
   const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting), [W, H, game, you, stage, peek, groupHeld, pad, sitting]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
-  // Upright, "I'm stuck" stands in the bar at the top, right after the chat's button: after all of it, which is wider
-  // when you are in voice (the microphone and its mute button stand there too), so that it is never under them.
+  // Upright, Skip stands in the bar at the top, right after the chat's button: after all of it, which is wider when you
+  // are in voice (the microphone and its mute button stand there too), so that it is never under them.
   const [besideChat, setBesideChat] = useState(74);
   useEffect(() => {
     const chat = document.querySelector('.chat');
@@ -825,7 +827,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const active = game.players.filter((p) => say.has(p.seat));
   const waitingOn = active.filter((p) => !p.stuck).length;
   const oh = me ? me.nertz.h : 0;
-  /** Upright: the room between your nertz pile and your stock, for your name. (The stuck button is a small pill in the top bar, after Chat.) */
+  /** The vote to end the round: offered at the table once the round drags on, or once anyone has voted (the same vote as in the settings). */
+  const ballot = endVote(game, seatedPeople(room.players));
+  /** On its side: is there room for the stuck button between your hand and the edge of the screen? */
+  const besideHand = me ? me.box.x + me.box.w + 10 + STUCK_W <= W - 8 - pad.r : false;
+  /** Upright: the room between your nertz pile and your stock, for your name, and under it for saying you are stuck. */
   const between = me ? { x: me.nertz.x + me.nertz.w + 10, w: me.stock.x - 10 - (me.nertz.x + me.nertz.w + 10) } : { x: 0, w: 0 };
   // The NERTZ! stamp comes down on the place the caller's nertz pile stood (now empty), not across their whole hand:
   // large enough to read at any seat, and kept inside the window.
@@ -953,26 +959,52 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             </span>
           </div>
 
+          {/* Saying you are stuck, and beside it, once the round drags on, voting to end it. Upright, under your name;
+              on its side, beside your hand, or along the bottom when there is no room beside it; else under your stock. */}
           {!frozen && (
-            <button
-              type="button"
-              className={`stuck${mine.stuck ? ' on' : ''}`}
-              style={L.tall ? { left: besideChat, top: 9, height: 32 } : L.low ? { left: me.box.x + me.box.w + 10, top: me.stock.y + oh - 32, height: 32 } : { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }}
-              onClick={(e) => {
-                send({ k: 'stuck', on: !mine.stuck });
-                e.currentTarget.blur(); // keep Space for dealing
-              }}
+            <div
+              className={`stuck-at${L.low && !besideHand ? ' under' : ''}`}
+              style={
+                L.tall
+                  ? { left: between.x, width: between.w, top: me.nertz.y + 25 }
+                  : !L.low
+                    ? { left: me.stock.x, top: me.stock.y + oh + 16, width: me.box.x + me.box.w - me.stock.x }
+                    : besideHand
+                      ? { left: me.box.x + me.box.w + 10, top: me.stock.y + oh - 32 }
+                      : { right: 8 + pad.r, bottom: 6 + pad.b }
+              }
             >
-              {mine.stuck ? (
-                <>
-                  Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
-                </>
-              ) : (
-                <>
-                  I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
-                </>
+              <button
+                type="button"
+                className={`stuck${mine.stuck ? ' on' : ''}`}
+                onClick={(e) => {
+                  send({ k: 'stuck', on: !mine.stuck });
+                  e.currentTarget.blur(); // keep Space for dealing
+                }}
+              >
+                {mine.stuck ? (
+                  <>
+                    Stuck <small>{waitingOn > 0 ? `${active.length - waitingOn}/${active.length}` : 'reshuffling'}</small>
+                  </>
+                ) : (
+                  <>
+                    I'm stuck {active.length > waitingOn && <small>{active.length - waitingOn}/{active.length}</small>}
+                  </>
+                )}
+              </button>
+              {(dragsOn(game) || ballot.voted > 0) && (
+                <button
+                  type="button"
+                  className={`stuck${mine.ending ? ' on' : ''}`}
+                  onClick={(e) => {
+                    send({ k: 'end', on: !mine.ending });
+                    e.currentTarget.blur();
+                  }}
+                >
+                  End round {ballot.voted > 0 && <small>{ballot.voted}/{ballot.voters}</small>}
+                </button>
               )}
-            </button>
+            </div>
           )}
 
           {/* Going out is a call, made from the very place the nertz pile stood. */}

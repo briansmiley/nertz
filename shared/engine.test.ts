@@ -22,6 +22,8 @@ import {
   openPlay,
   refused,
   canProgress,
+  dragsOn,
+  RESHUFFLES_BEFORE_VOTE,
   endVote,
   resolveEndVote,
   resolveStuck,
@@ -752,9 +754,7 @@ describe('everyone stuck: a table where nothing can move ends the round', () => 
     rejected(applyIntent(r, 1, { k: 'clear', slot: 0 }));
   });
 
-  it('counts a run moved to turn up a face-down card, and a card from a work pile to the middle', () => {
-    const turnUp = table([{ work: [{ down: 'S9', up: 'H8' }, 'C9', 'S5', 'S3'], rest: 0 }]);
-    expect(canProgress(turnUp, 0)).toBe(true);
+  it('counts a card from a work pile to the middle, and a run moved off a card that then goes there', () => {
     const toMiddle = table([{ work: ['H5', 'C9', 'S5', 'S3'], rest: 0 }], { slots: [pile('H4')] });
     expect(canProgress(toMiddle, 0)).toBe(true);
     // A run that could only move from one pile onto another, turning nothing up and emptying nothing, does not count.
@@ -763,6 +763,175 @@ describe('everyone stuck: a table where nothing can move ends the round', () => 
     // ...but one that uncovers a card for the middle does: S4 off H5 onto D5, and H5 goes on the hearts.
     const freeing = table([{ work: ['H5 S4', 'D5', 'S5', 'S3'], rest: 0 }], { slots: [pile('H4')] });
     expect(canProgress(freeing, 0)).toBe(true);
+  });
+
+  // What counts is where a move leads: to a card in the middle or one off the nertz pile, however many moves on.
+  // (In these hands the cards not named, the Aces among them, lie face-down under the first work pile.)
+  const hearts = { slots: [pile('H4')] };
+  const sayStuck = (s: GameState) => run(s, ...s.players.map((p): [number, Intent] => [p.seat, { k: 'stuck', on: true }]));
+  const everyone = (s: GameState) => s.players.map((p) => p.seat);
+
+  it('a card turned up counts for what it is: one that leads nowhere does not keep the round going', () => {
+    // H8 goes on C9 and turns up the card under it. The 9 of spades has nowhere to go...
+    expect(canProgress(table([{ work: [{ down: 'S9', up: 'H8' }, 'C9', 'S5', 'S3'], rest: 0 }]), 0)).toBe(false);
+    // ...the 5 of hearts goes to the middle, and the Ace of clubs anywhere.
+    expect(canProgress(table([{ work: [{ down: 'H5', up: 'H8' }, 'C9', 'S5', 'S3'], rest: 0 }], hearts), 0)).toBe(true);
+    expect(canProgress(table([{ work: [{ down: 'CA', up: 'H8' }, 'C9', 'S5', 'S3'], rest: 0 }]), 0)).toBe(true);
+    // Two down: S9 turned up goes on D10, and the Ace under it is turned up. Without the red 10 it is not.
+    expect(canProgress(table([{ work: [{ down: 'CA S9', up: 'H8' }, 'C9', 'D10', 'S3'], rest: 0 }]), 0)).toBe(true);
+    expect(canProgress(table([{ work: [{ down: 'CA S9', up: 'H8' }, 'C9', 'C10', 'S3'], rest: 0 }]), 0)).toBe(false);
+  });
+
+  it('a stock card that fits a work pile counts only if that leads somewhere', () => {
+    const hand = (more: Partial<Hand>): Hand => ({ work: ['D10', 'C6', 'S5', 'S3'], stock: 'C9', rest: 0, ...more });
+    // C9 goes on D10, and that is all: every card stays where it is ever after.
+    const nowhere = table([hand({ nertz: 'C2' })]);
+    expect(legalMoves(flips(nowhere, 0, 1), 0)).toEqual([move('0:C9', work(0))]);
+    expect(canProgress(nowhere, 0)).toBe(false);
+    // With a red 8 on the nertz pile it is the way out: C9 on D10, then H8 on C9.
+    expect(canProgress(table([hand({ nertz: 'H8' })]), 0)).toBe(true);
+    // Or the way to a card for the middle, H5 under S4: D5 from the stock on S6, S4 on D5, H5 to the hearts.
+    expect(canProgress(table([hand({ work: ['D10', 'S6', 'H5 S4', 'S3'], stock: 'D5' })], hearts), 0)).toBe(true);
+    expect(canProgress(table([hand({ work: ['D10', 'S8', 'H5 S4', 'S3'], stock: 'D5' })], hearts), 0)).toBe(false); // (no black 6 for D5 to go on)
+  });
+
+  it('an empty pile to be had is somewhere for the nertz top to go', () => {
+    // H8 goes on C9, whole: its pile is empty, and the nertz top goes there. (The cards not named lie under the last pile.)
+    expect(canProgress(table([{ work: ['H8', 'C9', 'S5', 'S3'], nertz: 'C2', rest: 3 }]), 0)).toBe(true);
+    expect(canProgress(table([{ work: ['H8', 'S10', 'S5', 'S3'], nertz: 'C2', rest: 3 }]), 0)).toBe(false);
+  });
+
+  it('three at a table, each with a card to move that leads nowhere: it used to be reshuffled for ever, and is a jam', () => {
+    // Everyone has a stock card that fits a work pile (C9 on D10, D8 on C9 after it), and nothing else, ever. Such a
+    // move was once enough to call the table alive, so pressing stuck only turned the stocks over, time after time.
+    const dead: Hand = { work: ['D10', 'C6', 'S5', 'S3'], stock: 'C9 D8', nertz: 'C2', rest: 0 };
+    const s = table([dead, dead, dead]);
+    for (const seat of [0, 1, 2]) {
+      expect(legalMoves(run(s, [seat, FLIP], [seat, FLIP]), seat)).toEqual([move(`${seat}:C9`, work(0))]);
+      expect(canProgress(s, seat)).toBe(false);
+    }
+    const r = resolveStuck(sayStuck(s), everyone(s));
+    expect(r.status).toEqual({ at: 'over', end: { by: 'jam' } });
+    expect(r.reshuffles).toBe(0);
+    // Played out as far as it goes, it is the same dead table.
+    const played = run(s, [0, FLIP], [0, FLIP], [0, move('0:C9', work(0))], [0, move('0:D8', work(0))]);
+    expect(legalMoves(played, 0)).toEqual([]);
+    expect(resolveStuck(sayStuck(played), everyone(s)).status).toEqual({ at: 'over', end: { by: 'jam' } });
+  });
+
+  it('three at a table, one of them with a way on (three moves off): no jam, the stocks are turned over', () => {
+    const dead: Hand = { work: ['D10', 'C6', 'S5', 'S3'], stock: 'C9 D8', nertz: 'C2', rest: 0 };
+    const s = table([dead, dead, { ...dead, nertz: 'S7' }]); // C9 on D10, D8 on C9, and the 7 of spades comes off the nertz pile
+    expect([0, 1, 2].map((seat) => canProgress(s, seat))).toEqual([false, false, true]);
+    const r = resolveStuck(sayStuck(s), everyone(s));
+    expect(r.status).toEqual({ at: 'play' });
+    expect(r.reshuffles).toBe(1);
+    const on = run(s, [2, FLIP], [2, FLIP], [2, move('2:C9', work(0))], [2, move('2:D8', work(0))], [2, move('2:S7', work(0))]);
+    expect(on.players[2]!.nertz).toHaveLength(0);
+  });
+
+  it('never calls a hand dead that can get somewhere: checked against every line of play, on random hands', () => {
+    // Every line of play of a hand on its own (stock cards onto work piles, runs between them, any stock card to hand),
+    // until a card can go to the middle or off the nertz pile. Null: too many to try.
+    const getsSomewhere = (start: GameState): boolean | null => {
+      const key = (g: GameState) => JSON.stringify([g.players[0]!.work.map((w) => [w.down, ids(w.cards)]), ids([...g.players[0]!.stock, ...g.players[0]!.waste]).sort()]);
+      const seen = new Set([key(start)]);
+      const todo = [start];
+      for (let g = todo.pop(); g; g = todo.pop()) {
+        const p = g.players[0]!;
+        const nertzTop = p.nertz.at(-1);
+        if (nertzTop && legalDrops(g, 0, nertzTop.id).length > 0) return true;
+        const loose = [...p.stock, ...p.waste];
+        const lifts: [GameState, AnyCard][] = [
+          ...loose.map((card): [GameState, AnyCard] => [{ ...g, players: [{ ...p, stock: loose.filter((x) => x !== card), waste: [card] }] }, card]),
+          ...p.work.flatMap((w) => w.cards.slice(w.down).map((card): [GameState, AnyCard] => [g, card])),
+        ];
+        for (const [from, card] of lifts) {
+          for (const to of legalDrops(from, 0, card.id)) {
+            if (to.k !== 'work') return true;
+            const next = ok(applyIntent(from, 0, move(card.id, to, grab(from, 0, card.id)!.cards.length)));
+            if (seen.has(key(next))) continue;
+            if (seen.size >= 3000) return null;
+            seen.add(key(next));
+            todo.push(next);
+          }
+        }
+      }
+      return false;
+    };
+    // A hand late in a round: each suit in the middle up to somewhere, what is left of the deck in a few short runs
+    // (some on face-down cards), a short nertz pile and the stock. The next card of each suit, which the middle would
+    // take, is mostly buried: face-down under a work pile, or in the nertz pile.
+    const hand = (rng: Rng): GameState => {
+      const pick = (n: number) => Math.floor(rng() * n);
+      const upTo = (['S', 'H', 'D', 'C'] as const).map((suit) => `${suit}${3 + pick(9)}`);
+      const left = upTo.flatMap((top) => pile(`${top[0]}13`).slice(c(top).rank));
+      const take = (fits: (x: Card) => boolean = () => true): Card[] => {
+        const fitting = left.filter(fits);
+        return fitting.length ? left.splice(left.indexOf(fitting[pick(fitting.length)]!), 1) : [];
+      };
+      const some = (n: number) => Array.from({ length: n }, () => take()).flat();
+      const red = (x: Card) => x.suit === 'H' || x.suit === 'D';
+      const face = (x: Card) => `${x.suit}${x.rank}`;
+      const wanted = upTo.map((top) => ({ card: take((x) => x.suit === top[0] && x.rank === c(top).rank + 1), at: pick(6) }));
+      const buried = (at: number) => wanted.flatMap((w) => (w.at === at ? w.card : []));
+      left.push(...buried(5)); // (not buried)
+      const workPile = (_: unknown, i: number) => {
+        if (rng() < 0.12 && !buried(i).length) return [];
+        const down = [...buried(i), ...some(pick(2))];
+        const up = take();
+        for (let onto = up.at(-1); onto && rng() < 0.5; onto = up.at(-1)) {
+          const next = take((x) => x.rank === onto.rank - 1 && red(x) !== red(onto));
+          if (!next.length) break;
+          up.push(...next);
+        }
+        return up.length ? { down: down.map(face), up: up.map(face) } : down.slice(0, 1).map(face);
+      };
+      const work = [0, 1, 2, 3].map(workPile);
+      const nertz = [...buried(4), ...some(pick(3))].map(face);
+      const waste = some(pick(4)).map(face);
+      return table([{ work, nertz, waste }], { slots: upTo.map((top) => pile(top)) });
+    };
+    const rng = seeded(69);
+    const seen = { alive: 0, dead: 0, spared: 0, untried: 0 };
+    for (let i = 0; i < 1000; i++) {
+      const s = hand(rng);
+      const really = getsSomewhere(s);
+      const said = canProgress(s, 0);
+      if (really === null) seen.untried++;
+      else if (really) {
+        seen.alive++;
+        expect(said, JSON.stringify(s.players[0])).toBe(true); // never a jam with a way on
+      } else if (said) seen.spared++; // a dead hand taken for a live one: the round only goes on
+      else seen.dead++;
+    }
+    // (Of every twenty dead hands, about one is spared.)
+    expect(seen.alive).toBeGreaterThan(500);
+    expect(seen.dead).toBeGreaterThan(50);
+    expect(seen.spared).toBeLessThan(seen.dead / 4);
+  }, FUZZ_MS);
+});
+
+describe('the reshuffles of a round are counted', () => {
+  const s = table([{ stock: 'S9 S8 SA' }, { stock: 'S9 S8' }, { stock: 'S9 S8' }]);
+  const allStuck = (g: GameState) => resolveStuck(run(g, [0, { k: 'stuck', on: true }], [1, { k: 'stuck', on: true }], [2, { k: 'stuck', on: true }]), [0, 1, 2]);
+
+  it('none in a fresh deal; one more each time the whole table is stuck; and everyone sees how many', () => {
+    expect(dealRound([0, 1, 2], seeded(3)).reshuffles).toBe(0);
+    expect(s.reshuffles).toBe(0);
+    const once = allStuck(s);
+    expect([once.reshuffles, allStuck(once).reshuffles]).toEqual([1, 2]);
+    expect(viewFor(allStuck(once), 1).reshuffles).toBe(2);
+    expect(checkInvariants({ ...s, reshuffles: -1 })).toMatch(/reshuffles/);
+    // Someone stuck alone turns nothing over.
+    expect(run(once, [0, { k: 'stuck', on: true }]).reshuffles).toBe(1);
+  });
+
+  it('after three the round drags on: while it is live', () => {
+    const after = (n: number) => Array.from({ length: n }).reduce<GameState>((g) => allStuck(g), s);
+    expect([0, 1, 2, 3, 4].map((n) => dragsOn(after(n)))).toEqual([false, false, false, true, true]);
+    expect(RESHUFFLES_BEFORE_VOTE).toBe(3);
+    expect(dragsOn(resolveEndVote(run(after(3), [0, { k: 'end', on: true }]), [0]))).toBe(false); // over
   });
 });
 

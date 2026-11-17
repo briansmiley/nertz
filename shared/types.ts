@@ -92,6 +92,8 @@ export interface GameState {
   slots: (CentrePile | null)[];
   /** Completed piles cleared off the table, oldest first. Each has 13 cards, King on top. Still scores. */
   tray: Card[][];
+  /** How many times in this round the whole table has said it was stuck and had its stocks turned over (`resolveStuck`). */
+  reshuffles: number;
 }
 
 /**
@@ -108,7 +110,7 @@ export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | {
 
 /**
  * How a round ended: a seat called Nertz; or without a call, scored as it stands: a 'jam' when everyone said they were
- * stuck and no card could move anywhere, at any shift of any stock; a 'vote' when every connected person voted to end it.
+ * stuck and no hand could ever get a card to the middle or off its nertz pile (`canProgress`); a 'vote' when every connected person voted to end it.
  */
 export type RoundEnd = { by: 'nertz'; seat: number } | { by: 'jam' } | { by: 'vote' };
 
