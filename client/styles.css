@@ -2610,6 +2610,31 @@ label.check {
   border-color: var(--marigold);
 }
 
+/* The sound is off (the corner's menu): a small amber badge at the end of the bar. Pressed, the sound comes back on. */
+.chat-bar button.sound-off {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--marigold);
+  cursor: pointer;
+}
+
+.chat-bar button.sound-off svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Voice, one press away beside the chat button. While others are in it, it beckons. */
 .chat-bar button.mic.join {
   cursor: pointer;

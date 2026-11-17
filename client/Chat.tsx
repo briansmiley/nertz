@@ -6,7 +6,8 @@ import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { SaidWord, Slash, useHotkey } from './hotkey';
-import { hotkeyName, usePrefs } from './prefs';
+import { hotkeyName, setPrefs, usePrefs } from './prefs';
+import { Speaker } from './icons';
 import { kick, takeSeat } from './net';
 import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
 import { joinVoice, toggleMuted, useVoice } from './voice';
@@ -143,6 +144,8 @@ export function Chat({ room }: { room: RoomView }) {
   );
   /** The key that mutes you, to name on the button: none on a phone. */
   const key = hotkeyName(prefs.voiceKey);
+  /** The key that turns the game's sound off and on. */
+  const soundKey = hotkeyName(prefs.soundKey);
 
   // The key that mutes your microphone, from anywhere but a text field, while you are in voice; it says so on the button.
   const said = useHotkey(
@@ -206,6 +209,12 @@ export function Chat({ room }: { room: RoomView }) {
           </button>
         )}
         {mute}
+        {/* The game's sound is off (from the corner's menu, or the key): a small badge that turns it back on. */}
+        {prefs.muted && (
+          <button type="button" className="sound-off" aria-label="Sound is off. Unmute" title={soundKey ? `Sound is off: unmute (${soundKey})` : 'Sound is off: unmute'} onClick={() => setPrefs({ muted: false })}>
+            <Speaker off />
+          </button>
+        )}
         {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
         {watchers.length > 0 && (
           <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>

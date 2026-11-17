@@ -45,7 +45,7 @@ Controls:
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Carry on**), **End round** (the vote, with its tally), **Deal again** (whoever deals) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot) |
-| Press M (or the key you set under Hotkeys in the settings) | mute or unmute. While the sound is off a crossed-out speaker stands beside the menu: press it to turn the sound back on |
+| Press M (or the key you set under Hotkeys in the settings) | mute or unmute. While the sound is off a small amber speaker sits at the end of the chat bar, top left: press it to turn the sound back on |
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
 Nothing shows where a card in hand may go: no pile is outlined for it. (A finger that lets go a little off a pile still

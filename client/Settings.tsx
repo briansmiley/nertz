@@ -2,8 +2,8 @@
 // - `Corner`: on every screen, bottom left, one button (☰) and the menu it opens
 //   (Menu.tsx): sound on or off (also a key of your choosing, M at first), what
 //   can be done to the table during a round (actions.ts), and from there your
-//   settings (sound, motion) and feedback. While the sound is off a crossed-out
-//   speaker stands beside it, and turns it back on.
+//   settings (sound, motion) and feedback. While the sound is off, a small badge
+//   in the chat bar (Chat.tsx) says so, and turns it back on.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`, `Eye`; the rest are in icons.tsx).
@@ -14,13 +14,13 @@ import type { RoomView } from '../shared/types';
 import { pause, setSeats, setTableSettings } from './net';
 import { canPause, canResume, tableActions } from './actions';
 import { Back, Menu, type Panel } from './Menu';
-import { MenuIcon, Speaker } from './icons';
+import { MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -281,7 +281,6 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const actions = room ? tableActions(room) : [];
   useDismiss(root, !!open, () => setOpen(null));
 
-  const soundKey = hotkeyName(prefs.soundKey);
   return (
     <div className="corner" ref={root}>
       {room?.clock && room.phase !== 'lobby' && <Clock clock={room.clock} />}
@@ -300,11 +299,6 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <MenuIcon />
         <SaidWord said={said} />
       </button>
-      {prefs.muted && (
-        <button type="button" className="knob off" aria-label="Sound is off. Unmute" title={soundKey ? `Sound is off (${soundKey})` : 'Sound is off'} onClick={(e) => (setPrefs({ muted: false }), e.currentTarget.blur())}>
-          <Speaker off />
-        </button>
-      )}
       {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={setOpen} onDone={() => setOpen(null)} />}
       {open === 'feedback' && <FeedbackSlip room={room} back={() => setOpen('menu')} />}
       {open === 'settings' && (
