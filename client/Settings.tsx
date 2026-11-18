@@ -3,9 +3,10 @@
 //   (Menu.tsx): sound on or off (also a key of your choosing, M at first), what
 //   can be done to the table during a round (actions.ts), and from there your
 //   settings (sound, motion) and feedback. While the sound is off, a small badge
-//   in the chat bar (Chat.tsx) says so, and turns it back on.
-// - `TableRules`: the table's house rules, in the lobby and behind a gear on the
-//   score sheet. The host changes them; everyone else reads them.
+//   in the chat bar (Chat.tsx) says so, and turns it back on. The score sheet's
+//   gear opens the same settings. Whoever hosts finds the table's own settings
+//   at the bottom of theirs: chat and voice, and between rounds the house rules.
+// - `TableRules`: the house rules on the lobby sheet, for everyone to read.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
@@ -13,7 +14,7 @@ import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { pause, setSeats, setTableSettings } from './net';
 import { canPause, canResume, tableActions } from './actions';
-import { Back, Menu, type Panel } from './Menu';
+import { Back, Menu, openCorner, useCorner } from './Menu';
 import { MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
@@ -227,7 +228,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const social = useSocial();
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
   /** The slip that is open: the menu, or your settings or feedback (which it leads to). One at a time. */
-  const [open, setOpen] = useState<Panel | null>(null);
+  const open = useCorner();
+  useEffect(() => () => openCorner(null), []); // (a slip does not follow you from one screen's corner to the next)
   const root = useRef<HTMLDivElement>(null);
   /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
   const [keying, setKeying] = useState<Hotkey | null>(null);
@@ -273,7 +275,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
 
   /** What can be done to the table now (actions.ts): none between rounds. */
   const actions = room ? tableActions(room) : [];
-  useDismiss(root, !!open, () => setOpen(null));
+  useDismiss(root, !!open, () => openCorner(null));
 
   /** Where the button stands (layout.ts: the table keeps clear of exactly that). */
   const at = useCorners(room);
@@ -287,19 +289,19 @@ export function Corner({ room }: { room?: RoomView | null }) {
         aria-label="Menu"
         title="Menu"
         onClick={(e) => {
-          setOpen(open ? null : 'menu');
+          openCorner(open ? null : 'menu');
           e.currentTarget.blur(); // keep Space for flipping
         }}
       >
         <MenuIcon />
         <SaidWord said={said} />
       </button>
-      {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={setOpen} onDone={() => setOpen(null)} />}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => setOpen('menu')} />}
+      {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={openCorner} onDone={() => openCorner(null)} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} />}
       {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
           <header className="slip-head">
-            <Back onClick={() => setOpen('menu')} />
+            <Back onClick={() => openCorner('menu')} />
             <h3>Settings</h3>
           </header>
           <Volume prefs={prefs} />
@@ -338,8 +340,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
               })}
             </div>
           )}
-          {/* Whoever hosts: whether this table has text chat and voice at all. */}
-          {hosting && (
+          {/* Whoever hosts: whether this table has text chat and voice at all, and between rounds its house rules. */}
+          {room && hosting && (
             <div className="end-vote">
               <h3>Host</h3>
               {/* Each row: the switch for the table, and at its end the same for those only watching (the glasses). */}
@@ -357,6 +359,11 @@ export function Corner({ room }: { room?: RoomView | null }) {
                 </label>
                 <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
               </div>
+              {room.phase !== 'playing' && (
+                <div className="rules">
+                  <Rules room={room} mine />
+                </div>
+              )}
             </div>
           )}
           <WholeScreen />
@@ -386,16 +393,13 @@ function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
 }
 
 /**
- * The table's house rules, in the lobby and behind the score sheet's gear. One row per option
- * of `TableSettings` that the host is offered, and the number of seats.
+ * The table's house rules: one row per option of `TableSettings` that the host is offered, and the number of seats.
+ * Set by whoever hosts (`mine`), between rounds; read by everyone else.
  */
-export function TableRules({ room }: { room: RoomView }) {
-  const host = room.players.find((p) => p.isHost);
-  const mine = host?.id === room.me;
+function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
   const set = (patch: Partial<TableSettings>) => setTableSettings(patch);
   return (
-    <fieldset className={`rules${mine ? '' : ' locked'}`} title={mine ? undefined : 'Only the room host can set these.'}>
-      <legend>Table rules</legend>
+    <>
       <label className="check">
         <input type="checkbox" checked={room.settings.tapToMove} disabled={!mine} onChange={(e) => set({ tapToMove: e.target.checked })} />
         <span>
@@ -403,6 +407,17 @@ export function TableRules({ room }: { room: RoomView }) {
         </span>
       </label>
       <SeatCount room={room} mine={mine} />
+    </>
+  );
+}
+
+/** The house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
+export function TableRules({ room }: { room: RoomView }) {
+  const mine = room.players.find((p) => p.isHost)?.id === room.me;
+  return (
+    <fieldset className={`rules${mine ? '' : ' locked'}`} title={mine ? undefined : 'Only the room host can set these.'}>
+      <legend>Table rules</legend>
+      <Rules room={room} mine={mine} />
     </fieldset>
   );
 }
