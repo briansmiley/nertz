@@ -2088,6 +2088,7 @@ button {
 .spread .mini:has(.turn) {
   perspective: 500px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent; /* a phone's own grey mark over whatever is tapped: the dark flash at a press */
 }
 
 @keyframes deal {
