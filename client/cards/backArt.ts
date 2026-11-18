@@ -1473,7 +1473,39 @@ function blocks(small: boolean): string {
   return frame(clipped(`<path d="${top}" fill="#fff" stroke="none"/><path d="${left}" fill="${HALF}" stroke="none"/>`), 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
+/**
+ * Fans, as on an Art Deco wall: scales in rows, each row half a scale along from the last and lying over the one
+ * above, every scale a fan with a heavy rim over its top and thin ribs spreading from its point. Every other row is
+ * lit, most at the point. (A scale is a circle, less the two circles of the row below, which meet at its lowest
+ * point: so a rib from there shows only once it is clear of them, and the ribs fan out from behind the rims.)
+ */
+function fans(small: boolean): string {
+  const across = small ? 2 : 3;
+  const r = F.w / (2 * across);
+  const ribs = small ? 2 : 4; // on each side of the middle one
+  const spread = (Math.PI / 180) * 40; // the outermost rib, from upright (at 45 degrees there is nothing left of one)
+  const rim = r * 0.13;
+  let lit = '';
+  let rims = '';
+  let lines = '';
+  for (let row = 0; (row - 1) * r < F.h; row++) {
+    const cy = F.y + row * r;
+    for (let c = 0; c <= across; c++) {
+      const cx = F.x + (2 * c + (row % 2 ? 0 : 1)) * r;
+      if (row % 2) lit += `<path d="M${n(cx - r)} ${n(cy)}A${n(r)} ${n(r)} 0 0 1 ${n(cx + r)} ${n(cy)}A${n(r)} ${n(r)} 0 0 0 ${n(cx)} ${n(cy + r)}A${n(r)} ${n(r)} 0 0 0 ${n(cx - r)} ${n(cy)}Z" fill="url(#fan)" stroke="none"/>`;
+      rims += `M${n(cx - r)} ${n(cy)}A${n(r)} ${n(r)} 0 0 1 ${n(cx + r)} ${n(cy)}`;
+      for (let i = -ribs; i <= ribs; i++) {
+        const a = (i * spread) / ribs;
+        const [from, to] = [2 * r * Math.sin(Math.abs(a)) + rim / 2, 2 * r * Math.cos(a) - rim / 2];
+        lines += `M${n(cx + from * Math.sin(a))} ${n(cy + r - from * Math.cos(a))}L${n(cx + to * Math.sin(a))} ${n(cy + r - to * Math.cos(a))}`;
+      }
+    }
+  }
+  const glow = `<radialGradient id="fan" cx="0.5" cy="1" r="1"><stop offset="0" stop-color="#fff" stop-opacity="0.6"/><stop offset="1" stop-color="#fff" stop-opacity="0.14"/></radialGradient>`;
+  return frame(clipped(`${glow}${lit}<path d="${lines}" stroke-width="${n(small ? 0.9 : 0.5)}" stroke-linecap="butt"/><path d="${rims}" stroke-width="${n(rim)}" stroke-linecap="butt"/>`), 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, fans, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
