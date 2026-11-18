@@ -4,7 +4,7 @@
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
 import { DEAL_MS, isHidden, WORK_PILES } from '../shared/engine';
-import { cardSize, feltHw, pileGap, type Pt } from '../shared/table';
+import { cardSize, feltHw, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -163,6 +163,16 @@ export interface Layout {
   cleared: boolean;
   /** What the screen keeps for itself at its sides (a notch). */
   keep: Insets;
+  /** The buttons in the corners (`corners`). */
+  at: Corners;
+  /** The round's clock, where nothing else is. Null: none to show, or no room for it. */
+  clock: ClockAt | null;
+  /** By your own hand (`furnish`): your line, "I'm stuck" and the vote. Null: not there. (The count on your nertz pile is the hand's: `Seat.count`.) */
+  name: NameAt | null;
+  stuck: Rect | null;
+  vote: Rect | null;
+  /** "I'm stuck" and the vote are small pills, not full buttons. */
+  pills: boolean;
 }
 
 const RATIO = CARD_H / CARD_W;
@@ -245,6 +255,8 @@ export function countdownTop(L: Layout, W: number): number {
 /** Faces narrower than this on screen use the large-print rendition. */
 export const MINI_BELOW = 52;
 
+/** A pile that shows its thickness (the nertz pile, the stock): each card lies this far below the one on it, for a card drawn full size. */
+const LEAN = 0.55;
 /** The stock shows one edge for every this many cards left, so you can see it getting thin. */
 const STOCK_PER_EDGE = 3;
 /** A stock this many edges high (or higher: the deck being dealt) has its top card level with the other piles. */
@@ -272,6 +284,10 @@ interface HandSpec {
   fan: number; // room kept free to the right of the waste (it was once fanned; the pile itself is squared up)
   workFan: number; // preferred vertical offset in a work pile
   workRoom: number; // height available to a work pile below its first card
+  /** That height pile by pile, where it is not the same for all four: each of your own fans down as far as the first thing under it (`furnish`). */
+  rooms?: readonly number[];
+  /** The count on the nertz pile stands at its top right corner, not its bottom right (`furnish`: the bottom one is taken). */
+  countUp?: boolean;
   workRise: number; // how far above the row a pile too long for that may start instead (free felt above the hand)
   minStrip: number; // the least a face-up card may show while there is room: its whole rank. 0 = squeeze all alike
   z: number;
@@ -318,6 +334,39 @@ export function fanOut(show: readonly number[], fan: number, min: number, room: 
 
 /** The count of a nertz pile is centred this share of its own width out from the corner of the card, both ways: most of it is off the card. */
 const COUNT_OUT = 0.2;
+/** How wide the count on a nertz pile of cards `w` wide is: larger on a larger card, never as wide as a small one. */
+const countD = (w: number): number => Math.round(clamp(Math.min(13 + 0.27 * w, 0.9 * w), 15, 36));
+
+/**
+ * The count on a hand's nertz pile, whose top card lies at (`nx`, `ny`) as the hand is drawn: just out from the card's
+ * bottom right corner, or its top right one (`up`: where the bottom one would be on the menu's button). Seen from across
+ * the table that is the pile's outer corner, with nothing beside it; otherwise the first work pile is, and the count
+ * keeps short of it. (In two rows the pile stands at the foot of the window, with no room under it: the count goes
+ * further out sideways instead.)
+ */
+function countOn(h: Pick<HandSpec, 'w' | 'wide' | 'rows' | 'flip' | 'countUp'>, nx: number, ny: number): Pt & { d: number } {
+  const d = countD(h.w);
+  const out = h.rows ? 2 * COUNT_OUT * d : h.flip ? COUNT_OUT * d : Math.min(COUNT_OUT * d, h.wide - d / 2 - 2);
+  return { x: nx + h.w + out, y: h.countUp ? ny - COUNT_OUT * d : ny + h.w * RATIO + COUNT_OUT * d, d };
+}
+
+/** The count as it is drawn (Table.tsx): kept inside the window and clear of what the screen keeps at its edges (`keep`), with a little room round it. */
+export function countBox(c: Pt & { d: number }, W: number, H: number, keep: Insets = NO_INSETS): Rect {
+  const r = c.d / 2 + 2;
+  const x = clamp(c.x, keep.l + r, W - keep.r - r);
+  const y = clamp(c.y, r, H - keep.b - r);
+  return { x: x - r, y: y - r, w: 2 * r, h: 2 * r };
+}
+
+/** Where the piles of a hand start, left to right (before it is mirrored), and the row its nertz pile, stock and waste lie on. */
+function pilesOf(h: Pick<HandSpec, 'x' | 'y' | 'w' | 'gap' | 'wide' | 'rows'>) {
+  const workX = h.rows ? h.x : h.x + h.w + h.wide;
+  const stockX = h.rows ? h.rows.stockX : workX + 4 * h.w + 3 * h.gap + h.wide;
+  return { nertzX: h.rows ? h.rows.nertzX : h.x, rowY: h.rows ? h.rows.y : h.y, workX, stockX, wasteX: stockX + h.w + h.gap };
+}
+
+/** How far below the row the bottom card of a full stock lies, for cards `w` wide (its top card is level with the row). */
+const stockDrop = (w: number): number => STOCK_FULL_EDGES * 2 * LEAN * (w / CARD_W);
 
 function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const s = h.w / CARD_W;
@@ -330,36 +379,33 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     out.push({ card, x: mx(x), y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock' && !down, pile, mine: h.mine, at, rot: 0 });
 
   // Nertz pile: lower cards peek out underneath so the pile shows its thickness.
-  const lean = 0.55 * s;
-  const nx = h.rows ? h.rows.nertzX : h.x;
-  const ny = h.rows ? h.rows.y : h.y; // the row the nertz pile, the stock and the waste lie on
-  const d = Math.round(clamp(Math.min(13 + 0.27 * h.w, 0.9 * h.w), 15, 36)); // the count on it: never as wide as a small card
+  const lean = LEAN * s;
+  const { nertzX: nx, rowY: ny, workX, stockX, wasteX } = pilesOf(h); // (`ny`: the row the nertz pile, the stock and the waste lie on)
   p.nertz.forEach((c, i) => put(c, nx, ny + (p.nertz.length - 1 - i) * lean, i, 'nertz'));
 
   // Work piles fan downwards; the face-down cards at the bottom of the pile take a narrower strip each.
-  const workX = h.rows ? h.x : h.x + h.w + h.wide;
   const margin = h.gap * 0.4;
   const workHit: Rect[] = [];
   const workAt = p.work.map((_, i) => rect(workX + i * (h.w + h.gap), h.y));
   const work = p.work.map(({ cards: pile, down }, i) => {
     const x = workX + i * (h.w + h.gap);
+    const room = h.rooms?.[i] ?? h.workRoom;
     const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
     // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
     const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
-    const rise = clamp(wanted - h.workRoom, 0, h.workRise);
-    const at = fanOut(show, h.workFan, h.minStrip, h.workRoom + rise);
+    const rise = clamp(wanted - room, 0, h.workRise);
+    const at = fanOut(show, h.workFan, h.minStrip, room + rise);
     if (i === h.peek) {
       // Looked at: every card shows its whole strip, the pile reaching up over whatever is above it (and above the
       // middle's cards) as far as the top of the window. Its drop area and its top card stay where they were.
-      const up = clamp(wanted - h.workRoom, 0, h.y - 8);
-      const full = fanOut(show, h.workFan, h.minStrip, h.workRoom + up);
+      const up = clamp(wanted - room, 0, h.y - 8);
+      const full = fanOut(show, h.workFan, h.minStrip, room + up);
       pile.forEach((c, j) => put(c, x, h.y - up + full[j]!, PEEK_Z + j, 'work', false, i));
     } else pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work', false, i));
-    workHit.push({ x: mx(x - margin, h.w + 2 * margin), y: h.y - rise - margin, w: h.w + 2 * margin, h: ch + h.workRoom + rise + 2 * margin });
+    workHit.push({ x: mx(x - margin, h.w + 2 * margin), y: h.y - rise - margin, w: h.w + 2 * margin, h: ch + room + rise + 2 * margin });
     return rect(x, h.y - rise + (at.at(-1) ?? 0));
   });
 
-  const stockX = h.rows ? h.rows.stockX : workX + 4 * h.w + 3 * h.gap + h.wide;
   // Every third card shows an edge, and so does the top one. A card's height in the stack depends only on how many
   // cards lie under it, so taking cards off the top never moves the ones that stay: the stack just gets lower.
   //
@@ -369,12 +415,11 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // longer (`hold`, kept by Table.tsx), then lands on the waste, every card turning over as it goes, the last on top.
   const lifted = Math.min(p.waste.length, Math.max(p.dealt, h.hold ?? 0));
   const top = p.stock.length - 1;
-  const stockLow = STOCK_FULL_EDGES * lean * 2; // where the bottom card of the stock lies, below the row
+  const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
     if (j % STOCK_PER_EDGE === 0 || j === top) put(c, stockX, ny + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock');
   });
 
-  const wasteX = stockX + h.w + h.gap;
   const n = p.waste.length - lifted;
   // In the order dealt, each UNDER the one before, as cards counted off into a hand are: the first stays on top, and
   // turning the stack over is what leaves the last one showing. (Still cards of the stock, they come up at the level
@@ -405,7 +450,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     // The count, at the bottom right of the card as it lies here. Seen from across the table that is the pile's outer
     // corner, with nothing beside it; otherwise the first work pile is, and the count keeps short of it. (In two rows
     // the pile stands at the foot of the window, with no room under it: the count goes further out sideways instead.)
-    count: { x: mx(nx) + h.w + (h.rows ? 2 * COUNT_OUT * d : h.flip ? COUNT_OUT * d : Math.min(COUNT_OUT * d, h.wide - d / 2 - 2)), y: ny + ch + COUNT_OUT * d, d },
+    count: countOn(h, mx(nx), ny),
   };
 }
 
@@ -507,6 +552,246 @@ export interface Insets {
 }
 const NO_INSETS: Insets = { l: 0, r: 0, b: 0 };
 
+/** How wide your own cards are in a window (`tall`: laid out for a phone held upright), as far as the window alone decides it. */
+const ownWidth = (W: number, H: number, tall: boolean): number =>
+  tall
+    ? clamp(Math.min((W - 2 * TALL.edge) / (4 + 3 * TALL.gap + TALL.tray), (H * TALL.share) / (RATIO * (2 + TALL.room + TALL.between))), 30, OWN_MAX)
+    : clamp(Math.min((W - 2 * 16) / (OWN_UNITS + 0.4), H * OWN_K), 34, OWN_MAX);
+
+// ---------------------------------------------------------------- what stands round the cards
+//
+// The buttons in the corners, the round's clock, your own name, "I'm stuck" and the vote beside it are placed here
+// too, by one rule: each has a place of its own, clear of the others and inside the window, and your cards are then
+// laid out round them (a work pile fans down as far as the first thing under it, and no further). When a window has
+// not the room for all of it, what gives way is said here as well: the clock first, then your name.
+
+/** One of the chat's buttons (Chat.tsx), by what is on it: the word, an icon, an icon and a count (of one digit, or two), the microphone, the small badge that says the sound is off. */
+export type ChatButton = 'text' | 'icon' | 'count' | 'count2' | 'mute' | 'badge';
+
+/** What there is to place besides the cards: it changes with the table (someone joins voice, a round starts, the vote comes up), not with the window. */
+export interface Fittings {
+  /** The chat's buttons, left to right. */
+  chat: readonly ChatButton[];
+  /** The round has a clock to show. */
+  clock: boolean;
+  /** How many have a place at the table. (More than six: the others stand in columns, as on a phone on its side.) */
+  seats: number;
+  /** The vote to end the round stands beside "I'm stuck". */
+  vote: boolean;
+  /** How wide your own line (your colour, name and total) is written, about: `nameWidth`. */
+  name: number;
+}
+export const NO_FITTINGS: Fittings = { chat: [], clock: false, seats: 0, vote: false, name: 0 };
+
+/** About how wide "name total" is written in your own line. Never less than it is: the line is cut off at this width. */
+export const nameWidth = (name: string, total: string): number => Math.ceil(22 + name.length * 8.4 + total.length * 11);
+
+export type Shape = 'tall' | 'low' | 'wide';
+/** Which way a window is laid out: a phone held upright (TALL), one on its side or a table of more than six (LOW: the others in columns), or the usual. */
+export const shapeOf = (W: number, H: number, seats: number): Shape => (isTall(W, H) ? 'tall' : isLow(W, H) || seats > 6 ? 'low' : 'wide');
+
+/** How wide each of the chat's buttons is: as a rule, and in the bar of an upright phone, where they are larger for a thumb while there is room. They stand `gap` apart, `h` high (`barH` in the bar). */
+const CHAT_W: Record<ChatButton, readonly [number, number]> = { text: [49, 57], icon: [36, 46], count: [47, 57], count2: [55, 65], mute: [33, 33], badge: [24, 24] };
+const CHAT = { gap: 6, h: 29, barH: 36 } as const;
+/** The one button of the corner, the menu (Settings.tsx `Corner`): `size` across. */
+export const KNOB = { size: 36 } as const;
+/** The room the clock is given: above the menu's button (large figures), or in line after the chat's buttons (small ones). */
+const CLOCK = { above: { w: 58, h: 22 }, beside: { w: 44, h: 16 } } as const;
+/** "I'm stuck" and the vote: as small pills (`h` high, `gap` apart, each as wide as its longest wording; under `min` the wording is cut short; never lower than `low`) or, where there is room under your stock, full buttons. */
+export const PILL = { stuck: 124, vote: 112, h: 32, gap: 6, min: 84, low: 24, full: { h: 39, gap: 8, min: 150, drop: 16 } } as const;
+/** Your own line: one line (`h` high, no narrower than `min`), or under your nertz pile in full, two lines of it (`full`): your name, and the table. */
+const NAME = { h: 20, min: 48, max: 150, full: { h: 56, least: 44, w: 170, min: 120, drop: 14 } } as const;
+
+export interface Corners {
+  shape: Shape;
+  /** The chat's buttons, top left: all of them, and how wide each is, in order. */
+  chat: Rect;
+  chatParts: number[];
+  /** The menu's button: bottom left, or at the right of the bar across the top of an upright phone. */
+  knobs: Rect;
+  /** The places the round's clock may stand, the best first: the table takes the first with nothing else there (`Layout.clock`). `small`: in small figures. */
+  clocks: ClockAt[];
+}
+
+export interface ClockAt extends Rect {
+  small: boolean;
+}
+
+/**
+ * Where the buttons in the corners stand, on every screen (a table is not needed for it).
+ *
+ * Upright, both are in the bar across the top, the chat's buttons from the left and the menu's from the right. When
+ * the bar is too narrow for the chat's as they are there (larger, for a thumb), they are no larger than elsewhere, and
+ * narrower still they are squeezed. There is no clock in the bar. Otherwise the chat is top left and the menu's button
+ * bottom left; the clock would stand above that, or else after the chat's buttons.
+ */
+export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit: Fittings = NO_FITTINGS): Corners {
+  const H = fullH - keep.b;
+  const shape = shapeOf(W, H, fit.seats);
+  const parts = (large: 0 | 1) => fit.chat.map((b) => CHAT_W[b][large]);
+  const across = (ws: readonly number[]) => ws.reduce((a, b) => a + b, 0) + Math.max(0, ws.length - 1) * CHAT.gap;
+  if (shape === 'tall') {
+    const [l, r] = [Math.max(8, keep.l), Math.max(8, keep.r)];
+    const room = W - l - r - 8 - KNOB.size; // (8: between the chat's buttons and the menu's)
+    const large: 0 | 1 = across(parts(1)) <= room ? 1 : 0;
+    // (Narrower still: the chat's buttons are squeezed into what is left. No phone is.)
+    const squeeze = Math.min(1, Math.max(0, room) / Math.max(1, across(parts(large))));
+    const chatParts = parts(large).map((w) => w * squeeze);
+    return { shape, chat: { x: l, y: 7, w: across(parts(large)) * squeeze, h: CHAT.barH }, chatParts, knobs: { x: W - r - KNOB.size, y: 7, w: KNOB.size, h: KNOB.size }, clocks: [] };
+  }
+  const chat: Rect = { x: Math.max(10, keep.l), y: 10, w: across(parts(0)), h: CHAT.h };
+  const knobs: Rect = { x: Math.max(12, keep.l), y: H - 10 - KNOB.size, w: KNOB.size, h: KNOB.size };
+  const above = { x: knobs.x, y: knobs.y - 8 - CLOCK.above.h, ...CLOCK.above, small: false };
+  const beside = { x: chat.x + chat.w + 8, y: chat.y + (chat.h - CLOCK.beside.h) / 2, ...CLOCK.beside, small: true };
+  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? [above, beside] : [] };
+}
+
+/** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
+export interface NameAt extends Rect {
+  full: boolean;
+  align: 'start' | 'centre' | 'end';
+}
+
+/** What stands by your own hand: your line, "I'm stuck" and the vote. Null: not there (no room, or nothing to show). */
+interface Furniture {
+  name: NameAt | null;
+  stuck: Rect;
+  /** The vote's place, whether or not it is up (`Fittings.vote`). */
+  vote: Rect;
+  /** The two are small pills, not full buttons. */
+  pills: boolean;
+  /** How far below the row each work pile may fan. Undefined: as far as any hand's. */
+  rooms: number[] | undefined;
+  /** The count on your nertz pile stands at its top right corner (`HandSpec.countUp`). */
+  countUp: boolean;
+}
+
+const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
+
+/**
+ * Places what stands by your own hand, given where its piles are (`h`), the buttons in the corners (`at`) and where
+ * the tray begins (`trayX`). Then says how far each work pile may fan: down to the first of these things under it.
+ *
+ * Upright, all of it is in the gap between the count on your nertz pile and your stock: your line, and under it the two pills,
+ * side by side if the gap is wide enough for that, else one above the other; when they would be too low to press,
+ * your line goes.
+ *
+ * Otherwise, in the strip under your row of cards:
+ * - "I'm stuck" stands under your stock and the vote beside it or under it: as full buttons one under the other, or
+ *   side by side, or as pills one under the other, whichever comes first that fits above the bottom of the window and
+ *   short of the tray; failing all three (and in any window that is low, or has the others in columns), as pills in a
+ *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
+ *   button; narrower than that, its pills shrink.
+ * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
+ *   (and the clock above it). Otherwise it is one line level with the button: under the nertz pile if that is clear of
+ *   it, else right after it, and no further than the pills (too little room for a name: none).
+ * - The count on your nertz pile is placed first, and all of this keeps clear of it; where its place under the pile's
+ *   corner is the menu's button, it stands at the top corner instead.
+ */
+function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt | null, fit: Fittings, h: HandSpec, trayX: number): Furniture {
+  const { nertzX, rowY, workX, stockX } = pilesOf(h);
+  const ow = h.w;
+  const oh = ow * RATIO;
+  const nertzR = nertzX + ow;
+  const base = rowY + oh; // the bottom of the row
+  const two = fit.vote ? 2 : 1;
+  // The count on your nertz pile is there before anything else, and the rest keeps clear of it. Where its place under
+  // the pile's corner is the menu's button, it stands at the top corner instead.
+  const sides = { ...keep, b: 0 }; // (`H` already stops short of the bottom the screen keeps)
+  const countUp = !h.rows && meets(countBox(countOn(h, nertzX, rowY), W, H, sides), at.knobs);
+  const badge = countBox(countOn({ ...h, countUp }, nertzX, rowY), W, H, sides);
+  if (h.rows) {
+    const from = Math.max(nertzR + 10, badge.x + badge.w + 2);
+    const gap = { x: from, w: stockX - 10 - from };
+    const mid = gap.x + gap.w / 2;
+    const floor = H - 6;
+    const line: NameAt = { x: gap.x, y: rowY + 2, w: gap.w, h: NAME.h, full: false, align: 'centre' };
+    const under = line.y + line.h + 2;
+    if (gap.w >= 2 * PILL.min + PILL.gap) {
+      const w = Math.min(PILL.stuck, (gap.w - PILL.gap) / 2);
+      const ph = clamp(floor - under, PILL.low, 28);
+      return { name: line, stuck: { x: mid - PILL.gap / 2 - w, y: under, w, h: ph }, vote: { x: mid + PILL.gap / 2, y: under, w, h: ph }, pills: true, rooms: undefined, countUp };
+    }
+    const w = Math.min(PILL.stuck, gap.w);
+    // One above the other, 4 apart. Under your line while that leaves them high enough to press; else your line goes.
+    const high = (top: number) => Math.min(28, (floor - top - (two - 1) * 4) / two);
+    const named = high(under) >= PILL.low;
+    const ph = Math.max(16, high(named ? under : rowY));
+    const top = named ? under : rowY + Math.max(0, (floor - rowY - two * ph - (two - 1) * 4) / 2);
+    return { name: named ? line : null, stuck: { x: mid - w / 2, y: top, w, h: ph }, vote: { x: mid - w / 2, y: top + ph + 4, w, h: ph }, pills: true, rooms: undefined, countUp };
+  }
+
+  const roomy = at.shape === 'wide';
+  const knobsR = at.knobs.x + at.knobs.w;
+  const right = Math.min(trayX, W - keep.r) - 8; // nothing of this goes further right
+  const boxR = h.x + 7 * ow + 4 * h.gap + 2 * h.wide + 2 * h.fan;
+  const padBase = base + stockDrop(ow); // the bottom of the stock's lowest card
+  /** "I'm stuck" and the vote: the first arrangement that fits. */
+  const pair = ((): Pick<Furniture, 'stuck' | 'vote' | 'pills'> => {
+    if (roomy) {
+      const F = PILL.full;
+      const y = base + F.drop;
+      const w = Math.max(F.min, boxR - stockX);
+      if (y + two * F.h + (two - 1) * F.gap <= H - 6 && stockX + w <= right) return { stuck: { x: stockX, y, w, h: F.h }, vote: { x: stockX, y: y + F.h + F.gap, w, h: F.h }, pills: false };
+      const each = Math.min(w, (right - stockX - F.gap) / 2);
+      if (y + F.h <= H - 6 && each >= F.min) return { stuck: { x: stockX, y, w: each, h: F.h }, vote: { x: stockX + each + F.gap, y, w: each, h: F.h }, pills: false };
+      // (Pills one under the other may be a little lower than usual, rather than not fit.)
+      const ph = Math.min(PILL.h, (H - 8 - (padBase + 4) - (two - 1) * PILL.gap) / two);
+      const top = H - 8 - two * ph - (two - 1) * PILL.gap;
+      if (ph >= 28 && stockX + PILL.stuck <= right) return { stuck: { x: stockX, y: top, w: PILL.stuck, h: ph }, vote: { x: stockX, y: top + ph + PILL.gap, w: PILL.stuck, h: ph }, pills: true };
+    }
+    // Pills in a row, level with the menu's button. "I'm stuck" and, on its right, the vote, both right of your work
+    // piles: under your stock, or as far left of that as keeps the vote short of the tray; the two a little narrower
+    // than their longest wording rather than under a pile.
+    const y = at.knobs.y + (at.knobs.h - PILL.h) / 2;
+    const clear = workX + 4 * ow + 3 * h.gap + 6; // right of your fourth work pile
+    const narrow = Math.min(1, (right - clear - PILL.gap) / (PILL.stuck + PILL.vote));
+    if (PILL.vote * narrow >= PILL.min) {
+      const [sw, vw] = [PILL.stuck * narrow, PILL.vote * narrow];
+      const x = Math.min(stockX, right - sw - PILL.gap - vw);
+      return { stuck: { x, y, w: sw, h: PILL.h }, vote: { x: x + sw + PILL.gap, y, w: vw, h: PILL.h }, pills: true };
+    }
+    // No room for both there: "I'm stuck" under your stock (or as near as keeps it on the screen) and the vote on its
+    // left, under your work piles, which then fan no further down than it.
+    const left = knobsR + 8;
+    const x = Math.max(left, Math.min(stockX, right - PILL.stuck));
+    const stuck: Rect = { x, y, w: Math.max(0, Math.min(PILL.stuck, right - x)), h: PILL.h };
+    const vw = Math.min(PILL.vote, x - PILL.gap - left);
+    if (vw >= PILL.min) return { stuck, vote: { x: x - PILL.gap - vw, y, w: vw, h: PILL.h }, pills: true };
+    // Nor for that: the two share what there is between the menu's button and the tray.
+    const each = Math.max(0, (right - left - PILL.gap) / 2);
+    return { stuck: two === 2 ? { x: right - each, y, w: each, h: PILL.h } : stuck, vote: { x: left, y, w: each, h: PILL.h }, pills: true };
+  })();
+  const shown = two === 2 ? [pair.stuck, pair.vote] : [pair.stuck];
+
+  const name = ((): NameAt | null => {
+    const F = NAME.full;
+    // (In full it reaches down past the menu's button, and the clock above that, which may be the wider of the two.)
+    const wall = Math.max(knobsR, clock && clock.y < at.knobs.y ? clock.x + clock.w : 0);
+    const wide = Math.min(F.w, nertzR - (wall + 4));
+    if (roomy && wide >= F.min) {
+      // As low under the pile as it has always stood, while it fits; in a lower window nearer to it, and its lines closer.
+      // (Below the count on the pile, which reaches down past the card's corner.)
+      const below = (0.5 + COUNT_OUT) * countD(ow) + 4;
+      const y = base + Math.max(below, base + F.drop + F.h <= H - 2 ? F.drop : 8);
+      const high = Math.min(F.h, H - 4 - y);
+      if (high >= F.least) return { x: nertzR - wide, y, w: wide, h: high, full: true, align: 'end' };
+    }
+    const y = at.knobs.y + (at.knobs.h - NAME.h) / 2;
+    const w = clamp(fit.name, NAME.min, NAME.max);
+    const under = nertzR - w >= knobsR + 10;
+    const line: NameAt = { x: under ? nertzR - w : knobsR + 10, y, w, h: NAME.h, full: false, align: under ? 'end' : 'start' };
+    for (const p of [...shown, badge]) if (meets(line, p, 8) && p.x > line.x) line.w = Math.min(line.w, p.x - 8 - line.x);
+    return line.w >= NAME.min && ![...shown, badge].some((p) => meets(line, p, 4)) ? line : null;
+  })();
+
+  const things = [at.knobs, ...(clock ? [clock] : []), ...(name ? [name] : []), ...shown].filter((r) => r.y + r.h > base);
+  /** The top of the first thing under the cards between `x0` and `x1` (4 clear of it). */
+  const floor = (x0: number, x1: number): number => Math.min(H - 8, ...things.filter((r) => r.x < x1 + 4 && r.x + r.w > x0 - 4).map((r) => r.y - 4));
+  const rooms = [0, 1, 2, 3].map((i) => Math.max(0, floor(workX + i * (ow + h.gap), workX + i * (ow + h.gap) + ow) - base));
+  return { name, ...pair, rooms, countUp };
+}
+
 /** An opponent's card is this share of the window's height wide, by how many opponents there are. */
 const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
 
@@ -518,7 +803,7 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = []): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS): Layout {
   const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
   const n = game.players.length; // (the felt and its cards are sized for those in the round)
@@ -540,11 +825,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const edge = tall ? TALL.edge : 16;
 
   // Your hand: bottom, as large as the window allows. (Upright: in two rows, see TALL.)
-  const ow = !mine
-    ? 0
-    : tall
-      ? clamp(Math.min((W - 2 * edge) / (4 + 3 * TALL.gap + TALL.tray), (H * TALL.share) / (RATIO * (2 + TALL.room + TALL.between))), 30, OWN_MAX)
-      : clamp(Math.min((W - 2 * edge) / (OWN_UNITS + 0.4), H * OWN_K), 34, OWN_MAX);
+  const ow = mine ? ownWidth(W, H, tall) : 0;
   const oh = ow * RATIO;
   /** Upright: the second row, where the nertz pile, the stock and the waste lie. */
   const rowY = H - 10 - oh;
@@ -703,30 +984,31 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const out = game.tray.map((_, k): Rect => ({ x: W / 2 - (outStep * (trays - 1) + fw) / 2 + k * outStep, y: middle.y + (middle.h - fh) / 2, w: fw, h: fh }));
 
   // Your hand is placed last: a long work pile may rise into what cloth there is between the row and the felt.
-  const me = mine
-    ? placeHand(
-        mine,
-        {
-          x: handX,
-          y: ownTop,
-          w: ow,
-          gap: tall ? gapT : ow * OWN.gap,
-          wide: ow * OWN.wide,
-          fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan),
-          workFan: oh * 0.3,
-          workRoom: tall ? oh * TALL.room : H - 8 - ownTop - oh,
-          rows: tall ? { y: rowY, nertzX: edge, stockX: W - edge - 2 * ow - gapT, box: { x: edge, y: ownTop, w: W - 2 * edge, h: H - 10 - ownTop } } : undefined,
-          // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
-          workRise: onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
-          minStrip: oh * 0.21,
-          z: OWN_Z,
-          mine: true,
-          peek,
-          hold: held?.get(you),
-        },
-        cards,
-      )
-    : null;
+  const own: HandSpec = {
+    x: handX,
+    y: ownTop,
+    w: ow,
+    gap: tall ? gapT : ow * OWN.gap,
+    wide: ow * OWN.wide,
+    fan: ow * (ow < MINI_BELOW ? 0.55 : OWN.fan),
+    workFan: oh * 0.3,
+    workRoom: tall ? oh * TALL.room : H - 8 - ownTop - oh,
+    rows: tall ? { y: rowY, nertzX: edge, stockX: W - edge - 2 * ow - gapT, box: { x: edge, y: ownTop, w: W - 2 * edge, h: H - 10 - ownTop } } : undefined,
+    // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
+    workRise: onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
+    minStrip: oh * 0.21,
+    z: OWN_Z,
+    mine: true,
+    peek,
+    hold: held?.get(you),
+  };
+  // What stands by it is placed first, and the work piles fan down as far as that leaves them room.
+  const at = corners(W, fullH, keep, { ...fit, seats: ring.length });
+  // The clock stands in the first of its places where nothing of the table is: the felt, someone's hand and name, your own cards.
+  const taken = [...opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H })), ...(mine ? [{ x: handX, y: ownTop - 6, w: OWN_UNITS * ow, h: H - ownTop + 6 }] : [])];
+  const clock = at.clocks.find((c) => !taken.some((r) => meets(r, c, 4)) && !onFelt(felt, hw, c)) ?? null;
+  const by = mine ? furnish(W, H, keep, at, clock, fit, own, tray.x) : null;
+  const me = mine ? placeHand(mine, { ...own, rooms: by?.rooms, countUp: by?.countUp }, cards) : null;
 
   // The middle's cards. In play only the top two of a pile are drawn: the one underneath stays visible while the next
   // flies in. When the round ends and the piles turn over, every card is drawn, each a little off the last
@@ -765,7 +1047,14 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
   const phone = tall || isLow(W, H);
   const cleared = phone && sorting(stage);
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, phone, cleared, keep };
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, phone, cleared, keep, at, clock, name: by?.name ?? null, stuck: by?.stuck ?? null, vote: by?.vote ?? null, pills: by?.pills ?? false };
+}
+
+/** Is any point of `r` on the felt as drawn (its corners are round)? */
+function onFelt(f: Felt, hw: number, r: Rect): boolean {
+  const [a, b] = [toTable(f, r.x, r.y), toTable(f, r.x + r.w, r.y + r.h)];
+  const apart = (lo: number, hi: number, half: number) => Math.max(0, lo - half, -half - hi);
+  return Math.hypot(apart(a.x, b.x, hw - TABLE.corner), apart(a.y, b.y, 1 - TABLE.corner)) < TABLE.corner;
 }
 
 // ---------------------------------------------------------------- an Ace in hand
