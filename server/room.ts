@@ -226,7 +226,7 @@ export class Room {
   }
 
   /** Any message other than `join`/`create` from a connection that has joined. Unknown connections are ignored. */
-  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' }>): void {
+  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' | 'ping' }>): void {
     const player = this.conns.get(conn);
     if (!player) return;
     switch (msg.t) {
