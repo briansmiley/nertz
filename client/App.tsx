@@ -10,6 +10,7 @@ import { lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
+import { openCorner, useCorner } from './Menu';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
 import { Door, Eye, Gear } from './icons';
@@ -602,6 +603,16 @@ function Lobby({ room }: { room: RoomView }) {
   );
 }
 
+/** On the score sheet: your settings (the same as the corner's menu leads to, opened there), and if you host, the table's at the bottom of them. */
+function SettingsGear() {
+  const open = useCorner() === 'settings';
+  return (
+    <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-controls={open ? 'your-settings' : undefined} aria-label="Settings" title="Settings" onClick={() => openCorner('settings')}>
+      <Gear />
+    </button>
+  );
+}
+
 /** For whoever deals, on the score sheet: start the table over (every score to nothing, back to before the first deal). Asked twice, since it cannot be undone. */
 function StartOver() {
   return (
@@ -778,9 +789,7 @@ function Results({ room }: { room: RoomView }) {
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
         )}
         <div className="tools">
-          <Pop icon={<Gear />} label="Table rules">
-            <TableRules room={room} />
-          </Pop>
+          <SettingsGear />
           {me?.isHost && <AddBot room={room} />}
           {me?.isHost && <StartOver />}
           <Leave />

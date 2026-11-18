@@ -397,14 +397,16 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
   card id. So a move sounds once, when it is predicted, and not again when the server confirms it; a predicted move that is
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
 
-**Your settings** (the gear, bottom left on every screen): sound on or off, the levels, reduce motion.
+**Your settings** (from the menu, bottom left on every screen, and the gear on the score sheet, which opens the same
+slip): sound on or off, the levels, reduce motion. Whoever hosts has the table's own settings at the bottom of theirs:
+text and voice chat, and between rounds the table rules. Nobody else sees them there.
 Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
 bot's spoken "Nertz"), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
 opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
 Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
 storage they last until the page closes.
 
-**Table rules** (lobby and score sheet): set by the host, read-only for everyone else, stored in the room and sent in
+**Table rules** (on the lobby sheet for everyone, read-only but for the host; and at the bottom of the host's settings between rounds): set by the host, stored in the room and sent in
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
 whoever may deal and only between rounds, so a round keeps the rules it was dealt under. An option the server does not
 know is dropped (an older client asking for one changes nothing). `shared/settings.ts` holds the one object and its
@@ -593,7 +595,7 @@ client/   Vite + React
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
-  Settings.tsx  the corner (the menu button, and your settings it leads to), the table rules on the lobby and score sheets, and the small icon buttons the sheets share
+  Settings.tsx  the corner (the menu button, and your settings it leads to, the host's table settings at their foot), the table rules on the lobby sheet, and the small icon buttons the sheets share
   actions.ts    what can be done to the table during a round (pause, the vote to end it, deal again, leave): the one rule for each of whether it is open to you
   Menu.tsx      the menu: mute, those actions, and the way to settings and feedback
   prefs.ts      your settings: sound levels, reduced motion; localStorage
