@@ -9,7 +9,7 @@ import { PLAIN_LOOK, shownBack, type Back, type Look } from '../shared/protocol'
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
-import { LOW, MINI_BELOW, onCanvas, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
+import { LOW, MINI_BELOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 6500 };
@@ -715,8 +715,9 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
   const trayFrom = useRef(Infinity);
   const [landed, setLanded] = useState<number[]>(() => plan.piles.map((p) => (instant ? p.total : 0)));
   const n = plan.piles.length;
-  /** How many piles have been gathered so far; -1 while the cards are still in the wash. */
-  const [done, setDone] = useState(instant ? n : -1);
+  /** How many piles have been gathered so far; -1 while the cards are still in the wash. The last of them is, and the round's winner with it, when the stage says so. */
+  const [gathered, setGathered] = useState(-1);
+  const done = revealed(stage) ? n : gathered;
   // The round's lowest score is gathered first and its best last.
   const delta = (seat: number) => scores.find((s) => s.seat === seat)?.delta ?? 0;
   const turn = useMemo(() => gatherOrder(plan.piles.map((p) => delta(p.seat))), [plan, scores]);
@@ -765,7 +766,7 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
         shown = counts.join();
         setLanded(counts);
       }
-      setDone(t >= end ? n : t < plan.sortAt ? -1 : Math.floor((t - plan.sortAt) / TIMING.sortEach));
+      setGathered(t < plan.sortAt ? -1 : Math.min(n - 1, Math.floor((t - plan.sortAt) / TIMING.sortEach)));
       if (t >= end) return;
       raf = requestAnimationFrame(frame);
     };

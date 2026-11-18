@@ -26,12 +26,15 @@ export type PileKind = 'nertz' | 'work' | 'stock' | 'waste' | 'slot' | 'tray';
  *
  * In full: the centre piles turn face-down where they lie ('flip'); they are spread out over the felt ('spread': from
  * here on they are drawn on the finale's canvas); the finished piles come out of the tray onto the spread cards, as
- * loose, tilted stacks ('out'); those are spread out too ('wash'); everything is sorted into a pile per player ('sort'); the scores ('sheet').
+ * loose, tilted stacks ('out'); those are spread out too ('wash'); everything is sorted into a pile per player ('sort'),
+ * until every pile is gathered and the winner is marked ('won'); the scores ('sheet').
  */
-export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sort' | 'sheet';
-const STAGES: readonly Stage[] = ['live', 'flip', 'spread', 'out', 'wash', 'sort', 'sheet'];
-/** The wash lies spread out and the piles are about to be gathered ('sort'), or have been ('sheet'). On a phone that is when the table is cleared. */
+export type Stage = 'live' | 'flip' | 'spread' | 'out' | 'wash' | 'sort' | 'won' | 'sheet';
+const STAGES: readonly Stage[] = ['live', 'flip', 'spread', 'out', 'wash', 'sort', 'won', 'sheet'];
+/** The wash lies spread out and the piles are about to be gathered ('sort'), or have been ('won', 'sheet'). On a phone that is when the table is cleared. */
 export const sorting = (stage: Stage): boolean => STAGES.indexOf(stage) >= STAGES.indexOf('sort');
+/** Every player's score for the round is out, and who won it. */
+export const revealed = (stage: Stage): boolean => STAGES.indexOf(stage) >= STAGES.indexOf('won');
 
 /**
  * Whether the middle's cards are the finale's canvas's to draw at `stage`, and no longer this layer's: the centre

@@ -511,7 +511,7 @@ describe('table layout', () => {
       };
       // The canvas's clock starts when it is first drawn and is read once a frame, so it runs a little behind the
       // table's stages or ahead of them: a card is on one layer or the other all the same, never on neither or both.
-      const STAGES: Stage[] = ['flip', 'spread', 'out', 'wash', 'sort', 'sheet'];
+      const STAGES: Stage[] = ['flip', 'spread', 'out', 'wash', 'sort', 'won', 'sheet'];
       for (const stage of STAGES) {
         for (const t of [-30, 0, TIMING.spread, trayAt - 30, trayAt, trayAt + 30, 60000]) {
           const { table, canvas } = drawn(stage, t);
