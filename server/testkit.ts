@@ -149,7 +149,7 @@ export class Client {
   send(msg: unknown): void {
     this.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
-  /** Whoever comes to a table watches until they ask for a seat: asks, and waits until they have one or are in the queue for one. */
+  /** Whoever comes to a table with no seat free or a round on watches until they ask for a seat: asks, and waits until they have one or are in the queue for one. */
   async sit(): Promise<void> {
     this.send({ t: 'sit', on: true });
     await vi.waitFor(() => expect(this.last.room.seat !== null || !!this.last.room.players.find((p) => p.id === this.last.room.me)?.queued).toBe(true));

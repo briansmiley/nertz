@@ -120,7 +120,9 @@ describe('Room', () => {
     const { room, conns } = roomWith(2, { deal: rigged([0, 1]) });
     const [a, b] = conns as [FakeConn, FakeConn];
     const got: ServerMsg[] = [];
-    room.join({ send: (m) => void got.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc'); // only watching
+    const cy: Conn = { send: (m) => void got.push(wire(m)), close: () => {} };
+    room.join(cy, 'Cy', 'tok-cccc');
+    room.handle(cy, { t: 'sit', on: false }); // only watching
     const told = (msgs: ServerMsg[], history = false) => msgs.flatMap((m) => (m.t === 'chat' && m.history === history ? m.lines.map(({ id: _, at: __, ...l }) => l) : []));
     vi.useFakeTimers();
     room.handle(a, { t: 'start' });
@@ -168,16 +170,21 @@ describe('Room', () => {
   const sitDown = (room: Room, conn: Conn, id?: number) => room.handle(conn, { t: 'sit', on: true, ...(id === undefined ? {} : { id }) });
   const standUp = (room: Room, conn: Conn, id?: number) => room.handle(conn, { t: 'sit', on: false, ...(id === undefined ? {} : { id }) });
 
-  it('whoever comes to a table watches until they ask for a seat; whoever opens it sits down', () => {
+  it('whoever comes to a table sits down if a seat is free and no round is on, and may stand up to watch; else they watch until they ask for a seat', () => {
     const { room } = roomWith(0, { deal: rigged([0]) });
-    const [a, b, c] = [new FakeConn(), new FakeConn(), new FakeConn()];
+    const [a, b, c, d] = [new FakeConn(), new FakeConn(), new FakeConn(), new FakeConn()];
     room.join(a, 'A', 'tok-aaaa', true); // (as the server does for `create`)
     room.join(b, 'B', 'tok-bbbb');
     room.join(c, 'C', 'tok-cccc');
+    expect(whereAll(room, a)).toEqual(['A@0', 'B@1', 'C@2']);
+    expect(b.last.room).toMatchObject({ me: 1, seat: 1 });
+    standUp(room, b);
+    standUp(room, c);
     expect(whereAll(room, a)).toEqual(['A@0', 'B:w', 'C:w']);
-    expect(b.last.room).toMatchObject({ me: 1, seat: null });
     room.handle(a, { t: 'start' }); // nobody to deal to: those watching are not players
     expect(room.phase).toBe('lobby');
+    room.join(b, 'B', 'tok-bbbb'); // (back by their token they are who they were: still watching)
+    expect(whereAll(room, a)).toEqual(['A@0', 'B:w', 'C:w']);
     sitDown(room, b);
     expect(whereAll(room, a)).toEqual(['A@0', 'B@1', 'C:w']);
     expect(b.last.room).toMatchObject({ me: 1, seat: 1 });
@@ -188,6 +195,9 @@ describe('Room', () => {
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
     room.flush();
     expect(c.last.room.game).not.toBeNull(); // but they see the round
+    room.join(d, 'D', 'tok-dddd'); // come in the middle of a round: to watch, and not in the queue for a seat
+    expect(whereAll(room, a)).toEqual(['A@0', 'B@1', 'C:w', 'D:w']);
+    room.handle(d, { t: 'leave' });
     // Asking while a round is played: in the queue, and seated when it is over. And one can think again.
     sitDown(room, c);
     expect(whereAll(room, a)).toEqual(['A@0', 'B@1', 'C:q']);
@@ -1753,11 +1763,9 @@ describe('server over real sockets', () => {
     expect(bob.last.room).toMatchObject({ code: ann.code, me: 1, seat: 1 });
     await vi.waitFor(() => expect(ann.last.room.players.map((p) => p.name)).toEqual(['Ann', 'Bob']));
 
-    // A refused socket is closed; the same window can still come in on another: to watch, and to a seat by asking.
+    // A refused socket is closed; the same window can still come in on another: to a seat, there being one and no round on.
     lost = await open(ann.code, 'Lost', lost.token, false);
-    await vi.waitFor(() => expect(lost.last?.room).toMatchObject({ me: 2, seat: null }));
-    lost.send({ t: 'sit', on: true });
-    await vi.waitFor(() => expect(lost.last?.room.seat).toBe(2));
+    await vi.waitFor(() => expect(lost.last?.room).toMatchObject({ me: 2, seat: 2 }));
     // A second create from a seated socket moves it to a fresh table of its own.
     lost.send({ t: 'create', name: 'Lost', token: lost.token });
     await vi.waitFor(() => expect(lost.code).not.toBe(ann.code));

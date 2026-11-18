@@ -169,7 +169,7 @@ export function anotherBack(had: Back | undefined, pool: readonly Back[] = Objec
 export type ClientMsg =
   /** Open a new table, and sit down at it; the server picks the code and answers with the first snapshot (`room.code`). */
   | { t: 'create'; name: string; token: string }
-  /** Come into (or reconnect to) an existing table: to watch, until you ask for a seat (`sit`). An unknown code is an error. */
+  /** Come into (or reconnect to) an existing table: to a seat if one is free and no round is being played, and else to watch, until you ask for one (`sit`). An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
   | { t: 'start' }
   /** Dealer only, once the cards are dealt and the table is waiting (`game.status` is `ready`): count "1, 2, 3, Nertz!" and open play. */

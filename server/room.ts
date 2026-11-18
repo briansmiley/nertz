@@ -193,14 +193,15 @@ export class Room {
   }
 
   /**
-   * Brings `conn` into the room, or re-attaches it to the player its token already is. Whoever is new comes in to
-   * watch, and has a seat only by asking for one (`sit`); with `sit`, they ask at once (whoever opens the table).
+   * Brings `conn` into the room, or re-attaches it to the player its token already is. Whoever is new sits down at
+   * once if a seat is free and no round is being played, and otherwise comes in to watch, with a seat only by asking
+   * for one (`sit`); with `sit`, they ask at once whatever the table is doing (whoever opens it).
    * Returns an error message on refusal.
    */
   join(conn: Conn, name: string, token: string, sit = false): string | null {
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
-    // Whoever left is gone for good: back, they are someone new, there to watch. (Only someone away comes back to their seat.)
+    // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
     let player = this.players.find((p) => p.token === token && !gone(p));
     const fresh = !player;
     if (!player) {
@@ -217,7 +218,7 @@ export class Room {
     Object.assign(player, { name, conn, ack: -1 });
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
-    if (sit && fresh) player.queued = ++this.queue;
+    if (fresh && (sit || (!this.roundOn && this.seatFor(player) !== null))) player.queued = ++this.queue;
     this.fill(); // a seat for them if they are waiting for one; cards, if theirs were dealt while they were away
     this.settle();
     this.changed();

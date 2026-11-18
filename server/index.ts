@@ -232,7 +232,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
             target = new Room(freshCode(), { flipMs, deal: options.deal });
           }
-          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create'); // (whoever opens a table sits down at it; whoever comes to one watches until they ask for a seat)
+          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create'); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);
           rooms.set(target.code, target);
           idleSince.delete(target);

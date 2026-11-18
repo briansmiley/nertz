@@ -199,7 +199,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Table management**: the person who opened the table deals. If they are not connected, the first connected player may deal
   instead; the role returns when they are back. A round is dealt only to players who are connected at that moment. Someone
   who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. Whoever comes to a table
-  comes in to watch, and has a seat only by asking for one ("Take a seat"); whoever opens the table sits down at it. A
+  sits down at it if a seat is free and no round is being played, as whoever opens it does; otherwise they come in to
+  watch, and have a seat by asking for one ("Take a seat"). A
   seat asked for is given at once if one is free and no round is being played, and otherwise by the queue, first asked
   first, when the round is over or a seat comes free; whoever asked can think again and just watch, and anyone at the
   table can stand up between rounds. In a round under way, **Stand up** in the menu stands you up for now: you are
