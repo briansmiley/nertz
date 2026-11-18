@@ -213,6 +213,8 @@ export type ClientMsg =
   | { t: 'seat'; seat: number }
   /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
   | ({ t: 'drag' } & DragAt)
+  /** Are you still there? Answered at once with `pong`, at a table or not (see `PING_MS`). */
+  | { t: 'ping' }
   /** Text chat, the host's chat switches, voice presence and WebRTC signalling: see chat.ts. */
   | SocialClientMsg;
 
@@ -225,7 +227,18 @@ export type ServerMsg =
   | { t: 'snipe'; by: number; of: number; slot: number }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
+  /** The answer to `ping`. */
+  | { t: 'pong' }
   | SocialServerMsg;
+
+/**
+ * A window that has heard nothing from the server for this long asks whether it is still there. A line can die without the window being told (the
+ * network drops while the server gives up on the socket, or a phone moves from wifi to cellular): the socket looks open
+ * and nothing ever comes down it. So a window that has heard nothing at all for `SILENT_MS` takes its line for dead and
+ * reconnects, as it does when a socket says it has closed.
+ */
+export const PING_MS = 5_000;
+export const SILENT_MS = 12_000;
 
 /**
  * The close code of a connection the server is done with for good: refused a table, its seat opened in another tab, or
@@ -434,6 +447,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'debugBotOut' };
     case 'redeal':
       return { t: 'redeal' };
+    case 'ping':
+      return { t: 'ping' };
     case 'ready':
       return typeof v.on === 'boolean' ? { t: 'ready', on: v.on } : null;
     case 'sit':

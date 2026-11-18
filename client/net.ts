@@ -11,7 +11,7 @@ import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, isRoomCode, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, isRoomCode, PING_MS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { BotLevel, Intent, RoomView } from '../shared/types';
 
@@ -89,6 +89,11 @@ let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
 let attempts = 0;
 let retry: ReturnType<typeof setTimeout> | undefined;
+/** When this window's socket last heard anything from the server (or was opened): see `SILENT_MS`. */
+let heard = 0;
+let watch: ReturnType<typeof setInterval> | undefined;
+/** How long a window that has just come back (online again, or to the front) gives the server to answer before it reconnects. */
+const PROBE_MS = 3_000;
 let memoryToken: string | undefined;
 
 function set(next: Partial<NetState>): void {
@@ -183,6 +188,7 @@ export function resume(): void {
 /** The one way out of a session: leaving, sent away, replaced, refused. */
 function stop(error: string | null): void {
   clearTimeout(retry);
+  clearInterval(watch);
   session = null;
   keep(null);
   const old = socket;
@@ -210,7 +216,8 @@ async function renew(): Promise<void> {
     // offline: next time
   }
 }
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void renew());
+// Back in front: at a table, is the line still up (`probe`)? At none, is this still the page the server serves?
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && (probe(), void renew()));
 
 const social = (msg: SocialServerMsg): void => {
   for (const fn of socialListeners) fn(msg);
@@ -238,12 +245,14 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
   social,
   signal: social,
   outOfVoice: social,
+  pong: () => {},
 };
 
 function connect(): void {
   if (!session) return;
   const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
   socket = ws;
+  heard = Date.now();
   sync = freshSync; // seq, pending and rev all belong to the connection
   ws.onopen = () => {
     if (socket === ws && session) {
@@ -254,6 +263,7 @@ function connect(): void {
   };
   ws.onmessage = (e) => {
     if (socket !== ws) return;
+    heard = Date.now();
     let msg: ServerMsg;
     try {
       msg = JSON.parse(String(e.data)) as ServerMsg;
@@ -264,15 +274,60 @@ function connect(): void {
   };
   ws.onclose = (e) => {
     if (socket !== ws) return;
-    socket = null;
     if (e.code === CLOSE_OVER) return stop(e.reason);
-    // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
-    sync = { ...sync, pending: [] };
-    const room = sync.server ?? state.room;
-    set({ status: 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
-    retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempts++));
+    dropped();
   };
 }
+
+/**
+ * The line is down: the socket said it closed, or it has gone silent (`SILENT_MS`), which is all a window is told of a
+ * line that died while it was off the network. Either way the socket is done with, and the window reconnects; its seat
+ * is waiting for it.
+ */
+function dropped(): void {
+  const old = socket;
+  socket = null;
+  if (old) {
+    old.onopen = old.onmessage = old.onclose = null; // (a silent socket may say it closed much later, or never)
+    old.close();
+  }
+  // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
+  sync = { ...sync, pending: [] };
+  const room = sync.server ?? state.room;
+  set({ status: 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
+  clearTimeout(retry);
+  retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempts++));
+}
+
+/**
+ * Every `PING_MS` while there is a session: a line silent for `SILENT_MS` is dropped. Anything the server sends says the
+ * line is up, so only one that has been quiet since the last look is asked to answer: during play it never is.
+ */
+function check(): void {
+  if (!session || !socket) return; // (no socket: a reconnect is on its way)
+  const quiet = Date.now() - heard;
+  if (quiet > SILENT_MS) return dropped();
+  if (quiet >= PING_MS) post({ t: 'ping' });
+}
+
+/**
+ * The window is back on the network, or back in front: its socket may have died meanwhile without a word. An open one
+ * has `PROBE_MS` to answer a ping; with none, a reconnect waiting out its backoff goes now.
+ */
+function probe(): void {
+  if (!session) return;
+  if (!socket) {
+    clearTimeout(retry);
+    attempts = 0;
+    return connect();
+  }
+  if (socket.readyState !== WebSocket.OPEN) return; // (still connecting: `check` sees to it)
+  const ws = socket;
+  const asked = Date.now();
+  post({ t: 'ping' });
+  setTimeout(() => socket === ws && heard < asked && dropped(), PROBE_MS);
+}
+if (typeof window !== 'undefined') window.addEventListener('online', probe);
 
 function open(room: string | null, name: string): void {
   if (session) stop(null);
@@ -280,6 +335,7 @@ function open(room: string | null, name: string): void {
   attempts = 0;
   set({ status: 'connecting', error: null });
   connect();
+  watch = setInterval(check, PING_MS);
 }
 
 /** Opens a new table. The server picks its code; it arrives as `room.code` in the first snapshot. */

@@ -219,8 +219,10 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       allowance = Math.min(rate * RATE_BURST_SECONDS, allowance + ((now - refilled) / 1000) * rate) - 1;
       refilled = now;
       if (allowance < 0) return ws.close(CLOSE_FLOOD, 'Too many messages'); // the client reconnects and resumes its seat
+      alive.add(ws); // (anything it sends says it is there, as a pong does)
       guard('a message', () => {
         const msg = isBinary ? null : parseClientMsg(data.toString());
+        if (msg?.t === 'ping') return send({ t: 'pong' });
         if (!msg) return room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
         if (msg.t === 'create' || msg.t === 'join') {
           if (!(msg.t === 'join' && room?.code === msg.room)) moveOn(); // a repeated join to the same table just re-seats
