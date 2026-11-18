@@ -1102,12 +1102,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       <div className="paused-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
         <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
-        {canResume(room) ? (
+        {canResume(room) && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
-            Carry on <small>P</small>
+            Unpause <small>P</small>
           </button>
-        ) : (
-          <p className="wait">Waiting for them to carry on.</p>
         )}
       </div>
     )}

@@ -537,6 +537,13 @@ export function endVote(state: GameState, people: Iterable<number>): { voters: n
 /** Does `p` play at the table, as a room view lists them: has a seat, and is not up from the cards at it (`PlayerView.left`)? */
 export const plays = (p: PlayerView): boolean => p.seat !== null && !p.left;
 
+/**
+ * Is whoever plays as `seat` in the round `state`: dealt into it, and not up from their cards? `seat` is the one they
+ * play as, null (or -1) for anyone at no cards: the room view's `seat`, the server's `at`. Who is in the round may pause
+ * it, and unpause it.
+ */
+export const inRound = (state: GameState, seat: number | null): boolean => seat !== null && state.players.some((p) => p.seat === seat);
+
 /** Has `p` a say in the round's votes: plays, and is here and not standing (a bot too: see `seatedPeople`). */
 export const hasSay = (p: PlayerView): boolean => plays(p) && p.connected && !p.standing;
 
