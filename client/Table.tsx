@@ -16,7 +16,7 @@ import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
-import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Stage } from './layout';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
@@ -851,6 +851,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** An Ace is in hand. */
   const placing = held?.k === 'card' && held.ace;
 
+  /** How many cards a hand's nertz pile has, on the pile (`Seat.count`), kept inside the window. */
+  const count = (s: Seat) => {
+    const r = s.count.d / 2 + 2;
+    return (
+      <b className="count" style={{ left: clamp(s.count.x, r, W - r), top: clamp(s.count.y, r, H - r), '--d': `${s.count.d}px` } as CSSProperties}>
+        {s.nertzCount}
+      </b>
+    );
+  };
+
   return (
     <>
     <div
@@ -902,11 +912,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
               <div key={i} className="slot" style={box(r)} />
             ))}
-            {!dealing && st && (
-              <b className="count" style={{ left: Math.min(o.nertz.x + o.nertz.w - 9, W - 24), top: o.nertz.y + o.nertz.h - 6 }}>
-                {o.nertzCount}
-              </b>
-            )}
+            {!dealing && st && count(o)}
           </div>
         );
       })}
@@ -941,17 +947,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             </svg>
           </div>
           <div className="slot" style={box(me.waste)} />
-          {/* Upright, your line stands between the nertz pile and the stock, and the pile wears its count as everyone else's does. */}
-          {(L.tall || L.low) && !dealing && me.nertzCount > 0 && (
-            <b className="count" style={{ left: me.nertz.x + me.nertz.w - 14, top: me.nertz.y + me.nertz.h - 14 }}>
-              {me.nertzCount}
-            </b>
-          )}
+          {/* Your pile wears its count as everyone else's does. (None left: the call stands there instead.) */}
+          {!dealing && me.nertzCount > 0 && count(me)}
 
-          <div className="mine" style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + 2 } : { right: W - (me.nertz.x + me.nertz.w), top: me.nertz.y + oh + 14 }}>
-            <span className="left" style={{ visibility: me.nertzCount && !dealing ? 'visible' : 'hidden' }}>
-              <b>{me.nertzCount}</b> in your nertz pile
-            </span>
+          <div className="mine" style={L.tall ? { left: between.x, width: between.w, top: me.nertz.y + 2 } : { right: W - (me.nertz.x + me.nertz.w), top: me.count.y + me.count.d / 2 + 4 }}>
             <span className="who">
               <i className="chip" style={{ background: backColour(you) }} />
               {name(you)} <b>{points(total(you))}</b>

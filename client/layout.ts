@@ -116,6 +116,12 @@ export interface Seat {
   /** A neighbour's hand runs down the side of the window, turned to face the felt: 90 on your left, -90 on your right. */
   turn: 0 | 90 | -90;
   nertzCount: number;
+  /**
+   * The badge that says so: a disc `d` across, centred here. It sits just out from the bottom right corner of the
+   * pile's top card as the card lies in its hand (never so far that it would reach the first work pile), turned with
+   * the hand if that is turned, and is larger on a larger card.
+   */
+  count: Pt & { d: number };
 }
 
 export interface Layout {
@@ -310,6 +316,9 @@ export function fanOut(show: readonly number[], fan: number, min: number, room: 
   return [0, ...steps.map((s) => (y += s))];
 }
 
+/** The count of a nertz pile is centred this share of its own width out from the corner of the card, both ways: most of it is off the card. */
+const COUNT_OUT = 0.2;
+
 function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const s = h.w / CARD_W;
   const ch = h.w * RATIO;
@@ -324,6 +333,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const lean = 0.55 * s;
   const nx = h.rows ? h.rows.nertzX : h.x;
   const ny = h.rows ? h.rows.y : h.y; // the row the nertz pile, the stock and the waste lie on
+  const d = Math.round(clamp(Math.min(13 + 0.27 * h.w, 0.9 * h.w), 15, 36)); // the count on it: never as wide as a small card
   p.nertz.forEach((c, i) => put(c, nx, ny + (p.nertz.length - 1 - i) * lean, i, 'nertz'));
 
   // Work piles fan downwards; the face-down cards at the bottom of the pile take a narrower strip each.
@@ -392,6 +402,10 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     flip: !!h.flip,
     turn: 0,
     nertzCount: p.nertz.length,
+    // The count, at the bottom right of the card as it lies here. Seen from across the table that is the pile's outer
+    // corner, with nothing beside it; otherwise the first work pile is, and the count keeps short of it. (In two rows
+    // the pile stands at the foot of the window, with no room under it: the count goes further out sideways instead.)
+    count: { x: mx(nx) + h.w + (h.rows ? 2 * COUNT_OUT * d : h.flip ? COUNT_OUT * d : Math.min(COUNT_OUT * d, h.wide - d / 2 - 2)), y: ny + ch + COUNT_OUT * d, d },
   };
 }
 
@@ -428,6 +442,7 @@ function turnHand(seat: Seat, cards: Placed[], turn: 90 | -90, ox: number, oy: n
     waste: card(seat.waste),
     box: { x: ox, y: oy, w: deep, h: span },
     turn,
+    count: { ...seat.count, ...at(seat.count.x, seat.count.y) },
   };
 }
 
