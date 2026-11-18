@@ -61,6 +61,8 @@ export const CARD_BACKS = {
   'penrose-triangle': 'Penrose',
   blocks: 'Blocks',
   fans: 'Fans',
+  tripods: 'Tripods',
+  paisley: 'Paisley',
   waves: 'Waves',
   flow: 'Flow',
   life: 'Life',
@@ -111,8 +113,8 @@ export const CARD_BACKS = {
 export type Back = keyof typeof CARD_BACKS;
 /** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
 export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
-  { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life'] },
-  { name: 'Tilings', backs: ['check', 'diamonds', 'herringbone', 'honeycomb', 'starcross', 'houndstooth', 'shards', 'pinwheel', 'mosaic', 'flowers', 'voronoi', 'mondrian', 'penrose', 'hat-lines', 'hat-two', 'hat', 'bathroom', 'blocks', 'fans'] },
+  { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life', 'paisley'] },
+  { name: 'Tilings', backs: ['check', 'diamonds', 'herringbone', 'honeycomb', 'starcross', 'houndstooth', 'shards', 'pinwheel', 'mosaic', 'flowers', 'voronoi', 'mondrian', 'penrose', 'hat-lines', 'hat-two', 'hat', 'bathroom', 'blocks', 'fans', 'tripods'] },
   { name: 'Maths', backs: ['hilbert', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'life', 'pulsar', 'penrose-triangle'] },
   { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'clover', 'clover-2', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia'] },
   { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'stars', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
