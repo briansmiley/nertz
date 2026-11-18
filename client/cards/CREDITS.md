@@ -34,7 +34,7 @@ white-on-nothing pattern that is printed in each player's colour.
 - `fleur` (drawn in `backArt.ts`) uses the outline of "Fleur de lis flat.svg" (Wikimedia Commons, BrazilianInBattleofVerdun, CC0), and
   `giglio` that of "Fleur de lis of Florence.svg" (Wikimedia Commons, F l a n k e r, public domain).
 - `arbor` (drawn in `backArt.ts`) is the logo of Arbor, the owner's own organisation, redrawn from its file.
-- `acanthus`, `daisy`, `tulip`, `fronds`, `oak`, `waterlily`, `lilypads`, `maple`, the `dandelion-` backs, `thistle`, `clover`, `clover-2`, `lily`, `rose`, `iris`, `sunflower`, `poppies`, `sequoia`, `fern`, `ginkgo`, `ginkgo-ring`, `ginkgo-scatter`, `tarot-star` and `tarot-eye` (and the tarot pair's one-colour `-tint` prints) are pictures the owner made in Midjourney.
+- `acanthus`, `daisy`, `tulip`, `fronds`, `oak`, `waterlily`, `lilypads`, `maple`, the `dandelion-` backs, `thistle`, `clover`, `clover-2`, `lily`, `rose`, `iris`, `sunflower`, `poppies`, `sequoia`, `birch`, `fern`, `ginkgo`, `ginkgo-ring`, `ginkgo-scatter`, `tarot-star` and `tarot-eye` (and the tarot pair's one-colour `-tint` prints) are pictures the owner made in Midjourney.
 - `lightcone` (drawn in `backArt.ts`) is the logo of Lightcone Infrastructure, taken from the owner's own copy of its
   file. It is their mark, not this project's: the owner's choice to include; check with them before it is deployed publicly.
 - `hat` (the aperiodic "einstein" tiling, drawn in `backArt.ts`) is built by the method of Craig S. Kaplan's hatviz,
