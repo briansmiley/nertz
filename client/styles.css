@@ -4696,7 +4696,7 @@ svg.host {
   overflow: visible;
 }
 
-/* The dealer button: a white puck with a D, its edge showing under it. */
+/* The host's mark: a white puck with an H, its edge showing under it. */
 svg.host circle {
   fill: var(--card);
   stroke: var(--ink);
