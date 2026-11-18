@@ -37,7 +37,7 @@ export function fittingsOf(room: RoomView | null | undefined, social: Parameters
     clock: !!room.clock && room.phase !== 'lobby',
     seats: table,
     vote: !!ballot(room)?.pressing,
-    name: me ? nameWidth(me.name, String(me.score)) : 0,
+    name: me ? nameWidth(me.name, String(me.score), me.calls) : 0,
   };
 }
 

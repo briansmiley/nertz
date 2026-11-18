@@ -469,6 +469,30 @@ button {
   color: var(--marigold);
 }
 
+/* After a running total: how many of its rounds they called, by a small Nertz! mark. */
+.calls {
+  display: inline-flex;
+  align-items: baseline;
+  flex: none;
+  font: 700 15px/1 var(--num);
+  font-style: normal;
+  color: var(--chalk);
+}
+
+.calls::before {
+  content: '!';
+  margin-right: 2px;
+  font: 400 1.05em/1 var(--display);
+  color: var(--marigold);
+  -webkit-text-stroke: 0.08em var(--ink);
+  paint-order: stroke fill;
+  rotate: -8deg;
+}
+
+.tag .calls {
+  margin-left: -2px;
+}
+
 .tag .flag {
   margin-left: auto;
   padding: 2px 7px 3px;
@@ -501,7 +525,8 @@ button {
 }
 
 .tag.away .name,
-.tag.away .pts {
+.tag.away .pts,
+.tag.away .calls {
   opacity: 0.45;
 }
 
@@ -605,10 +630,23 @@ button {
   color: var(--chalk);
 }
 
+/* Your colour, name, total and calls: where the line is short, the name is what gives way. */
 .mine .who {
+  display: flex;
+  align-items: baseline;
   line-height: 20px;
   color: var(--chalk);
   font-weight: 600;
+}
+
+.mine .who .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mine .who > :not(.nm) {
+  flex: none;
 }
 
 /* In full: two lines, your name and the table under it. */
@@ -623,12 +661,18 @@ button {
 }
 
 .mine .who .chip {
+  align-self: center;
   margin-right: 6px;
 }
 
 .mine .who b {
-  margin-left: 4px;
+  margin-left: 8px;
   color: var(--marigold);
+}
+
+.mine .who .calls {
+  margin-left: 6px;
+  font-size: 16px;
 }
 
 .mine .where {
@@ -2041,6 +2085,12 @@ button {
   color: var(--ink-soft);
 }
 
+.scores td.total .calls {
+  margin-right: 0.7em;
+  font-size: 1em;
+  color: var(--ink-soft);
+}
+
 /* After a total that is the sum of fewer rounds than the table has played: how many, in brackets. */
 .scores td.total small {
   position: absolute;
@@ -2967,6 +3017,10 @@ label.check {
 
 .table.tall .tag .pts {
   font-size: 15px;
+}
+
+.table.tall .tag .calls {
+  font-size: 13px;
 }
 
 /* The buttons are in the bar across the top (the bottom of the screen is your hand): their slips hang under it, and

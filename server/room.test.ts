@@ -940,9 +940,9 @@ describe('Room', () => {
     expect(a.last.room.lastRound).toEqual({
       end: { by: 'nertz', seat: 1 },
       scores: [
-        { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, delta: -25, total: -25, look: PLAIN_LOOK },
-        { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, look: PLAIN_LOOK }, // no bonus for going out
-        { seat: 2, id: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, delta: -26, total: -26, look: PLAIN_LOOK },
+        { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, calls: 0, delta: -25, total: -25, look: PLAIN_LOOK },
+        { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, calls: 1, delta: 2, total: 2, look: PLAIN_LOOK }, // no bonus for going out
+        { seat: 2, id: 2, name: 'P2', played: 0, nertzLeft: 13, rounds: 1, calls: 0, delta: -26, total: -26, look: PLAIN_LOOK },
       ],
     });
     expect(a.last.room.players.map((p) => p.score)).toEqual([-25, 2, -26]);
@@ -969,6 +969,37 @@ describe('Room', () => {
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     expect(room.game!.slots).toHaveLength(12);
     expect(checkInvariants(room.game!)).toBeNull();
+  });
+
+  it("counts the rounds each player ended by calling Nertz, beside their total: the caller's alone goes up, a round ended without a call adds to nobody's, and starting over clears it", () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2, { deal: rigged([1]) });
+    const [a, b] = conns as [FakeConn, FakeConn];
+    const calls = () => (room.flush(), a.last.room.players.map((p) => [p.name, p.calls]));
+    expect(calls()).toEqual([['P0', 0], ['P1', 0]]);
+    startRound(room, a);
+    sendIntent(room, b, 0, { k: 'nertz' });
+    expect(room.lastRound!.scores.map((s) => [s.name, s.calls])).toEqual([['P0', 0], ['P1', 1]]);
+    expect(calls()).toEqual([['P0', 0], ['P1', 1]]);
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    sendIntent(room, b, 1, { k: 'end', on: true });
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    expect(room.lastRound!.scores.map((s) => s.calls)).toEqual([0, 1]);
+    // Away and back by the same token, they are who they were: their count with them, as their score is.
+    room.disconnect(b);
+    const b2 = new FakeConn();
+    room.join(b2, 'P1', 'tok-0001');
+    expect(calls()).toEqual([['P0', 0], ['P1', 1]]);
+    startRound(room, a);
+    sendIntent(room, b2, 0, { k: 'nertz' });
+    expect(room.lastRound!.scores.map((s) => [s.calls, s.rounds])).toEqual([[0, 3], [2, 3]]);
+    // Gone from the table, the count stays in their line of the round.
+    room.handle(b2, { t: 'leave' });
+    room.flush();
+    expect(a.last.room.lastRound!.scores.find((s) => s.name === 'P1')).toMatchObject({ calls: 2, total: room.lastRound!.scores[1]!.total });
+    room.handle(a, { t: 'reset' });
+    expect(calls()).toEqual([['P0', 0]]);
   });
 
   it('counts cleared piles in the tray, only lets the player who placed the King clear, and lets them do nothing else first', () => {
@@ -1007,8 +1038,8 @@ describe('Room', () => {
     sendIntent(room, a, 12, { k: 'nertz' });
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
-      { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, delta: 2, total: 2, look: PLAIN_LOOK },
-      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game!.players[1]!.nertz.length, rounds: 1, delta: 12 - 2 * room.game!.players[1]!.nertz.length, total: 12 - 2 * room.game!.players[1]!.nertz.length, look: PLAIN_LOOK },
+      { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, calls: 1, delta: 2, total: 2, look: PLAIN_LOOK },
+      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game!.players[1]!.nertz.length, rounds: 1, calls: 0, delta: 12 - 2 * room.game!.players[1]!.nertz.length, total: 12 - 2 * room.game!.players[1]!.nertz.length, look: PLAIN_LOOK },
     ]);
     expect(a.last.room.game!.tray).toHaveLength(1); // still there for the end-of-round sequence
     expect(checkInvariants(room.game!)).toBeNull();

@@ -15,7 +15,7 @@ import { Corner, Pop, Robot, TableRules } from './Settings';
 import { Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
-import { Table } from './Table';
+import { Calls, Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the form. What makes a reload sit back down is
 // the window's own session, kept by client/net.ts.
@@ -680,9 +680,10 @@ function Results({ room }: { room: RoomView }) {
   const tally = new Map<number, number>();
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
   const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
-  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
-  const total = (score: number, rounds: number) => (
+  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). And before it, how many of those they called. */
+  const total = (score: number, rounds: number, calls: number) => (
     <td className="total">
+      <Calls n={calls} />
       {score < 0 ? `−${-score}` : score}
       {rounds > 0 && rounds < room.round && <small title={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
@@ -736,7 +737,7 @@ function Results({ room }: { room: RoomView }) {
                   )}
                 </td>
                 <td className="round">{signed(s.delta)}</td>
-                {total(s.total, s.rounds)}
+                {total(s.total, s.rounds, s.calls)}
               </tr>
               );
             })}
@@ -755,7 +756,7 @@ function Results({ room }: { room: RoomView }) {
                   <td colSpan={3} className="note">
                     In next round
                   </td>
-                  {total(p.score, p.rounds)}
+                  {total(p.score, p.rounds, p.calls)}
                 </tr>
               ))}
           </tbody>

@@ -121,7 +121,7 @@ describe('text chat', () => {
 });
 
 describe('how a round went', () => {
-  const line = (id: number, seat: number, delta: number, gone = false): RoundLine => ({ id, seat, name: `P${id}`, played: delta, nertzLeft: 0, delta, total: delta, rounds: 1, ...(gone ? { gone } : {}) });
+  const line = (id: number, seat: number, delta: number, gone = false): RoundLine => ({ id, seat, name: `P${id}`, played: delta, nertzLeft: 0, delta, total: delta, rounds: 1, calls: 0, ...(gone ? { gone } : {}) });
 
   it('names who called, and who scored most in it: all of them on a tie, and not one the score sheet no longer shows', () => {
     expect(roundOver(4, { end: { by: 'nertz', seat: 1 }, scores: [line(0, 0, 9), line(1, 1, 5), line(2, 2, 9), line(3, 3, 12, true)] })).toEqual({
