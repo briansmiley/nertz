@@ -2024,22 +2024,15 @@ button {
 }
 
 /* A back of the fan, pressed, turns over about its own middle. */
-/* It is its own layer from the start, so a turn beginning does not repaint it (the flash at a press). */
 .spread .turn {
   position: absolute;
   inset: 0;
-  will-change: transform;
-}
-
-/* The turn swaps backs edge-on, so no back side is ever shown; hidden, Safari can drop it for a frame as it starts. */
-.spread .back {
-  backface-visibility: visible;
-  -webkit-backface-visibility: visible;
 }
 
 .spread .mini:has(.turn) {
   perspective: 500px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent; /* a phone's own grey mark over whatever is tapped: the dark flash at a press */
 }
 
 @keyframes deal {
