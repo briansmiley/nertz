@@ -11,7 +11,7 @@ import { go, ready } from './net';
 
 /** How long the word stays up once play is open. It lets every click through. */
 const WORD_MS = 650;
-/** How long a warned Start waits for the second press before it is forgotten. */
+/** How long a warned Start waits for a second press, or for the last of those not ready to say ready, before it is forgotten. */
 const WARN_MS = 5000;
 /** How soon after the warning a press is still the same one (a double click, a held key): too soon to have read it. */
 const SAME_PRESS_MS = 400;
