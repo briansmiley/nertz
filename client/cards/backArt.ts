@@ -1622,7 +1622,39 @@ function paisley(small: boolean): string {
   );
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, fans, tripods, paisley, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
+/**
+ * Sashiko, the running stitch of Japanese mending, here in stepped diamonds. On a grid of squares, a motif is the edge
+ * of every square within `k` steps of one square, for a few `k`s one inside the next, the smallest the square alone;
+ * the motifs are set corner to corner. Each side of a square along an edge is one stitch, with a gap at either end of
+ * it. A small card has one diamond round the square, larger.
+ */
+function sashiko(small: boolean): string {
+  const [rings, apart, u] = small ? [[0, 2], 4, 5] : [[0, 2, 4], 6, 3.5]; // the diamonds; from one motif to the next across a row, in squares; a square's side
+  const gap = u * 0.16; // cut from either end of a stitch
+  const [cx, cy] = [F.x + F.w / 2, F.y + F.h / 2];
+  let d = '';
+  for (let i = -Math.ceil(F.w / 2 / (apart * u)) - 1; i * apart * u < F.w / 2 + apart * u; i++) {
+    for (let j = -Math.ceil(F.h / 2 / (apart * u)) - 1; j * apart * u < F.h / 2 + apart * u; j++) {
+      if ((i + j) % 2) continue; // every other place, so that the motifs are corner to corner
+      for (const k of rings) {
+        // The squares k steps out, and of each the sides facing further out.
+        for (let x = -k; x <= k; x++) {
+          for (const y of x === -k || x === k ? [0] : [k - Math.abs(x), Math.abs(x) - k]) {
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+              if (Math.abs(x + dx) + Math.abs(y + dy) <= k) continue;
+              const [mx, my] = [cx + (i * apart + x + dx / 2) * u, cy + (j * apart + y + dy / 2) * u]; // the middle of the side
+              const [hx, hy] = [dy * (u / 2 - gap), dx * (u / 2 - gap)];
+              d += `M${n(mx - hx)} ${n(my - hy)}L${n(mx + hx)} ${n(my + hy)}`;
+            }
+          }
+        }
+      }
+    }
+  }
+  return frame(clipped(`<path d="${d}" stroke-width="${small ? 1.8 : 1.1}"/>`), 1, small);
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, fans, tripods, paisley, sashiko, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
