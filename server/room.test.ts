@@ -538,7 +538,33 @@ describe('Room', () => {
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1']);
   });
 
-  it('a round nobody plays any more is over; and one paused by someone who then got up from it is anyone\'s to carry on', () => {
+  // SMI-86: whoever paused left, and the window of someone in the queue offered to unpause, which the server ignored.
+  it('paused: anyone in the round unpauses it, and whoever deals, even watching; nobody else, and nobody but those in it pauses', () => {
+    const { room, conns } = roomWith(3);
+    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
+    const paused = () => (room.flush(), c.last.room.paused);
+    standUp(room, a); // whoever deals watches this round
+    startRound(room, a);
+    const w = new FakeConn();
+    room.join(w, 'W', 'tok-wwww', true); // in the queue: the round is on
+    room.handle(a, { t: 'pause', on: true });
+    room.handle(w, { t: 'pause', on: true });
+    expect(paused()).toBeNull();
+
+    room.handle(b, { t: 'pause', on: true });
+    room.handle(b, { t: 'leave' }); // and goes, for good
+    expect(paused()).toEqual({ by: 1 });
+    room.handle(w, { t: 'pause', on: false });
+    expect(paused()).toEqual({ by: 1 });
+    room.handle(c, { t: 'pause', on: false });
+    expect(paused()).toBeNull();
+
+    room.handle(c, { t: 'pause', on: true });
+    room.handle(a, { t: 'pause', on: false });
+    expect(paused()).toBeNull();
+  });
+
+  it('a round nobody plays any more is over; and one paused by someone who then got up from it is anyone\'s to unpause', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
     const paused = () => (room.flush(), c.last.room.paused);

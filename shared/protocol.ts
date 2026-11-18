@@ -188,7 +188,7 @@ export type ClientMsg =
   | { t: 'debugBotOut' }
   /** Whoever deals, during a round: deal it over. Nothing of it is scored, and everyone who is at the table now is dealt in. */
   | { t: 'redeal' }
-  /** Pause the round for everyone (on), or carry on (off). */
+  /** Pause the round for everyone (on), or unpause it (off). */
   | { t: 'pause'; on: boolean }
   /** How my cards look: everyone sees the cards of my deck drawn that way. Every part of it is said, every time. */
   | { t: 'deck'; look: Look }

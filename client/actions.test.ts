@@ -39,14 +39,20 @@ describe("the table's actions", () => {
     expect(ballot(room)).toBeNull();
   });
 
-  it('paused: whoever paused, or whoever deals, carries on; the others wait, unless whoever paused is away', () => {
+  it('paused: anyone in the round unpauses it, and whoever deals, watching or not; someone else watching cannot', () => {
     const paused = (you: number) => roomOf(live, you, { paused: { by: 1 } });
     expect(ids(paused(1))).toEqual(['resume', 'vote', 'stand', 'leave']);
     expect(ids(paused(0))).toEqual(['resume', 'vote', 'redeal', 'stand', 'leave']);
-    expect(ids(paused(2))).toEqual(['vote', 'stand', 'leave']);
-    expect(canResume(withPlayer(paused(2), 1, { standing: true }))).toBe(true);
-    expect(canResume(withPlayer(paused(2), 1, { connected: false }))).toBe(true);
-    expect(canResume(roomOf(live, 1))).toBe(false);
+    expect(ids(paused(2))).toEqual(['resume', 'vote', 'stand', 'leave']);
+    expect(canResume(roomOf(live, 1))).toBe(false); // (not paused)
+    // SMI-86: in the queue while whoever paused it had gone, the window offered to unpause it; the server ignored it.
+    const watching = (isHost: boolean): RoomView => {
+      const base = paused(1);
+      const me: PlayerView = { ...base.players[1]!, id: 9, seat: null, name: 'w', isHost, queued: true };
+      return { ...withPlayer(base, 1, { connected: false, left: true }), me: 9, seat: null, players: [...base.players, me] };
+    };
+    expect(canResume(watching(false))).toBe(false);
+    expect(canResume(watching(true))).toBe(true);
   });
 
   it('none between rounds: the lobby and the score sheet carry their own', () => {

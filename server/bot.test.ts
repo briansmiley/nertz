@@ -455,7 +455,7 @@ describe('Room with bots', () => {
     });
   }, FUZZ_MS);
 
-  it('a pause stops the bots and every move until whoever paused (or the dealer) carries on', () => {
+  it('a pause stops the bots and every move until it is unpaused', () => {
     vi.useFakeTimers();
     const { room, host } = hosted(5);
     const guest = new FakeConn();
@@ -471,7 +471,7 @@ describe('Room with bots', () => {
     room.handle(host, { t: 'intent', seq: 1, intent: { k: 'flip' } });
     expect(JSON.stringify(room.game)).toBe(frozen); // no bot moved, and nobody can
     room.handle(host, { t: 'pause', on: true }); // already paused: nothing changes
-    room.handle(host, { t: 'pause', on: false }); // the dealer may carry on
+    room.handle(host, { t: 'pause', on: false }); // anyone in the round may unpause it
     room.flush();
     expect(guest.last.room.paused).toBeNull();
     vi.advanceTimersByTime(10_000);
