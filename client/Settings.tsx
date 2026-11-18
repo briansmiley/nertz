@@ -1,22 +1,26 @@
 // Settings. Two kinds, kept apart:
-// - `Corner`: your own (sound, motion), on every screen, bottom left: a
-//   one-click mute button (also a key of your choosing, M at first) and a gear
-//   that opens a small slip.
+// - `Corner`: on every screen, bottom left, one button (☰) and the menu it opens
+//   (Menu.tsx): sound on or off (also a key of your choosing, M at first), what
+//   can be done to the table during a round (actions.ts), and from there your
+//   settings (sound, motion) and feedback. While the sound is off, a small badge
+//   in the chat bar (Chat.tsx) says so, and turns it back on.
 // - `TableRules`: the table's house rules, in the lobby and behind a gear on the
 //   score sheet. The host changes them; everyone else reads them.
-// Also the small icon buttons the sheets share (`Pop`, `Gear`, `Robot`, `Eye`, `Door`).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { endVote, isLive, seatedPeople } from '../shared/engine';
 import type { TableSettings } from '../shared/settings';
 import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { pause, redeal, send, setSeats, setTableSettings } from './net';
+import { pause, setSeats, setTableSettings } from './net';
+import { canPause, canResume, tableActions } from './actions';
+import { Back, Menu, type Panel } from './Menu';
+import { MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
-import { Feedback } from './Feedback';
-import { SaidWord, Slash, useHotkey } from './hotkey';
+import { FeedbackSlip } from './Feedback';
+import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyName, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Is this key press going into a text field (a name, a table code)? */
@@ -24,26 +28,6 @@ const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElem
 
 /** Each hotkey as the settings list it. */
 const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic' };
-
-function Speaker({ off }: { off: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" fill="currentColor" stroke="none" />
-      <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />
-      <Slash on={off} />
-    </svg>
-  );
-}
-
-export function Gear() {
-  const teeth = Array.from({ length: 8 }, (_, i) => <rect key={i} x="10.6" y="2.6" width="2.8" height="4.4" rx="0.9" transform={`rotate(${i * 45} 12 12)`} fill="currentColor" stroke="none" />);
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      {teeth}
-      <circle cx="12" cy="12" r="5.1" strokeWidth="3" />
-    </svg>
-  );
-}
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
@@ -83,23 +67,6 @@ export function Robot({ plain }: { plain?: boolean } = {}) {
 }
 
 /** An eye: standing up from the table to watch. */
-export function Eye() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
-      <circle cx="12" cy="12" r="2.8" />
-    </svg>
-  );
-}
-
-export function Door() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M13 4.5h5.5v15H13" />
-      <path d="M14.5 12H4.5M8 8.5 4.5 12 8 15.5" />
-    </svg>
-  );
-}
 
 /**
  * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away.
@@ -141,28 +108,6 @@ function Specs({ on, disabled, what, onChange }: { on: boolean; disabled: boolea
       <Glasses />
     </button>
   );
-}
-
-function PauseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="6.5" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none" />
-      <rect x="13.9" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** Can you pause the round right now? While it is live, if you were dealt in. */
-export function canPause(room: RoomView | null | undefined): boolean {
-  const g = room?.game;
-  return !!room && !room.paused && !!g && isLive(g) && g.players.some((p) => p.seat === room.seat);
-}
-
-/** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
-export function canResume(room: RoomView): boolean {
-  if (!room.paused) return false;
-  const by = room.players.find((p) => p.id === room.paused!.by);
-  return room.paused.by === room.me || !!room.players.find((p) => p.id === room.me)?.isHost || !by?.connected;
 }
 
 const percent = (v: number) => `${Math.round(v * 100)}%`;
@@ -217,52 +162,6 @@ function Volume({ prefs }: { prefs: Prefs }) {
           onChange={(e) => setLevel(open, Number(e.target.value))}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * Ending the round where it stands, for a round that drags on (everyone voting: bots go along). Shown while a round
- * is live and you are in it.
- */
-function EndVote({ room }: { room: RoomView }) {
-  const game = room.game;
-  const me = game?.players.find((p) => p.seat === room.seat);
-  if (!game || !isLive(game) || !me) return null;
-  const { voters, voted } = endVote(game, seatedPeople(room.players));
-  return (
-    <div className="end-vote">
-      <h3>This round</h3>
-      <button type="button" className={me.ending ? 'on' : ''} onClick={() => send({ k: 'end', on: !me.ending })}>
-        {me.ending ? 'Take back my vote' : 'Vote to end the round'}
-      </button>
-      <small>
-        {voted} of {voters} voted. When everyone has, it ends where it stands and is scored as usual.
-      </small>
-    </div>
-  );
-}
-
-/** For whoever deals, during a round: deal it over (someone was left out, or dropped at the start). Asked twice, since the round in play is thrown away. */
-function DealAgain({ room }: { room: RoomView }) {
-  const [sure, setSure] = useState(false);
-  const mine = room.players.find((p) => p.id === room.me)?.isHost;
-  useEffect(() => setSure(false), [room.round, room.phase]);
-  if (!mine || room.phase !== 'playing' || !room.game) return null;
-  return (
-    <div className="end-vote">
-      <h3>Deal again</h3>
-      <small>This round is dealt over from the start. Nothing of it is scored, and everyone at the table now is dealt in.</small>
-      <button
-        type="button"
-        className="plain"
-        onClick={() => {
-          if (sure) redeal();
-          setSure(!sure);
-        }}
-      >
-        {sure ? 'Yes, deal this round again' : 'Deal this round again'}
-      </button>
     </div>
   );
 }
@@ -325,7 +224,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
   const social = useSocial();
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
-  const [open, setOpen] = useState(false);
+  /** The slip that is open: the menu, or your settings or feedback (which it leads to). One at a time. */
+  const [open, setOpen] = useState<Panel | null>(null);
   const root = useRef<HTMLDivElement>(null);
   /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
   const [keying, setKeying] = useState<Hotkey | null>(null);
@@ -344,7 +244,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [keying]);
   useEffect(() => {
-    if (!open) setKeying(null);
+    if (open !== 'settings') setKeying(null);
   }, [open]);
 
   /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
@@ -369,48 +269,36 @@ export function Corner({ room }: { room?: RoomView | null }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [pausable, resumable]);
 
-  useDismiss(root, open, () => setOpen(false));
+  /** What can be done to the table now (actions.ts): none between rounds. */
+  const actions = room ? tableActions(room) : [];
+  useDismiss(root, !!open, () => setOpen(null));
 
-  const sound = prefs.muted ? 'Sound is off' : 'Sound is on';
-  const soundKey = hotkeyName(prefs.soundKey);
   return (
     <div className="corner" ref={root}>
       {room?.clock && room.phase !== 'lobby' && <Clock clock={room.clock} />}
       <button
         type="button"
-        className={`knob${prefs.muted ? ' off' : ''}`}
-        aria-pressed={prefs.muted}
-        aria-label={`${sound}. ${prefs.muted ? 'Unmute' : 'Mute'}`}
-        title={soundKey ? `${sound} (${soundKey})` : sound}
+        className={`knob${open ? ' on' : ''}`}
+        aria-expanded={!!open}
+        aria-controls="menu"
+        aria-label="Menu"
+        title="Menu"
         onClick={(e) => {
-          setPrefs({ muted: !prefs.muted });
+          setOpen(open ? null : 'menu');
           e.currentTarget.blur(); // keep Space for flipping
         }}
       >
-        <Speaker off={prefs.muted} />
+        <MenuIcon />
         <SaidWord said={said} />
       </button>
-      {pausable && (
-        <button
-          type="button"
-          className="knob"
-          aria-label="Pause the round (P)"
-          title="Pause the round (P)"
-          onClick={(e) => {
-            pause(true);
-            e.currentTarget.blur();
-          }}
-        >
-          <PauseIcon />
-        </button>
-      )}
-      <button type="button" className={`knob${open ? ' on' : ''}`} aria-expanded={open} aria-controls="your-settings" aria-label="Settings" title="Settings" onClick={() => setOpen(!open)}>
-        <Gear />
-      </button>
-      <Feedback room={room} />
-      {open && (
+      {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={setOpen} onDone={() => setOpen(null)} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => setOpen('menu')} />}
+      {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
-          <h3>Settings</h3>
+          <header className="slip-head">
+            <Back onClick={() => setOpen('menu')} />
+            <h3>Settings</h3>
+          </header>
           <Volume prefs={prefs} />
           <label className="check">
             <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
@@ -469,8 +357,6 @@ export function Corner({ room }: { room?: RoomView | null }) {
             </div>
           )}
           <WholeScreen />
-          {room && <EndVote room={room} />}
-          {room && <DealAgain room={room} />}
         </section>
       )}
     </div>

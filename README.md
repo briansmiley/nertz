@@ -44,9 +44,8 @@ Controls:
 | Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
-| Press M (or the key you set under Hotkeys in the settings), or the speaker button bottom left | mute or unmute |
-| The gear beside it | your own settings: volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion |
-| The bug beside that | report a bug or ask for a feature: a few words and, if you like, a screenshot |
+| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Carry on**), **End round** (the vote, with its tally), **Stand up** (for now: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot) |
+| Press M (or the key you set under Hotkeys in the settings) | mute or unmute. While the sound is off a small amber speaker sits at the end of the chat bar, top left: press it to turn the sound back on |
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
 Nothing shows where a card in hand may go: no pile is outlined for it. (A finger that lets go a little off a pile still
@@ -183,7 +182,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
   flags clear, and the round counts one more reshuffle. Making any move clears your own flag.
-- **Voting to end a round**: in the gear menu, while a round is on, anyone can vote to end it where it stands. When
+- **Voting to end a round**: in the menu (☰), while a round is on, anyone can vote to end it where it stands. When
   every connected person who plays the round has voted (bots go along), it ends and is scored as usual. A vote can be
   taken back. Once a round has been reshuffled three times, or once anyone has voted, the same vote stands on the
   table too: **End round**, beside "I'm stuck".
@@ -203,7 +202,10 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   comes in to watch, and has a seat only by asking for one ("Take a seat"); whoever opens the table sits down at it. A
   seat asked for is given at once if one is free and no round is being played, and otherwise by the queue, first asked
   first, when the round is over or a seat comes free; whoever asked can think again and just watch, and anyone at the
-  table can stand up between rounds. (Until the dealer has said Start nothing has been played: whoever sits down or
+  table can stand up between rounds. In a round under way, **Stand up** in the menu stands you up for now: you are
+  shown as away, your cards lie as they are, and the votes (stuck, end round) go on without you; you sit back down by
+  pressing **Sit back down** (in the menu, or where "I'm stuck" was) or by playing a card, and if you have not by the
+  time the round is over you are watching from then on. (Until the dealer has said Start nothing has been played: whoever sits down or
   comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
@@ -590,7 +592,9 @@ client/   Vite + React
   clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
-  Settings.tsx  the mute button and gear (your settings), the table rules on the lobby and score sheets, and the small icon buttons the sheets share
+  Settings.tsx  the corner (the menu button, and your settings it leads to), the table rules on the lobby and score sheets, and the small icon buttons the sheets share
+  actions.ts    what can be done to the table during a round (pause, the vote to end it, deal again, leave): the one rule for each of whether it is open to you
+  Menu.tsx      the menu: mute, those actions, and the way to settings and feedback
   prefs.ts      your settings: sound levels, reduced motion; localStorage
   sound.ts      Web Audio: one function per cue, and the hook that plays them
   soundEvents.ts  pure: which cues a change of the rendered table calls for
@@ -678,7 +682,8 @@ would still need one of the options above, and serving both from one origin is s
   the first deal, the table is gone and the invite link reports no such table.
 - **Only the dealer can start.** Once the cards are dealt the table waits for the dealer's Start with no time limit. If
   the dealer is connected but not looking, everyone waits; the role passes on only when their connection drops.
-- **No Leave button during a round**, only in the lobby and on the results sheet. Closing the tab holds the seat.
+- **Leaving during a round** is in the menu (☰), and asks twice: whoever leaves does not come back
+  to their cards. Between rounds the lobby and the results sheet have their own Leave. Closing the tab holds the seat.
 - **Fonts come from Google Fonts** at runtime. Offline they fall back to system fonts; everything still works.
 - **Small screens.** Laid out for desktop windows from 1280 x 720 up, and checked for 2 to 6 players at 1280 x 720,
   1440 x 900 and 1920 x 1080. Narrower than that your hand reaches the settings corner. There is no phone layout yet,

@@ -2329,7 +2329,7 @@ label.check {
   accent-color: var(--red);
 }
 
-/* Voting to end the round, at the bottom of your settings slip. */
+/* A part of your settings slip set off by a rule above it (what whoever hosts allows at the table). */
 .end-vote {
   display: grid;
   gap: 0.35rem;
@@ -2608,6 +2608,31 @@ label.check {
   color: var(--ink);
   background: var(--marigold);
   border-color: var(--marigold);
+}
+
+/* The sound is off (the corner's menu): a small amber badge at the end of the bar. Pressed, the sound comes back on. */
+.chat-bar button.sound-off {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--marigold);
+  cursor: pointer;
+}
+
+.chat-bar button.sound-off svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Voice, one press away beside the chat button. While others are in it, it beckons. */
@@ -4819,4 +4844,102 @@ button.who:hover,
 
 .calm .opening .readies li.late {
   animation: none;
+}
+
+/* ------------------------------------------------------------ the corner's menu (Menu.tsx) */
+
+/* The head of a slip the menu leads to: back to the menu, then its name. */
+.slip-head {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: -0.5rem;
+}
+
+.slip-head .back {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.slip-head .back:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.slip-head .back svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A narrow slip off the same pad as your settings: a ruled line a thing to do, nothing else on it. */
+.slip.acts {
+  gap: 0;
+  width: auto;
+  min-width: 11.5rem;
+  padding: 0.9rem 0 0.35rem;
+  rotate: -0.6deg;
+}
+
+/* Each line: its icon, its name, and at the far end the vote's tally. */
+.acts button {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 1.1rem 0.6rem 0.95rem;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 1rem/1.1 var(--ui);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.acts button + button {
+  border-top: 1px solid var(--rule);
+}
+
+.acts button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Your vote is in. */
+.acts button.on {
+  background: #fbe6ae;
+}
+
+/* Asked again. */
+.acts button.sure {
+  color: var(--red);
+}
+
+.acts button svg {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.acts small {
+  margin-left: auto;
+  padding-left: 1.2rem;
+  font: 700 0.95em/1 var(--num);
+  font-variant-numeric: tabular-nums;
 }
