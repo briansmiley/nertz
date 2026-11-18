@@ -1970,18 +1970,21 @@ button {
   vertical-align: middle;
 }
 
-/* Their own column after the name: how many rounds of the table they have called, under the stamp those rounds wore. */
-.scores thead th.calls {
-  font: 400 0.9rem/1 var(--display);
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
-  color: var(--marigold);
-  -webkit-text-stroke: 0.09em var(--ink);
-  paint-order: stroke fill;
+/* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
+.scores thead th.over {
+  height: auto;
+  padding-bottom: 0.15rem;
+  text-align: center;
 }
 
-.scores td.calls {
-  color: var(--ink-soft);
+.scores thead tr + tr th {
+  height: auto;
+}
+
+/* (The first of the second row is a column of figures, not the names'.) */
+.scores thead tr + tr th:first-child {
+  padding-left: 0.4rem;
+  text-align: right;
 }
 
 /* How many cards were left in the nertz pile, small and grey before what they cost. */
@@ -3039,15 +3042,6 @@ label.check {
   .scores tbody th {
     max-width: 7.5rem;
     font-size: 0.95rem;
-  }
-
-  /* The name needs the width: the column of calls is headed by the stamp's "!" alone. */
-  .scores thead th.calls {
-    font-size: 1rem;
-  }
-
-  .scores thead th.calls span {
-    display: none;
   }
 
   .scores td {
