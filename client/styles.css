@@ -558,10 +558,11 @@ button {
 .count {
   position: absolute;
   z-index: 9000;
-  min-width: 20px;
+  min-width: var(--d);
   padding: 0 4px;
   border-radius: 99px;
-  font: 700 14px/20px var(--num);
+  font: 700 calc(var(--d) * 0.68) / var(--d) var(--num);
+  translate: -50% -50%;
   text-align: center;
   color: var(--ink);
   background: var(--chalk);
@@ -2917,7 +2918,6 @@ label.check {
   overflow: hidden;
 }
 
-.table.tall .mine .left,
 .table.tall .mine .where {
   display: none;
 }
@@ -3138,7 +3138,6 @@ label.check {
 }
 
 /* Under your hand there is room for your name and nothing else. */
-.table.short .mine .left,
 .table.short .mine .where {
   display: none;
 }

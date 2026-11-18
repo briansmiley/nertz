@@ -196,6 +196,31 @@ describe('table layout', () => {
     }
   });
 
+  it('puts the count of every nertz pile at the bottom right corner of the pile as it lies in its hand, mostly off the card and clear of the first work pile', () => {
+    // A card as it is drawn: one turned on its side covers its box turned about its middle.
+    const drawn = (r: Rect, turn: number): Rect => (turn ? { x: r.x + (r.w - r.h) / 2, y: r.y + (r.h - r.w) / 2, w: r.h, h: r.w } : r);
+    for (const [W, H] of [...WINDOWS, [390, 780], [844, 390]] as [number, number][]) {
+      for (let n = 2; n <= 6; n++) {
+        const L = computeLayout(W, H, inPlay(seats(n), lcg(n)), 0);
+        for (const s of [L.me!, ...L.opponents]) {
+          const { x, y, d } = s.count;
+          const pile = drawn(s.nertz, s.turn);
+          const disc = { x: x - d / 2, y: y - d / 2, w: d, h: d };
+          expect(overlap(disc, pile)).toBe(true);
+          // Out from its owner's side of the pile: the far side from the felt for a neighbour, the bottom otherwise.
+          const out = s.turn === 90 ? pile.x - x : s.turn ? x - (pile.x + pile.w) : y - (pile.y + pile.h);
+          expect(out).toBeGreaterThan(0);
+          expect(out).toBeLessThan(d / 2);
+          expect(overlap(disc, drawn(s.workAt[0]!, s.turn))).toBe(false);
+          if (!s.turn) expect(x).toBeGreaterThan(pile.x + pile.w / 2); // the right-hand corner
+          expect(d).toBeLessThanOrEqual(Math.max(15, s.nertz.w)); // (15 across is the least that reads)
+        }
+        // Larger on your own cards than on anyone else's, never smaller.
+        for (const o of L.opponents) expect(L.me!.count.d).toBeGreaterThanOrEqual(o.count.d);
+      }
+    }
+  });
+
   it('draws the hand of a player across the table the other way round, and a neighbour\'s the same way as yours', () => {
     for (let n = 2; n <= 6; n++) {
       const L = computeLayout(1280, 720, inPlay(seats(n), lcg(n)), 0);
