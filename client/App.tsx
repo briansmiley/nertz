@@ -15,7 +15,7 @@ import { Corner, Pop, Robot, TableRules } from './Settings';
 import { Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
-import { Calls, Table } from './Table';
+import { Table } from './Table';
 
 // The name is remembered across visits (localStorage) only to pre-fill the form. What makes a reload sit back down is
 // the window's own session, kept by client/net.ts.
@@ -680,14 +680,15 @@ function Results({ room }: { room: RoomView }) {
   const tally = new Map<number, number>();
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
   const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
-  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). And before it, how many of those they called. */
-  const total = (score: number, rounds: number, calls: number) => (
+  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
+  const total = (score: number, rounds: number) => (
     <td className="total">
-      <Calls n={calls} />
       {score < 0 ? `−${-score}` : score}
       {rounds > 0 && rounds < room.round && <small title={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
   );
+  /** How many rounds of this table they have ended by calling Nertz. Nothing before they have. */
+  const calls = (n: number) => <td className="calls">{n > 0 && n}</td>;
 
   return (
     <main className="solo over">
@@ -699,6 +700,9 @@ function Results({ room }: { room: RoomView }) {
           <thead>
             <tr>
               <th scope="col">Player</th>
+              <th scope="col" className="calls" title="Rounds they called Nertz">
+                <span>Nertz</span>!
+              </th>
               <th scope="col">Played</th>
               <th scope="col">Nertz</th>
               <th scope="col">Round</th>
@@ -725,6 +729,7 @@ function Results({ room }: { room: RoomView }) {
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
                 </th>
+                {calls(s.calls)}
                 <td>{signed(s.played)}</td>
                 <td>
                   {s.nertzLeft ? (
@@ -737,7 +742,7 @@ function Results({ room }: { room: RoomView }) {
                   )}
                 </td>
                 <td className="round">{signed(s.delta)}</td>
-                {total(s.total, s.rounds, s.calls)}
+                {total(s.total, s.rounds)}
               </tr>
               );
             })}
@@ -753,10 +758,11 @@ function Results({ room }: { room: RoomView }) {
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </th>
+                  {calls(p.calls)}
                   <td colSpan={3} className="note">
                     In next round
                   </td>
-                  {total(p.score, p.rounds, p.calls)}
+                  {total(p.score, p.rounds)}
                 </tr>
               ))}
           </tbody>

@@ -578,13 +578,13 @@ export interface Fittings {
   seats: number;
   /** The vote to end the round stands beside "I'm stuck". */
   vote: boolean;
-  /** How wide your own line (your colour, name, total and calls) is written, about: `nameWidth`. */
+  /** How wide your own line (your colour, name and total) is written, about: `nameWidth`. */
   name: number;
 }
 export const NO_FITTINGS: Fittings = { chat: [], clock: false, seats: 0, vote: false, name: 0 };
 
-/** About how wide "name total !calls" is written in your own line. Never less than it is: the line is cut off at this width. */
-export const nameWidth = (name: string, total: string, calls = 0): number => Math.ceil(22 + name.length * 8.4 + total.length * 11 + (calls > 0 ? 14 + String(calls).length * 8 : 0));
+/** About how wide "name total" is written in your own line. Never less than it is: the line is cut off at this width. */
+export const nameWidth = (name: string, total: string): number => Math.ceil(22 + name.length * 8.4 + total.length * 11);
 
 export type Shape = 'tall' | 'low' | 'wide';
 /** Which way a window is laid out: a phone held upright (TALL), one on its side or a table of more than six (LOW: the others in columns), or the usual. */

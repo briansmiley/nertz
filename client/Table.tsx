@@ -306,10 +306,6 @@ interface Flight {
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
-/** Beside a running total: how many of its rounds they ended by calling Nertz. Nothing before they have. */
-export function Calls({ n }: { n: number }) {
-  return n > 0 ? <i className="calls" title={n === 1 ? 'Called Nertz once' : `Called Nertz ${n} times`}>{n}</i> : null;
-}
 /** How wide the name line of a neighbour whose hand runs down the side may be. */
 const TAG_SIDE_W = 210;
 /** A plain place: just where and how large. */
@@ -635,11 +631,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const l = line(seat);
     return l ? l.total - (stage === 'sheet' ? 0 : l.delta) : (info(seat)?.score ?? 0);
   };
-  /** How many rounds they have called beside it, held back as it is. */
-  const calls = (seat: number) => {
-    const l = line(seat);
-    return l ? l.calls - (stage !== 'sheet' && seat === caller ? 1 : 0) : (info(seat)?.calls ?? 0);
-  };
   /** The finished pile waiting for you to carry it to the tray. */
   const toClear = (slot: number) => slot === must.slot;
   const finished = (slot: number) => completedBy(game.slots[slot]) !== null;
@@ -903,7 +894,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
                 </Name>
               )}
               <span className="pts">{points(total(o.seat))}</span>
-              <Calls n={calls(o.seat)} />
               {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false || p?.standing ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
@@ -925,9 +915,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             <div {...mineAt}>
               <span className="who">
                 <i className="chip" style={{ background: backColour(you) }} />
-                <span className="nm">{name(you)}</span>
-                <b>{points(total(you))}</b>
-                <Calls n={calls(you)} />
+                {name(you)} <b>{points(total(you))}</b>
               </span>
               <span className="where">
                 Round {room.round} at table {room.code}
@@ -956,9 +944,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             <div {...mineAt}>
               <span className="who">
                 <i className="chip" style={{ background: backColour(you) }} />
-                <span className="nm">{name(you)}</span>
-                <b>{points(total(you))}</b>
-                <Calls n={calls(you)} />
+                {name(you)} <b>{points(total(you))}</b>
               </span>
               <span className="where">
                 Round {room.round} at table {room.code}
