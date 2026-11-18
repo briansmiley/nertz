@@ -165,6 +165,8 @@ export interface RoundLine extends RoundScore {
   total: number;
   /** How many rounds that is the total of, this one included. */
   rounds: number;
+  /** How many of those rounds they ended by calling Nertz, this one included if they did. */
+  calls: number;
   /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
   /** Their faces and backs when the round ended. */
@@ -203,6 +205,8 @@ export interface PlayerView {
   score: number;
   /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */
   rounds: number;
+  /** How many of those rounds they ended by calling Nertz. */
+  calls: number;
   isHost: boolean;
   /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */
   ready?: boolean;

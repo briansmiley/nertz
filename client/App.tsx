@@ -681,11 +681,15 @@ function Results({ room }: { room: RoomView }) {
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
   const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
   /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
-  const total = (score: number, rounds: number) => (
+  const total = (score: number, rounds: number, calls: number) => (
+    <>
+    {/* Before it, the other thing kept across rounds: how many of them they ended by calling Nertz. */}
+    <td className="total calls">{calls}</td>
     <td className="total">
       {score < 0 ? `−${-score}` : score}
       {rounds > 0 && rounds < room.round && <small title={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
+    </>
   );
 
   return (
@@ -697,11 +701,15 @@ function Results({ room }: { room: RoomView }) {
         <table className="scores">
           <thead>
             <tr>
-              <th scope="col">Player</th>
-              <th scope="col">Played</th>
+              <th scope="col" rowSpan={2}>Player</th>
+              <th scope="col" rowSpan={2}>Played</th>
+              <th scope="col" rowSpan={2}>Nertz</th>
+              <th scope="col" rowSpan={2}>Round</th>
+              <th scope="colgroup" colSpan={2} className="over">Total</th>
+            </tr>
+            <tr>
               <th scope="col">Nertz</th>
-              <th scope="col">Round</th>
-              <th scope="col">Total</th>
+              <th scope="col">Points</th>
             </tr>
           </thead>
           <tbody>
@@ -736,7 +744,7 @@ function Results({ room }: { room: RoomView }) {
                   )}
                 </td>
                 <td className="round">{signed(s.delta)}</td>
-                {total(s.total, s.rounds)}
+                {total(s.total, s.rounds, s.calls)}
               </tr>
               );
             })}
@@ -755,7 +763,7 @@ function Results({ room }: { room: RoomView }) {
                   <td colSpan={3} className="note">
                     In next round
                   </td>
-                  {total(p.score, p.rounds)}
+                  {total(p.score, p.rounds, p.calls)}
                 </tr>
               ))}
           </tbody>

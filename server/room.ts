@@ -8,7 +8,7 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, calledBy, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -72,6 +72,8 @@ interface Player {
   dirty: boolean;
   /** How many rounds their score is the sum of: those they were dealt into. */
   rounds?: number;
+  /** How many of those rounds they ended by calling Nertz. */
+  calls?: number;
   /** The faces and backs this player chose; everyone sees their cards drawn so. */
   look: Look;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
@@ -583,11 +585,14 @@ export class Room {
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
     if (status.at !== 'over') return;
     this.stopRoundTimer();
+    const caller = calledBy(this.state);
     const scores = scoreRound(this.state).map((s) => {
       const p = this.players.find((p) => p.seat === s.seat);
+      const called = s.seat === caller ? 1 : 0;
       if (p) p.score += s.delta;
       if (p) p.rounds = (p.rounds ?? 0) + 1;
-      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, ...(p ? { look: p.look } : {}) };
+      if (p) p.calls = (p.calls ?? 0) + called;
+      return { ...s, id: p?.id ?? -1, name: p?.name ?? '', total: p?.score ?? s.delta, rounds: p?.rounds ?? 1, calls: p?.calls ?? called, ...(p ? { look: p.look } : {}) };
     });
     const pairs = new Map<string, { by: number; of: number; n: number }>();
     for (const s of this.snipes) {
@@ -834,6 +839,7 @@ export class Room {
     for (const p of this.players) {
       p.score = 0;
       delete p.rounds;
+      delete p.calls;
       if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
@@ -1036,6 +1042,7 @@ export class Room {
         ...(p.standing ? { standing: true as const } : {}),
         score: p.score,
         rounds: p.rounds ?? 0,
+        calls: p.calls ?? 0,
         isHost: p === dealer,
         ...(dealt && (p.bot || p.ready) && hand(p) ? { ready: true } : {}),
         bot: p.bot?.level,

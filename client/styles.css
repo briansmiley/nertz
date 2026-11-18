@@ -1970,6 +1970,23 @@ button {
   vertical-align: middle;
 }
 
+/* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
+.scores thead th.over {
+  height: auto;
+  padding-bottom: 0.15rem;
+  text-align: center;
+}
+
+.scores thead tr + tr th {
+  height: auto;
+}
+
+/* (The first of the second row is a column of figures, not the names'.) */
+.scores thead tr + tr th:first-child {
+  padding-left: 0.4rem;
+  text-align: right;
+}
+
 /* How many cards were left in the nertz pile, small and grey before what they cost. */
 .scores td .left {
   margin-right: 0.45em;
