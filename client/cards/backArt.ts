@@ -1505,7 +1505,124 @@ function fans(small: boolean): string {
   return frame(clipped(`${glow}${lit}<path d="${lines}" stroke-width="${n(small ? 0.9 : 0.5)}" stroke-linecap="butt"/><path d="${rims}" stroke-width="${n(rim)}" stroke-linecap="butt"/>`), 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, fans, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
+/**
+ * Tripods, the interlocking Ys: Ys all the same way up, one arm up and two down to the sides, their middles on a
+ * lattice of triangles. Each side of the lattice is an arm of the Y at one end of it, whose point fits in between
+ * two arms of the Y at the other, so that the Ys lock together; a line runs down the middle of every arm, and what is
+ * left in the middle of each triangle of the lattice is a small triangle, shaded.
+ */
+function tripods(small: boolean): string {
+  const d = F.w / ((small ? 2 : 3.5) * HR3); // from the middle of one Y to the next
+  const h = d * 0.22; // half an arm's width
+  const e = small ? 0.9 : 0.35; // half the line round every piece
+  const w = small ? 0.9 : 0.6; // half the line down an arm
+  const [side, face] = [h - e, h + e];
+  /** A three-armed piece round (cx, cy), given by the points of one arm (`x` along it, `y` across), turned a third for each of the others. */
+  const round = (cx: number, cy: number, arm: readonly [number, number][]): string =>
+    poly([0, 1, 2].flatMap((k) => {
+      const a = ((-90 + 120 * k) * Math.PI) / 180;
+      return arm.map(([x, y]): [number, number] => [cx + x * Math.cos(a) - y * Math.sin(a), cy + x * Math.sin(a) + y * Math.cos(a)]);
+    }));
+  // An arm's point is cut by the edges of the next Y's two arms either side of it, and the next arm begins where the sides of the two meet.
+  const shoulder = d - (face + side / 2) / HR3;
+  const Y: [number, number][] = [[shoulder, -side], [d - face / HR3, 0], [shoulder, side], [side / Math.sqrt(3), side]];
+  const lineEnd = d - (face + w / 2) / HR3;
+  const line: [number, number][] = [[lineEnd, -w], [lineEnd, w], [w / Math.sqrt(3), w]];
+  const k = 1 - (h + e) / (d / (2 * Math.sqrt(3))); // the shaded triangle, as a part of the lattice's
+  // The lattice's two triangles at each Y, by their other two corners: the one up and to the right of it, and the one to the right.
+  const triangles: [[number, number], [number, number]][] = [[[0, -d], [HR3 * d, -d / 2]], [[HR3 * d, -d / 2], [HR3 * d, d / 2]]];
+  let ys = '';
+  let tri = '';
+  for (let i = -1; i * HR3 * d < F.w + d; i++) {
+    for (let j = -1; j < F.h / d + 2; j++) {
+      const [cx, cy] = [F.x + i * HR3 * d, F.y + (j + (i % 2 ? 0.5 : 0)) * d];
+      ys += round(cx, cy, Y) + round(cx, cy, line);
+      for (const [[ax, ay], [bx, by]] of triangles) {
+        const [gx, gy] = [cx + (ax + bx) / 3, cy + (ay + by) / 3];
+        tri += poly(([[0, 0], [ax, ay], [bx, by]] as const).map(([x, y]) => [gx + (cx + x - gx) * k, gy + (cy + y - gy) * k] as const));
+      }
+    }
+  }
+  return frame(clipped(`<path d="${ys}" fill="#fff" fill-rule="evenodd" stroke="none"/><path d="${tri}" fill="${HALF}" stroke="none"/>`), 1, small);
+}
+
+/**
+ * The outline of a boteh, the teardrop of paisley, with its bulb (of radius 1) round (0, 0) and its tail rising from
+ * it and curling over to the right. It is drawn about a line that bends more and more as it goes, as wide as the bulb
+ * at its foot and narrowing to nothing at its tip; `grow` widens it by as much all round.
+ */
+function boteh(grow: number): [number, number][] {
+  const steps = 40;
+  const long = 3.3;
+  const spine: [number, number, number][] = [];
+  let [x, y] = [0, 0];
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * long;
+    const a = -Math.PI / 2 + 0.05 * t + 0.3 * t * t;
+    spine.push([x, y, a]);
+    [x, y] = [x + (Math.cos(a) * long) / steps, y + (Math.sin(a) * long) / steps];
+  }
+  const wide = (i: number): number => Math.max(0, (1 - i / steps) ** 1.25 + grow);
+  const left = spine.map(([x, y, a], i): [number, number] => [x + Math.sin(a) * wide(i), y - Math.cos(a) * wide(i)]);
+  const right = spine.map(([x, y, a], i): [number, number] => [x - Math.sin(a) * wide(i), y + Math.cos(a) * wide(i)]);
+  const foot = Array.from({ length: 13 }, (_, i): [number, number] => [(1 + grow) * Math.cos((i * Math.PI) / 12), (1 + grow) * Math.sin((i * Math.PI) / 12)]);
+  return [...foot, ...left, ...right.reverse()];
+}
+
+/**
+ * Paisley: large botehs in rows, those of every other row turned the other way, each with a rim of dots round it, a
+ * line inside it and a flower in its bulb; small ones head to tail with them, and little flowers and dots in the gaps.
+ * A small card keeps only the large botehs, solid.
+ */
+function paisley(small: boolean): string {
+  /** A shape round (x, y), `r` times as large, turned `turn` degrees, and with `flip` mirrored. */
+  const place = (shape: readonly [number, number][], x: number, y: number, r: number, turn: number, flip: boolean): [number, number][] => {
+    const a = (turn * Math.PI) / 180;
+    return shape.map(([px, py]) => [x + r * ((flip ? -px : px) * Math.cos(a) - py * Math.sin(a)), y + r * ((flip ? -px : px) * Math.sin(a) + py * Math.cos(a))]);
+  };
+  const disc = (x: number, y: number, r: number): string => `M${n(x - r)} ${n(y)}a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0`;
+  /** A flower of `count` round petals about a dot at (x, y), `r` across. */
+  const bloom = (x: number, y: number, r: number, count: number): string => {
+    let d = disc(x, y, r * 0.2);
+    const [a0, b0] = [r * 0.35, r * Math.min(0.3, 1.3 / count)]; // a petal's half-length and half-width
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * 2 * Math.PI;
+      const at = (k: number): string => `${n(x + r * k * Math.sin(a))} ${n(y - r * k * Math.cos(a))}`;
+      const tilt = n((a * 180) / Math.PI - 90);
+      d += `M${at(0.3)}A${n(a0)} ${n(b0)} ${tilt} 0 1 ${at(1)}A${n(a0)} ${n(b0)} ${tilt} 0 1 ${at(0.3)}Z`;
+    }
+    return d;
+  };
+  const R = small ? 9 : 7.8; // a large boteh's bulb
+  const [sx, sy] = [F.w / 2, 34]; // from one large boteh to the next along a row, and from row to row
+  const [outline, rim, inner] = [boteh(0), boteh(0.3), boteh(-0.24)];
+  let [lines, fine, dots, solid] = ['', '', '', ''];
+  for (let r = -1; r * sy < F.h + sy; r++) {
+    const flip = r % 2 !== 0;
+    const turn = flip ? 20 : -20;
+    for (let c = -1; c <= 2; c++) {
+      const [x, y] = [F.x + (c + (flip ? 0.5 : 0) + 0.32) * sx, F.y + r * sy + 18];
+      const side = flip ? -1 : 1;
+      // The small one lies by the large one's tail, the other way up.
+      const [tx, ty] = [x + side * sx * 0.52, y - sy * 0.18];
+      if (small) {
+        solid += poly(place(outline, x, y, R, turn, flip));
+        continue;
+      }
+      lines += poly(place(outline, x, y, R, turn, flip));
+      fine += poly(place(inner, x, y, R, turn, flip));
+      dots += poly(place(rim, x, y, R, turn, flip));
+      solid += poly(place(outline, tx, ty, R * 0.4, turn + 180, flip)) + bloom(x, y, R * 0.6, 8) + bloom(tx - side * 1.5, ty + 10.5, 2.3, 5) + disc(tx + side * 3, ty - 7, 0.6) + disc(x - side * 11.5, y + 9, 0.6);
+    }
+  }
+  return frame(
+    clipped(`<path d="${lines}" stroke-width="0.9"/><path d="${fine}" stroke-width="0.45"/><path d="${dots}" stroke-width="0.9" stroke-dasharray="0 1.9"/><path d="${solid}" fill="#fff" fill-rule="evenodd" stroke="none"/>`),
+    1,
+    small,
+  );
+}
+
+const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, fans, tripods, paisley, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
 const made = new Map<string, string>();
 
 /** The backs drawn here, by their names in `CARD_BACKS`. */
