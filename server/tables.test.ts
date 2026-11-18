@@ -18,6 +18,7 @@ describe('Room.summary', () => {
     room.join(bob, 'Bob', 'tok-bob');
     room.handle(bob, { t: 'sit', on: true });
     room.join(cy, 'Cy', 'tok-cy');
+    room.handle(cy, { t: 'sit', on: false });
     expect(room.summary()).toEqual({ code: 'ABCD', names: ['Ann', 'Bob'], seats: MAX_PLAYERS, watching: 1, round: 0, playing: false });
 
     room.join(dee, 'Dee', 'tok-dee');
@@ -69,6 +70,7 @@ describe('GET /tables', () => {
     const code = ann.code;
     const bob = await open(code, 'Bob');
     const cy = await open(code, 'Cy', false);
+    cy.send({ t: 'sit', on: false });
     await vi.waitFor(async () => expect((await get()).tables).toEqual([{ code, names: ['Ann', 'Bob'], seats: MAX_PLAYERS, watching: 1, round: 0, playing: false }]));
 
     // The latest table to change comes first; a change at the other puts it back on top.

@@ -584,7 +584,7 @@ function Lobby({ room }: { room: RoomView }) {
           </div>
         )}
         <TableRules room={room} />
-        {/* Whoever has just come in is watching: a seat is theirs for the asking. */}
+        {/* Whoever is watching (they stood up, or came in to a full table): a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
           <button className="go" onClick={() => takeSeat(true)}>
             {freeSeats(room.seats) > 0 ? 'Take a seat' : 'Join the queue for a seat'}
