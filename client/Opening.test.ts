@@ -75,14 +75,20 @@ describe('a Start the dealer has asked for, as the ones not ready change', () =>
     expect(askAfter({ at: 1000, on: [2] }, [])).toBe('go');
   });
 
-  it('stands while they only get fewer: someone saying ready never takes it back', () => {
-    expect(askAfter(ask, [3])).toBe('stands');
-    expect(askAfter(ask, [2])).toBe('stands');
-    expect(askAfter(ask, [3, 2])).toBe('stands');
+  it('stands while they only get fewer, waiting on those who are left: someone saying ready never ends it', () => {
+    expect(askAfter(ask, [3])).toEqual({ at: 1000, on: [3] });
+    expect(askAfter(ask, [2])).toEqual({ at: 1000, on: [2] });
+    expect(askAfter(ask, [3, 2])).toEqual({ at: 1000, on: [3, 2] });
   });
 
-  it('is dropped for someone it did not wait on: sat down since, or took back a ready they had said', () => {
-    expect(askAfter(ask, [2, 3, 4])).toBe('drop');
-    expect(askAfter(ask, [4])).toBe('drop');
+  it('is ended by anyone newly not ready: sat down since, or took back a ready they had said', () => {
+    expect(askAfter(ask, [2, 3, 4])).toBeNull();
+    expect(askAfter(ask, [4])).toBeNull();
+  });
+
+  it('is ended by one it waited on saying ready and taking it back: it no longer waits on them', () => {
+    const left = askAfter(ask, [3]) as Ask;
+    expect(askAfter(left, [2, 3])).toBeNull();
+    expect(askAfter(left, [2])).toBeNull();
   });
 });
