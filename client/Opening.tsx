@@ -16,11 +16,21 @@ const WARN_MS = 5000;
 /** How soon after the warning a press is still the same one (a double click, a held key): too soon to have read it. */
 const SAME_PRESS_MS = 400;
 
+/** A Start the dealer has pressed while someone was not ready (the warning): when, and the ids of who it waits on. */
+export type Ask = { at: number; on: readonly number[] };
+
 /**
- * What a press of Start does: goes at once when nobody is waited on; else the first one only warns, and one after
- * it (not the same press again) goes ahead. `warnedAt` is when the warning went up, or null with none showing.
+ * What a press of Start does: goes at once when nobody is waited on; else the first one only asks (and warns), and
+ * one after it (not the same press again) goes ahead. `ask` is the one showing, or null.
  */
-export const pressStart = (late: number, warnedAt: number | null, now: number): 'go' | 'warn' | 'same' => (late === 0 ? 'go' : warnedAt === null ? 'warn' : now - warnedAt < SAME_PRESS_MS ? 'same' : 'go');
+export const pressStart = (late: number, ask: Ask | null, now: number): 'go' | 'ask' | 'same' => (late === 0 ? 'go' : ask === null ? 'ask' : now - ask.at < SAME_PRESS_MS ? 'same' : 'go');
+
+/**
+ * What the ones not ready changing does to an ask: once nobody is, it goes, as a press would; while they are only
+ * among those it waits on, it stands; anyone else not ready (sat down since, or took their ready back) is not what
+ * the dealer said Start over, so it is dropped.
+ */
+export const askAfter = (ask: Ask, late: readonly number[]): 'go' | 'stands' | 'drop' => (late.length === 0 ? 'go' : late.every((id) => ask.on.includes(id)) ? 'stands' : 'drop');
 
 /**
  * Who the dealer is waiting on: everyone dealt in (bots count as ready, the server says so in `ready`) who has not
@@ -74,22 +84,26 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
     return () => clearTimeout(done);
   }, [stage]);
 
-  // Start goes at once when everyone is ready. If not, the first press only shows who is not (`warned`), and the
-  // next one goes ahead: never a block. It lapses after a while, and whenever the ones not ready change.
-  const [warnedAt, setWarnedAt] = useState<number | null>(null);
-  const warned = warnedAt !== null;
+  // Start goes at once when everyone is ready. If not, the first press only asks, showing who is not (`warned`), and
+  // the next one goes ahead: never a block. So does the last of them saying ready. It lapses after a while.
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const warned = ask !== null;
   useEffect(() => {
-    setWarnedAt(null);
-  }, [lateKey]);
-  useEffect(() => {
-    if (warnedAt === null) return;
-    const lapse = setTimeout(() => setWarnedAt(null), WARN_MS);
-    return () => clearTimeout(lapse);
-  }, [warnedAt]);
-  const press = () => {
-    const does = pressStart(late.length, warnedAt, Date.now());
+    if (ask === null) return;
+    const does = mine ? askAfter(ask, late.map((p) => p.id)) : 'drop';
     if (does === 'go') go();
-    else if (does === 'warn') setWarnedAt(Date.now());
+    if (does !== 'stands') setAsk(null);
+  }, [lateKey, mine]);
+  useEffect(() => {
+    if (ask === null) return;
+    const lapse = setTimeout(() => setAsk(null), WARN_MS);
+    return () => clearTimeout(lapse);
+  }, [ask]);
+  const press = () => {
+    const now = Date.now();
+    const does = pressStart(late.length, ask, now);
+    if (does === 'go') (go(), setAsk(null));
+    else if (does === 'ask') setAsk({ at: now, on: late.map((p) => p.id) });
   };
 
   // Space or Enter is the dealer's Start. (A focused button or the chat box keeps its own keys.)

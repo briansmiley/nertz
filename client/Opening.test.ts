@@ -3,7 +3,7 @@ import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { deal, finishDeal } from '../shared/engine';
 import { lcg, roomOf } from '../shared/testkit';
 import type { RoomView } from '../shared/types';
-import { beatAt, notReady, pressStart } from './Opening';
+import { type Ask, askAfter, beatAt, notReady, pressStart } from './Opening';
 
 describe('the opening count', () => {
   it('says 1, 2, 3, one beat each, from the duration left; a window that arrives late starts on the right number', () => {
@@ -48,19 +48,41 @@ describe('who the dealer is waiting on', () => {
 });
 
 describe('a press of Start', () => {
+  const asked = (at: number): Ask => ({ at, on: [2, 3] });
+
   it('goes at once when nobody is waited on', () => {
     expect(pressStart(0, null, 1000)).toBe('go');
-    expect(pressStart(0, 900, 1000)).toBe('go');
+    expect(pressStart(0, asked(900), 1000)).toBe('go');
   });
 
-  it('with someone not ready only warns, and the next press goes ahead', () => {
-    expect(pressStart(2, null, 1000)).toBe('warn');
-    expect(pressStart(2, 1000, 3000)).toBe('go');
+  it('with someone not ready only asks, and the next press goes ahead', () => {
+    expect(pressStart(2, null, 1000)).toBe('ask');
+    expect(pressStart(2, asked(1000), 3000)).toBe('go');
   });
 
   it('is not two presses for a double click or a held key: the warning has to have been up a moment', () => {
-    expect(pressStart(2, 1000, 1100)).toBe('same');
-    expect(pressStart(2, 1000, 1399)).toBe('same');
-    expect(pressStart(2, 1000, 1400)).toBe('go');
+    expect(pressStart(2, asked(1000), 1100)).toBe('same');
+    expect(pressStart(2, asked(1000), 1399)).toBe('same');
+    expect(pressStart(2, asked(1000), 1400)).toBe('go');
+  });
+});
+
+describe('a Start the dealer has asked for, as the ones not ready change', () => {
+  const ask: Ask = { at: 1000, on: [2, 3] };
+
+  it('goes once the last of them is ready, or has left: everyone still there is', () => {
+    expect(askAfter(ask, [])).toBe('go');
+    expect(askAfter({ at: 1000, on: [2] }, [])).toBe('go');
+  });
+
+  it('stands while they only get fewer: someone saying ready never takes it back', () => {
+    expect(askAfter(ask, [3])).toBe('stands');
+    expect(askAfter(ask, [2])).toBe('stands');
+    expect(askAfter(ask, [3, 2])).toBe('stands');
+  });
+
+  it('is dropped for someone it did not wait on: sat down since, or took back a ready they had said', () => {
+    expect(askAfter(ask, [2, 3, 4])).toBe('drop');
+    expect(askAfter(ask, [4])).toBe('drop');
   });
 });
