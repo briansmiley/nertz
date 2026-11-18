@@ -538,9 +538,12 @@ function Lobby({ room }: { room: RoomView }) {
               ) : (
                 <Mini seat={p.seat} look={p.look} />
               )}
-              <Name host={p.isHost} className="name">
-                {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
-              </Name>
+              {/* The name, with the dealer's button. On a phone the note and what you may do go on a small line under it. */}
+              <span className="person" title={p.name}>
+                <Name host={p.isHost} className="name">
+                  {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
+                </Name>
+              </span>
               <span className="note">
                 {[p.id === room.me && 'you', p.left ? 'left' : !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
@@ -551,8 +554,10 @@ function Lobby({ room }: { room: RoomView }) {
                   </span>
                 )}
               </span>
-              {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
-              {me?.isHost && p.id !== room.me && <Unseat who={p} />}
+              <span className="deeds">
+                {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
+                {me?.isHost && p.id !== room.me && <Unseat who={p} />}
+              </span>
             </li>
             ))}
         </ul>
