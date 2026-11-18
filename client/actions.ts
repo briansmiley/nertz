@@ -1,24 +1,22 @@
-// What can be done to the table during a round, as opposed to your own settings (Settings.tsx): pause it or carry
-// on, vote to end it, restart it, stand up from it for now, leave. Each has one rule here for whether it is open to you now; the menu
+// What can be done to the table during a round, as opposed to your own settings (Settings.tsx): pause it or
+// unpause it, vote to end it, restart it, stand up from it for now, leave. Each has one rule here for whether it is open to you now; the menu
 // (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here.
-import { dragsOn, endVote, isLive, plays, seatedPeople } from '../shared/engine';
+import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
 import { leave, pause, redeal, takeSeat } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
-/** Can you pause the round right now? While it is live, if you were dealt in. */
+/** Can you pause the round right now? While it is live, if you are in it. */
 export function canPause(room: RoomView | null | undefined): boolean {
   const g = room?.game;
-  return !!room && !room.paused && !!g && isLive(g) && g.players.some((p) => p.seat === room.seat);
+  return !!room && !room.paused && !!g && isLive(g) && inRound(g, room.seat);
 }
 
-/** Can you carry on from a pause? Whoever paused, the dealer, or anyone once whoever paused is away. */
+/** Can you unpause it? If you are in it, or deal (watching or not). */
 export function canResume(room: RoomView): boolean {
-  if (!room.paused) return false;
-  const by = room.players.find((p) => p.id === room.paused!.by);
-  return room.paused.by === room.me || !!meOf(room)?.isHost || !by?.connected || !!by.standing;
+  return !!room.paused && !!room.game && (inRound(room.game, room.seat) || !!meOf(room)?.isHost);
 }
 
 /**
@@ -79,7 +77,7 @@ export function tableActions(room: RoomView): TableAction[] {
   const up = standing(room);
   return [
     canPause(room) && { id: 'pause' as const, label: 'Pause' },
-    canResume(room) && { id: 'resume' as const, label: 'Carry on' },
+    canResume(room) && { id: 'resume' as const, label: 'Unpause' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Really restart?' },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },

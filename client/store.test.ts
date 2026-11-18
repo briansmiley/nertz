@@ -242,6 +242,100 @@ describe('the connection', () => {
   });
 });
 
+describe('a line that dies without a word', () => {
+  /** What the window listens for, on `window` and `document`, by event. */
+  let on: Map<string, () => void>;
+  beforeEach(() => {
+    on = new Map();
+    const listen = (event: string, fn: () => void) => void on.set(event, fn);
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen });
+  });
+  const pings = () => last().sent.filter((m) => m.t === 'ping').length;
+
+  it('the window asks every few seconds, and a line that answers stays up however quiet the table is', async () => {
+    vi.useFakeTimers();
+    const net = await seated();
+    const socket = last();
+    for (let i = 0; i < 10; i++) {
+      vi.advanceTimersByTime(5_000);
+      socket.deliver({ t: 'pong' });
+    }
+    expect(pings()).toBe(10);
+    expect(sockets()).toBe(1);
+    expect(net.current().status).toBe('online');
+  });
+
+  it('a line that is busy anyway is not asked: whatever comes down it says it is up', async () => {
+    vi.useFakeTimers();
+    const net = await seated();
+    for (let i = 0; i < 40; i++) {
+      vi.advanceTimersByTime(1_000);
+      last().deliver({ t: 'drag', seat: 1, id: 'S1', w: 0.5, h: [1, 1], p: [0.1, 0.2] });
+    }
+    expect(pings()).toBe(0);
+    expect(sockets()).toBe(1);
+    expect(net.current().status).toBe('online');
+  });
+
+  it('a line that has said nothing at all for a while is taken for dead: the window reconnects to its table and is let back in', async () => {
+    vi.useFakeTimers();
+    const net = await seated();
+    const dead = last();
+    vi.advanceTimersByTime(14_000);
+    expect(net.current()).toMatchObject({ status: 'online' }); // (not yet)
+    vi.advanceTimersByTime(2_000);
+    expect(dead.shut).toBe(true);
+    expect(net.current()).toMatchObject({ status: 'reconnecting', room: { code: 'ABCD' } });
+    vi.advanceTimersByTime(300);
+    expect(sockets()).toBe(2);
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
+    dead.closed(); // its close, at last, changes nothing
+    expect(sockets()).toBe(2);
+    last().deliver(at('ABCD'));
+    expect(net.current().status).toBe('online');
+  });
+
+  it('back on the network, or in front: an open line has a moment to answer, and one that does not is dropped at once', async () => {
+    vi.useFakeTimers();
+    const net = await seated();
+    on.get('online')!();
+    expect(pings()).toBe(1);
+    vi.advanceTimersByTime(1_000);
+    last().deliver({ t: 'pong' });
+    vi.advanceTimersByTime(3_000);
+    expect(sockets()).toBe(1); // it answered
+
+    on.get('visibilitychange')!();
+    vi.advanceTimersByTime(3_000);
+    expect(net.current().status).toBe('reconnecting'); // it did not
+  });
+
+  it('back on the network while waiting out a retry: it goes now', async () => {
+    vi.useFakeTimers();
+    await seated();
+    for (let i = 0; i < 5; i++) {
+      last().closed();
+      vi.advanceTimersByTime(5_000);
+    }
+    const n = sockets();
+    last().closed();
+    on.get('online')!();
+    expect(sockets()).toBe(n + 1);
+  });
+
+  it('leaving stops the asking', async () => {
+    vi.useFakeTimers();
+    const net = await seated();
+    net.leave();
+    const sent = last().sent.length;
+    vi.advanceTimersByTime(60_000);
+    expect(last().sent).toHaveLength(sent);
+    expect(sockets()).toBe(1);
+  });
+});
+
 describe("this window's session", () => {
   it('a reload while at the table sits back down at it, under the same name', async () => {
     await seated();

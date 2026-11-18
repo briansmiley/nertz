@@ -261,7 +261,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
     setPrefs({ muted });
     return muted ? 'Muted' : 'Unmuted';
   });
-  // P pauses or carries on.
+  // P pauses or unpauses.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;

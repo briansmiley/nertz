@@ -59,7 +59,7 @@ export function PauseIcon() {
   );
 }
 
-/** Carrying on from a pause. */
+/** Unpausing. */
 export function Play() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

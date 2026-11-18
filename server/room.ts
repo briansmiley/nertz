@@ -8,7 +8,7 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { applyIntent, calledBy, deal, expireGrace, finishDeal, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, calledBy, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -228,7 +228,7 @@ export class Room {
   }
 
   /** Any message other than `join`/`create` from a connection that has joined. Unknown connections are ignored. */
-  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' }>): void {
+  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' | 'ping' }>): void {
     const player = this.conns.get(conn);
     if (!player) return;
     switch (msg.t) {
@@ -612,12 +612,11 @@ export class Room {
   }
 
   /**
-   * Anyone dealt into the round may pause it while it is being played (not once Nertz is called). Cards in hand go
-   * back, and the bots stop. The one who paused it carries on, or the dealer, or anyone once the one who paused is away
-   * or up from their cards.
+   * Anyone in the round may pause it while it is being played (not once Nertz is called). Cards in hand go back, and
+   * the bots stop. Anyone in the round unpauses it, and so does the dealer, who may be watching.
    */
   private pause(player: Player, on: boolean): void {
-    if (!this.state || !this.inRound(player)) return;
+    if (!this.state || !(this.inRound(player) || (!on && player === this.dealer))) return;
     if (on) {
       if (this.pausedBy || !isLive(this.state)) return;
       this.pausedBy = player;
@@ -625,8 +624,7 @@ export class Room {
       for (const p of this.players) this.letGo(p);
       this.stopBots();
     } else {
-      const by = this.pausedBy;
-      if (!by || (player !== by && player !== this.dealer && by.conn && !by.out && !by.standing)) return;
+      if (!this.pausedBy) return;
       this.pausedBy = null;
       this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p);
@@ -689,9 +687,9 @@ export class Room {
     return this.phase === 'playing' && seated(p) && !!this.state?.players.some((g) => g.seat === p.seat);
   }
 
-  /** Does `p` play the round that is on: dealt into it, and not up from their cards? */
+  /** Does `p` play the round that is on: dealt into it, and not up from their cards? (The rule is the engine's, `inRound`: the window asks it too.) */
   private inRound(p: Player): boolean {
-    return taking(p) && this.holds(p);
+    return this.phase === 'playing' && !!this.state && inRound(this.state, at(p));
   }
 
   /** Is a round being played (the count, and play)? Not: the lobby, the score sheet, or cards dealt that nobody has played yet. */

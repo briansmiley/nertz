@@ -85,4 +85,22 @@ describe('the end of a connection', () => {
     expect(back.last().seat).toBe(ann.last().seat);
     expect(back.end.code).toBeNull();
   });
+
+  it('a ping is answered at once, at a table or not, and changes nothing at it', async () => {
+    const ann = await hello(null, 'Ann');
+    await taken(ann);
+    const states = ann.got.filter((m) => m.t === 'state').length;
+    ann.send({ t: 'ping' });
+    await vi.waitFor(() => expect(ann.got.at(-1)).toEqual({ t: 'pong' }));
+    expect(ann.got.filter((m) => m.t === 'state').length).toBe(states);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+    sockets.push(ws);
+    const got: unknown[] = [];
+    ws.on('message', (data) => got.push(JSON.parse(data.toString())));
+    await new Promise((ok, fail) => ws.once('open', ok).once('error', fail));
+    ws.send(JSON.stringify({ t: 'ping' }));
+    await vi.waitFor(() => expect(got).toEqual([{ t: 'pong' }]));
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+  });
 });

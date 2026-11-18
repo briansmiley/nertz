@@ -11,16 +11,27 @@ import { go, ready } from './net';
 
 /** How long the word stays up once play is open. It lets every click through. */
 const WORD_MS = 650;
-/** How long a warned Start waits for the second press before it is forgotten. */
+/** How long a warned Start waits for a second press, or for the last of those it waits on to say ready, before it is forgotten. */
 const WARN_MS = 5000;
 /** How soon after the warning a press is still the same one (a double click, a held key): too soon to have read it. */
 const SAME_PRESS_MS = 400;
 
+/** A Start the dealer has pressed while someone was not ready (the warning): when, and the ids of who it still waits on. */
+export type Ask = { at: number; on: readonly number[] };
+
 /**
- * What a press of Start does: goes at once when nobody is waited on; else the first one only warns, and one after
- * it (not the same press again) goes ahead. `warnedAt` is when the warning went up, or null with none showing.
+ * What a press of Start does: goes at once when nobody is waited on; else the first one only asks (and warns), and
+ * one after it (not the same press again) goes ahead. `ask` is the one showing, or null.
  */
-export const pressStart = (late: number, warnedAt: number | null, now: number): 'go' | 'warn' | 'same' => (late === 0 ? 'go' : warnedAt === null ? 'warn' : now - warnedAt < SAME_PRESS_MS ? 'same' : 'go');
+export const pressStart = (late: number, ask: Ask | null, now: number): 'go' | 'ask' | 'same' => (late === 0 ? 'go' : ask === null ? 'ask' : now - ask.at < SAME_PRESS_MS ? 'same' : 'go');
+
+/**
+ * What the ones not ready changing does to an ask: once nobody is, it goes, as a press with everyone ready would;
+ * while they only get fewer it stands, waiting on those who are left; anyone newly not ready (sat down since, or
+ * took their ready back, even one it had waited on) ends it (null): Start is asked afresh.
+ */
+export const askAfter = (ask: Ask, late: readonly number[]): 'go' | Ask | null =>
+  late.length === 0 ? 'go' : late.every((id) => ask.on.includes(id)) ? { at: ask.at, on: late } : null;
 
 /**
  * Who the dealer is waiting on: everyone dealt in (bots count as ready, the server says so in `ready`) who has not
@@ -74,22 +85,27 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
     return () => clearTimeout(done);
   }, [stage]);
 
-  // Start goes at once when everyone is ready. If not, the first press only shows who is not (`warned`), and the
-  // next one goes ahead: never a block. It lapses after a while, and whenever the ones not ready change.
-  const [warnedAt, setWarnedAt] = useState<number | null>(null);
-  const warned = warnedAt !== null;
+  // Start goes at once when everyone is ready. If not, the first press only asks, naming who is not (`warned`), and
+  // the next one goes ahead: never a block. So does the last of them saying ready; anyone taking a ready back ends
+  // it. It lapses a while after the press.
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const warned = ask !== null;
   useEffect(() => {
-    setWarnedAt(null);
-  }, [lateKey]);
+    if (ask === null) return;
+    const next = mine ? askAfter(ask, late.map((p) => p.id)) : null;
+    if (next === 'go') go();
+    setAsk(next === 'go' ? null : next);
+  }, [lateKey, mine]);
   useEffect(() => {
-    if (warnedAt === null) return;
-    const lapse = setTimeout(() => setWarnedAt(null), WARN_MS);
+    if (ask === null) return;
+    const lapse = setTimeout(() => setAsk(null), ask.at + WARN_MS - Date.now());
     return () => clearTimeout(lapse);
-  }, [warnedAt]);
+  }, [ask?.at]);
   const press = () => {
-    const does = pressStart(late.length, warnedAt, Date.now());
-    if (does === 'go') go();
-    else if (does === 'warn') setWarnedAt(Date.now());
+    const now = Date.now();
+    const does = pressStart(late.length, ask, now);
+    if (does === 'go') (go(), setAsk(null));
+    else if (does === 'ask') setAsk({ at: now, on: late.map((p) => p.id) });
   };
 
   // Space or Enter is the dealer's Start. (A focused button or the chat box keeps its own keys.)
@@ -108,9 +124,12 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
     stage === 'ready' ? (
       <>
         {mine ? (
-          <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
-            {warned ? 'Start anyway' : 'Start'}
-          </button>
+          <>
+            {warned && <p className="waitfor">Waiting for {late.map((p) => p.name).join(', ')}</p>}
+            <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
+              {warned ? 'Start anyway' : 'Start'}
+            </button>
+          </>
         ) : me ? (
           <button type="button" className={`kickoff readyup${me.ready ? ' on' : ''}`} aria-pressed={!!me.ready} onClick={(e) => (ready(!me.ready), e.currentTarget.blur())}>
             {me.ready ? 'Ready ✓' : 'Ready?'}
