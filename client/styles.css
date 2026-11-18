@@ -611,18 +611,11 @@ button {
   font-weight: 600;
 }
 
-/* In full: two lines, your name and the table under it; in a low window they close up. */
+/* In full: two lines, your name and the table under it. */
 .mine.full {
-  grid-template-rows: auto 1fr auto;
-  align-content: stretch;
-}
-
-.mine.full .who {
-  grid-row: 1;
-}
-
-.mine.full .where {
-  grid-row: 3;
+  grid-template-rows: auto auto;
+  align-content: start;
+  gap: 4px;
 }
 
 .mine.line .where {
