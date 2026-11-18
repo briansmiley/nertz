@@ -595,11 +595,11 @@ const CHAT_W: Record<ChatButton, readonly [number, number]> = { text: [49, 57], 
 const CHAT = { gap: 6, h: 29, barH: 36 } as const;
 /** The one button of the corner, the menu (Settings.tsx `Corner`): `size` across. */
 export const KNOB = { size: 36 } as const;
-/** The room the clock is given: above the round buttons (large figures), or in line after the chat's buttons (small ones). */
+/** The room the clock is given: above the menu's button (large figures), or in line after the chat's buttons (small ones). */
 const CLOCK = { above: { w: 58, h: 22 }, beside: { w: 44, h: 16 } } as const;
 /** "I'm stuck" and the vote: as small pills (`h` high, `gap` apart, each as wide as its longest wording; under `min` the wording is cut short; never lower than `low`) or, where there is room under your stock, full buttons. */
 export const PILL = { stuck: 124, vote: 112, h: 32, gap: 6, min: 84, low: 24, full: { h: 39, gap: 8, min: 150, drop: 16 } } as const;
-/** Your own line: one line (`h` high, no narrower than `min`), or under your nertz pile in full, three lines of it (`full`). */
+/** Your own line: one line (`h` high, no narrower than `min`), or under your nertz pile in full, two lines of it (`full`): your name, and the table. */
 const NAME = { h: 20, min: 48, max: 150, full: { h: 56, least: 44, w: 170, min: 120, drop: 14 } } as const;
 
 export interface Corners {
@@ -646,7 +646,7 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
   return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? [above, beside] : [] };
 }
 
-/** Your own line at the table: where, in full (three lines under your nertz pile) or as one line, and which end of its place it is written from. */
+/** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
 export interface NameAt extends Rect {
   full: boolean;
   align: 'start' | 'centre' | 'end';
@@ -672,7 +672,7 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  * Places what stands by your own hand, given where its piles are (`h`), the buttons in the corners (`at`) and where
  * the tray begins (`trayX`). Then says how far each work pile may fan: down to the first of these things under it.
  *
- * Upright, all of it is in the gap between your nertz pile and your stock: your line, and under it the two pills,
+ * Upright, all of it is in the gap between the count on your nertz pile and your stock: your line, and under it the two pills,
  * side by side if the gap is wide enough for that, else one above the other; when they would be too low to press,
  * your line goes.
  *
@@ -680,12 +680,13 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  * - "I'm stuck" stands under your stock and the vote beside it or under it: as full buttons one under the other, or
  *   side by side, or as pills one under the other, whichever comes first that fits above the bottom of the window and
  *   short of the tray; failing all three (and in any window that is low, or has the others in columns), as pills in a
- *   row level with the round buttons. Too wide for the room right of your stock, that row moves left, as far as the
- *   round buttons; narrower than that, its pills shrink.
- * - Your line stands under your nertz pile in full while there is the height for it and the width beside the round
- *   buttons. Otherwise it is one line level with them: under the nertz pile if that is clear of them, else right
- *   after them, and no further than the pills (too little room for a name: none).
- * - The count on your nertz pile (shown when your line is not there in full) keeps above whatever is under it.
+ *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
+ *   button; narrower than that, its pills shrink.
+ * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
+ *   (and the clock above it). Otherwise it is one line level with the button: under the nertz pile if that is clear of
+ *   it, else right after it, and no further than the pills (too little room for a name: none).
+ * - The count on your nertz pile is placed first, and all of this keeps clear of it; where its place under the pile's
+ *   corner is the menu's button, it stands at the top corner instead.
  */
 function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt | null, fit: Fittings, h: HandSpec, trayX: number): Furniture {
   const { nertzX, rowY, workX, stockX } = pilesOf(h);
@@ -739,7 +740,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
       const top = H - 8 - two * ph - (two - 1) * PILL.gap;
       if (ph >= 28 && stockX + PILL.stuck <= right) return { stuck: { x: stockX, y: top, w: PILL.stuck, h: ph }, vote: { x: stockX, y: top + ph + PILL.gap, w: PILL.stuck, h: ph }, pills: true };
     }
-    // Pills in a row, level with the round buttons. "I'm stuck" and, on its right, the vote, both right of your work
+    // Pills in a row, level with the menu's button. "I'm stuck" and, on its right, the vote, both right of your work
     // piles: under your stock, or as far left of that as keeps the vote short of the tray; the two a little narrower
     // than their longest wording rather than under a pile.
     const y = at.knobs.y + (at.knobs.h - PILL.h) / 2;
@@ -757,7 +758,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
     const stuck: Rect = { x, y, w: Math.max(0, Math.min(PILL.stuck, right - x)), h: PILL.h };
     const vw = Math.min(PILL.vote, x - PILL.gap - left);
     if (vw >= PILL.min) return { stuck, vote: { x: x - PILL.gap - vw, y, w: vw, h: PILL.h }, pills: true };
-    // Nor for that: the two share what there is between the round buttons and the tray.
+    // Nor for that: the two share what there is between the menu's button and the tray.
     const each = Math.max(0, (right - left - PILL.gap) / 2);
     return { stuck: two === 2 ? { x: right - each, y, w: each, h: PILL.h } : stuck, vote: { x: left, y, w: each, h: PILL.h }, pills: true };
   })();
