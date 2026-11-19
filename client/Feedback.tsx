@@ -1,9 +1,10 @@
 // Feedback, from the corner's menu: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent
-// to the server's /feedback (server/feedback.ts), which passes it on. Bug report or feature request: the same slip.
+// to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
 import { useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';
 import { Bug as BugIcon } from './icons';
+import { rememberedName } from './name';
 
 const MAX_TEXT = 2000;
 /** A screenshot is scaled down to fit this (the longer side) and sent as a JPEG: small enough for the server's cap. */
@@ -63,7 +64,7 @@ export function FeedbackSlip({ room, back }: { room?: RoomView | null; back: () 
     const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.status.at ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
     const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${navigator.userAgent}`;
     try {
-      const res = await fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name, room: room?.code, context, image }) });
+      const res = await fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: room?.code, context, image }) });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
       if (!res.ok || !body?.ok) return setState({ k: 'error', message: body?.message ?? 'That did not go through. Try again in a moment.' });
       setText('');

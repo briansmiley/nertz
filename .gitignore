@@ -7,7 +7,6 @@ playwright-report
 .env*
 !.env.example
 .claude/worktrees
-feedback
 data
 screenshots
 CLAUDE.md

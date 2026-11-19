@@ -587,6 +587,7 @@ server/   Node http + ws
   db.ts         what outlives the process: the one SQLite file, and the tables of ours in it
   accounts.ts   signing in with Google (Better Auth): the only file that knows how
   rounds.ts     every round played to its end, kept; and one person's record of them
+  reports.ts    what players send with the bug button, kept
   guard.ts      what every message, timer, snapshot and socket close runs inside: a throw is logged, and every other table carries on
 client/   Vite + React
   net.ts        websocket store and prediction
@@ -760,6 +761,7 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
   at it (`game`: from the table's opening, or its last start-over), how it ended, how long it took, each hand's score,
   who played it within the sitting, the name it was played under and whether they had left before the end, and each snipe (who sniped whom, with which card). A hand played signed in also
   carries the account's id. A round left unfinished (everyone gone, or the server restarted) is not kept. Tables of ours are made by the list of migrations in `server/db.ts`: to change one, add an entry.
+- **Reports** (`server/reports.ts`): what players send with the bug button (see [Feedback](#feedback)).
 - **Accounts**: Better Auth's own tables (user, session, account, verification), which it brings up to date on boot.
 
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
@@ -773,10 +775,13 @@ the best round. 401 for nobody signed in; 404 where there are no accounts.
 
 To take an account away for good (someone asks, as `public/privacy.html` says they may), with the app's database open
 (`fly ssh console -a <app>`, then `sqlite3 /data/nertz.db`, if the image has it, or `node -e` with `node:sqlite`):
-`begin; update hand set account = null where account = '<id>'; delete from session where userId = '<id>'; delete from
-account where userId = '<id>'; delete from user where id = '<id>'; commit;` Run it in one go (the game writes to the
-same file, and waits only a quarter of a second for it). If they were at a table at the time, run the `update` once more
-after: a hand played on a socket already open is still kept as theirs.
+`begin; update hand set name = 'Guest', account = null where account = '<id>'; update report set name = null, account =
+null where account = '<id>'; delete from report where id = '<the report that asked>'; delete from session where userId =
+'<id>'; delete from account where userId = '<id>'; delete from user where id = '<id>'; commit;` Run it in one go (the game
+writes to the same file, and waits only a quarter of a second for it). If they were at a table at the time, run the first
+`update` once more after: a hand played on a socket already open is still kept as theirs. Their scores stay, as a guest's,
+and their reports, with no name to them: what they wrote is not touched (only the report in which they asked, with their
+address in it, goes; its screenshot, if any, is `reports/<id>.jpg`).
 
 ### Signing in
 
@@ -808,13 +813,22 @@ A volume belongs to one machine, which is what each app already runs. Fly keeps 
 
 ## Feedback
 
-The bug button posts to `/feedback` (server/feedback.ts). A report goes wherever the server was told, to both if both are set:
+The bug button posts to `/feedback` (server/feedback.ts).
+
+A report is **kept** first, where there is a database (see [What is kept](#what-is-kept); `server/reports.ts`): a row of
+the `report` table, written before the sender is answered, with the report as it came and the account of whoever sent
+it if they were signed in. The screenshot is a file beside the database, `reports/<id>.jpg` under
+`DATA_DIR`: its name is made by the server from the report's id, never from anything sent, and
+nothing serves these files (read them with `fly ssh sftp get`). The screenshots kept may come to 200 MB in all: past
+that a report is kept without its picture, which is still passed on (anyone at all can send one, and the accounts live
+on the same volume). Once it has been passed on, the row also says what it was titled and the address of the issue
+filed for it. So a report that reaches nowhere else is not lost. To read them:
+`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue from report order by created_at desc;`
+
+From there it is passed on wherever the server was told, to both if both are set:
 
 - `FEEDBACK_WEBHOOK`: a Discord webhook URL (channel settings, Integrations, Webhooks: no bot needed). The report is
   posted there with the screenshot attached. On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
-- `FEEDBACK_DIR`: a directory. Each report is a line in `feedback.jsonl` there, the screenshot a file beside it. Outside
-  production it defaults to `./feedback` (git-ignored); in production it is off unless set, since a machine's own disk
-  does not survive a deploy: point it at a mounted volume if a copy is wanted.
 
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
