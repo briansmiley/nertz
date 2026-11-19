@@ -408,22 +408,22 @@ export function refused(state: GameState, seat: number, intent: Intent): GameSta
 
 /**
  * Was `seat` sniped, putting its one card `cardId` on the pile in `slot` (which does not take it)? Only if someone
- * else put the very same card (suit and rank) there since `seat` took its card up: that card is the pile's top, and
- * `seen`, the top `seat` saw there then, lies under it. `seen` is null if there was no pile there yet, and for a
- * move that was sent: on its sender's screen the pile was still waiting for the card. The same card lying there
- * already, or a card that never went there, is no snipe, only a card with nowhere to go. Returns who did it and with
- * which card. (The server's question: the full state, and the pile is the record of who played what on it.)
+ * else put the very same card (suit and rank) there since `seat` took its card up: that card lies above `seen`, the
+ * top `seat` saw there then, though others may have gone on it since. `seen` is null if there was no pile there yet,
+ * and for a move that was sent: on its sender's screen the pile was still waiting for the card. The same card lying
+ * there already, or a card that never went there, is no snipe, only a card with nowhere to go. Returns who did it and
+ * with which card. (The server's question: the full state, and the pile is the record of who played what on it.)
  */
 export function snipedBy(state: GameState, seat: number, cardId: string, slot: number, seen: string | null): { by: number; card: string } | null {
   const lifted = grab(state, seat, cardId)?.cards;
   const pile = state.slots[slot]?.cards;
   if (lifted?.length !== 1 || !pile) return null;
   const card = lifted[0]!;
-  const top = pile.at(-1)!;
   if (card.rank === 1) return null; // an Ace beaten to a place has others to go to
-  if (top.owner === seat || top.suit !== card.suit || top.rank !== card.rank) return null;
-  if (seen !== null && !pile.slice(0, -1).some((c) => c.id === seen)) return null;
-  return { by: top.owner, card: top.id };
+  const since = seen === null ? 0 : pile.findIndex((c) => c.id === seen) + 1;
+  if (since === 0 && seen !== null) return null; // a top that was never on this pile
+  const first = pile.slice(since).find((c) => c.suit === card.suit && c.rank === card.rank);
+  return first && first.owner !== seat ? { by: first.owner, card: first.id } : null;
 }
 
 /** Ends the grace window (the server's 4-second timer fired): everyone still in it is cut off, and the round is over. Same object if there is none. */
