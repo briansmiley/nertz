@@ -1259,9 +1259,15 @@ describe('a snipe', () => {
     expect(snipedBy(s, 0, '0:C2', 1, '1:CA')).toEqual({ by: 1, card: '1:C2' });
   });
 
+  it('is that card even when more have gone on it since', () => {
+    expect(snipedBy(s, 0, '0:S2', 0, '0:SA')).toEqual({ by: 1, card: '1:S2' }); // it saw the Ace; the 2 and then the 3 came
+    expect(snipedBy(s, 0, '0:S2', 0, null)).toEqual({ by: 1, card: '1:S2' });
+  });
+
   it('is not a pile whose top was that card already, nor a card that never went there', () => {
     expect(snipedBy(s, 0, '0:S3', 0, '1:S3')).toBeNull(); // there all along: a card with nowhere to go
-    expect(snipedBy(s, 0, '0:S2', 0, '0:SA')).toBeNull(); // the 2 was never what that pile waited for
+    expect(snipedBy(s, 0, '0:S2', 0, '1:S2')).toBeNull(); // the 2 was there already
+    expect(snipedBy(s, 0, '0:C2', 0, '0:SA')).toBeNull(); // never went there
     expect(snipedBy(s, 0, '0:S3', 1, '1:CA')).toBeNull();
     expect(snipedBy(s, 0, '0:S3', 4, null)).toBeNull(); // no pile there
   });
