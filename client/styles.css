@@ -731,7 +731,8 @@ button {
   pointer-events: none;
 }
 
-.shout span {
+.shout span,
+.restamp span {
   font: 400 1em/1 var(--display);
   text-transform: uppercase;
   letter-spacing: 0.01em;
@@ -1129,6 +1130,23 @@ button {
 .heap.tile.end .net {
   justify-self: start;
 }
+
+/* On a cleared table the NERTZ! stamp has gone with the hands: it comes down again, smaller, across the top of the
+   caller's block (`stampAt` in Finale.tsx), once the places are set out. */
+.restamp {
+  position: absolute;
+  z-index: 20002;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.restamp span {
+  -webkit-text-stroke-width: 0.08em;
+  rotate: -8deg;
+  animation-delay: 0.9s;
+}
+
 
 /* The end of a round on a phone: the table is cleared for it. Hands, names and felt go; the cards of the middle and
    the sorted piles have the window. */
@@ -2199,6 +2217,7 @@ button {
 .calm .spread .mini,
 .calm .nertz,
 .calm .shout span,
+.calm .restamp span,
 .calm .slot.centre.yours {
   animation: none;
 }
