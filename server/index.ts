@@ -258,7 +258,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       alive.add(ws); // (anything it sends says it is there, as a pong does)
       guard('a message', () => {
         const msg = isBinary ? null : parseClientMsg(data.toString());
-        if (msg?.t === 'ping') return send({ t: 'pong' });
+        if (msg?.t === 'ping') return send(msg.at === undefined ? { t: 'pong' } : { t: 'pong', at: msg.at });
         if (!msg) return room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
         if (msg.t === 'create' || msg.t === 'join') {
           if (!(msg.t === 'join' && room?.code === msg.room)) moveOn(); // a repeated join to the same table just re-seats

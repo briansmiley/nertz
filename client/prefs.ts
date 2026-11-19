@@ -23,6 +23,8 @@ export interface Prefs {
   botVoice: boolean;
   /** What is said in the chat is shown over the table as it comes, while the chat is closed. */
   chatOver: boolean;
+  /** The time a message takes to the server and back, in a corner of the screen (client/net.ts measures it while this is on). */
+  ping: boolean;
   /** Your backs without the white edge: the pattern runs to the edge of the card. */
   bare: boolean;
   /**
@@ -72,7 +74,7 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, soundKey: 'KeyM', voiceKey: 'KeyV' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
@@ -128,6 +130,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     bare: v.bare === true,
     botVoice: v.botVoice !== false,
     chatOver: v.chatOver !== false,
+    ping: v.ping === true,
     random: isLot(v.random) ? v.random : null,
     ...cleanKeys(v),
   };

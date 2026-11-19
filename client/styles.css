@@ -2236,6 +2236,19 @@ button {
   font-size: 16px;
 }
 
+/* The time to the server and back (Settings: Show ping): small and quiet, in the bottom right corner, over everything and in nobody's way. */
+.ping {
+  position: fixed;
+  right: 10px;
+  bottom: 6px;
+  z-index: 45000;
+  font: 600 13px/1 var(--num);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .clock.stopped {
   opacity: 0.45;
 }

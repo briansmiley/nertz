@@ -314,6 +314,10 @@ export function Corner({ room }: { room?: RoomView | null }) {
             <span>Show chat over the table</span>
           </label>
           <label className="check">
+            <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
+            <span>Show ping</span>
+          </label>
+          <label className="check">
             <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
             <span>Reduce motion</span>
           </label>

@@ -11,7 +11,7 @@ import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { openCorner, useCorner } from './Menu';
-import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet } from './net';
+import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
 import { Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
@@ -24,6 +24,18 @@ function enter(room: string | null, name: string): void {
   rememberName(name);
   if (room) join(room, name);
   else create(name);
+}
+
+/** The time to the server and back, small in the corner, if you asked for it (Settings) and there is a line. */
+function Ping() {
+  const { ping } = usePrefs();
+  const rtt = useRtt();
+  if (!ping || rtt === null) return null;
+  return (
+    <span className="ping">
+      {Math.round(rtt)} ms
+    </span>
+  );
 }
 
 export function App() {
@@ -66,6 +78,7 @@ export function App() {
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} />
+      <Ping />
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
       ) : (
