@@ -1,5 +1,5 @@
 // Screens around the table: home, lobby, round results.
-import { signIn, signOut, useAccount } from './account';
+import { signIn, signOut, useAccount, useStats } from './account';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
@@ -375,6 +375,34 @@ function Who() {
   );
 }
 
+/** Your record, if you are signed in and have played a round: the figures, and under each what it counts. */
+function Record() {
+  const stats = useStats();
+  if (!stats?.rounds) return null;
+  /** A figure as it is written: a true minus sign, and no "-0.0". */
+  const written = (n: number, places = 0): string => {
+    const text = Math.abs(n).toFixed(places);
+    return n < 0 && Number(text) !== 0 ? `−${text}` : text;
+  };
+  const figures: [string, string][] = [
+    [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
+    [written(stats.won), 'won'],
+    [written(stats.nertz), 'Nertz'],
+    [written(stats.points / stats.rounds, 1), 'a round'],
+    [written(stats.best ?? 0), 'best'],
+  ];
+  return (
+    <dl className="record">
+      {figures.map(([n, what]) => (
+        <div key={what}>
+          <dt>{what}</dt>
+          <dd>{n}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(remembered);
@@ -463,6 +491,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
           </div>
           <Tables onPick={pick} />
         </form>
+        <Record />
         <div className="whofoot">
           <Who />
         </div>

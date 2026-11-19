@@ -1,19 +1,17 @@
 // Accounts: who someone is beyond one table. Signing in is with Google, and nothing else; nobody has to.
 //
-// The game runs without any of this. Accounts are on when the environment names a place to keep them and a Google
-// OAuth client (see .env.example); otherwise `openAccounts` gives null, /api/auth answers 404 and the client shows no
+// The game runs without any of this. Accounts are on when there is a database to keep them in (server/db.ts) and the
+// environment names a Google OAuth client (see .env.example); otherwise /api/auth answers 404 and the client shows no
 // way to sign in.
 //
 // Better Auth does the work: the OAuth exchange, the session cookie, and its own tables (user, session, account,
-// verification) in the SQLite file, which it brings up to date on boot. This file is the only one that knows it.
-import { mkdirSync } from 'node:fs';
+// verification) in the database, which it brings up to date on boot. This file is the only one that knows it.
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
-import { dirname, join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { Account } from '../shared/types';
+import type { Db } from './db';
 
 /** Every route of Better Auth's is under this path. Google is told to come back to `${url}${AUTH_PATH}/callback/google`. */
 export const AUTH_PATH = '/api/auth';
@@ -21,14 +19,11 @@ export const AUTH_PATH = '/api/auth';
 export interface Accounts {
   /** Answers a request under `AUTH_PATH`. */
   handle(req: IncomingMessage, res: ServerResponse): Promise<void>;
-  /** Who a request's cookie says is signed in: null for nobody. */
+  /** Who a request's cookie says is signed in: null for nobody. Never rejects: asking gone wrong is said in the log, and is nobody. */
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
-  close(): void;
 }
 
 export interface AccountsOptions {
-  /** The SQLite file: a path, or ':memory:'. */
-  file: string;
   /** Where the app is reached from outside, with no trailing slash: `https://nertz.binarysmile.com`. */
   url: string;
   /** Signs the session cookies. */
@@ -42,22 +37,18 @@ export interface AccountsOptions {
  */
 export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsOptions | { missing: string[] } {
   const dev = env.NODE_ENV !== 'production';
-  const dir = env.DATA_DIR ?? (dev ? 'data' : undefined);
   const url = env.PUBLIC_URL ?? (dev ? `http://localhost:${Number(env.VITE_PORT) || 5173}` : undefined);
   const { AUTH_SECRET: secret, GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: googleSecret } = env;
-  if (!dir || !url || !secret || !id || !googleSecret) {
-    return { missing: [!id && 'GOOGLE_CLIENT_ID', !googleSecret && 'GOOGLE_CLIENT_SECRET', !secret && 'AUTH_SECRET', !url && 'PUBLIC_URL', !dir && 'DATA_DIR'].filter((name) => typeof name === 'string') };
+  if (!url || !secret || !id || !googleSecret) {
+    return { missing: [!id && 'GOOGLE_CLIENT_ID', !googleSecret && 'GOOGLE_CLIENT_SECRET', !secret && 'AUTH_SECRET', !url && 'PUBLIC_URL'].filter((name) => typeof name === 'string') };
   }
-  return { file: join(dir, 'nertz.db'), url: url.replace(/\/+$/, ''), secret, google: { id, secret: googleSecret } };
+  return { url: url.replace(/\/+$/, ''), secret, google: { id, secret: googleSecret } };
 }
 
 /** Google's keys to someone's account, which signing in hands over and nothing here needs. */
 const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
 
-export async function openAccounts(options: AccountsOptions): Promise<Accounts> {
-  if (options.file !== ':memory:') mkdirSync(dirname(options.file), { recursive: true });
-  const db = new DatabaseSync(options.file);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+export async function openAccounts(db: Db, options: AccountsOptions): Promise<Accounts> {
   const config = {
     appName: 'Nertz',
     baseURL: options.url,
@@ -89,9 +80,9 @@ export async function openAccounts(options: AccountsOptions): Promise<Accounts> 
   return {
     handle: handler,
     who: async (headers) => {
-      const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch(() => null);
+      // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
+      const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
       return session ? { id: session.user.id, name: session.user.name, image: session.user.image ?? null } : null;
     },
-    close: () => db.close(),
   };
 }

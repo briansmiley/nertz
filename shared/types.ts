@@ -279,6 +279,24 @@ export interface Account {
 }
 
 /**
+ * One person's record, over every round they played to its end signed in (server/rounds.ts).
+ */
+export interface Stats {
+  rounds: number;
+  /** Rounds in which nobody scored more than they did (and somebody else played). */
+  won: number;
+  /** Rounds they ended by calling Nertz. */
+  nertz: number;
+  /** Everything they scored, added up. */
+  points: number;
+  /** The most they scored in one round: null with no round played. */
+  best: number | null;
+  /** Times they sniped someone, and times someone sniped them. */
+  snipes: number;
+  sniped: number;
+}
+
+/**
  * A table as the home page lists it (`GET /tables`), for anyone to see before coming to it: what it is doing and who is
  * at it by the names they go by. Nothing that says who anyone is beyond that (no `id`, never a token).
  */

@@ -583,7 +583,10 @@ server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, the relay of card positions, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
-  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list)
+  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list), /api/auth, /stats
+  db.ts         what outlives the process: the one SQLite file, and the tables of ours in it
+  accounts.ts   signing in with Google (Better Auth): the only file that knows how
+  rounds.ts     every round played to its end, kept; and one person's record of them
   guard.ts      what every message, timer, snapshot and socket close runs inside: a throw is logged, and every other table carries on
 client/   Vite + React
   net.ts        websocket store and prediction
@@ -743,17 +746,47 @@ would still need one of the options above, and serving both from one origin is s
 ## Accounts
 
 Nobody has to sign in: a guest plays exactly as before. Whoever wants to can sign in with Google (the line at the foot of
-the first page), and is then known across tables and visits. Nothing is kept about them yet beyond who they are.
+the first page), and is then known across tables and visits: the rounds they play signed in make up their record, shown
+over that line.
+
+### What is kept
+
+One SQLite file, `nertz.db` under `DATA_DIR` (`server/db.ts`), opened with Node's own `node:sqlite`: nothing to compile.
+Without a `DATA_DIR` (in production; in dev it is `./data`) nothing outlives the process and nobody can sign in. If the
+file cannot be opened the game runs without it, and the log says so (`nothing is kept: ...`). The boot line ends
+`, keeping rounds` or `, keeping rounds and accounts`.
+
+- **Rounds** (`server/rounds.ts`): every round played to its end, by anyone: when, at which table and in which sitting
+  at it (`game`: from the table's opening, or its last start-over), how it ended, how long it took, each hand's score,
+  who played it within the sitting, the name it was played under and whether they had left before the end, and each snipe (who sniped whom, with which card). A hand played signed in also
+  carries the account's id. A round left unfinished (everyone gone, or the server restarted) is not kept. Tables of ours are made by the list of migrations in `server/db.ts`: to change one, add an entry.
+- **Accounts**: Better Auth's own tables (user, session, account, verification), which it brings up to date on boot.
+
+Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
+else. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
+page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
+(`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
+
+`GET /stats` answers whoever asks, by their cookie, with their own record (`Stats`, shared/types.ts): rounds played,
+rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points in all and
+the best round. 401 for nobody signed in; 404 where there are no accounts.
+
+To take an account away for good (someone asks, as `public/privacy.html` says they may), with the app's database open
+(`fly ssh console -a <app>`, then `sqlite3 /data/nertz.db`, if the image has it, or `node -e` with `node:sqlite`):
+`begin; update hand set account = null where account = '<id>'; delete from session where userId = '<id>'; delete from
+account where userId = '<id>'; delete from user where id = '<id>'; commit;` Run it in one go (the game writes to the
+same file, and waits only a quarter of a second for it). If they were at a table at the time, run the `update` once more
+after: a hand played on a socket already open is still kept as theirs.
+
+### Signing in
 
 `server/accounts.ts` is the only file that knows how: it hands the work to [Better Auth](https://better-auth.com), which
-does the exchange with Google, keeps the session in a cookie, and keeps its tables (user, session, account,
-verification) in one SQLite file, `nertz.db` under `DATA_DIR`, brought up to date on boot. The file is opened with
-Node's own `node:sqlite`: nothing to compile. Everything of Better Auth's is served under `/api/auth`.
+does the exchange with Google, keeps the session in a cookie, and keeps its tables in the database. Everything of
+Better Auth's is served under `/api/auth`.
 
 Accounts are **off unless set up**. With any of the settings below missing, `/api/auth` answers 404, and the client
-takes that to mean there is no signing in and shows nothing about it. The same if the database cannot be opened: the
-game runs without accounts, and the log says why (`accounts are off: ...`). With them on, the boot line ends
-`, with accounts`.
+takes that to mean there is no signing in and shows nothing about it. The same with no database, or if accounts cannot
+be opened: the game runs without them, and the log says why (`accounts are off: ...`).
 
 Of someone signed in, the name, email address and picture Google has are kept, taken afresh each time they sign in, and
 nothing else: not the address or browser they signed in from, and not Google's tokens for their account
