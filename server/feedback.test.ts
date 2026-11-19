@@ -1,11 +1,15 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseReport } from './feedback';
 import { startServer, type NertzServer } from './index';
+import { openDb } from './db';
+import { imageFile, openReports } from './reports';
+import { ACCOUNTS, ADA, Browser, fakeGoogle, rows } from './testkit';
 
-const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
 let server: NertzServer | undefined;
 /** Reports delivered so far, for a test to wait on: the sender is answered before delivery. */
 let delivered = 0;
@@ -15,7 +19,10 @@ const settled = async (n: number): Promise<void> => {
   expect(delivered).toBe(n);
 };
 let dir: string | undefined;
+/** The reports kept, read from beside the server. */
+const kept = (): Record<string, unknown>[] => rows(join(dir!, 'nertz.db'), 'report');
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await server?.close();
   if (dir) rmSync(dir, { recursive: true, force: true });
   server = dir = undefined;
@@ -25,26 +32,32 @@ afterEach(async () => {
 describe('feedback', () => {
   it('reads a report, and refuses what is not one', () => {
     expect(parseReport(JSON.stringify({ kind: 'bug', text: ' it broke ', name: 'Sam', room: 'ABCD' }))).toEqual({ kind: 'bug', text: 'it broke', name: 'Sam', room: 'ABCD' });
-    expect(parseReport(JSON.stringify({ kind: 'idea', text: 'x', image: PNG }))?.image?.type).toBe('png');
+    expect(parseReport(JSON.stringify({ kind: 'idea', text: 'x', image: JPEG }))?.image?.toString('base64')).toBe(JPEG.split(',')[1]);
+    // Only a JPEG: what the bug button makes of any picture.
+    expect(parseReport(JSON.stringify({ kind: 'idea', text: 'x', image: 'data:image/png;base64,iVBORw0KGgo=' }))).toBeNull();
     expect(parseReport(JSON.stringify({ kind: 'bug', text: '   ' }))).toBeNull();
     expect(parseReport(JSON.stringify({ kind: 'rant', text: 'x' }))).toBeNull();
     expect(parseReport(JSON.stringify({ kind: 'bug', text: 'x', image: 'data:text/html;base64,AAAA' }))).toBeNull();
     expect(parseReport('nope')).toBeNull();
   });
 
-  it('a report posted to /feedback is kept on disk and sent to the webhook, screenshot and all; then the address is slowed down', async () => {
+  it('a report posted to /feedback is kept and sent to the webhook, screenshot and all; then the address is slowed down', async () => {
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
     const sent: FormData[] = [];
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir, webhook: 'https://discord.invalid/hook', anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body as FormData), new Response(null, { status: 204 }))) as typeof fetch } });
+    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: 'https://discord.invalid/hook', anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body as FormData), new Response(null, { status: 204 }))) as typeof fetch } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
-    const res = await send({ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD', image: PNG });
+    const res = await send({ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD', image: JPEG });
     expect(res.status).toBe(200);
+    // It is kept by the time the sender is answered, as it came; what it was titled is noted once it has been passed on.
+    expect(kept()).toMatchObject([{ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD', account: null }]);
+    // The screenshot is a file beside the database, named by the report's id; the row says only how big it is.
+    const { id, image_bytes } = kept()[0] as { id: string; image_bytes: number };
+    expect(readFileSync(join(dir, 'reports', `${id}.jpg`)).toString('base64')).toBe(JPEG.split(',')[1]);
+    expect(image_bytes).toBe(Buffer.from(JPEG.split(',')[1]!, 'base64').length);
     await settled(1);
-    const line = JSON.parse(readFileSync(join(dir, 'feedback.jsonl'), 'utf8').trim()) as Record<string, string>;
-    expect(line).toMatchObject({ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD' });
-    expect(readdirSync(dir)).toContain(line.image);
+    expect(kept()[0]).toMatchObject({ title: 'the ace made a noise @everyone', priority: null, issue: null });
     const payload = JSON.parse(sent[0]!.get('payload_json') as string) as { allowed_mentions: unknown; embeds: { description: string }[] };
     expect(payload.embeds[0]!.description).toContain('the ace');
     expect(payload.allowed_mentions).toEqual({ parse: [] });
@@ -69,10 +82,10 @@ describe('feedback', () => {
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, anthropic: '', onDelivered, fetch: fake } });
+    server = await startServer({ port: 0, feedback: { webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, anthropic: '', onDelivered, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
-    expect((await send({ kind: 'idea', text: 'a ready button\nwould be nice', name: 'Sam', image: PNG })).status).toBe(200);
+    expect((await send({ kind: 'idea', text: 'a ready button\nwould be nice', name: 'Sam', image: JPEG })).status).toBe(200);
     await settled(1);
     const issue = calls.find((c) => (c.body as { query?: string })?.query?.includes('issueCreate'))!.body as { variables: { input: { title: string; description: string; labelIds: string[]; teamId: string } } };
     expect(issue.variables.input).toMatchObject({ teamId: 'team1', title: '[FEEDBACK] a ready button', labelIds: ['feat1'] });
@@ -95,6 +108,128 @@ describe('feedback', () => {
     expect((calls.find((c, i) => i >= before && c.url.includes('linear.app'))!.body as typeof issue).variables.input.labelIds).toEqual(['bug1']);
   });
 
+  it('a report from someone signed in is kept as theirs, and what became of it is noted: its title, and the issue filed', async () => {
+    fakeGoogle();
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    const fake = (async (_url: unknown, init?: RequestInit) => {
+      const q = (JSON.parse(String(init!.body)) as { query: string }).query;
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as typeof fetch;
+    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), accounts: ACCOUNTS, feedback: { linear: { key: 'lin_api_x', team: 'nrz' }, anthropic: '', onDelivered, fetch: fake } });
+    const ada = new Browser(server.port);
+    await ada.signIn(ADA);
+    const { user } = (await (await ada.ask('/api/auth/get-session')).json()) as { user: { id: string } };
+
+    expect((await ada.ask('/feedback', { kind: 'idea', text: 'a ready button' })).status).toBe(200);
+    expect((await new Browser(server.port).ask('/feedback', { kind: 'bug', text: 'it broke' })).status).toBe(200);
+    await settled(2);
+    expect(kept()).toMatchObject([
+      { text: 'a ready button', account: user.id, title: 'a ready button', issue: 'https://linear.invalid/NRZ-9', image_bytes: null },
+      { text: 'it broke', account: null },
+    ]);
+  });
+
+  it('with nowhere to keep a report and nowhere to pass it on, the sender is told so; with only somewhere to keep it, it is kept', async () => {
+    server = await startServer({ port: 0, feedback: { webhook: '', anthropic: '', onDelivered } });
+    const bare = await fetch(`http://localhost:${server.port}/feedback`, { method: 'POST', body: JSON.stringify({ kind: 'bug', text: 'it broke' }) });
+    expect(bare.status).toBe(503);
+    await server.close();
+
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: '', anthropic: '', onDelivered } });
+    expect((await fetch(`http://localhost:${server.port}/feedback`, { method: 'POST', body: JSON.stringify({ kind: 'bug', text: 'it broke' }) })).status).toBe(200);
+    await settled(1);
+    expect(kept()).toMatchObject([{ text: 'it broke', title: 'it broke' }]);
+  });
+
+  it('a report that cannot be kept: passed on all the same where there is somewhere, and the sender told so where there is not', async () => {
+    const said = vi.spyOn(console, 'error').mockImplementation(() => {});
+    /** The table taken away from under the server: nothing can be kept. */
+    const broken = (): void => {
+      const db = new DatabaseSync(join(dir!, 'nertz.db'));
+      db.exec('drop table report');
+      db.close();
+    };
+    try {
+      dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+      server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: '', anthropic: '', onDelivered } });
+      broken();
+      expect((await fetch(`http://localhost:${server.port}/feedback`, { method: 'POST', body: JSON.stringify({ kind: 'bug', text: 'it broke' }) })).status).toBe(500);
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+
+      dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+      const sent: unknown[] = [];
+      server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: 'https://discord.invalid/hook', anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body), new Response(null, { status: 204 }))) as typeof fetch } });
+      broken();
+      expect((await fetch(`http://localhost:${server.port}/feedback`, { method: 'POST', body: JSON.stringify({ kind: 'bug', text: 'it broke' }) })).status).toBe(200);
+      await settled(1);
+      expect(sent).toHaveLength(1);
+    } finally {
+      said.mockRestore();
+    }
+  });
+
+  it('the screenshots kept come to no more than they may: past that a report is kept without its picture', () => {
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    const db = openDb(':memory:');
+    const reports = openReports(db, { dir, maxImageBytes: 10 });
+    const picture = (bytes: number) => ({ kind: 'bug' as const, text: 'x', image: Buffer.alloc(bytes) });
+    reports.add('00000000000a', 1, picture(6), null);
+    reports.add('00000000000b', 2, picture(6), null); // would make twelve
+    reports.add('00000000000c', 3, picture(4), null);
+    expect(db.prepare('select id, image_bytes as bytes from report order by created_at').all()).toEqual([
+      { id: '00000000000a', bytes: 6 },
+      { id: '00000000000b', bytes: null },
+      { id: '00000000000c', bytes: 4 },
+    ]);
+    expect(readdirSync(dir).sort()).toEqual(['00000000000a.jpg', '00000000000c.jpg']);
+    reports.passedOn('00000000000b', { title: 'A title', priority: 3 }, 'https://linear.invalid/NRZ-1');
+    expect(db.prepare(`select title, priority, issue from report where id = '00000000000b'`).get()).toEqual({ title: 'A title', priority: 3, issue: 'https://linear.invalid/NRZ-1' });
+    db.close();
+  });
+
+  it('a screenshot that cannot be written is left out: the report is kept without it', () => {
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    const blocked = join(dir, 'reports');
+    writeFileSync(blocked, 'not a directory');
+    const said = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const db = openDb(':memory:');
+    try {
+      openReports(db, { dir: blocked }).add('0123456789ab', 1, { kind: 'bug', text: 'x', image: Buffer.from('picture') }, null);
+      expect(db.prepare('select id, image_bytes from report').all()).toEqual([{ id: '0123456789ab', image_bytes: null }]);
+      expect(said).toHaveBeenCalled();
+    } finally {
+      said.mockRestore();
+      db.close();
+    }
+  });
+
+  it('a screenshot is a file named by the server alone: an id that is not one of its own names no file at all', () => {
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    const db = openDb(':memory:');
+    const reports = openReports(db, { dir });
+    const report = () => ({ kind: 'bug' as const, text: 'x', image: Buffer.from('picture') });
+    expect(imageFile('/data/reports', '0123456789ab')).toBe(join('/data/reports', '0123456789ab.jpg'));
+    for (const id of ['../../nertz', '0123456789ab/../x', '/etc/passwd', 'ABCDEF012345', '0123456789a', '']) {
+      expect(() => reports.add(id, 1, report(), null)).toThrow();
+    }
+    expect(readdirSync(dir)).toEqual([]);
+    expect(db.prepare('select count(*) as n from report').get()).toEqual({ n: 0 });
+
+    // A row that cannot be written takes its picture with it; a file already there is never written over.
+    reports.add('0123456789ab', 1, report(), null);
+    expect(() => reports.add('0123456789ab', 2, report(), null)).toThrow();
+    expect(readFileSync(join(dir, '0123456789ab.jpg'), 'utf8')).toBe('picture');
+    db.exec('delete from report');
+    rmSync(join(dir, '0123456789ab.jpg'));
+    db.exec('drop table report');
+    expect(() => reports.add('0123456789ab', 1, report(), null)).toThrow();
+    expect(readdirSync(dir)).toEqual([]);
+    db.close();
+  });
+
   it('with an Anthropic key, Claude names the report and sets its priority; if Claude fails, the report goes on unnamed', async () => {
     const calls: { url: string; body: unknown }[] = [];
     let claudeAnswers: 'named' | 'broken' = 'named';
@@ -112,7 +247,7 @@ describe('feedback', () => {
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { dir: '', webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 3 }, anthropic: 'sk-ant-test', onDelivered, fetch: fake } });
+    server = await startServer({ port: 0, feedback: { webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 3 }, anthropic: 'sk-ant-test', onDelivered, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
     const filed = () => (calls.filter((c) => (c.body as { query?: string })?.query?.includes('issueCreate')).at(-1)!.body as { variables: { input: { title: string; priority: number; description: string } } }).variables.input;
     const told = () => (JSON.parse((calls.filter((c) => c.url === 'https://discord.invalid/hook').at(-1)!.body as FormData).get('payload_json') as string) as { embeds: { title: string; description: string }[] }).embeds[0]!;

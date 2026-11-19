@@ -3,7 +3,7 @@
 // websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { extname, join, resolve, sep } from 'node:path';
+import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
@@ -11,6 +11,7 @@ import type { TableSummary } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
 import { dataFromEnv, openDb } from './db';
+import { openReports } from './reports';
 import { openRounds } from './rounds';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
@@ -73,7 +74,7 @@ export interface ServerOptions {
   flipMs?: number;
   /** How every table deals a round (see `RoomOptions.deal`): the engine's, unless a test rigs the hands. */
   deal?: RoomOptions['deal'];
-  /** Where bug reports go (server/feedback.ts). Defaults to what the environment says. */
+  /** Where bug reports are passed on to (server/feedback.ts): defaults to what the environment says. They are kept in the database, if there is one. */
   feedback?: FeedbackOptions;
   /** The database's file (server/db.ts), or ':memory:': what outlives the process is kept there. Without one, nothing is kept. */
   data?: string | null;
@@ -120,7 +121,6 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
   // ---------------------------------------------------------------- http
 
-  const feedback = feedbackHandler(options.feedback);
   // The game needs none of what is kept: whatever goes wrong opening it (a volume that cannot be written, a file that
   // is no database) is said in the log, and the game runs without.
   const db = await attempt('nothing is kept: the database could not be opened', () => (options.data ? openDb(options.data) : null));
@@ -128,6 +128,9 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const rounds = db && openRounds(db);
   /** Where a page of ours is served from: only a socket opened from there is signed in as anyone (a page of some other site's, in a browser of someone signed in here, opens one as a guest). */
   const home = options.accounts?.url;
+  /** Screenshots sent with reports are files here, beside the database (nowhere, for a database in memory). */
+  const reportDir = options.data && options.data !== ':memory:' ? join(dirname(options.data), 'reports') : null;
+  const feedback = feedbackHandler(options.feedback, { reports: db && openReports(db, { dir: reportDir }), who: accounts?.who });
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {

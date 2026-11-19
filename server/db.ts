@@ -59,6 +59,24 @@ const MIGRATIONS: string[] = [
      foreign key (round, of_seat) references hand (round, seat) on delete cascade
    ) strict, without rowid;
    create unique index hand_account on hand (account, round) where account is not null;`,
+  // What players send with the bug button (server/reports.ts): the report as it came, who sent it if they were
+  // signed in, and once it has been passed on, what it was titled, how much it was judged to matter (if it was
+  // judged: Linear's 2 high to 4 low) and the address of the issue filed for it. The screenshot is a file beside the
+  // database (reports/<id>.jpg, server/reports.ts); the row says only how big it is, null for none.
+  `create table report (
+     id text primary key,
+     created_at integer not null,
+     kind text not null check (kind in ('bug', 'idea')),
+     text text not null,
+     name text,
+     room text,
+     context text,
+     account text,
+     image_bytes integer,
+     title text,
+     priority integer check (priority between 0 and 4),
+     issue text
+   ) strict;`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

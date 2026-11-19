@@ -2,6 +2,7 @@
 // the walk from the deal to play, a websocket client for the real server, and (for signing in) Google played by a fake
 // and a browser's part done by hand. For tests only: nothing outside a *.test.ts imports this.
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { expect, vi } from 'vitest';
 import WebSocket from 'ws';
 import type { ChatLine } from '../shared/chat';
@@ -267,5 +268,15 @@ export class Browser {
     const google = new URL(url);
     const back = await this.ask(`${AUTH_PATH}/callback/google?code=${who.sub}&state=${encodeURIComponent(google.searchParams.get('state')!)}`);
     return { google, back };
+  }
+}
+
+/** The rows of a table of the database in `file`, read from beside whatever server has it open. */
+export function rows(file: string, table: string): Record<string, unknown>[] {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    return db.prepare(`select * from ${table}`).all() as Record<string, unknown>[];
+  } finally {
+    db.close();
   }
 }

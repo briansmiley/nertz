@@ -17,25 +17,11 @@ import { Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
-
-// The name is remembered across visits (localStorage) only to pre-fill the form. What makes a reload sit back down is
-// the window's own session, kept by client/net.ts.
-const NAME_KEY = 'nertz.name';
-const remembered = (): string => {
-  try {
-    return cleanName(localStorage.getItem(NAME_KEY) ?? '');
-  } catch {
-    return '';
-  }
-};
+import { rememberedName, rememberName } from './name';
 
 /** Sit down at table `room`, or with null ask the server to open a new one (it picks the code). */
 function enter(room: string | null, name: string): void {
-  try {
-    localStorage.setItem(NAME_KEY, name);
-  } catch {
-    // storage unavailable: the name just is not remembered
-  }
+  rememberName(name);
   if (room) join(room, name);
   else create(name);
 }
@@ -405,7 +391,7 @@ function Record() {
 
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
-  const [name, setName] = useState(remembered);
+  const [name, setName] = useState(rememberedName);
   const account = useAccount();
   // Signed in, and no name of their own yet: the first name Google has for them, to keep or change.
   const given = typeof account === 'object' ? cleanName(account.name.split(' ')[0] ?? '') : '';

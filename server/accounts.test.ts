@@ -3,27 +3,18 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUTH_PATH, accountsFromEnv, openAccounts } from './accounts';
 import { dataFromEnv, openDb, type Db } from './db';
 import { startServer, type NertzServer } from './index';
-import { ACCOUNTS, ADA, Browser, fakeGoogle } from './testkit';
+import { ACCOUNTS, ADA, Browser, fakeGoogle, rows as allRows } from './testkit';
 
 
 describe('accounts', () => {
   let server: NertzServer;
   let real: typeof fetch;
   let dir: string;
-  /** The rows of a table of the database, read from beside the server. */
-  const rows = (table: string): Record<string, unknown>[] => {
-    const db = new DatabaseSync(join(dir, 'nertz.db'), { readOnly: true });
-    try {
-      return db.prepare(`select * from ${table}`).all() as Record<string, unknown>[];
-    } finally {
-      db.close();
-    }
-  };
+  const rows = (table: string): Record<string, unknown>[] => allRows(join(dir, 'nertz.db'), table);
   const at = (path: string): string => `http://localhost:${server.port}${path}`;
 
   beforeEach(async () => {
