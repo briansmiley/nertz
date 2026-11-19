@@ -1,5 +1,6 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz, the home page's list of /tables and signing in (/api/auth: server/accounts.ts); websockets on /ws carry the game.
+// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts) and one's own record (/stats);
+// websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
@@ -7,7 +8,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { TableSummary } from '../shared/types';
-import { accountsFromEnv, AUTH_PATH, openAccounts, type Accounts, type AccountsOptions } from './accounts';
+import type { Account } from '../shared/types';
+import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
+import { dataFromEnv, openDb } from './db';
+import { openRounds } from './rounds';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
 import { Room, type Conn, type RoomOptions } from './room';
@@ -48,6 +52,8 @@ const MIME: Record<string, string> = {
 
 export interface NertzServer {
   port: number;
+  /** Whether rounds are kept: a database was asked for, and opened. */
+  kept: boolean;
   /** Whether anyone can sign in: accounts were asked for, and opened. */
   accounts: boolean;
   rooms: Map<string, Room>;
@@ -69,7 +75,9 @@ export interface ServerOptions {
   deal?: RoomOptions['deal'];
   /** Where bug reports go (server/feedback.ts). Defaults to what the environment says. */
   feedback?: FeedbackOptions;
-  /** Where accounts are kept and how people sign in (server/accounts.ts): null for no accounts. Defaults to what the environment says. */
+  /** The database's file (server/db.ts), or ':memory:': what outlives the process is kept there. Without one, nothing is kept. */
+  data?: string | null;
+  /** How people sign in (server/accounts.ts). Without it, or without a database, nobody can. */
   accounts?: AccountsOptions | null;
 }
 
@@ -113,7 +121,15 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   // ---------------------------------------------------------------- http
 
   const feedback = feedbackHandler(options.feedback);
-  const accounts = await withAccounts(options.accounts);
+  // The game needs none of what is kept: whatever goes wrong opening it (a volume that cannot be written, a file that
+  // is no database) is said in the log, and the game runs without.
+  const db = await attempt('nothing is kept: the database could not be opened', () => (options.data ? openDb(options.data) : null));
+  const accounts = await attempt('accounts are off: they could not be opened', () => (db && options.accounts ? openAccounts(db, options.accounts) : null));
+  const rounds = db && openRounds(db);
+  /** Where a page of ours is served from: only a socket opened from there is signed in as anyone (a page of some other site's, in a browser of someone signed in here, opens one as a guest). */
+  const home = options.accounts?.url;
+  /** What every table is told to do with a round that has ended. */
+  const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {
     try {
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
@@ -133,6 +149,15 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
           .map((room) => room.summary());
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ tables: listed }));
+      } else if (path === '/stats') {
+        // The record of whoever asks: theirs alone, by their cookie.
+        const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
+        if (!accounts || !rounds) return json(404, null);
+        if (req.method !== 'GET') return json(405, null);
+        accounts
+          .who(req.headers)
+          .then((account) => (account ? json(200, rounds.stats(account.id)) : json(401, null)))
+          .catch((err: unknown) => (console.error('stats', err), res.headersSent ? void res.end() : json(500, null))); // (the database gone wrong, or closed under us: an answer, not a crash)
       } else if (path === '/feedback') {
         feedback(req, res).catch(() => {
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
@@ -167,10 +192,18 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
   http.on('upgrade', (req, socket, head) => {
     if (req.url?.split('?')[0] !== '/ws') return socket.destroy();
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws));
+    const open = (account: Account | null): void => wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, account));
+    // Who a socket is signed in as is what its cookie says as it opens, and stays so for as long as it is open.
+    if (!accounts || !req.headers.cookie || req.headers.origin !== home) return open(null);
+    const gone = (): void => void socket.destroy(); // (a socket that fails while we ask must not be an error nobody listens for)
+    socket.on('error', gone);
+    void accounts.who(req.headers).then((account) => {
+      socket.off('error', gone);
+      open(account);
+    });
   });
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', (ws: WebSocket, account: Account | null) => {
     alive.add(ws);
     let room: Room | null = null;
     // Token bucket: a few seconds of burst, then `rate` messages per second.
@@ -232,9 +265,9 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (!target) return over(`Table ${msg.room} not found.`);
           } else {
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
-            target = new Room(freshCode(), { flipMs, deal: options.deal });
+            target = new Room(freshCode(), { flipMs, deal: options.deal, record });
           }
-          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create'); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
+          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', account?.id ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);
           rooms.set(target.code, target);
           idleSince.delete(target);
@@ -271,7 +304,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       for (const ws of wss.clients) ws.terminate();
       for (const room of rooms.values()) room.close();
       wss.close();
-      http.close(() => (accounts?.close(), done()));
+      http.close(() => (db?.close(), done()));
       http.closeAllConnections();
     });
 
@@ -279,30 +312,32 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     http.once('error', failed);
     http.listen(options.port ?? 8787, () => {
       const address = http.address();
-      ready({ port: typeof address === 'object' && address ? address.port : 0, accounts: !!accounts, rooms, sweep, close });
+      ready({ port: typeof address === 'object' && address ? address.port : 0, kept: !!rounds, accounts: !!accounts, rooms, sweep, close });
     });
   });
 }
 
-/**
- * The accounts asked for (by `asked`, or with none said, by the environment), opened: null for none. The game does not
- * need them, so whatever goes wrong here (a volume that cannot be written, a file that cannot be read) is said in the
- * log and the game runs without.
- */
-async function withAccounts(asked: AccountsOptions | null | undefined): Promise<Accounts | null> {
+/** What `open` gives; or, if it fails, null, with `what` and the error in the log. */
+async function attempt<T>(what: string, open: () => T | Promise<T>): Promise<T | null> {
   try {
-    const setUp = asked === undefined ? accountsFromEnv() : asked;
-    if (!setUp) return null;
-    if ('missing' in setUp) {
-      // Some of it set and some not: somebody meant to. (None of it: nobody did, and there is nothing to say.)
-      if (!['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'AUTH_SECRET'].every((name) => setUp.missing.includes(name))) console.warn(`accounts are off: ${setUp.missing.join(', ')} not set`);
-      return null;
-    }
-    return await openAccounts(setUp);
+    return await open();
   } catch (err) {
-    console.error('accounts are off: they could not be opened', err);
+    console.error(what, err);
     return null;
   }
+}
+
+/** What the environment asks to be kept, and how people are to sign in: said in the log where it asks for half of it. */
+function fromEnv(): Pick<ServerOptions, 'data' | 'accounts'> {
+  const data = dataFromEnv();
+  const accounts = accountsFromEnv();
+  if (!('missing' in accounts)) {
+    if (!data) console.warn('accounts are off: DATA_DIR not set');
+    return { data, accounts };
+  }
+  // Some of it set and some not: somebody meant to. (None of it: nobody did, and there is nothing to say.)
+  if (!['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'AUTH_SECRET'].every((name) => accounts.missing.includes(name))) console.warn(`accounts are off: ${accounts.missing.join(', ')} not set`);
+  return { data, accounts: null };
 }
 
 /** Serves the built client, falling back to index.html for app routes (anything without a file extension). */
@@ -338,8 +373,8 @@ function serveStatic(dist: string, path: string, req: IncomingMessage, res: Serv
 
 // Run when executed directly (`tsx server/index.ts`), not when imported by tests.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const server = await startServer({ port: Number(process.env.PORT) || 8787 });
+  const server = await startServer({ port: Number(process.env.PORT) || 8787, ...fromEnv() });
   const hasClient = existsSync(fileURLToPath(new URL('../dist/index.html', import.meta.url)));
-  console.log(`nertz server on http://localhost:${server.port}${hasClient ? '' : ' (websocket only: no dist/ build)'}${server.accounts ? ', with accounts' : ''}`);
+  console.log(`nertz server on http://localhost:${server.port}${hasClient ? '' : ' (websocket only: no dist/ build)'}${server.kept ? `, keeping rounds${server.accounts ? ' and accounts' : ''}` : ''}`);
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => void server.close().then(() => process.exit(0)));
 }

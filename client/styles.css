@@ -5004,3 +5004,29 @@ button.who:hover,
   font: 700 0.95em/1 var(--num);
   font-variant-numeric: tabular-nums;
 }
+
+/* Your record, on the first page: figures written on the pad, each over what it counts. */
+.record {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.record div {
+  display: flex;
+  flex-direction: column-reverse; /* the figure over what it counts; in the page, what it counts comes first */
+  align-items: center;
+}
+
+.record dd {
+  margin: 0;
+  font: 700 1.5rem/2rem var(--num);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.record dt {
+  font: 400 0.8rem/1rem var(--ui);
+  color: var(--ink-soft);
+}

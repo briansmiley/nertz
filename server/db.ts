@@ -1,0 +1,112 @@
+// What outlives the process: one SQLite file (on a volume, in production), opened with Node's own `node:sqlite`.
+// Each part of the server that keeps something has its tables here, in `MIGRATIONS`; Better Auth's own (user,
+// session, account, verification) it makes and looks after itself (server/accounts.ts), in the same file.
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
+export type Db = DatabaseSync;
+
+/**
+ * Each entry is run once, in order, on a database that has not had it: the file's `user_version` is how many it has
+ * had. Never change an entry that has shipped: add one.
+ */
+const MIGRATIONS: string[] = [
+  // Rounds played to the end, each hand in them, and each snipe (server/rounds.ts). `game` is one sitting at a table:
+  // the rounds from its opening (or its last start-over) on, whose totals add up on the score sheet; codes are reused,
+  // so it is what tells two sittings at one code apart. `player` is who played a hand within its sitting (the room's
+  // id for them: a seat, a name, can change hands between rounds), and `out` whether they had stood up, left the table, or been
+  // sent away, before the round was over.
+  // A hand is one person's play of one round, and within a round a seat is one hand: the engine's own identity for it,
+  // held by one player from the deal to the score. So a snipe names its two hands by seat, and the database holds it to
+  // two hands of that round. `name` is the name the hand was played under, guest or not.
+  // `account` is who played it, if they were signed in: the id of a row of Better Auth's `user`. (Not declared as one:
+  // that table is there only where there are accounts, and rounds are kept without.)
+  `create table round (
+     id integer primary key,
+     created_at integer not null,
+     game text not null,
+     code text not null,
+     number integer not null,
+     ending text not null check (ending in ('nertz', 'jam', 'vote')),
+     ms integer not null
+   ) strict;
+   create index round_game on round (game);
+   create table hand (
+     round integer not null references round (id) on delete cascade,
+     seat integer not null,
+     player integer not null,
+     name text not null,
+     account text,
+     bot text check (bot in ('slow', 'medium', 'fast')),
+     out text check (out in ('stood', 'left', 'kicked')),
+     played integer not null,
+     nertz_left integer not null,
+     delta integer not null,
+     nertz integer not null check (nertz in (0, 1)),
+     primary key (round, seat),
+     unique (round, player),
+     check (bot is null or account is null)
+   ) strict, without rowid;
+   create table snipe (
+     round integer not null,
+     by_seat integer not null,
+     of_seat integer not null,
+     card text not null,
+     check (by_seat <> of_seat),
+     primary key (round, of_seat, card),
+     foreign key (round, by_seat) references hand (round, seat) on delete cascade,
+     foreign key (round, of_seat) references hand (round, seat) on delete cascade
+   ) strict, without rowid;
+   create unique index hand_account on hand (account, round) where account is not null;`,
+];
+
+/** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */
+export function dataFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
+  const dir = env.DATA_DIR || (env.NODE_ENV !== 'production' ? 'data' : null);
+  return dir ? join(dir, 'nertz.db') : null;
+}
+
+/**
+ * Runs `does` in a transaction of its own: committed if it returns, undone if it throws. Only what it began is undone
+ * (Better Auth runs transactions of its own on this connection), and a failure to begin is a throw like any other.
+ */
+export function transaction<T>(db: Db, does: () => T): T {
+  db.exec('BEGIN');
+  try {
+    const done = does();
+    db.exec('COMMIT');
+    return done;
+  } catch (err) {
+    if (db.isTransaction) db.exec('ROLLBACK'); // (SQLite may have undone it already: then this would hide why)
+    throw err;
+  }
+}
+
+/** Opens the file (or ':memory:'), making its directory if need be, and brings its tables up to date. */
+export function openDb(file: string): Db {
+  if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
+  try {
+    // (A short wait for the file: the game's own loop writes to it, and a round not kept is better than every table held up.)
+    db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 250;');
+    const had = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+    if (had > MIGRATIONS.length) console.warn(`the database is from a newer version of the game (${had} migrations, this one knows ${MIGRATIONS.length})`);
+    // Migrations run with foreign keys off (they cannot be turned off inside a transaction): a table rebuilt by one,
+    // dropped and made again, must not take every row that points at it with it. What they leave is checked instead.
+    db.exec('PRAGMA foreign_keys = OFF');
+    for (let i = had; i < MIGRATIONS.length; i++) {
+      transaction(db, () => {
+        db.exec(MIGRATIONS[i]!);
+        const broken = db.prepare('PRAGMA foreign_key_check').all();
+        if (broken.length) throw new Error(`migration ${i + 1} leaves rows pointing at nothing: ${JSON.stringify(broken.slice(0, 5))}`);
+        db.exec(`PRAGMA user_version = ${i + 1}`);
+      });
+    }
+    db.exec('PRAGMA foreign_keys = ON');
+    return db;
+  } catch (err) {
+    db.close();
+    throw err;
+  }
+}

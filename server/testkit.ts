@@ -1,6 +1,6 @@
 // What the server's tests sit at a table with: a connection that records what it is sent, a room with n people in it,
-// the walk from the deal to play, and a websocket client for the real server. For tests only: nothing outside a
-// *.test.ts imports this.
+// the walk from the deal to play, a websocket client for the real server, and (for signing in) Google played by a fake
+// and a browser's part done by hand. For tests only: nothing outside a *.test.ts imports this.
 import { randomUUID } from 'node:crypto';
 import { expect, vi } from 'vitest';
 import WebSocket from 'ws';
@@ -8,6 +8,7 @@ import type { ChatLine } from '../shared/chat';
 import { DEAL_MS, parseClientMsg, START_MS, type ServerMsg } from '../shared/protocol';
 import { seeded, wire } from '../shared/testkit';
 import type { GameState, RoomView } from '../shared/types';
+import { AUTH_PATH, type AccountsOptions } from './accounts';
 import { Room, type Conn, type RoomOptions } from './room';
 
 export type Of<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
@@ -135,10 +136,11 @@ export class Client {
   }
   /**
    * Connects and sits down: `room` null opens a new table (the server picks the code), otherwise joins that code.
-   * With `expectSeat` false it only sends the join and waits for nothing.
+   * With `expectSeat` false it only sends the join and waits for nothing. With `cookie`, the socket opens as a browser
+   * holding it would, from a page of ours (or of `origin`): signed in, if it is a session's (`Browser.cookie`).
    */
-  static async open(port: number, room: string | null, name: string, token: string = randomUUID(), expectSeat = true): Promise<Client> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  static async open(port: number, room: string | null, name: string, token: string = randomUUID(), expectSeat = true, cookie?: string, origin = ACCOUNTS.url): Promise<Client> {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, cookie ? { headers: { cookie, origin } } : {});
     await new Promise((ok, fail) => ws.once('open', ok).once('error', fail));
     const client = new Client(ws, token);
     client.send(room === null ? { t: 'create', name, token } : { t: 'join', room, name, token });
@@ -198,5 +200,72 @@ export class Client {
     const closed = new Promise((ok) => this.ws.once('close', ok));
     how();
     await closed;
+  }
+}
+
+// ---------------------------------------------------------------- signing in
+
+/** Accounts as a test sets them up: the app reached at `url`, and a Google client that `fakeGoogle` answers for. */
+export const ACCOUNTS: AccountsOptions = { url: 'https://nertz.example', secret: 'a-secret-long-enough-for-better-auth-0123456789', google: { id: 'client-id', secret: 'client-secret' } };
+
+/** Who Google says someone is. */
+export interface Googler {
+  sub: string;
+  email: string;
+  name: string;
+  picture?: string;
+}
+export const ADA: Googler = { sub: 'google-123', email: 'ada@example.com', name: 'Ada Lovelace', picture: 'https://example.com/ada.png' };
+export const BOB: Googler = { sub: 'google-456', email: 'bob@example.com', name: 'Bob Byte' };
+
+/**
+ * Google, played by a stub of the global `fetch` (undo it with `vi.unstubAllGlobals()`): the code it is handed back is
+ * the `sub` of whoever "signed in" there (`Browser.signIn` sends it), and any other request goes where it was going.
+ */
+export function fakeGoogle(people: readonly Googler[] = [ADA, BOB]): void {
+  const real = globalThis.fetch;
+  // A JWT nobody signed: what Google's token endpoint answers with is read, not verified (it came over TLS from Google).
+  const idToken = (claims: object): string => `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.x`;
+  vi.stubGlobal('fetch', (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (!url.startsWith('https://oauth2.googleapis.com/token')) return real(input, init);
+    const who = people.find((p) => p.sub === new URLSearchParams(String(init?.body)).get('code'));
+    if (!who) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+    const id_token = idToken({ iss: 'https://accounts.google.com', aud: ACCOUNTS.google.id, email_verified: true, exp: Math.floor(Date.now() / 1000) + 3600, ...who });
+    return Response.json({ access_token: 'at', id_token, token_type: 'Bearer', expires_in: 3600, scope: 'openid email profile' });
+  }) as typeof fetch);
+}
+
+/** A browser's part, done by hand: cookies kept between requests, sent from the app's own pages, redirects not followed. */
+export class Browser {
+  private readonly kept = new Map<string, string>();
+  constructor(private readonly port: number) {}
+  /** The cookies it holds, as a request sends them. */
+  get cookie(): string {
+    return [...this.kept].map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+  /** GET `path`; or with `body`, POST it as JSON. */
+  async ask(path: string, body?: object): Promise<Response> {
+    const res = await fetch(`http://localhost:${this.port}${path}`, {
+      method: body ? 'POST' : 'GET',
+      redirect: 'manual',
+      headers: { cookie: this.cookie, origin: ACCOUNTS.url, ...(body ? { 'content-type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    for (const line of res.headers.getSetCookie()) {
+      const [pair] = line.split(';');
+      const eq = pair!.indexOf('=');
+      const [name, value] = [pair!.slice(0, eq), pair!.slice(eq + 1)];
+      if (/max-age=0/i.test(line) || !value) this.kept.delete(name);
+      else this.kept.set(name, value);
+    }
+    return res;
+  }
+  /** Off to Google and back as `who` (needs `fakeGoogle`). Gives where Google was sent to, and the answer on coming back. */
+  async signIn(who: Googler = ADA, from = '/'): Promise<{ google: URL; back: Response }> {
+    const { url } = (await (await this.ask(`${AUTH_PATH}/sign-in/social`, { provider: 'google', callbackURL: from, errorCallbackURL: from })).json()) as { url: string };
+    const google = new URL(url);
+    const back = await this.ask(`${AUTH_PATH}/callback/google?code=${who.sub}&state=${encodeURIComponent(google.searchParams.get('state')!)}`);
+    return { google, back };
   }
 }

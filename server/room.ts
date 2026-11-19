@@ -8,6 +8,7 @@
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
+import { randomUUID } from 'node:crypto';
 import { applyIntent, calledBy, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
@@ -17,6 +18,7 @@ import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import type { Named } from '../shared/chat';
 import { roundOver, Social } from './chat';
 import { guard } from './guard';
+import type { RoundRecord } from './rounds';
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -44,6 +46,8 @@ interface Player {
   id: number;
   /** Secret chosen by the client; maps a reconnect back to who they are. Never sent to anyone. */
   token: string;
+  /** Who they are signed in as (server/accounts.ts), if they are: what their connection said as it joined. Never sent to anyone. */
+  account: string | null;
   name: string;
   seat: number | null;
   /** Their number in the queue for a seat (a count, not a clock: lower is earlier); null when they are not in it. Never set together with `seat`. */
@@ -118,6 +122,8 @@ export interface RoomOptions {
   schedule?: (flush: () => void) => void;
   /** The least time between two cards a person deals off their stock (ms). 0, the default here, is no limit. */
   flipMs?: number;
+  /** Told each round as it is scored (server/rounds.ts keeps them). */
+  record?: (round: RoundRecord) => void;
 }
 
 /** How long a bot takes to change its mind when the move it had settled on is no longer there, ms (about: 0.6 to 1.4 times this). */
@@ -145,6 +151,8 @@ export class Room {
   readonly social = new Social();
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
   private snipes: { by: number; of: number; card: string }[] = [];
+  /** This sitting at the table (see `RoundRecord.game`): made when the table opens, and again when it starts over. */
+  private sitting: string = randomUUID();
   /** The last number given out to someone who began to wait for a seat (`Player.queued`), and the last `Player.id`. */
   private queue = 0;
   private ids = 0;
@@ -173,6 +181,7 @@ export class Room {
   private readonly deal: typeof deal;
   private readonly schedule: (flush: () => void) => void;
   private readonly flipMs: number;
+  private readonly record: RoomOptions['record'];
 
   constructor(
     readonly code: string,
@@ -182,6 +191,7 @@ export class Room {
     this.deal = options.deal ?? deal;
     this.schedule = options.schedule ?? setImmediate;
     this.flipMs = options.flipMs ?? 0;
+    this.record = options.record;
   }
 
   /** Number of live connections. */
@@ -200,7 +210,7 @@ export class Room {
    * for one (`sit`); with `sit`, they ask at once whatever the table is doing (whoever opens it).
    * Returns an error message on refusal.
    */
-  join(conn: Conn, name: string, token: string, sit = false): string | null {
+  join(conn: Conn, name: string, token: string, sit = false, account: string | null = null): string | null {
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
     // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
@@ -208,7 +218,7 @@ export class Room {
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
-      player = { id: this.ids++, token, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
+      player = { id: this.ids++, token, account, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
     } else if (player.conn) {
       // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
@@ -217,7 +227,8 @@ export class Room {
       old.close('This seat was opened in another tab.');
       this.letGo(player); // whatever the old socket was dragging is not in this one's hand
     }
-    Object.assign(player, { name, conn, ack: -1 });
+    // (Come back signed in as someone already seated at the table, in another window, they are nobody here: one hand to an account.)
+    Object.assign(player, { name, account: seated(player) && this.seatedAs(account, player) ? null : account, conn, ack: -1 });
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
     if (fresh && (sit || (!this.roundOn && this.seatFor(player) !== null))) player.queued = ++this.queue;
@@ -586,8 +597,8 @@ export class Room {
     if (status.at !== 'over') return;
     this.stopRoundTimer();
     const caller = calledBy(this.state);
-    const scores = scoreRound(this.state).map((s) => {
-      const p = this.players.find((p) => p.seat === s.seat);
+    const scored = scoreRound(this.state).map((s) => ({ s, p: this.players.find((p) => p.seat === s.seat) }));
+    const scores = scored.map(({ s, p }) => {
       const called = s.seat === caller ? 1 : 0;
       if (p) p.score += s.delta;
       if (p) p.rounds = (p.rounds ?? 0) + 1;
@@ -606,6 +617,15 @@ export class Room {
     this.stopClock();
     this.pausedBy = null;
     this.stopBots();
+    this.record?.({
+      game: this.sitting,
+      code: this.code,
+      number: this.round,
+      end: status.end,
+      ms: this.played ?? 0,
+      hands: scored.flatMap(({ s, p }) => (p ? [{ ...s, player: p.id, name: p.name, account: p.account, bot: p.bot?.level ?? null, out: p.out ?? null }] : [])), // (a hand is always someone's: the player stays listed, `out`, until the round is over)
+      snipes: [...this.snipes],
+    });
     this.sendOff();
     this.fill(); // the round is over: whoever waited for a seat sits down, as far as there are seats
     this.social.tell(this.players, roundOver(this.round, this.lastRound));
@@ -716,6 +736,11 @@ export class Room {
    * The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or
    * else the lowest free one; null when the table is full (no seat of `seats` free). A bot, new, has no last round.
    */
+  /** Someone other than `but` seated as `account` (and never anyone, for nobody's). */
+  private seatedAs(account: string | null, but: Player): boolean {
+    return account !== null && this.players.some((q) => q !== but && q.account === account && seated(q));
+  }
+
   private seatFor(p?: Player): number | null {
     if (freeSeats(this.seats) === 0) return null;
     const free = (seat: number) => !this.players.some((q) => q.seat === seat);
@@ -740,6 +765,7 @@ export class Room {
 
   private seatQueue(): void {
     for (const p of this.players.filter((q) => q.queued !== null && q.conn).sort((a, b) => a.queued! - b.queued!)) {
+      if (this.seatedAs(p.account, p)) continue; // one seat to an account: a second window of it waits until the first stands up
       const seat = this.seatFor(p);
       if (seat === null) break;
       p.seat = seat;
@@ -825,7 +851,7 @@ export class Room {
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
-    this.players.push({ id, token: `bot:${id}`, name, seat, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
+    this.players.push({ id, token: `bot:${id}`, account: null, name, seat, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
     this.changed();
   }
 
@@ -843,6 +869,7 @@ export class Room {
       if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
+    this.sitting = randomUUID();
     this.startTold = 0;
     this.lastRound = null;
     this.state = null;
