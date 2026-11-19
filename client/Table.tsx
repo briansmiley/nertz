@@ -8,7 +8,7 @@
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
@@ -21,7 +21,8 @@ import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
 import { Opening } from './Opening';
-import { ending, stageOf, stepAtMount } from './stage';
+import { ending, stageOf, stepAtMount, unrevealed } from './stage';
+import { setUnrevealed } from './social';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
@@ -255,7 +256,8 @@ function useStage(results: boolean, round: number, trayPiles: number, players: n
       ['wash', trayPiles ? TIMING.out : 0],
       ['sort', washedAt(trayPiles) - TIMING.spread - (trayPiles ? TIMING.out : 0)],
       // (On a phone the table is cleared before the sorting starts: `clear`.)
-      ['sheet', sortAt(trayPiles, clear) - washedAt(trayPiles) + sortMs(players) + TIMING.hold],
+      ['won', sortAt(trayPiles, clear) - washedAt(trayPiles) + sortMs(players)],
+      ['sheet', TIMING.hold],
     ];
     timers.current = steps.map(([next, ms]) => setTimeout(() => setStep({ round, stage: next }), (at += ms)));
     return stop;
@@ -367,6 +369,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [playingOut]);
+  // The chat holds the notice of a round's end back until it is shown here; before the browser paints, so the two come together.
+  const yetToShow = unrevealed(stage, room.round);
+  useLayoutEffect(() => {
+    setUnrevealed(yetToShow);
+    return () => setUnrevealed(null);
+  }, [yetToShow]);
   const stageWas = useRef(stage);
   useEffect(() => {
     // The riffle of the wash and each player's cards arriving, on the canvas's schedule; the flourish of the score sheet.

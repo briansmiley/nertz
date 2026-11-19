@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ending, stageOf, stepAtMount } from './stage';
+import { ending, stageOf, stepAtMount, unrevealed } from './stage';
 
 describe('the stage of the table', () => {
   it('is live the moment the next round is dealt, whatever step the last one had got to', () => {
@@ -31,7 +31,16 @@ describe('the stage of the table', () => {
 
   it('is playing out between live and the sheet', () => {
     expect(ending('live')).toBe(false);
-    expect((['flip', 'spread', 'out', 'wash'] as const).every(ending)).toBe(true);
+    expect((['flip', 'spread', 'out', 'wash', 'sort', 'won'] as const).every(ending)).toBe(true);
     expect(ending('sheet')).toBe(false);
+  });
+
+  it("has the round's result still to show while it is played and while its end plays out, until its winner is marked", () => {
+    expect((['live', 'flip', 'spread', 'out', 'wash', 'sort'] as const).map((s) => unrevealed(s, 4))).toEqual([4, 4, 4, 4, 4, 4]);
+    expect(unrevealed('won', 4)).toBeNull();
+    expect(unrevealed('sheet', 4)).toBeNull();
+    // Reduced motion, a skip, or a window that did not watch the round end: at the sheet, nothing is still to show.
+    expect(unrevealed(stageOf(true, 4, null, true), 4)).toBeNull();
+    expect(unrevealed(stageOf(true, 4, stepAtMount(true, 4), false), 4)).toBeNull();
   });
 });
