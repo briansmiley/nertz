@@ -1977,6 +1977,13 @@ button {
   text-align: center;
 }
 
+/* Before the totals, top to bottom, a rule like the pad's margin: what this round brought on one side, what is kept on the other. */
+.scores th.over,
+.scores thead tr + tr th:first-child,
+.scores td.calls {
+  border-left: 1.5px solid rgba(207, 34, 51, 0.45);
+}
+
 .scores thead tr + tr th {
   height: auto;
 }
