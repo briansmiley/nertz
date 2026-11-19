@@ -3,7 +3,7 @@ import { signIn, signOut, useAccount, useStats } from './account';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
-import type { BotLevel, PlayerView, RoomView, TableSummary } from '../shared/types';
+import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { lookOf, usePrefs } from './prefs';
@@ -293,27 +293,26 @@ function Leave() {
   );
 }
 
-/** How often the list of tables is asked for again while it is open, ms. */
+/** How often the tables are asked for again while the home page is up, ms. */
 const TABLES_MS = 5000;
 
 /** What a table is doing, as its line of the list says it. */
 const roundOf = (t: TableSummary): string => (t.playing ? `round ${t.round}` : t.round > 0 ? `after round ${t.round}` : 'not started');
 
-/** The tables someone is at just now (server/index.ts `/tables`): pressed, the list; a line of it, that table. */
+/** The tables someone is at just now (server/index.ts `/tables`), how many beside the word; pressed, the list; a line of it, that table. */
 function Tables({ onPick }: { onPick: (code: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [tables, setTables] = useState<TableSummary[] | null>(null);
+  const [known, setKnown] = useState<OpenTables | null>(null);
   useEffect(() => {
-    if (!open) return setTables(null);
     let live = true;
     const load = async () => {
       try {
         const res = await fetch('/tables', { cache: 'no-store' });
         if (!res.ok) return;
-        const body = (await res.json()) as { tables: TableSummary[] };
-        if (live) setTables(body.tables);
+        const body = (await res.json()) as OpenTables;
+        if (live) setKnown(body);
       } catch {
-        // the server is out of reach: the list stays as it was, and is asked for again
+        // the server is out of reach: what is shown stays as it was, and is asked for again
       }
     };
     void load();
@@ -322,17 +321,17 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
       live = false;
       clearInterval(again);
     };
-  }, [open]);
+  }, [open]); // (asked for at once when the list is opened, too)
   return (
     <div className="tables">
       <button type="button" className="quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Tables
+        Tables{known && ` (${known.open})`}
       </button>
       {open &&
-        tables &&
-        (tables.length ? (
+        known &&
+        (known.tables.length ? (
           <ul>
-            {tables.map((t) => (
+            {known.tables.map((t) => (
               <li key={t.code}>
                 <button type="button" title={t.watching ? `${t.watching} watching` : undefined} onClick={() => onPick(t.code)}>
                   <b>{t.code}</b>

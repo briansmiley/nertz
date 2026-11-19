@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { MAX_PLAYERS } from '../shared/protocol';
-import type { TableSummary } from '../shared/types';
+import type { OpenTables } from '../shared/types';
 import { startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 import { Client } from './testkit';
@@ -51,12 +51,14 @@ describe('GET /tables', () => {
   it('lists the tables someone is at, the latest to change first, and nothing that could be used to take a seat', async () => {
     server = await startServer({ port: 0 });
     const port = server.port;
-    const get = async (): Promise<{ text: string; tables: TableSummary[] }> => {
+    const get = async (): Promise<OpenTables & { text: string }> => {
       const res = await fetch(`http://127.0.0.1:${port}/tables`);
       expect(res.status).toBe(200);
       expect(res.headers.get('cache-control')).toBe('no-store');
       const text = await res.text();
-      return { text, tables: (JSON.parse(text) as { tables: TableSummary[] }).tables };
+      const body = JSON.parse(text) as OpenTables;
+      expect(body.open).toBe(body.tables.length); // (fewer than twenty: every one is listed)
+      return { text, ...body };
     };
     const open = async (room: string | null, name: string, sit = true) => {
       const s = await Client.open(port, room, name, undefined, sit);
@@ -93,19 +95,21 @@ describe('GET /tables', () => {
     await vi.waitFor(() => expect(server!.rooms.get(other)?.connected).toBe(0));
     expect(server.rooms.has(other)).toBe(true);
     expect((await get()).tables.map((t) => t.code)).toEqual([code]);
+    expect((await get()).open).toBe(1);
 
     expect((await fetch(`http://127.0.0.1:${port}/tables`, { method: 'POST', body: '{}' })).status).toBe(405);
     const head = await fetch(`http://127.0.0.1:${port}/tables`, { method: 'HEAD' });
     expect(head.status).toBe(200);
   });
 
-  it('lists at most twenty', async () => {
+  it('lists at most twenty, and counts them all', async () => {
     server = await startServer({ port: 0 });
     const port = server.port;
     for (let i = 0; i < 22; i++) sockets.push((await Client.open(port, null, `P${i}`)).ws);
     const res = await fetch(`http://127.0.0.1:${port}/tables`);
-    const { tables } = (await res.json()) as { tables: TableSummary[] };
+    const { tables, open } = (await res.json()) as OpenTables;
     expect(server.rooms.size).toBe(22);
+    expect(open).toBe(22);
     expect(tables).toHaveLength(20);
     expect(new Set(tables.map((t) => t.code)).size).toBe(20);
   });
