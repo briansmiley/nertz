@@ -32,6 +32,7 @@ import {
   snipedBy,
   startCountdown,
   viewFor,
+  wentOut,
   type Result,
   type Rng,
 } from './engine';
@@ -953,7 +954,7 @@ describe('voting to end the round', () => {
     const both = run(one, [1, { k: 'end', on: true }]);
     expect(resolveEndVote(both, [0, 1]).status).toEqual({ at: 'over', end: { by: 'vote' } }); // seat 2 (a bot, say) is not asked
     expect(resolveEndVote(both, [])).toBe(both);
-    const called: GameState = { ...both, status: { at: 'over', end: { by: 'nertz', seat: 0 } } };
+    const called: GameState = { ...both, status: { at: 'over', end: { by: 'nertz', seat: 0, out: [0] } } };
     expect(resolveEndVote(called, [0, 1])).toBe(called);
   });
 
@@ -1102,7 +1103,7 @@ describe('stuck', () => {
   });
 
   it('is a no-op once Nertz has been called', () => {
-    const over: GameState = { ...stuck(stuck(stuck(base, 0), 1), 2), status: { at: 'over', end: { by: 'nertz', seat: 1 } } };
+    const over: GameState = { ...stuck(stuck(stuck(base, 0), 1), 2), status: { at: 'over', end: { by: 'nertz', seat: 1, out: [1] } } };
     expect(resolveStuck(over, [0, 1, 2])).toBe(over);
   });
 });
@@ -1134,6 +1135,19 @@ describe('calling nertz and scoring', () => {
     expect(canDrop(over, 1, '1:C7', work(0))).toBe(false);
     expect(legalDrops(over, 1, '1:C7')).toHaveLength(4); // the cards would fit; the round is what forbids it
     expect(expireGrace(over)).toBe(over);
+  });
+
+  it('gives Nertz to everyone whose nertz pile is empty when it is called, whether or not they called; it scores nothing', () => {
+    const both = table([{ nertz: 'HA', work: ['S9', [], [], []] }, { stock: 'D2' }, { nertz: 'C5' }]);
+    expect(wentOut(both)).toEqual([]); // not before a call
+    const over = run(both, [0, move('0:HA', felt(-1.5, 0))], [1, NERTZ]);
+    expect(over.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1, out: [0, 1] } });
+    expect([calledBy(over), wentOut(over)]).toEqual([1, [0, 1]]);
+    expect(scoreRound(over).map((x) => x.delta)).toEqual([1, 0, -2]); // the HA played; going out adds nothing
+    expect(checkInvariants(over)).toBeNull();
+    expect(checkInvariants({ ...over, status: { at: 'over', end: { by: 'nertz', seat: 1, out: [1] } } })).toMatch(/out is not/);
+    // A round that ends without a call gives nobody Nertz.
+    expect(wentOut({ ...over, status: { at: 'over', end: { by: 'vote' } } })).toEqual([]);
   });
 
   it('scores strictly cards in the middle (slots and tray) minus twice the nertz pile, with no bonus for going out', () => {
@@ -1348,6 +1362,15 @@ describe('held-card grace after a Nertz call', () => {
     rejected(applyIntent(over, 3, move('3:C3', work(3)))); // no second move
   });
 
+  it('whoever empties their nertz pile with the move of grace got Nertz too; the caller is still who called', () => {
+    const called = run(s, [3, hold('3:H2')], [0, NERTZ]);
+    expect(wentOut(called)).toEqual([0]);
+    const over = ok(applyIntent(called, 3, move('3:H2', slot(0))));
+    expect(over.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 0, out: [0, 3] } });
+    expect([calledBy(over), wentOut(over)]).toEqual([0, [0, 3]]);
+    expect(checkInvariants(over)).toBeNull();
+  });
+
   it('a grace move may also go to a work pile, taking the run above the held card with it', () => {
     const g = table([{}, { work: ['S9 H8 C7', 'C9', 'D2', 'D3'] }]);
     const called = run(g, [1, hold('1:H8')], [0, NERTZ]);
@@ -1551,7 +1574,7 @@ describe('checkInvariants', () => {
   });
   it('catches a work pile with no face-up top', () =>
     expect(checkInvariants(withPlayer0((p) => ({ work: [{ ...p.work[0]!, down: 1 }, ...p.work.slice(1)] })))).toMatch(/no face-up card/));
-  it('catches a nertz call with cards left', () => expect(checkInvariants({ ...good, status: { at: 'over', end: { by: 'nertz', seat: 0 } } })).toMatch(/nertz called/));
+  it('catches a nertz call with cards left', () => expect(checkInvariants({ ...good, status: { at: 'over', end: { by: 'nertz', seat: 0, out: [0] } } })).toMatch(/nertz called/));
   it('catches a wrong number of work piles', () => expect(checkInvariants(withPlayer0((p) => ({ work: p.work.slice(1) })))).toMatch(/work piles/));
   it("catches a card in someone else's pile", () => {
     const [a, b] = good.players as [PlayerState, PlayerState];
@@ -1575,7 +1598,7 @@ describe('checkInvariants', () => {
     const emptied = withPlayer0((p) => ({ nertz: [], stock: [...p.stock, ...p.nertz] }));
     expect(checkInvariants({ ...emptied, status: { at: 'grace', calledBy: 0 } })).toMatch(/grace with nobody/);
     const holder = { ...emptied, players: emptied.players.map((p, i) => (i === 1 ? { ...p, holding: p.nertz.at(-1)!.id } : p)) };
-    expect(checkInvariants({ ...holder, status: { at: 'over', end: { by: 'nertz', seat: 0 } } })).toMatch(/frozen player/);
+    expect(checkInvariants({ ...holder, status: { at: 'over', end: { by: 'nertz', seat: 0, out: [0] } } })).toMatch(/frozen player/);
     expect(checkInvariants({ ...holder, status: { at: 'grace', calledBy: 0 } })).toMatch(/in grace without/); // that card has nowhere to go
   });
 });

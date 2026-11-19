@@ -46,7 +46,7 @@ export function openRounds(db: Db): Rounds {
     keep(r, at = Date.now()) {
       transaction(db, () => {
         const id = round.run(at, r.game, r.code, r.number, r.end.by, Math.round(r.ms)).lastInsertRowid;
-        for (const h of r.hands) hand.run(id, h.seat, h.player, h.name, h.account, h.bot, h.out, h.played, h.nertzLeft, h.delta, r.end.by === 'nertz' && r.end.seat === h.seat ? 1 : 0);
+        for (const h of r.hands) hand.run(id, h.seat, h.player, h.name, h.account, h.bot, h.out, h.played, h.nertzLeft, h.delta, r.end.by === 'nertz' && r.end.out.includes(h.seat) ? 1 : 0);
         for (const s of r.snipes) snipe.run(id, s.by, s.of, s.card);
       });
     },

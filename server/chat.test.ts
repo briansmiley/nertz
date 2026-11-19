@@ -123,13 +123,21 @@ describe('text chat', () => {
 describe('how a round went', () => {
   const line = (id: number, seat: number, delta: number, gone = false): RoundLine => ({ id, seat, name: `P${id}`, played: delta, nertzLeft: 0, delta, total: delta, rounds: 1, calls: 0, ...(gone ? { gone } : {}) });
 
-  it('names who called, and who scored most in it: all of them on a tie, and not one the score sheet no longer shows', () => {
-    expect(roundOver(4, { end: { by: 'nertz', seat: 1 }, scores: [line(0, 0, 9), line(1, 1, 5), line(2, 2, 9), line(3, 3, 12, true)] })).toEqual({
+  it('names who got Nertz, and who scored most in it: all of them on a tie, and not one the score sheet no longer shows', () => {
+    expect(roundOver(4, { end: { by: 'nertz', seat: 1, out: [1] }, scores: [line(0, 0, 9), line(1, 1, 5), line(2, 2, 9), line(3, 3, 12, true)] })).toEqual({
       k: 'over',
       round: 4,
-      end: { who: 1, name: 'P1', points: 5 },
+      end: [{ who: 1, name: 'P1', points: 5 }],
       best: [{ who: 0, name: 'P0', points: 9 }, { who: 2, name: 'P2', points: 9 }],
     }); // prettier-ignore
+  });
+
+  it('names everyone who got Nertz, not only the one who called (even one sent away since)', () => {
+    expect(roundOver(5, { end: { by: 'nertz', seat: 2, out: [0, 2, 3] }, scores: [line(0, 0, 4), line(1, 1, -6), line(2, 2, 7), line(3, 3, 1, true)] }).end).toEqual([
+      { who: 0, name: 'P0', points: 4 },
+      { who: 2, name: 'P2', points: 7 },
+      { who: 3, name: 'P3', points: 1 },
+    ]);
   });
 
   it('says how it ended when nobody called', () => {

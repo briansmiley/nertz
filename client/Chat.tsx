@@ -45,18 +45,25 @@ function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
   else if (line.k === 'started') notice = <>Round {line.round} started</>;
   else if (line.k === 'reset') notice = <>{named(line.by)} started the table over</>;
   else {
-    // Whoever scored most in the round wins it (as the table says at its end); whoever called Nertz is named too when that is someone else.
+    // Everyone who got Nertz is named first; then whoever scored most in the round wins it (as the table says at its
+    // end), by name unless they are the very same people.
     const { end, best } = line;
-    const caller = typeof end === 'string' ? null : end;
+    const out = typeof end === 'string' ? [] : end;
+    const same = out.length === best.length && out.every((o) => best.some((b) => b.who === o.who));
+    const wins = <>{best.length > 1 ? 'win' : 'wins'} ({signed(best[0]?.points ?? 0)})</>;
     notice = (
       <>
         Round {line.round} over
-        {best.length > 0 && (
+        {out.length > 0 ? (
           <>
-            : {all(best)} {best.length > 1 ? 'win' : 'wins'} ({signed(best[0]!.points)})
+            : {all(out)} got Nertz{best.length > 0 && (same ? <> and {wins}</> : <>, {all(best)} {wins}</>)}
+          </>
+        ) : (
+          <>
+            {best.length > 0 && <>: {all(best)} {wins}</>}
+            {end === 'jam' ? ', the table jammed' : ', ended by agreement'}
           </>
         )}
-        {caller ? !best.some((b) => b.who === caller.who) && <>, {named(caller)} called Nertz ({signed(caller.points)})</> : end === 'jam' ? ', the table jammed' : ', ended by agreement'}
       </>
     );
   }

@@ -32,15 +32,16 @@ const ICE = iceFromEnv();
 
 /**
  * The notice that round `round` is over, from its score sheet and with its numbers. Whoever scored most is picked
- * among the lines the sheet shows (not one sent away since, `gone`); whoever called is named whatever became of them.
+ * among the lines the sheet shows (not one sent away since, `gone`); whoever got Nertz is named whatever became of them.
  */
 export function roundOver(round: number, result: RoundResult): Extract<ChatEvent, { k: 'over' }> {
   const scored = (l: RoundLine): Scored => ({ who: l.id, name: l.name, points: l.delta });
   const shown = result.scores.filter((l) => !l.gone);
   const most = Math.max(...shown.map((l) => l.delta));
   const { end } = result;
-  // (Whoever called was dealt in, so the round has a line for them.)
-  return { k: 'over', round, end: end.by === 'nertz' ? scored(result.scores.find((l) => l.seat === end.seat)!) : end.by, best: shown.filter((l) => l.delta === most).map(scored) };
+  // (Whoever got Nertz was dealt in, so the round has a line for each of them.)
+  const out = end.by === 'nertz' ? end.out.map((seat) => scored(result.scores.find((l) => l.seat === seat)!)) : end.by;
+  return { k: 'over', round, end: out, best: shown.filter((l) => l.delta === most).map(scored) };
 }
 
 /**

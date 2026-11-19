@@ -41,6 +41,14 @@ export const hasOpened = (state: GameState): boolean => state.status.at === 'pla
 export const isOver = (state: GameState): boolean => state.status.at === 'over';
 /** The seat that called Nertz, while cards in hand may still land and once the round is over by that call; null if nobody has (yet, or at all). */
 export const calledBy = ({ status }: GameState): number | null => (status.at === 'grace' ? status.calledBy : status.at === 'over' && status.end.by === 'nertz' ? status.end.seat : null);
+/** The seats whose nertz piles are empty, in seat order. */
+const emptied = (state: GameState): number[] => state.players.filter((p) => p.nertz.length === 0).map((p) => p.seat);
+/**
+ * The seats that got Nertz: once it is called, everyone whose nertz pile is empty (the caller, and anyone else who
+ * emptied theirs, whether or not they called); once the round is over by the call, those it ended with (`RoundEnd.out`).
+ * None before a call, or in a round that ended without one.
+ */
+export const wentOut = (state: GameState): number[] => (state.status.at === 'grace' ? emptied(state) : state.status.at === 'over' && state.status.end.by === 'nertz' ? state.status.end.out : []);
 /** The seats in the held-card grace window: after a call everyone else's hand is emptied, so exactly those still holding a card. */
 export const inGrace = (state: GameState): number[] => (state.status.at === 'grace' ? state.players.filter((p) => p.holding !== null).map((p) => p.seat) : []);
 /**
@@ -313,6 +321,11 @@ function endRound(state: GameState, end: RoundEnd): GameState {
   return { ...state, status: { at: 'over', end }, players: state.players.map((p) => (p.holding === null ? p : { ...p, holding: null })) };
 }
 
+/** The end of grace: the round is over by the call, and whoever has an empty nertz pile then got Nertz. */
+function endCalled(state: GameState, calledBy: number): GameState {
+  return endRound(state, { by: 'nertz', seat: calledBy, out: emptied(state) });
+}
+
 /**
  * After a Nertz call, and after each thing done in grace: whoever holds a card that has nowhere legal to go has it
  * taken out of their hand (their drag is cancelled), which leaves in grace those still holding one. With nobody left
@@ -321,7 +334,7 @@ function endRound(state: GameState, end: RoundEnd): GameState {
 function settleGrace(state: GameState): GameState {
   if (state.status.at !== 'grace') return state;
   const players = state.players.map((p) => (p.holding === null || legalDrops(state, p.seat, p.holding).length > 0 ? p : { ...p, holding: null }));
-  return players.some((p) => p.holding !== null) ? { ...state, players } : endRound(state, { by: 'nertz', seat: state.status.calledBy });
+  return players.some((p) => p.holding !== null) ? { ...state, players } : endCalled(state, state.status.calledBy);
 }
 
 // The opening of a round is the first steps of its status: dealing -> ready -> countdown -> play. Each step is taken by
@@ -428,7 +441,7 @@ export function snipedBy(state: GameState, seat: number, cardId: string, slot: n
 
 /** Ends the grace window (the server's 4-second timer fired): everyone still in it is cut off, and the round is over. Same object if there is none. */
 export function expireGrace(state: GameState): GameState {
-  return state.status.at === 'grace' ? endRound(state, { by: 'nertz', seat: state.status.calledBy }) : state;
+  return state.status.at === 'grace' ? endCalled(state, state.status.calledBy) : state;
 }
 
 // ---------------------------------------------------------------- stuck
@@ -696,6 +709,7 @@ export function checkInvariants(state: GameState): string | null {
   }
   const caller = calledBy(state);
   if (caller !== null && state.players.find((p) => p.seat === caller)?.nertz.length !== 0) return 'nertz called by a seat with cards left';
+  if (caller !== null && wentOut(state).join() !== emptied(state).join()) return 'out is not every seat with an empty nertz pile';
   if (!hasOpened(state) && (middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
     return 'play began before the round was open';
   }

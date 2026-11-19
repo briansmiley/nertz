@@ -9,7 +9,7 @@
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
@@ -65,6 +65,8 @@ const GLIDE_MS = 70;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+/** "A", "A and B", "A, B and C". */
+const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 // ---------------------------------------------------------------- one card
 
@@ -571,8 +573,10 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   });
 
   const mine = game.players.find((p) => p.seat === you);
-  const caller = calledBy(game);
-  const called = caller !== null;
+  /** Nertz has been called: the round is in grace, or over by the call. */
+  const called = calledBy(game) !== null;
+  /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
+  const out = wentOut(game);
   // Development aid: Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
   const [replay, setReplay] = useState(0);
   const [replaying, setReplaying] = useState(false);
@@ -842,16 +846,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** Your own line, where the layout has room for it: in full under your nertz pile, or as one line. */
   const mineAt = L.name && { className: `mine ${L.name.full ? 'full' : 'line'} ${L.name.align}`, style: { left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h } };
   const pill = L.pills ? ' pill' : '';
-  // The NERTZ! stamp comes down on the place the caller's nertz pile stood (now empty), not across their whole hand:
+  // The NERTZ! stamp comes down on the place each nertz pile that went out stood (now empty), not across the whole hand:
   // large enough to read at any seat, and kept inside the window.
-  const callerPile = called ? (caller === you ? me?.nertz : L.opponents.find((o) => o.seat === caller)?.nertz) : undefined;
-  const stampSize = callerPile ? Math.max(22, Math.min(callerPile.w * 0.78, 60)) : 0;
-  const callerBox = callerPile && {
-    x: clamp(callerPile.x + callerPile.w / 2 - stampSize * 2, 4, Math.max(4, W - stampSize * 4 - 4)),
-    y: callerPile.y,
-    w: stampSize * 4,
-    h: callerPile.h,
-  };
+  const stamps = out.flatMap((seat) => {
+    const pile = seat === you ? me?.nertz : L.opponents.find((o) => o.seat === seat)?.nertz;
+    if (!pile) return [];
+    const size = Math.max(22, Math.min(pile.w * 0.78, 60));
+    return [{ seat, size, x: clamp(pile.x + pile.w / 2 - size * 2, 4, Math.max(4, W - size * 4 - 4)), y: pile.y, w: size * 4, h: pile.h }];
+  });
   const finale = onCanvas(stage, 'slot');
   /** A phone, upright or on its side: the table is cleared for the end of a round (`Layout.cleared`). */
   const phone = L.phone;
@@ -1076,7 +1078,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
       {called && stage !== 'sheet' && (
         <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
-          <span>{caller === you ? 'You' : name(caller)} got Nertz!</span>
+          <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
       {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
@@ -1093,11 +1095,11 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           </span>
         </div>
       )}
-      {callerBox && (
-        <div className="shout" style={{ left: callerBox.x, top: callerBox.y, width: callerBox.w, height: callerBox.h, fontSize: stampSize }}>
+      {stamps.map((s) => (
+        <div key={`shout${s.seat}`} className="shout" style={{ left: s.x, top: s.y, width: s.w, height: s.h, fontSize: s.size }}>
           <span>Nertz!</span>
         </div>
-      )}
+      ))}
 
       {grace.length > 0 && room.timerMs !== null && (
         <Countdown
