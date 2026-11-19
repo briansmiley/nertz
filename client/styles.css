@@ -2104,6 +2104,11 @@ button {
   padding: 2rem clamp(1.25rem, 4vw, 3rem);
 }
 
+.hero {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .hero h1 {
   margin: 0;
   font: 400 clamp(4.5rem, 10.5vw, 9rem) / 0.9 var(--display);
