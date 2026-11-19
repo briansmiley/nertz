@@ -572,22 +572,46 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
  * still being dealt onto a waste (`dealt`), your own included.
  * While the cards are being dealt that is every card, and until play opens
  * (`ready`, `countdown`) it is still every nertz top: nobody gets a head start.
- * No hand is private in Nertz, so today every seat gets the same view; `seat`
- * is kept so that can change without touching callers.
+ *
+ * While cards can still move (play, and the grace after a call), `seat` is also shown the faces of its own cards that its
+ * next move could turn over (`comingUp`), still lying face-down: so a move it
+ * makes turns them up on its own screen at once, not a round trip later. Not
+ * the card under its nertz top: a play to the middle can lose a race the
+ * client has not heard about yet, and that card must not show and then hide.
+ * (A work pile's buried card can be uncovered by such a play too: the client
+ * keeps that one face-unknown until the move is confirmed, net.ts `unconfirmed`.)
  */
-export function viewFor(state: GameState, _seat: number): GameState {
+export function viewFor(state: GameState, seat: number): GameState {
   const dealing = state.status.at === 'dealing';
   const opened = hasOpened(state);
   return {
     ...state,
-    players: state.players.map((p) => ({
-      ...p,
-      nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && opened ? c : hide(c))),
-      work: p.work.map(({ cards, down }) => ({ cards: cards.map((c, j) => (j < down || dealing ? hide(c) : c)), down })),
-      stock: p.stock.map(hide),
-      waste: p.waste.map((c, i) => (dealing || i >= p.waste.length - p.dealt ? hide(c) : c)),
-    })),
+    players: state.players.map((p) => {
+      const shown = opened && !isOver(state) && p.seat === seat ? comingUp(p) : NONE;
+      const show = (c: AnyCard): AnyCard => (shown.has(c.id) ? c : hide(c));
+      return {
+        ...p,
+        nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && opened ? c : hide(c))),
+        work: p.work.map(({ cards, down }) => ({ cards: cards.map((c, j) => (dealing ? hide(c) : j < down ? show(c) : c)), down })),
+        stock: p.stock.map(show),
+        waste: p.waste.map((c, i) => (dealing ? hide(c) : i >= p.waste.length - p.dealt ? show(c) : c)),
+      };
+    }),
   };
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+/**
+ * The face-down cards a hand's next move could turn over: the group under way off its stock (what is dealt of it,
+ * and the rest; or the whole next group), and the face-down card at the top of each work pile's buried part.
+ */
+function comingUp(p: PlayerState): ReadonlySet<string> {
+  return new Set([
+    ...p.stock.slice(-(FLIP_COUNT - p.dealt)),
+    ...p.waste.slice(p.waste.length - p.dealt),
+    ...p.work.flatMap((w) => (w.down > 0 ? [w.cards[w.down - 1]!] : [])),
+  ].map((c) => c.id));
 }
 
 /** Strictly: +1 per own card in the middle (centre slots and tray), -2 per card left in the nertz pile. */

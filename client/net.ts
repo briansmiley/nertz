@@ -9,11 +9,11 @@
 // putting it back (`hold`, `release`) are intents like any other.
 import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
-import { applyIntent, refused } from '../shared/engine';
+import { applyIntent, grab, refused } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
 import { CLOSE_OVER, isRoomCode, PING_MS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
-import type { BotLevel, Intent, RoomView } from '../shared/types';
+import type { BotLevel, GameState, Intent, RoomView } from '../shared/types';
 
 // ---------------------------------------------------------------- pure reconciliation
 
@@ -51,12 +51,32 @@ export function onSend(sync: Sync, intent: Intent): Sync {
 export function predict(sync: Sync): RoomView | null {
   const room = sync.server;
   if (!room || room.phase !== 'playing' || !room.game) return room;
+  const seat = room.seat ?? -1;
   let game = room.game;
   for (const p of sync.pending) {
-    const result = applyIntent(game, room.seat ?? -1, p.intent);
-    game = result.ok ? result.state : refused(game, room.seat ?? -1, p.intent); // as the server will see it
+    const result = applyIntent(game, seat, p.intent);
+    game = result.ok ? unconfirmed(game, result.state, seat, p.intent) : refused(game, seat, p.intent); // as the server will see it
   }
   return game === room.game ? room : { ...room, game };
+}
+
+/**
+ * A move to the middle can lose a race the client has not heard about yet. So the face-down card it uncovers on a
+ * work pile, though its face was sent ahead, is not turned up until the server says the move landed: it lies face-up
+ * with its face unknown (drawn part way over, layout.ts `Showing`), never shown and then hidden again. A move between
+ * your own piles cannot be refused by anyone else, and turns it up at once.
+ */
+function unconfirmed(before: GameState, after: GameState, seat: number, intent: Intent): GameState {
+  if (intent.k !== 'move' || intent.to.k === 'work') return after;
+  const from = grab(before, seat, intent.cardId)?.from;
+  if (from?.k !== 'work') return after;
+  const was = before.players.find((p) => p.seat === seat)!.work[from.i]!;
+  const me = after.players.find((p) => p.seat === seat)!;
+  const pile = me.work[from.i]!;
+  const top = pile.cards.at(-1);
+  if (!top || pile.down === was.down) return after; // nothing was turned over
+  const work = me.work.map((w, i) => (i === from.i ? { ...w, cards: [...w.cards.slice(0, -1), { id: top.id, owner: top.owner, hidden: true as const }] } : w));
+  return { ...after, players: after.players.map((p) => (p === me ? { ...p, work } : p)) };
 }
 
 /** What a socket says first: sit down at the table we know, or ask the server to open one. */
