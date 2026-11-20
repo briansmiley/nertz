@@ -230,8 +230,11 @@ export type ServerMsg =
   | { t: 'state'; rev: number; ack: number; room: RoomView }
   /** A complaint about something this connection sent. It changes nothing: the connection goes on. */
   | { t: 'error'; message: string }
-  /** To everyone in the room: seat `by` has just beaten seat `of` to the pile at `slot` with the very card `of` was about to put there. */
-  | { t: 'snipe'; by: number; of: number; slot: number }
+  /**
+   * To everyone in the room: seat `by` has just beaten seat `of` to the pile at `slot` with `card`, the very card `of`
+   * was about to put there. One card can beat several seats at once: a word for each, all naming that card.
+   */
+  | { t: 'snipe'; by: number; of: number; slot: number; card: string }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
   /** The answer to `ping`, with its `at`. */

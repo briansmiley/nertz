@@ -511,7 +511,7 @@ export class Room {
     const snipe = slot < 0 ? null : judge(slot);
     if (!snipe || this.snipes.some((s) => s.of === victim.seat && s.card === snipe.card)) return;
     this.snipes.push({ by: snipe.by, of: victim.seat, card: snipe.card });
-    const msg: ServerMsg = { t: 'snipe', by: snipe.by, of: victim.seat, slot };
+    const msg: ServerMsg = { t: 'snipe', by: snipe.by, of: victim.seat, slot, card: snipe.card };
     for (const p of this.players) p.conn?.send(msg);
     const by = this.players.find((p) => p.seat === snipe.by);
     if (by) this.social.tell(this.players, { k: 'sniped', by: named(by), of: named(victim) });

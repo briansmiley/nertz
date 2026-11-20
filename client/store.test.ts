@@ -112,7 +112,7 @@ describe('the connection', () => {
     net.onSocial((m) => heard.push(m.t));
     const before = net.current();
     const msgs = [
-      { t: 'snipe', by: 1, of: 0, slot: 2 },
+      { t: 'snipe', by: 1, of: 0, slot: 2, card: '1:S3' },
       { t: 'drag', seat: 1, id: 'S1', w: 0.5, h: [1, 1], p: [0.1, 0.2] },
       { t: 'chat', lines: [], history: true },
       { t: 'social', inVoice: [], text: true, voice: true },

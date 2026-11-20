@@ -8,7 +8,7 @@
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
@@ -23,6 +23,7 @@ import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } fro
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
+import { heard, type Snipe } from './snipe';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
@@ -65,8 +66,9 @@ const GLIDE_MS = 70;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-/** "A", "A and B", "A, B and C". */
-const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+/** "A", "A and B", "A, B and C": what comes before the `i`th of `n`. */
+const between = (i: number, n: number): string => (i === 0 ? '' : i === n - 1 ? ' and ' : ', ');
+const andList = (names: readonly string[]): string => names.map((s, i) => between(i, names.length) + s).join('');
 
 // ---------------------------------------------------------------- one card
 
@@ -436,20 +438,21 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [held, setHeld] = useState<Held | null>(null);
   /** The finished pile in hand is over the tray. */
   const [hot, setHot] = useState(false);
-  /** The last snipe the server told of that you were in, and the last between two others: who beat whom to a pile (and a count, so that the same names flash again). Kept apart so that one does not put out the other. */
-  const [snipe, setSnipe] = useState<{ by: number; of: number; n: number } | null>(null);
-  const [aside, setAside] = useState<{ by: number; of: number; n: number } | null>(null);
+  /** The last snipe the server told of that you were in, and the last between others: whose card beat whom to a pile (see snipe.ts). Kept apart so that one does not put out the other. */
+  const [snipe, setSnipe] = useState<Snipe | null>(null);
+  const [aside, setAside] = useState<Snipe | null>(null);
   useEffect(() => {
     setSnipe(null);
     setAside(null);
   }, [room.round]);
   useEffect(
     () =>
-      onSnipe(({ by, of }) => {
+      onSnipe((word) => {
+        const { by, of } = word;
         if (by === you) snipeSound('me');
         else if (of === you) beaten();
         else snipeSound('other');
-        (by === you || of === you ? setSnipe : setAside)((s) => ({ by, of, n: (s?.n ?? 0) + 1 }));
+        (by === you || of === you ? setSnipe : setAside)((s) => heard(s, word));
       }),
     [you],
   );
@@ -640,6 +643,16 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     return p && (!l || p.id === l.id) ? p.look : l?.look;
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
+  /** Names as `andList` puts them, each in its seat's `colour`. */
+  const named = (seats: readonly number[], colour: (seat: number) => string): ReactNode =>
+    seats.map((seat, i) => (
+      <Fragment key={seat}>
+        {between(i, seats.length)}
+        <b style={{ color: colour(seat) }}>{name(seat)}</b>
+      </Fragment>
+    ));
+  /** Whom a snipe you were in names on the felt: everyone your card beat, or whose card beat you. */
+  const against = (s: Snipe): readonly number[] => (s.by === you ? s.of : [s.by]);
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
   const total = (seat: number) => {
     const l = line(seat);
@@ -1071,17 +1084,20 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
-      {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
+      {/* A snipe you were in: who by, or whom (everyone your card beat), across the middle, there and gone in under a second. In the first one's colour, and each name in its own. */}
       {snipe && !called && (
         <div key={`sniped${snipe.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          <span style={{ color: backColour(snipe.by === you ? snipe.of : snipe.by) }}>{snipe.by === you ? `You sniped ${name(snipe.of)}!` : `Sniped by ${name(snipe.by)}!`}</span>
+          <span style={{ color: backColour(against(snipe)[0]!) }}>
+            {snipe.by === you ? 'You sniped ' : 'Sniped by '}
+            {named(against(snipe), backColour)}!
+          </span>
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies. */}
       {aside && !called && (
         <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           <span>
-            <b style={{ color: nameColour(aside.by) }}>{name(aside.by)}</b> sniped <b style={{ color: nameColour(aside.of) }}>{name(aside.of)}</b>
+            {named([aside.by], nameColour)} sniped {named(aside.of, nameColour)}
           </span>
         </div>
       )}
