@@ -1370,19 +1370,31 @@ button {
   color: var(--ink-soft);
 }
 
+/* Fields are written on the pad: a line to write on, no box. */
 .pad input {
   width: 100%;
-  padding: 0.55rem 0.7rem;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  background: #fffdf6;
+  padding: 0.2rem 0.1rem 0.15rem;
+  border: 0;
+  border-bottom: 1.5px solid rgba(27, 39, 51, 0.45);
+  border-radius: 0;
+  background: none;
   color: var(--ink);
+  font-size: 1.15rem;
+}
+
+.pad input:hover {
+  border-bottom-color: var(--ink);
+}
+
+.pad input:focus-visible {
+  outline: none;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: -0.5px;
 }
 
 .pad input.code {
-  width: 7.5rem;
-  font-size: 1.3rem;
-  padding-block: 0.3rem;
+  width: 6.5rem;
+  font-size: 1.35rem;
   text-transform: uppercase;
 }
 
@@ -1432,9 +1444,29 @@ button {
   gap: 0.5rem;
 }
 
+.pair {
+  align-items: end;
+}
+
+/* Waiting (on a name, or a code): the same marigold, faded, not a grey box. */
+.ways .go:disabled {
+  font: 400 1.15rem/1.2 var(--display);
+  color: var(--ink);
+  background: var(--marigold);
+  box-shadow: none;
+  opacity: 0.35;
+}
+
+/* Join: always there, always the same size, beside the code it joins. */
 .pair .go,
-.pair .plain {
-  flex: 1;
+.pair .go:disabled {
+  width: 5rem;
+  padding: 0.4rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.pair .go:not(:disabled) {
+  box-shadow: 0 3px 0 #b47f0c;
 }
 
 .plain {
@@ -1537,24 +1569,44 @@ button {
   font-weight: 600;
 }
 
+/* The lobby's link: written out, with a copy icon after it. */
 .invite {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.invite input {
+.invite .link {
   min-width: 0;
-  font-size: 0.9rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  user-select: all;
 }
 
 .invite button {
   flex: none;
-  min-width: 6.2rem;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  background: var(--ink);
-  color: var(--paper);
-  font-weight: 600;
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.invite button:hover {
+  color: var(--ink);
+}
+
+.invite svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .seats {
@@ -1644,12 +1696,18 @@ button {
 .named {
   display: flex;
   align-items: center;
+  justify-content: space-between; /* the card keeps to the right, however long the name */
   gap: 0.7rem;
+  margin-top: -0.3rem;
 }
 
 .named input {
-  flex: 1;
-  min-width: 0;
+  /* As long as the name, from a short line up to the whole width. */
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 9rem;
+  max-width: 100%;
+  field-sizing: content;
 }
 
 .mybacks.compact .mini {
@@ -4509,7 +4567,7 @@ button.code.copy {
   padding: 0;
   border: 0;
   background: none;
-  cursor: copy;
+  cursor: pointer;
 }
 
 button.code.copy:hover {
