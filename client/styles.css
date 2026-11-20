@@ -4201,6 +4201,21 @@ label.check {
   stroke-linejoin: round;
 }
 
+/* Sent (Feedback.tsx `foldAway`): the slip closes down onto Send, which says so, kept in its colours (not those of a
+   disabled button), until it turns green. */
+.slip.feedback.sent {
+  overflow: hidden;
+  align-content: end;
+}
+
+.feedback.sent .go {
+  white-space: nowrap;
+  font: 400 1.15rem/1.2 var(--display);
+  color: var(--ink);
+  background: var(--marigold);
+  box-shadow: 0 4px 0 #b47f0c;
+}
+
 .feedback .error {
   margin: 0;
 }

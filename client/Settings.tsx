@@ -20,9 +20,8 @@ import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
 import { useCorners } from './fittings';
-import { useWindow } from './viewport';
 import type { ClockAt } from './layout';
-import { SaidWord, useHotkey, useSaid } from './hotkey';
+import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
@@ -256,16 +255,11 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
   // The sound key mutes from anywhere (except while typing a name), and says so on the button.
-  const [said, say] = useSaid();
-  useHotkey(
-    prefs.soundKey,
-    () => {
-      const muted = !getPrefs().muted;
-      setPrefs({ muted });
-      return muted ? 'Muted' : 'Unmuted';
-    },
-    say,
-  );
+  const said = useHotkey(prefs.soundKey, () => {
+    const muted = !getPrefs().muted;
+    setPrefs({ muted });
+    return muted ? 'Muted' : 'Unmuted';
+  });
   // P pauses or unpauses: pressed as any hotkey is (`hotkeyPressed`).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -281,11 +275,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
 
   /** Where the button stands (layout.ts: the table keeps clear of exactly that). */
   const at = useCorners(room);
-  const { W } = useWindow();
-  // (Held upright, the button stands at the right edge: held by that edge, a word it says opens out leftward, on screen.)
-  const tall = at.shape === 'tall';
   return (
-    <div className={`corner${tall ? ' top' : ''}`} ref={root} style={tall ? { right: W - at.knobs.x - at.knobs.w, top: at.knobs.y } : { left: at.knobs.x, top: at.knobs.y }}>
+    <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} ref={root} style={{ left: at.knobs.x, top: at.knobs.y }}>
       <button
         type="button"
         className={`knob${open ? ' on' : ''}`}
@@ -302,7 +293,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <SaidWord said={said} />
       </button>
       {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={openCorner} onDone={() => openCorner(null)} />}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} sent={() => say('Sent')} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
       {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
           <header className="slip-head">
