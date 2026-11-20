@@ -269,7 +269,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [pausable, resumable]);
 
-  /** What can be done to the table now (actions.ts): none between rounds. */
+  /** What can be done to the table now (actions.ts). */
   const actions = room ? tableActions(room) : [];
   useDismiss(root, !!open, () => openCorner(null));
 

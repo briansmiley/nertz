@@ -43,7 +43,7 @@ function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
   let notice: ReactNode;
   if (line.k === 'sniped') notice = <>{named(line.by)} sniped {named(line.of)}</>;
   else if (line.k === 'started') notice = <>Round {line.round} started</>;
-  else if (line.k === 'reset') notice = <>{named(line.by)} started the table over</>;
+  else if (line.k === 'reset') notice = <>{named(line.by)} reset the table</>;
   else {
     // Everyone who got Nertz is named first; then whoever scored most in the round wins it (as the table says at its
     // end), by name unless they are the very same people.

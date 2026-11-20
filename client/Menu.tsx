@@ -1,10 +1,10 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: sound on or off, the table's actions
-// during a round (which are open to you, and what each does, is actions.ts), and the way to your settings and to
+// (which are open to you, and what each does, is actions.ts), and the way to your settings and to
 // feedback, which open in the same place. One line each.
 import { useState, useSyncExternalStore } from 'react';
 import type { RoomView } from '../shared/types';
 import { perform, type ActionId, type TableAction } from './actions';
-import { Bug, Door, Eye, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Again, Bug, Door, Eye, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu, or one of the slips it leads to. */
 export type Panel = 'menu' | 'settings' | 'feedback';
@@ -25,7 +25,7 @@ export function useCorner(): Panel | null {
 }
 
 /** Each action's icon, before its name. */
-const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, stand: Eye, leave: Door };
+const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Eye, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {

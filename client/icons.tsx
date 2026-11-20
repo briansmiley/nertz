@@ -120,3 +120,13 @@ export function Check() {
     </svg>
   );
 }
+
+/** A turning arrow: again from the start. */
+export function Again() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5.5 12a6.5 6.5 0 1 0 2.2-4.9" />
+      <path d="M5 4.5v3.4h3.4" />
+    </svg>
+  );
+}

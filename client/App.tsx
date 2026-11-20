@@ -13,7 +13,7 @@ import { Name } from './Host';
 import { openCorner, useCorner } from './Menu';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
-import { Check, CopyIcon, Door, Eye, Gear } from './icons';
+import { Again, Check, CopyIcon, Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -646,23 +646,13 @@ function SettingsGear() {
 /** For whoever deals, on the score sheet: start the table over (every score to nothing, back to before the first deal). Asked twice, since it cannot be undone. */
 function StartOver() {
   return (
-    <Pop icon={<Again />} label="Start over">
-      <h3>Start over?</h3>
+    <Pop icon={<Again />} label="Reset table">
+      <h3>Reset table?</h3>
       <p className="hint">Everyone's score goes back to 0 and the table to before round 1.</p>
       <button type="button" className="plain" onClick={resetTable}>
         Reset the scores
       </button>
     </Pop>
-  );
-}
-
-/** A turning arrow: again from the start. */
-function Again() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5.5 12a6.5 6.5 0 1 0 2.2-4.9" />
-      <path d="M5 4.5v3.4h3.4" />
-    </svg>
   );
 }
 
