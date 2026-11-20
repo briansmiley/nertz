@@ -30,12 +30,12 @@ async function shrink(file: Blob): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-/** The slip, as the corner's menu opens it (Settings.tsx `Corner`, which puts it away). `back`: to the menu. */
-export function FeedbackSlip({ room, back }: { room?: RoomView | null; back: () => void }) {
+/** The slip, as the corner's menu opens it (Settings.tsx `Corner`, which puts it away). `back`: to the menu; `sent`: it went. */
+export function FeedbackSlip({ room, back, sent }: { room?: RoomView | null; back: () => void; sent: () => void }) {
   const [kind, setKind] = useState<'bug' | 'idea'>('bug');
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
-  const [state, setState] = useState<{ k: 'idle' | 'sending' | 'sent' } | { k: 'error'; message: string }>({ k: 'idle' });
+  const [state, setState] = useState<{ k: 'idle' | 'sending' } | { k: 'error'; message: string }>({ k: 'idle' });
 
   const attach = async (file: Blob | null | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -67,9 +67,7 @@ export function FeedbackSlip({ room, back }: { room?: RoomView | null; back: () 
       const res = await fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: room?.code, context, image }) });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
       if (!res.ok || !body?.ok) return setState({ k: 'error', message: body?.message ?? 'That did not go through. Try again in a moment.' });
-      setText('');
-      setImage(null);
-      setState({ k: 'sent' });
+      sent();
     } catch {
       setState({ k: 'error', message: 'That did not go through. Try again in a moment.' });
     }
@@ -82,56 +80,45 @@ export function FeedbackSlip({ room, back }: { room?: RoomView | null; back: () 
         <Back onClick={back} />
         <h3>Feedback</h3>
       </header>
-      {state.k === 'sent' ? (
-        <>
-          <p className="hint">Got it, thank you.</p>
-          <button type="button" className="plain" onClick={() => setState({ k: 'idle' })}>
-            Send more
+      <div className="kinds" role="radiogroup" aria-label="What kind">
+        <button type="button" role="radio" aria-checked={kind === 'bug'} className={kind === 'bug' ? 'on' : ''} onClick={() => setKind('bug')}>
+          <BugIcon />
+          Bug
+        </button>
+        <button type="button" role="radio" aria-checked={kind === 'idea'} className={kind === 'idea' ? 'on' : ''} onClick={() => setKind('idea')}>
+          <BulbIcon />
+          Idea
+        </button>
+      </div>
+      <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'} aria-label="Your report" />
+      {image ? (
+        <div className="shot">
+          <img src={image} alt="The attached screenshot" />
+          <button type="button" className="trash" aria-label="Remove the screenshot" title="Remove the screenshot" onClick={() => setImage(null)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 7h14M10 7V4.8h4V7M7 7l.8 12.2h8.4L17 7M10.3 10.5v5.5M13.7 10.5v5.5" />
+            </svg>
           </button>
-        </>
+        </div>
       ) : (
-        <>
-          <div className="kinds" role="radiogroup" aria-label="What kind">
-            <button type="button" role="radio" aria-checked={kind === 'bug'} className={kind === 'bug' ? 'on' : ''} onClick={() => setKind('bug')}>
-              <BugIcon />
-              Bug
-            </button>
-            <button type="button" role="radio" aria-checked={kind === 'idea'} className={kind === 'idea' ? 'on' : ''} onClick={() => setKind('idea')}>
-              <BulbIcon />
-              Idea
-            </button>
-          </div>
-          <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'} aria-label="Your report" />
-          {image ? (
-            <div className="shot">
-              <img src={image} alt="The attached screenshot" />
-              <button type="button" className="trash" aria-label="Remove the screenshot" title="Remove the screenshot" onClick={() => setImage(null)}>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 7h14M10 7V4.8h4V7M7 7l.8 12.2h8.4L17 7M10.3 10.5v5.5M13.7 10.5v5.5" />
-                </svg>
-              </button>
-            </div>
-          ) : (
-            <label className="attach">
-              <input type="file" accept="image/*" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="3" y="5" width="18" height="14" rx="2" />
-                <circle cx="8.5" cy="10" r="1.6" />
-                <path d="M4 17.5l5-5 3.5 3.5 2.5-2.5 5 4.5" />
-              </svg>
-              Screenshot <small>(click, drag, or paste)</small>
-            </label>
-          )}
-          {state.k === 'error' && (
-            <p className="error" role="alert">
-              {state.message}
-            </p>
-          )}
-          <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending'}>
-            {state.k === 'sending' ? 'Sending…' : kind === 'bug' ? 'Report bug' : 'Suggest'}
-          </button>
-        </>
+        <label className="attach">
+          <input type="file" accept="image/*" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <circle cx="8.5" cy="10" r="1.6" />
+            <path d="M4 17.5l5-5 3.5 3.5 2.5-2.5 5 4.5" />
+          </svg>
+          Screenshot <small>(click, drag, or paste)</small>
+        </label>
       )}
+      {state.k === 'error' && (
+        <p className="error" role="alert">
+          {state.message}
+        </p>
+      )}
+      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending'}>
+        {state.k === 'sending' ? 'Sending…' : kind === 'bug' ? 'Report bug' : 'Suggest'}
+      </button>
     </form>
   );
 }

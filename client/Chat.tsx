@@ -5,7 +5,7 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode }
 import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour, nameColour } from './cards/Face';
-import { SaidWord, Slash, useHotkey } from './hotkey';
+import { SaidWord, Slash, useHotkey, useSaid } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { Speaker } from './icons';
 import { useCorners } from './fittings';
@@ -161,10 +161,8 @@ export function Chat({ room }: { room: RoomView }) {
   const soundKey = hotkeyName(prefs.soundKey);
 
   // The key that mutes your microphone, from anywhere but a text field, while you are in voice; it says so on the button.
-  const said = useHotkey(
-    prefs.voiceKey,
-    inVoice ? () => (toggleMuted() ? 'Muted' : 'Unmuted') : null,
-  );
+  const [said, sayWord] = useSaid();
+  useHotkey(prefs.voiceKey, inVoice ? () => (toggleMuted() ? 'Muted' : 'Unmuted') : null, sayWord);
 
   /** Mute yourself: in the bar, a microphone (yellow, with a line through it, while muted). */
   const mute = inVoice && (

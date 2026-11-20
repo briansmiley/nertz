@@ -14,14 +14,14 @@ import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { pause, setSeats, setTableSettings } from './net';
 import { canPause, canResume, tableActions } from './actions';
-import { Back, Menu, openCorner, useCorner } from './Menu';
+import { Back, Menu, openCorner, putAway, useCorner } from './Menu';
 import { MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
 import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
-import { SaidWord, useHotkey } from './hotkey';
+import { SaidWord, useHotkey, useSaid } from './hotkey';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
@@ -255,11 +255,16 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const pausable = canPause(room);
   const resumable = !!room && canResume(room);
   // The sound key mutes from anywhere (except while typing a name), and says so on the button.
-  const said = useHotkey(prefs.soundKey, () => {
-    const muted = !getPrefs().muted;
-    setPrefs({ muted });
-    return muted ? 'Muted' : 'Unmuted';
-  });
+  const [said, say] = useSaid();
+  useHotkey(
+    prefs.soundKey,
+    () => {
+      const muted = !getPrefs().muted;
+      setPrefs({ muted });
+      return muted ? 'Muted' : 'Unmuted';
+    },
+    say,
+  );
   // P pauses or unpauses: pressed as any hotkey is (`hotkeyPressed`).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -293,7 +298,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <SaidWord said={said} />
       </button>
       {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={openCorner} onDone={() => openCorner(null)} />}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} sent={() => (putAway('feedback'), say('Sent'))} />}
       {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
           <header className="slip-head">

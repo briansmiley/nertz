@@ -1,42 +1,46 @@
-// A hotkey that fired says so on its own button: the line through the icon draws itself on or off (as it does
-// for a click), and the button says in a word what the key just did ("Muted"), then lets the word go.
-import { useEffect, useRef, useState } from 'react';
+// A button says in a word what just happened through it, then lets the word go: a hotkey that fired says what the
+// key did ("Muted", and the line through the icon draws itself on or off as it does for a click); the menu's
+// button says "Sent" once the feedback slip it opened has gone off and put itself away.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { hotkeyPressed } from './prefs';
 
 /** How long the word stays on the button (the stylesheet's `said` animation runs for as long). */
 export const SAID_MS = 1400;
 
-/** What a hotkey said when it last fired: its word, and which press it was (so a second press says it afresh). */
+/** What a button said last: its word, and which saying it was (so saying it again says it afresh). */
 export type Said = { word: string; n: number };
 
+/** A button's word: what it is saying (null once SAID_MS has gone by), and `say` to say another. */
+export function useSaid(): [Said | null, (word: string) => void] {
+  const [said, setSaid] = useState<Said | null>(null);
+  useEffect(() => {
+    if (!said) return;
+    const t = setTimeout(() => setSaid(null), SAID_MS);
+    return () => clearTimeout(t);
+  }, [said]);
+  const say = useCallback((word: string) => setSaid((s) => ({ word, n: (s?.n ?? 0) + 1 })), []);
+  return [said, say];
+}
+
 /**
- * Listen for the hotkey `code`, from anywhere but a text field: each press does `press` and says the word it
+ * Listen for the hotkey `code`, from anywhere but a text field: each press does `press` and `say`s the word it
  * answers. No `press` (the hotkey does nothing just now, e.g. the mic's out of voice) and nothing is listened for.
  */
-export function useHotkey(code: string | null, press: (() => string) | null): Said | null {
-  const [said, setSaid] = useState<Said | null>(null);
+export function useHotkey(code: string | null, press: (() => string) | null, say: (word: string) => void): void {
   const act = useRef(press);
   act.current = press;
   const live = !!code && !!press;
   useEffect(() => {
     if (!live) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!hotkeyPressed(e, code) || !act.current) return;
-      const word = act.current();
-      setSaid((s) => ({ word, n: (s?.n ?? 0) + 1 }));
+      if (hotkeyPressed(e, code) && act.current) say(act.current());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [code, live]);
-  useEffect(() => {
-    if (!said) return;
-    const t = setTimeout(() => setSaid(null), SAID_MS);
-    return () => clearTimeout(t);
-  }, [said]);
-  return live ? said : null;
+  }, [code, live, say]);
 }
 
-/** The word a hotkey said, inside its button, while it is said. */
+/** The word a button said, inside it, while it is said. */
 export function SaidWord({ said }: { said: Said | null }) {
   return said ? (
     <span key={said.n} className="said" role="status">

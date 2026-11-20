@@ -4194,7 +4194,6 @@ body:has(main.showroom),
   stroke-linejoin: round;
 }
 
-.feedback .hint,
 .feedback .error {
   margin: 0;
 }
