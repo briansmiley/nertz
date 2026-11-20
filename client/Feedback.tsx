@@ -1,6 +1,6 @@
 // Feedback, from the corner's menu: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
-import { useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';
 import { Bug as BugIcon } from './icons';
@@ -30,12 +30,15 @@ async function shrink(file: Blob): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-/** The slip, as the corner's menu opens it (Settings.tsx `Corner`, which puts it away). `back`: to the menu; `sent`: it went. */
-export function FeedbackSlip({ room, back, sent }: { room?: RoomView | null; back: () => void; sent: () => void }) {
+/** The slip, as the corner's menu opens it (Settings.tsx `Corner`). `back`: to the menu; `close`: put it away; `sent`: it went. */
+export function FeedbackSlip({ room, back, close, sent }: { room?: RoomView | null; back: () => void; close: () => void; sent: () => void }) {
   const [kind, setKind] = useState<'bug' | 'idea'>('bug');
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [state, setState] = useState<{ k: 'idle' | 'sending' } | { k: 'error'; message: string }>({ k: 'idle' });
+  /** Whether this slip is still open: one sent and left before it went through must not put away whatever is open by then. */
+  const here = useRef(true);
+  useEffect(() => ((here.current = true), () => void (here.current = false)), []);
 
   const attach = async (file: Blob | null | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -67,6 +70,7 @@ export function FeedbackSlip({ room, back, sent }: { room?: RoomView | null; bac
       const res = await fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: room?.code, context, image }) });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
       if (!res.ok || !body?.ok) return setState({ k: 'error', message: body?.message ?? 'That did not go through. Try again in a moment.' });
+      if (here.current) close();
       sent();
     } catch {
       setState({ k: 'error', message: 'That did not go through. Try again in a moment.' });

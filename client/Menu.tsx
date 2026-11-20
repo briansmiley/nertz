@@ -17,10 +17,6 @@ export function openCorner(to: Panel | null): void {
   panel = to;
   for (const l of listeners) l();
 }
-/** Put `p` away if it is still the one open (a slip done with, which may have been put away or swapped meanwhile). */
-export function putAway(p: Panel): void {
-  if (panel === p) openCorner(null);
-}
 export function useCorner(): Panel | null {
   return useSyncExternalStore(
     (l) => (listeners.add(l), () => listeners.delete(l)),

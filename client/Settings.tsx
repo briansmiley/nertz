@@ -14,12 +14,12 @@ import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { pause, setSeats, setTableSettings } from './net';
 import { canPause, canResume, tableActions } from './actions';
-import { Back, Menu, openCorner, putAway, useCorner } from './Menu';
+import { Back, Menu, openCorner, useCorner } from './Menu';
 import { MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
-import { useCorners } from './fittings';
+import { useCorners, useWindow } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey, useSaid } from './hotkey';
 import { BACKS } from './cards/Face';
@@ -280,8 +280,11 @@ export function Corner({ room }: { room?: RoomView | null }) {
 
   /** Where the button stands (layout.ts: the table keeps clear of exactly that). */
   const at = useCorners(room);
+  const { W } = useWindow();
+  // (Held upright, the button stands at the right edge: held by that edge, a word it says opens out leftward, on screen.)
+  const tall = at.shape === 'tall';
   return (
-    <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} ref={root} style={{ left: at.knobs.x, top: at.knobs.y }}>
+    <div className={`corner${tall ? ' top' : ''}`} ref={root} style={tall ? { right: W - at.knobs.x - at.knobs.w, top: at.knobs.y } : { left: at.knobs.x, top: at.knobs.y }}>
       <button
         type="button"
         className={`knob${open ? ' on' : ''}`}
@@ -298,7 +301,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <SaidWord said={said} />
       </button>
       {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={openCorner} onDone={() => openCorner(null)} />}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} sent={() => (putAway('feedback'), say('Sent'))} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} sent={() => say('Sent')} />}
       {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
           <header className="slip-head">
