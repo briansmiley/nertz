@@ -3,7 +3,7 @@ import { roomWith, send as told, startRound } from '../server/testkit';
 import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
 import { card as c, felt, inPlay, lcg, move, roomOf, table, toPlay, upWork, withPile, work } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
-import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
+import { freshSync, hearsCall, hello, onSend, onSnapshot, predict, type Sync } from './net';
 
 /** A tiny authoritative server for one player's messages. */
 function server(game: GameState, you: number) {
@@ -315,6 +315,30 @@ describe('prediction', () => {
     const game = predict(sync)!.game!;
     expect(game.players[0]!.holding).toBeNull();
     expect(inGrace(game)).toEqual([]);
+  });
+
+  it('a hold on its way as the call comes, and the call on its way to us: the drag goes on, and the window says it heard', () => {
+    const base = dealWithAces();
+    const s = server({ ...base, players: base.players.map((p) => (p.seat === 1 ? { ...p, stock: [...p.stock, ...p.nertz], nertz: [] } : p)) }, 0);
+    let sync = onSnapshot(freshSync, s.snapshot());
+    const ace = s.game.players[0]!.work[0]!.cards[0]!;
+    sync = send(sync, { k: 'hold', cardId: ace.id });
+    expect(s.apply(1, { k: 'nertz', unheard: [0] })).toBe(true); // reaches the server before our hold, which is still on its way
+    sync = onSnapshot(sync, s.snapshot());
+    expect(hearsCall(sync.server)).toBe(true);
+    expect(predict(sync)!.game!.players[0]!.holding).toBe(ace.id); // still in hand: the call had not reached us
+    sync = send(sync, { k: 'heard' });
+    const now = predict(sync)!;
+    expect([hearsCall(now), inGrace(now.game!)]).toEqual([false, [0]]);
+    const other = s.game.players[0]!.nertz.at(-1)!.id;
+    expect(applyIntent(sync.server!.game!, 0, { k: 'hold', cardId: other }).ok).toBe(true); // a moment ago it could have been
+    expect(applyIntent(now.game!, 0, { k: 'hold', cardId: other }).ok).toBe(false); // not now
+    // The server sees it the same way, in the same order.
+    expect(s.apply(0, sync.pending[0]!.intent, sync.pending[0]!.seq)).toBe(true);
+    expect(s.apply(0, sync.pending[1]!.intent, sync.pending[1]!.seq)).toBe(true);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(sync.pending).toEqual([]);
+    expect(predict(sync)!.game).toEqual(now.game);
   });
 
   it('predicts through the grace window: the held card may still land, and only it', () => {

@@ -1,10 +1,13 @@
 // Feedback, from the corner's menu: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
+// On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: the words, and Send.
+import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';
 import { Bug as BugIcon } from './icons';
 import { rememberedName } from './name';
+import { touchOnly } from './prefs';
+import { useAboveKeyboard } from './viewport';
 
 const MAX_TEXT = 2000;
 /** A screenshot is scaled down to fit this (the longer side) and sent as a JPEG: small enough for the server's cap. */
@@ -39,6 +42,10 @@ export function FeedbackSlip({ room, back, close, sent }: { room?: RoomView | nu
   /** Whether this slip is still open: one sent and left before it went through must not put away whatever is open by then. */
   const here = useRef(true);
   useEffect(() => ((here.current = true), () => void (here.current = false)), []);
+  /** The words have the focus. */
+  const [focused, setFocused] = useState(false);
+  /** Writing with a phone's keyboard up: the slip is laid over what of the screen the keyboard leaves. */
+  const pad = useAboveKeyboard(focused);
 
   const attach = async (file: Blob | null | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -79,7 +86,7 @@ export function FeedbackSlip({ room, back, close, sent }: { room?: RoomView | nu
 
   return (
     // (Keys typed here are not the game's: Space deals, M mutes.)
-    <form className="slip feedback" aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
+    <form className={`slip feedback${pad ? ' writing' : ''}`} style={pad ? ({ left: pad.x, top: pad.y, width: pad.w, '--under': `${Math.max(0, document.documentElement.clientHeight - pad.y - pad.h)}px` } as CSSProperties) : undefined} aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
       <header className="slip-head">
         <Back onClick={back} />
         <h3>Feedback</h3>
@@ -94,7 +101,18 @@ export function FeedbackSlip({ room, back, close, sent }: { room?: RoomView | nu
           Idea
         </button>
       </div>
-      <textarea autoFocus rows={5} maxLength={MAX_TEXT} value={text} onChange={(e) => setText(e.target.value)} placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'} aria-label="Your report" />
+      {/* (On a phone the keyboard comes up when the words are pressed, not with the slip: what kind, and the screenshot, are seen first.) */}
+      <textarea
+        autoFocus={!touchOnly()}
+        rows={5}
+        maxLength={MAX_TEXT}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'}
+        aria-label="Your report"
+      />
       {image ? (
         <div className="shot">
           <img src={image} alt="The attached screenshot" />
@@ -120,7 +138,8 @@ export function FeedbackSlip({ room, back, close, sent }: { room?: RoomView | nu
           {state.message}
         </p>
       )}
-      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending'}>
+      {/* (Pressed while writing on a phone, it leaves the focus in the words: the keyboard stays up, and the slip where it is, until they are sent.) */}
+      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending'} onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
         {state.k === 'sending' ? 'Sending…' : kind === 'bug' ? 'Report bug' : 'Suggest'}
       </button>
     </form>

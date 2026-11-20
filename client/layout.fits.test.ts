@@ -115,4 +115,24 @@ describe('what stands round the cards', () => {
       }
     }
   });
+
+  it('writes your own line whole on a phone on its side and wider: clear of the count on your nertz pile, it moves left rather than be cut short', () => {
+    // (Six at the table on an iPhone on its side, 852x393: the count hung over the end of the line, and cut off the total.)
+    const sides: [number, number][] = [[844, 390], [852, 393], [932, 430], ...WINDOWS.filter(([w, h]) => w >= 800 && h < w)];
+    for (const [W, H] of sides) {
+      for (const n of PLAYERS) {
+        for (const keep of [{ l: 0, r: 0, b: 0 }, { l: 59, r: 59, b: 21 }]) {
+          for (const vote of [false, true]) {
+            for (const total of ['-13', '120', '-104']) {
+              const fit: Fittings = { chat: CHATS.voice, clock: true, seats: n, vote, name: nameWidth('Brian', total) };
+              const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, undefined, keep, [], fit);
+              const where = `${W}x${H}, ${n} players${keep.l ? ', notched' : ''}${vote ? ', vote' : ''}, ${total}`;
+              expect(L.name, where).not.toBeNull();
+              if (!L.name!.full) expect(L.name!.w, where).toBe(fit.name);
+            }
+          }
+        }
+      }
+    }
+  });
 });

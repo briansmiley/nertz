@@ -828,8 +828,8 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
   return (
     <>
       {/* One solid block behind each player's gathered pile and its label, so the two read as one unit: the pile, the
-          label and the gap between them (not their bounding box, which can reach a neighbour's). Under the canvas: the
-          cards land on it. */}
+          label and the gap between them (not their bounding box, which can reach a neighbour's). The blocks and the labels
+          are under the canvas: the cards land on a block, and a card on its way to its pile passes over the words. */}
       {plan.piles.map((p, i) => (
         <div key={`b${p.seat}`} className={`heap-block${L.cleared ? ' set' : ''}${done >= turn[i]! ? ' on' : ''}`}>
           {blockParts(p).map((r, k) => (

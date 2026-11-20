@@ -194,6 +194,10 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   anywhere is that one move: if the spot was taken a moment earlier, the card goes back and that player is done. The round
   is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A stock card on its way to
   the waste is not such a card: it goes back, and a group left half-dealt at the call stays as it lies, face-down.
+  "The moment of the call" is when it reaches your screen, not the server: a card you take up while the call is on its
+  way to you (or whose taking up is on its way to the server as the call is made) was in your hand at the call. So the
+  round waits for each player's window to say it has the call, a round trip, at most 1 second (`HEAR_MS`); a window that
+  has not said by then (asleep in the background, say) is taken to have.
 - **Scoring**, strictly: +1 for each of your cards in the middle (piles and tray), −2 for each card left in your nertz pile.
   No bonus for going out. Scores add up over rounds.
 - **Table management**: the person who opened the table deals. If they are not connected, the first connected player may deal
@@ -463,17 +467,28 @@ connection. So the server never believes in a held card that went home. (A stock
 not a hold: it is face-down and cannot be played, so nothing is sent until it lands, and then only `{ k: 'flip' }`.) `PlayerState.holding` is part of every view, and
 the client's replay applies the same rule. All the rules of grace live in the pure engine:
 
-- `nertz` takes the round's status to `grace` (with who called), and the hold of everyone whose card has no legal
-  destination is dropped. Who is in grace is not kept anywhere: it is exactly the seats still holding a card
-  (`inGrace`). All of everyone else's intents are rejected from then on.
+- `nertz` takes the round's status to `grace` (with who called, and `unheard`: below), and the hold of everyone whose
+  card has no legal destination is dropped. Who is in grace is not kept anywhere: it is exactly the seats still holding
+  a card (`inGrace`). All of everyone else's intents are rejected from then on.
 - A seat in grace may send exactly one more intent: a `move` of its held card, or a `release`. Either empties its hand
   and so takes it out of grace, the move even when it is refused; any other seat whose held card now has nowhere to go
   is taken out with it.
-- When nobody is left in grace the status is `over`, by that Nertz. `expireGrace(state)` takes it there at once.
+- The call reaches each window a moment after it is made, and a hold may be on its way to the server meanwhile. So the
+  status also lists the seats whose windows have not yet said they have the call (`unheard`, `yetToHear`): who they are
+  is the room's to say (it writes them into every `nertz` it applies: everyone else playing the round from a window of
+  their own, not a bot nor anyone away or standing). Until a seat sends `{ k: 'heard' }` it may still `hold`, as it
+  could a moment before, and that card puts it in grace like any other. The window sends `heard` the moment a snapshot
+  shows it the call (client/net.ts), on the same socket as its intents: so a hold sent before it had the call comes
+  before, and one after, after. Without `unheard` (the engine's own tests, a client predicting its own call) everyone
+  hears it at once.
+- When nobody is left in grace and nobody is left to hear the call, the status is `over`, by that Nertz.
+  `expireGrace(state)` takes it there at once.
 
 The server owns only the clock. The room keeps one round timer for whichever timed status is current (`dealing`,
 `countdown` or `grace`); grace is timed on the call itself, the change into `grace` in the room's `intent`, for 4 seconds,
-and on expiry the room applies `expireGrace`. The room stays in phase `playing` until `isOver`, then scores and moves to
+and on expiry the room applies `expireGrace`. Within it the room waits at most `HEAR_MS` (1 second, `hearMs` of the
+room; 0 in the room's own tests, where the call reaches everyone at once) for the windows to hear it, then applies
+`heard` for each that has not; a window that goes away is not waited for. The room stays in phase `playing` until `isOver`, then scores and moves to
 `results`. Snapshots carry one `timerMs`, the milliseconds left of the timed status when the snapshot was sent (a
 duration to count down locally, not a timestamp), or `null`; `game.status` names the stage it belongs to.
 
@@ -575,7 +590,7 @@ by ear), and not in Safari or Firefox or across real networks.
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
   table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, yetToHear, resolveStuck, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
