@@ -325,6 +325,29 @@ describe('a line that dies without a word', () => {
     expect(sockets()).toBe(n + 1);
   });
 
+  it('with the ping shown, the window asks even a busy line, times each answer by the clock its ping carried, and forgets the time when the line drops', async () => {
+    vi.useFakeTimers();
+    const net = await seated();
+    const { setPrefs } = await import('./prefs');
+    const rtt = net.rttNow;
+    setPrefs({ ping: true });
+    expect(pings()).toBe(1); // at once, not at the next look
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(5_000);
+      last().deliver({ t: 'drag', seat: 1, id: 'S1', w: 0.5, h: [1, 1], p: [0.1, 0.2] });
+    }
+    expect(pings()).toBe(4);
+    const ping = last().sent.filter((m) => m.t === 'ping').at(-1)!;
+    expect(typeof ping.at).toBe('number');
+    last().deliver({ t: 'pong', at: (ping.at as number) - 30 });
+    expect(rtt()).toBeGreaterThanOrEqual(30);
+    expect(rtt()).toBeLessThan(40);
+    last().deliver({ t: 'pong' }); // (an answer to a ping that carried no clock times nothing)
+    expect(rtt()).toBeGreaterThanOrEqual(30);
+    last().closed();
+    expect(rtt()).toBeNull();
+  });
+
   it('leaving stops the asking', async () => {
     vi.useFakeTimers();
     const net = await seated();

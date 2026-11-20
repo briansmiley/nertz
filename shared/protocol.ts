@@ -217,8 +217,11 @@ export type ClientMsg =
   | { t: 'seat'; seat: number }
   /** Cosmetic: where the card I am dragging is right now. Forwarded to the others, never stored. */
   | ({ t: 'drag' } & DragAt)
-  /** Are you still there? Answered at once with `pong`, at a table or not (see `PING_MS`). */
-  | { t: 'ping' }
+  /**
+   * Are you still there? Answered at once with `pong`, at a table or not (see `PING_MS`). `at` is the asker's clock as it
+   * asked, handed back in the pong: the asker's time for the round trip.
+   */
+  | { t: 'ping'; at?: number }
   /** Text chat, the host's chat switches, voice presence and WebRTC signalling: see chat.ts. */
   | SocialClientMsg;
 
@@ -231,8 +234,8 @@ export type ServerMsg =
   | { t: 'snipe'; by: number; of: number; slot: number }
   /** The card in `seat`'s hand is here now. Not a move: the card lands only with a snapshot. */
   | ({ t: 'drag'; seat: number } & DragAt)
-  /** The answer to `ping`. */
-  | { t: 'pong' }
+  /** The answer to `ping`, with its `at`. */
+  | { t: 'pong'; at?: number }
   | SocialServerMsg;
 
 /**
@@ -452,7 +455,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'redeal':
       return { t: 'redeal' };
     case 'ping':
-      return { t: 'ping' };
+      return typeof v.at === 'number' && Number.isFinite(v.at) ? { t: 'ping', at: v.at } : { t: 'ping' };
     case 'ready':
       return typeof v.on === 'boolean' ? { t: 'ready', on: v.on } : null;
     case 'sit':

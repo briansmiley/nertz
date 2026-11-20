@@ -220,6 +220,7 @@ function stop(error: string | null): void {
   socket = null;
   old?.close();
   sync = freshSync;
+  timed(null);
   set({ status: 'idle', room: null, error });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
@@ -270,7 +271,9 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
   social,
   signal: social,
   outOfVoice: social,
-  pong: () => {},
+  pong: (msg) => {
+    if (msg.at !== undefined) heardBack(msg.at);
+  },
 };
 
 function connect(): void {
@@ -284,6 +287,7 @@ function connect(): void {
       post(hello(session.room, session.name, token()));
       toldDeck = null;
       tell(); // my cards' faces and backs, for everyone at the table
+      if (getPrefs().ping) ping(); // (and the time to the server, at once rather than at the next look)
     }
   };
   ws.onmessage = (e) => {
@@ -318,6 +322,7 @@ function dropped(): void {
   }
   // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
   sync = { ...sync, pending: [] };
+  timed(null);
   const room = sync.server ?? state.room;
   set({ status: 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
   clearTimeout(retry);
@@ -332,7 +337,7 @@ function check(): void {
   if (!session || !socket) return; // (no socket: a reconnect is on its way)
   const quiet = Date.now() - heard;
   if (quiet > SILENT_MS) return dropped();
-  if (quiet >= PING_MS) post({ t: 'ping' });
+  if (quiet >= PING_MS || getPrefs().ping) ping();
 }
 
 /**
@@ -349,7 +354,7 @@ function probe(): void {
   if (socket.readyState !== WebSocket.OPEN) return; // (still connecting: `check` sees to it)
   const ws = socket;
   const asked = Date.now();
-  post({ t: 'ping' });
+  ping();
   setTimeout(() => socket === ws && heard < asked && dropped(), PROBE_MS);
 }
 if (typeof window !== 'undefined') window.addEventListener('online', probe);
@@ -446,3 +451,45 @@ export const subscribe = (l: () => void) => {
 export const current = (): NetState => state;
 
 export const useNet = (): NetState => useSyncExternalStore(subscribe, current);
+
+// ---------------------------------------------------------------- round trip
+
+/**
+ * The time the last ping took to the server and back, in ms; null when there is no line (or no answer yet). Every ping
+ * carries this window's clock as it went (`at`), and the pong hands it back: a pong times its own ping, whichever that
+ * was. Pings go every `PING_MS` while the time is shown (`Prefs.ping`), and otherwise only to a quiet line.
+ */
+let rtt: number | null = null;
+const rttListeners = new Set<() => void>();
+
+function timed(next: number | null): void {
+  if (next === rtt) return;
+  rtt = next;
+  for (const l of rttListeners) l();
+}
+
+function ping(): void {
+  post({ t: 'ping', at: performance.now() });
+}
+
+/** A pong came back with the `at` of its ping. */
+function heardBack(at: number): void {
+  const ms = performance.now() - at;
+  if (ms >= 0) timed(ms);
+}
+
+// Turned on: a reading at once, not at the next look.
+let pingShown = getPrefs().ping;
+watchPrefs(() => {
+  const now = getPrefs().ping;
+  if (now && !pingShown) ping();
+  pingShown = now;
+});
+
+const watchRtt = (l: () => void) => {
+  rttListeners.add(l);
+  return () => void rttListeners.delete(l);
+};
+/** The round trip as it is right now (what `useRtt` renders). */
+export const rttNow = (): number | null => rtt;
+export const useRtt = (): number | null => useSyncExternalStore(watchRtt, rttNow);

@@ -103,4 +103,13 @@ describe('the end of a connection', () => {
     await vi.waitFor(() => expect(got).toEqual([{ t: 'pong' }]));
     expect(ws.readyState).toBe(WebSocket.OPEN);
   });
+
+  it('a ping that says when it was sent has that handed back in its pong; one that says it wrongly is answered plain', async () => {
+    const ann = await hello(null, 'Ann');
+    await taken(ann);
+    ann.send({ t: 'ping', at: 1234.5 });
+    await vi.waitFor(() => expect(ann.got.at(-1)).toEqual({ t: 'pong', at: 1234.5 }));
+    ann.send({ t: 'ping', at: 'soon' } as never);
+    await vi.waitFor(() => expect(ann.got.filter((m) => m.t === 'pong')).toEqual([{ t: 'pong', at: 1234.5 }, { t: 'pong' }]));
+  });
 });
