@@ -14,7 +14,7 @@ import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type De
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
-import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
+import { Finale, finaleSteps, sortings } from './Finale';
 import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings, useWindow } from './fittings';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
@@ -23,7 +23,7 @@ import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } fro
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
-import { kick, onDrag, onSnipe, pause, playable, post, send as play, takeSeat } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -262,17 +262,7 @@ function useStage(results: boolean, round: number, trayPiles: number, players: n
     if (!results || step?.round === round) return;
     setStep({ round, stage }); // the first step, as it was drawn: reduced motion switched on now does not cut it short
     if (stage === 'sheet') return;
-    let at = 0;
-    const steps: [Stage, number][] = [
-      ['spread', TIMING.flip],
-      ['out', TIMING.spread],
-      ['wash', trayPiles ? TIMING.out : 0],
-      ['sort', washedAt(trayPiles) - TIMING.spread - (trayPiles ? TIMING.out : 0)],
-      // (On a phone the table is cleared before the sorting starts: `clear`.)
-      ['won', sortAt(trayPiles, clear) - washedAt(trayPiles) + sortMs(players)],
-      ['sheet', TIMING.hold],
-    ];
-    timers.current = steps.map(([next, ms]) => setTimeout(() => setStep({ round, stage: next }), (at += ms)));
+    timers.current = finaleSteps(trayPiles, players, clear).map(([next, at]) => setTimeout(() => setStep({ round, stage: next }), at));
     return stop;
   }, [results, round]); // the tray cannot change once the round is scored, so `trayPiles` is not a dependency
   return [
@@ -346,7 +336,7 @@ function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
       </button>
       {open && (
         <>
-          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} title={`Stand ${who.name} up`} onClick={() => (takeSeat(false, who.id), shut())}>
+          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} title={`Stand ${who.name} up`} onClick={() => (sit(false, who.id), shut())}>
             <Eye />
           </button>
           <button type="button" className={`unseat${sure ? ' sure' : ''}`} aria-label={`Send ${who.name} away${sure ? '?' : ''}`} title={`Send ${who.name} away${sure ? '?' : ''}`} onClick={() => (sure ? (kick(who.id), shut()) : setSure(true))}>

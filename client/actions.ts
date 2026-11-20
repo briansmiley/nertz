@@ -4,7 +4,7 @@
 import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, redeal, takeSeat } from './net';
+import { leave, pause, redeal, sit } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -98,7 +98,7 @@ export function perform(id: ActionId, room: RoomView): void {
     case 'redeal':
       return redeal();
     case 'stand':
-      return takeSeat(!!standing(room));
+      return sit(!!standing(room));
     case 'leave':
       return leave();
   }

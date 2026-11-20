@@ -390,12 +390,12 @@ export const go = (): void => void post({ t: 'go' });
 export const ready = (on: boolean): void => void post({ t: 'ready', on });
 
 /** Ask for a seat (on), or give up your seat or your place in the queue and just watch (off): yourself, or as whoever deals the person `id`. */
-export const takeSeat = (on: boolean, id?: number): void => void post({ t: 'sit', on, ...(id === undefined ? {} : { id }) });
+export const sit = (on: boolean, id?: number): void => void post({ t: 'sit', on, ...(id === undefined ? {} : { id }) });
 
 export const pause = (on: boolean): void => void post({ t: 'pause', on });
 
 /** In the lobby: take another colour (a seat nobody has). */
-export const sit = (seat: number): void => void post({ t: 'seat', seat });
+export const pickSeat = (seat: number): void => void post({ t: 'seat', seat });
 export const addBot = (level: BotLevel): void => void post({ t: 'addBot', level });
 export const nameBot = (seat: number, name: string): void => void post({ t: 'botName', seat, name });
 export const kick = (id: number): void => void post({ t: 'kick', id });

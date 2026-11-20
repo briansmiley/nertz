@@ -9,7 +9,7 @@ import { SaidWord, Slash, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { Speaker } from './icons';
 import { useCorners } from './fittings';
-import { kick, takeSeat } from './net';
+import { kick, sit } from './net';
 import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
 import { joinVoice, toggleMuted, useVoice } from './voice';
 
@@ -257,12 +257,12 @@ export function Chat({ room }: { room: RoomView }) {
                 {!p.connected && <small>away</small>}
                 {/* A seat is had by asking for one: oneself, or whoever deals for someone. And given up again, to just watch. */}
                 {!p.queued && (p.id === room.me || hosting) && (
-                  <button type="button" onClick={() => takeSeat(true, p.id === room.me ? undefined : p.id)}>
+                  <button type="button" onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
                     {p.id === room.me ? 'Take a seat' : 'Seat'}
                   </button>
                 )}
                 {p.queued && p.id === room.me && (
-                  <button type="button" onClick={() => takeSeat(false)}>
+                  <button type="button" onClick={() => sit(false)}>
                     Just watch
                   </button>
                 )}

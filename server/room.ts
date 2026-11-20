@@ -260,7 +260,7 @@ export class Room {
       case 'seats':
         return this.resize(player, msg.step);
       case 'intent':
-        return this.intent(player, msg.seq, msg.intent);
+        return void this.intent(player, msg.seq, msg.intent);
       case 'drag':
         return this.dragged(player, msg);
       case 'leave':
@@ -541,21 +541,22 @@ export class Room {
     this.roundTimer = null;
   }
 
-  private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
-    if (seq <= player.ack) return; // duplicate or out of order: already answered
+  /** The one way anything is played: a person's intent off their socket, or a bot's. Was it accepted? (A bot goes by the answer; a person hears in their next snapshot.) */
+  private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): boolean {
+    if (seq <= player.ack) return false; // duplicate or out of order: already answered
     player.ack = seq;
-    if (this.phase !== 'playing' || !this.state || (this.pausedBy && intent.k !== 'end')) return this.changed(player); // while paused, only the vote to end the round
+    if (this.phase !== 'playing' || !this.state || (this.pausedBy && intent.k !== 'end')) return this.changed(player), false; // while paused, only the vote to end the round
     delete player.standing; // playing is sitting back down
     if (intent.k === 'flip' && this.flipMs > 0 && !player.bot) {
       const now = Date.now();
-      if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player); // too soon after their last card: refused
+      if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player), false; // too soon after their last card: refused
       player.flipped = now;
     }
     const result = applyIntent(this.state, at(player), intent);
     if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, [], intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.state, at(player), intent);
-    if (next === this.state) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)
+    if (next === this.state) return this.changed(player), false; // rejected: only the sender needs to hear (its ack moved)
     const called = next.status.at === 'grace' && this.state.status.at !== 'grace';
     this.state = next;
     // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace. This is the one way
@@ -563,6 +564,7 @@ export class Room {
     if (called) this.timeRound(GRACE_MS, () => this.graceExpired());
     this.settle();
     this.changed();
+    return result.ok;
   }
 
   /**
@@ -955,8 +957,7 @@ export class Room {
       if (intent.k === 'move' && !applyIntent(before, at(player), intent).ok) return this.rethink(player);
       if (intent.k === 'move' && flightFrames(before, at(player), intent).length > 0) return this.fly(player);
       bot.pending = null;
-      this.intent(player, player.ack + 1, intent);
-      if (this.state !== before) {
+      if (this.intent(player, player.ack + 1, intent)) {
         bot.memory = memory;
         // It dealt a card off the stock and the group isn't finished: the rest of it comes at the common deal speed.
         midGroup = intent.k === 'flip' && (this.state.players.find((p) => p.seat === at(player))?.dealt ?? 0) > 0;
@@ -983,9 +984,7 @@ export class Room {
     const bot = player.bot!;
     const { intent, memory } = bot.pending!;
     if (intent.k !== 'move') return;
-    const before = this.state!;
-    this.intent(player, player.ack + 1, { k: 'hold', cardId: intent.cardId });
-    if (this.state === before) {
+    if (!this.intent(player, player.ack + 1, { k: 'hold', cardId: intent.cardId })) {
       bot.pending = null; // it could not pick that card up any more
       return this.decide(player);
     }
@@ -1007,9 +1006,7 @@ export class Room {
         return;
       }
       bot.pending = null;
-      const lands = applyIntent(game, at(player), intent).ok; // (a refused drop changes the table too: the card goes home)
-      this.intent(player, player.ack + 1, intent);
-      if (lands) bot.memory = memory;
+      if (this.intent(player, player.ack + 1, intent)) bot.memory = memory; // (a refused drop changes the table too: the card goes home)
       this.decide(player, false, frames.length * FLIGHT_STEP_MS);
     };
     step();
