@@ -8,7 +8,7 @@
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
@@ -24,7 +24,7 @@ import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } fro
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
-import { heard, type Snipe } from './snipe';
+import { useFeed } from './feed';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
@@ -66,10 +66,12 @@ const SLOW = 0.002;
 const GLIDE_MS = 70;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
+/** How long a snipe you were in, and one between others, stays on the felt (the stylesheet's `sniped` animation, and the aside's). */
+const SNIPE_MS = 1125;
+const ASIDE_MS = 2400;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-/** "A", "A and B", "A, B and C": what comes before the `i`th of `n`. */
-const between = (i: number, n: number): string => (i === 0 ? '' : i === n - 1 ? ' and ' : ', ');
-const andList = (names: readonly string[]): string => names.map((s, i) => between(i, names.length) + s).join('');
+/** "A", "A and B", "A, B and C". */
+const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 // ---------------------------------------------------------------- one card
 
@@ -439,23 +441,18 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [held, setHeld] = useState<Held | null>(null);
   /** The finished pile in hand is over the tray. */
   const [hot, setHot] = useState(false);
-  /** The last snipe the server told of that you were in, and the last between others: whose card beat whom to a pile (see snipe.ts). Kept apart so that one does not put out the other. */
-  const [snipe, setSnipe] = useState<Snipe | null>(null);
-  const [aside, setAside] = useState<Snipe | null>(null);
-  useEffect(() => {
-    setSnipe(null);
-    setAside(null);
-  }, [room.round]);
+  /** Snipes the server told of, as they stack on the felt while they last: those you were in, across the middle, and those between others, small along its lower edge (feed.ts). */
+  const [snipes, addSnipe] = useFeed<{ by: number; of: number }>(SNIPE_MS, room.round);
+  const [asides, addAside] = useFeed<{ by: number; of: number }>(ASIDE_MS, room.round);
   useEffect(
     () =>
-      onSnipe((word) => {
-        const { by, of } = word;
+      onSnipe(({ by, of }) => {
         if (by === you) snipeSound('me');
         else if (of === you) beaten();
         else snipeSound('other');
-        (by === you || of === you ? setSnipe : setAside)((s) => heard(s, word));
+        (by === you || of === you ? addSnipe : addAside)({ by, of });
       }),
-    [you],
+    [you, addSnipe, addAside],
   );
   /** The outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
@@ -644,16 +641,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     return p && (!l || p.id === l.id) ? p.look : l?.look;
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
-  /** Names as `andList` puts them, each in its seat's `colour`. */
-  const named = (seats: readonly number[], colour: (seat: number) => string): ReactNode =>
-    seats.map((seat, i) => (
-      <Fragment key={seat}>
-        {between(i, seats.length)}
-        <b style={{ color: colour(seat) }}>{name(seat)}</b>
-      </Fragment>
-    ));
-  /** Whom a snipe you were in names on the felt: everyone your card beat, or whose card beat you. */
-  const against = (s: Snipe): readonly number[] => (s.by === you ? s.of : [s.by]);
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
   const total = (seat: number) => {
     const l = line(seat);
@@ -1076,21 +1063,24 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
-      {/* A snipe you were in: who by, or whom (everyone your card beat), across the middle, there and gone in under a second. In the first one's colour, and each name in its own. */}
-      {snipe && !called && (
-        <div key={`sniped${snipe.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          <span style={{ color: backColour(against(snipe)[0]!) }}>
-            {snipe.by === you ? 'You sniped ' : 'Sniped by '}
-            {named(against(snipe), backColour)}!
-          </span>
+      {/* Snipes you were in: who by, or whom, across the middle, each there and gone in under a second; more at once stack. */}
+      {snipes.length > 0 && !called && (
+        <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
+          {snipes.map((s) => (
+            <span key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }}>
+              {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
+            </span>
+          ))}
         </div>
       )}
-      {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies. */}
-      {aside && !called && (
-        <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
-          <span>
-            {named([aside.by], nameColour)} sniped {named(aside.of, nameColour)}
-          </span>
+      {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies; more at once stack upward. */}
+      {asides.length > 0 && !called && (
+        <div className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
+          {asides.map((a) => (
+            <span key={a.id}>
+              <b style={{ color: nameColour(a.by) }}>{name(a.by)}</b> sniped <b style={{ color: nameColour(a.of) }}>{name(a.of)}</b>
+            </span>
+          ))}
         </div>
       )}
       {stamps.map((s) => (

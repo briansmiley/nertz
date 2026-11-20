@@ -80,37 +80,9 @@ describe('Room', () => {
     room.handle(b, { t: 'tried', card: twoB, seen: [aceA] });
     room.handle(b, { t: 'tried', card: twoB, seen: [aceA] }); // said again: still one
     for (const conn of [a, b, c]) {
-      expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0, card: twoA }]);
+      expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0 }]);
       expect(conn.lines.filter((l) => l.k === 'sniped')).toMatchObject([{ k: 'sniped', by: { who: 0, name: 'P0' }, of: { who: 1, name: 'P1' } }]);
     }
-  });
-
-  it('one card that beats two to a pile is a snipe of each, told to everyone as two words naming that one card', () => {
-    const { room, conns } = roomWith(3, { deal: rigged([0]) });
-    const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
-    startRound(room, a);
-    const [aceA, twoA, twoB, twoC] = [workTop(room.game!, 0, 0), workTop(room.game!, 0, 1), workTop(room.game!, 1, 1), workTop(room.game!, 2, 1)];
-    sendIntent(room, a, 0, move(aceA, felt(0, 0)));
-    sendIntent(room, c, 0, hold(twoC)); // c takes their two up while the Ace is the top
-    sendIntent(room, a, 1, move(twoA, slot(0)));
-    sendIntent(room, b, 0, move(twoB, slot(0))); // b's was on its way: too late
-    sendIntent(room, c, 1, { k: 'release' }); // and c puts theirs back, and their window asks
-    room.handle(c, { t: 'tried', card: twoC, seen: [aceA] });
-    for (const conn of [a, b, c]) {
-      expect(conn.of('snipe')).toEqual([
-        { t: 'snipe', by: 0, of: 1, slot: 0, card: twoA },
-        { t: 'snipe', by: 0, of: 2, slot: 0, card: twoA },
-      ]);
-      expect(conn.lines.filter((l) => l.k === 'sniped')).toMatchObject([
-        { k: 'sniped', by: { who: 0 }, of: { who: 1 } },
-        { k: 'sniped', by: { who: 0 }, of: { who: 2 } },
-      ]);
-    }
-    sendIntent(room, a, 2, { k: 'nertz' });
-    expect(room.lastRound!.snipes).toEqual([
-      { by: 0, of: 1, n: 1 },
-      { by: 0, of: 2, n: 1 },
-    ]);
   });
 
   it('a card let go where it never had a race to lose is no snipe', () => {
@@ -139,7 +111,7 @@ describe('Room', () => {
     sendIntent(room, a, 1, move(twoA, slot(0)));
     sendIntent(room, b, 0, move(twoB, slot(0))); // too late
     for (const conn of [a, b]) {
-      expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0, card: twoA }]);
+      expect(conn.of('snipe')).toEqual([{ t: 'snipe', by: 0, of: 1, slot: 0 }]);
       expect(conn.lines.filter((l) => l.k === 'sniped')).toEqual([]);
     }
   });

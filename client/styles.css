@@ -817,17 +817,21 @@ button {
   }
 }
 
+/* Snipes: one line each, stacked while more than one is up (Table.tsx, feed.ts). */
+.gotnertz.sniped {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15em;
+}
+
 .gotnertz.sniped span {
-  animation: sniped 1.125s ease-out both; /* (a quarter longer than it was) */
+  animation: sniped 1.125s ease-out both; /* (a quarter longer than it was; Table.tsx SNIPE_MS) */
   /* A white edge and a dark one round that: read over a card of any colour, face or back. */
   -webkit-text-stroke: 0.09em #fff;
   filter: drop-shadow(0 0 0.03em var(--ink)) drop-shadow(0 0.05em 0.02em var(--ink)) drop-shadow(0 0.1em 0.2em rgba(0, 0, 0, 0.6));
   text-shadow: none;
-}
-
-/* Each name in a snipe's notice, in its own colour: so everyone one card beat can be named together. */
-.gotnertz.sniped b {
-  font-weight: inherit;
 }
 
 @keyframes sniped {
@@ -4887,10 +4891,16 @@ button.code.copy small {
   color: var(--chalk);
   -webkit-text-stroke: 0;
   filter: drop-shadow(0 0.06em 0.05em rgba(4, 18, 22, 0.95));
-  animation-duration: 2.4s; /* (half as long again: it is smaller, and off to one side) */
+  animation-duration: 2.4s; /* (half as long again: it is smaller, and off to one side; Table.tsx ASIDE_MS) */
+}
+
+/* The newest along the edge, those still up above it. */
+.gotnertz.sniped.aside {
+  justify-content: flex-end;
 }
 
 .gotnertz.sniped.aside b {
+  font-weight: inherit;
   filter: brightness(1.45) saturate(0.9);
 }
 
