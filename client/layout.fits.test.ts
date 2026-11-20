@@ -99,4 +99,20 @@ describe('what stands round the cards', () => {
     }
     expect(bad).toEqual([]);
   });
+
+  it('has the clock on a phone held upright: in the bar, by the menu\'s button', () => {
+    for (const [W, H] of WINDOWS.filter(([w, h]) => h > w * 1.4)) {
+      for (const n of PLAYERS) {
+        for (const chat of [CHATS.out, CHATS.voice]) {
+          const fit: Fittings = { chat, clock: true, seats: n, vote: false, name: nameWidth('Brian', '120') };
+          const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, undefined, { l: 0, r: 0, b: 34 }, [], fit);
+          const where = `${W}x${H}, ${n} players, ${chat.join(' ')}`;
+          expect(L.tall, where).toBe(true);
+          expect(L.clock, where).not.toBeNull();
+          expect(L.clock!.y + L.clock!.h, where).toBeLessThanOrEqual(L.bar);
+          expect(L.clock!.x + L.clock!.w, where).toBeLessThan(L.at.knobs.x);
+        }
+      }
+    }
+  });
 });

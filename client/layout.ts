@@ -639,7 +639,7 @@ export interface ClockAt extends Rect {
  *
  * Upright, both are in the bar across the top, the chat's buttons from the left and the menu's from the right. When
  * the bar is too narrow for the chat's as they are there (larger, for a thumb), they are no larger than elsewhere, and
- * narrower still they are squeezed. There is no clock in the bar. Otherwise the chat is top left and the menu's button
+ * narrower still they are squeezed; the clock stands between them, by the menu's. Otherwise the chat is top left and the menu's button
  * bottom left; the clock would stand above that, or else after the chat's buttons.
  */
 export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit: Fittings = NO_FITTINGS): Corners {
@@ -654,7 +654,11 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
     // (Narrower still: the chat's buttons are squeezed into what is left. No phone is.)
     const squeeze = Math.min(1, Math.max(0, room) / Math.max(1, across(parts(large))));
     const chatParts = parts(large).map((w) => w * squeeze);
-    return { shape, chat: { x: l, y: 7, w: across(parts(large)) * squeeze, h: CHAT.barH }, chatParts, knobs: { x: W - r - KNOB.size, y: 7, w: KNOB.size, h: KNOB.size }, clocks: [] };
+    const chat: Rect = { x: l, y: 7, w: across(parts(large)) * squeeze, h: CHAT.barH };
+    const knobs: Rect = { x: W - r - KNOB.size, y: 7, w: KNOB.size, h: KNOB.size };
+    // The clock in the bar, just left of the menu's button, where it is clear of the chat's buttons.
+    const bar: ClockAt = { x: knobs.x - 10 - CLOCK.above.w, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
+    return { shape, chat, chatParts, knobs, clocks: fit.clock && chat.x + chat.w + 8 <= bar.x ? [bar] : [] };
   }
   const chat: Rect = { x: Math.max(10, keep.l), y: 10, w: across(parts(0)), h: CHAT.h };
   const knobs: Rect = { x: Math.max(12, keep.l), y: H - 10 - KNOB.size, w: KNOB.size, h: KNOB.size };
