@@ -103,6 +103,8 @@ type Seated = Player & { seat: number };
 const seated = (p: Player): p is Seated => p.seat !== null;
 /** Takes one of the table's seats: at it, and not up from their cards (`out`: whoever is holds their seat only for those). */
 const taking = (p: Player): p is Seated => seated(p) && !p.out;
+/** Plays the cards at their seat: takes it, and is not standing up from them for now (`standing`). Who a round's votes and jams go by, and who a deal over gives cards to. */
+const playing = (p: Player): p is Seated => taking(p) && !p.standing;
 /** Gone from the room, but for cards of theirs that lie there: they left, or were sent away (see `out`). */
 const gone = (p: Player): boolean => p.out === 'left' || p.out === 'kicked';
 /** The seat to ask the engine about for `p`: the one whose cards they play, or one that no hand has (they have none, or are up from theirs). */
@@ -258,7 +260,7 @@ export class Room {
       case 'seats':
         return this.resize(player, msg.step);
       case 'intent':
-        return this.intent(player, msg.seq, msg.intent);
+        return void this.intent(player, msg.seq, msg.intent);
       case 'drag':
         return this.dragged(player, msg);
       case 'leave':
@@ -468,9 +470,14 @@ export class Room {
     this.changed();
   }
 
-  /** Whoever may deal says "1, 2, 3...": only once the cards are dealt and the table is waiting. Anyone else, any other time, is ignored. */
+  /**
+   * Whoever may deal says "1, 2, 3...": only once the cards are dealt and the table is waiting, and while enough of
+   * those dealt in still play their cards (here or away: someone away may be back, someone up from theirs will not
+   * be). Too few, and the table waits for whoever sits down next, who is dealt in (`fill`). Anyone else, any other
+   * time, is ignored.
+   */
   private go(player: Player): void {
-    if (player !== this.dealer || this.state?.status.at !== 'ready') return;
+    if (player !== this.dealer || this.state?.status.at !== 'ready' || this.players.filter((p) => this.inRound(p)).length < MIN_PLAYERS) return;
     this.state = startCountdown(this.state);
     this.timeRound(START_MS, () => this.opened());
     this.changed();
@@ -534,21 +541,22 @@ export class Room {
     this.roundTimer = null;
   }
 
-  private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): void {
-    if (seq <= player.ack) return; // duplicate or out of order: already answered
+  /** The one way anything is played: a person's intent off their socket, or a bot's. Was it accepted? (A bot goes by the answer; a person hears in their next snapshot.) */
+  private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): boolean {
+    if (seq <= player.ack) return false; // duplicate or out of order: already answered
     player.ack = seq;
-    if (this.phase !== 'playing' || !this.state || (this.pausedBy && intent.k !== 'end')) return this.changed(player); // while paused, only the vote to end the round
+    if (this.phase !== 'playing' || !this.state || (this.pausedBy && intent.k !== 'end')) return this.changed(player), false; // while paused, only the vote to end the round
     delete player.standing; // playing is sitting back down
     if (intent.k === 'flip' && this.flipMs > 0 && !player.bot) {
       const now = Date.now();
-      if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player); // too soon after their last card: refused
+      if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player), false; // too soon after their last card: refused
       player.flipped = now;
     }
     const result = applyIntent(this.state, at(player), intent);
     if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, [], intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.state, at(player), intent);
-    if (next === this.state) return this.changed(player); // rejected: only the sender needs to hear (its ack moved)
+    if (next === this.state) return this.changed(player), false; // rejected: only the sender needs to hear (its ack moved)
     const called = next.status.at === 'grace' && this.state.status.at !== 'grace';
     this.state = next;
     // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace. This is the one way
@@ -556,6 +564,7 @@ export class Room {
     if (called) this.timeRound(GRACE_MS, () => this.graceExpired());
     this.settle();
     this.changed();
+    return result.ok;
   }
 
   /**
@@ -588,9 +597,8 @@ export class Room {
     // bot goes along with ending it. And the table is jammed when no hand that is played (here or away) can get
     // anywhere: cards lying where someone got up from them will never be moved, nor will a standing player's be unless
     // they sit back down, which a jam no longer waits for. (With nobody left playing it at all, that is at once.)
-    const playing = this.table.filter(taking);
-    const here = playing.filter((p) => p.conn && !p.standing);
-    const played = playing.filter((p) => !p.standing);
+    const played = this.table.filter(playing);
+    const here = played.filter((p) => p.conn);
     this.state = resolveEndVote(resolveStuck(this.state, here.map((p) => p.seat), played.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
     const { status } = this.state;
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
@@ -697,9 +705,9 @@ export class Room {
     return { of: this.capacity, taken: this.players.filter(taking).length };
   }
 
-  /** Those at the table who are here: who a deal would give cards to. (Not anyone up from their cards: they are not dealt in again.) */
+  /** Those at the table who are here: who a deal would give cards to. (Not anyone up from their cards, for good or for now: they are not dealt in again.) */
   private get present(): number {
-    return this.table.filter((p) => taking(p) && p.conn).length;
+    return this.table.filter((p) => playing(p) && p.conn).length;
   }
 
   /** Are cards of `p`'s in a round that is not over, dealt into the one now on the table? (Played by them, or lying there: see `out`.) */
@@ -949,8 +957,7 @@ export class Room {
       if (intent.k === 'move' && !applyIntent(before, at(player), intent).ok) return this.rethink(player);
       if (intent.k === 'move' && flightFrames(before, at(player), intent).length > 0) return this.fly(player);
       bot.pending = null;
-      this.intent(player, player.ack + 1, intent);
-      if (this.state !== before) {
+      if (this.intent(player, player.ack + 1, intent)) {
         bot.memory = memory;
         // It dealt a card off the stock and the group isn't finished: the rest of it comes at the common deal speed.
         midGroup = intent.k === 'flip' && (this.state.players.find((p) => p.seat === at(player))?.dealt ?? 0) > 0;
@@ -977,9 +984,7 @@ export class Room {
     const bot = player.bot!;
     const { intent, memory } = bot.pending!;
     if (intent.k !== 'move') return;
-    const before = this.state!;
-    this.intent(player, player.ack + 1, { k: 'hold', cardId: intent.cardId });
-    if (this.state === before) {
+    if (!this.intent(player, player.ack + 1, { k: 'hold', cardId: intent.cardId })) {
       bot.pending = null; // it could not pick that card up any more
       return this.decide(player);
     }
@@ -1001,9 +1006,7 @@ export class Room {
         return;
       }
       bot.pending = null;
-      const lands = applyIntent(game, at(player), intent).ok; // (a refused drop changes the table too: the card goes home)
-      this.intent(player, player.ack + 1, intent);
-      if (lands) bot.memory = memory;
+      if (this.intent(player, player.ack + 1, intent)) bot.memory = memory; // (a refused drop changes the table too: the card goes home)
       this.decide(player, false, frames.length * FLIGHT_STEP_MS);
     };
     step();

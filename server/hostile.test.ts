@@ -414,13 +414,14 @@ describe('four bots and a swarm at one table', () => {
       const count = { intents: 0, accepted: 0 };
       room['intent'] = (...args) => {
         const before = room.game;
-        inner(...args);
+        const accepted = inner(...args);
         count.intents++;
         if (room.game !== before) (count.accepted++, reached('accepted'));
         if ((args[0] as { bot?: unknown }).bot) reached('bot intent');
         const bad = checkInvariants(room.game!);
         if (bad) problems.push(`after ${JSON.stringify(args[2])}: ${bad}`);
         if (inGrace(room.game!).length > 0) reached('grace');
+        return accepted;
       };
       const seqs = [0, 0];
       room.handle(taps[0]!, { t: 'start' });

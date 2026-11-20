@@ -387,7 +387,8 @@ export function tick(): void {
 }
 
 let finale: Stop[] = [];
-function hush(): void {
+/** Whatever of the wash is still to sound is not heard: the sequence moved on, or the table it was playing on is gone. */
+export function hush(): void {
   for (const stop of finale.splice(0)) stop();
 }
 

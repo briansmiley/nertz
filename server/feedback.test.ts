@@ -108,6 +108,30 @@ describe('feedback', () => {
     expect((calls.find((c, i) => i >= before && c.url.includes('linear.app'))!.body as typeof issue).variables.input.labelIds).toEqual(['bug1']);
   });
 
+  it('a lookup Linear did not answer is left out of that issue only, and asked again for the next; and no call out waits for ever', async () => {
+    let asked = 0;
+    const inputs: Record<string, unknown>[] = [];
+    const waits: boolean[] = [];
+    const fake = (async (_url: unknown, init?: RequestInit) => {
+      waits.push(init?.signal instanceof AbortSignal);
+      const { query: q, variables } = JSON.parse(String(init!.body)) as { query: string; variables: { input: Record<string, unknown> } };
+      if (q.includes('projects(') && asked++ === 0) throw new Error('no answer');
+      if (q.includes('issueCreate')) inputs.push(variables.input);
+      const data = q.includes('projects(') ? { projects: { nodes: [{ id: 'proj1' }] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as typeof fetch;
+    const real = fetch;
+    server = await startServer({ port: 0, feedback: { linear: { key: 'lin_api_x', team: 'nrz', project: 'Nertz' }, anthropic: '', onDelivered, fetch: fake } });
+    const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
+    for (const n of [1, 2, 3]) {
+      expect((await send({ kind: 'bug', text: 'it broke' })).status).toBe(200);
+      await settled(n);
+    }
+    expect(inputs.map((i) => i.projectId)).toEqual([undefined, 'proj1', 'proj1']);
+    expect(asked).toBe(2); // (found: not asked a third time)
+    expect(waits.every(Boolean)).toBe(true);
+  });
+
   it('a report from someone signed in is kept as theirs, and what became of it is noted: its title, and the issue filed', async () => {
     fakeGoogle();
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));

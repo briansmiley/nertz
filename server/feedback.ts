@@ -87,6 +87,8 @@ export interface Heading {
 }
 
 const TITLE_MAX = 80;
+/** How long any one call to another service is waited for. */
+const PATIENCE_MS = 10_000;
 /** At most `max` characters (not UTF-16 halves), with an ellipsis where it was cut. */
 const clip = (s: string, max: number): string => {
   const chars = Array.from(s);
@@ -111,9 +113,11 @@ export interface FeedbackKeeping {
 
 export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }: FeedbackKeeping = {}) {
   const webhook = options.webhook ?? process.env.FEEDBACK_WEBHOOK;
-  const post = options.fetch ?? fetch;
+  const outward = options.fetch ?? fetch;
+  /** Every call out to Linear and Discord: given up on after `PATIENCE_MS`, so that one of them stalling holds no report up for long. (Claude's client keeps its own time.) */
+  const post: typeof fetch = (input, init) => outward(input, { ...init, signal: AbortSignal.timeout(PATIENCE_MS) });
   const anthropicKey = options.anthropic ?? process.env.ANTHROPIC_API_KEY;
-  const claude = anthropicKey ? new Anthropic({ apiKey: anthropicKey, fetch: post, timeout: 10_000, maxRetries: 0 }) : null;
+  const claude = anthropicKey ? new Anthropic({ apiKey: anthropicKey, fetch: outward, timeout: PATIENCE_MS, maxRetries: 0 }) : null;
   const recent = new Map<string, number[]>();
   const env = process.env;
   const linear =
@@ -150,7 +154,9 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
         return made.issueLabelCreate.issueLabel.id;
       };
       // What else an issue is given, where the server was told: each looked up by name, and left out (with a word in the log) if there is no such thing.
+      // One that could not be asked for is left out of this report's issue only (`unasked`): the next report asks again.
       const extra: Record<string, unknown> = {};
+      let unasked = false;
       const lookup = async (what: string, field: string, find: () => Promise<string | undefined>): Promise<void> => {
         try {
           const found = await find();
@@ -158,6 +164,7 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
           else console.error(`feedback: Linear has no ${what}; issues are filed without it`);
         } catch (e) {
           console.error(`feedback: looking up the Linear ${what}`, e);
+          unasked = true;
         }
       };
       if (linear!.priority) extra.priority = linear!.priority;
@@ -165,7 +172,9 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
       if (assignee) await lookup(`user ${assignee}`, 'assigneeId', async () => (assignee.toLowerCase() === 'me' ? (await gql<{ viewer: { id: string } }>('query { viewer { id } }', {})).viewer.id : (await gql<{ users: { nodes: { id: string }[] } }>('query($email: String!) { users(filter: { email: { eq: $email } }, first: 1) { nodes { id } } }', { email: assignee })).users.nodes[0]?.id));
       if (state) await lookup(`status "${state}" in the team`, 'stateId', async () => (await gql<{ workflowStates: { nodes: { id: string }[] } }>('query($team: ID!, $name: String!) { workflowStates(filter: { team: { id: { eq: $team } }, name: { eqIgnoreCase: $name } }, first: 1) { nodes { id } } }', { team: id, name: state })).workflowStates.nodes[0]?.id);
       if (project) await lookup(`project "${project}"`, 'projectId', async () => (await gql<{ projects: { nodes: { id: string }[] } }>('query($name: String!) { projects(filter: { name: { eqIgnoreCase: $name } }, first: 1) { nodes { id } } }', { name: project })).projects.nodes[0]?.id);
-      return { id, labels: { bug: await label('Bug', '#cf2233'), idea: await label('Feature', '#f2b320') }, extra };
+      const labels = { bug: await label('Bug', '#cf2233'), idea: await label('Feature', '#f2b320') };
+      if (unasked) team = null;
+      return { id, labels, extra };
     })().catch((e: unknown) => {
       team = null; // (not remembered: the next report tries again)
       throw e;

@@ -33,6 +33,25 @@ export const washedAt = (trayPiles: number): number => (trayPiles ? trayAt + TIM
 export const sortAt = (trayPiles: number, clear = false): number => washedAt(trayPiles) + (clear ? CLEAR_MS : 0);
 /** The piles are gathered one player at a time: this long for `n` players. */
 export const sortMs = (n: number): number => n * TIMING.sortEach;
+/**
+ * The end of a round as a schedule: each step after the first ('flip', when the round is scored), and how long after
+ * that moment it comes. The one place the steps are timed. The canvas's own clock starts at 'spread', so what it goes
+ * by (`washedAt`, `sortAt`) is counted from there. With nothing in the tray, nothing comes out of it: 'out' and 'wash'
+ * are one moment. (`clear`: on a phone the table is cleared before the sorting starts.)
+ */
+export function finaleSteps(trayPiles: number, players: number, clear: boolean): [Stage, number][] {
+  const spread = TIMING.flip;
+  const out = spread + TIMING.spread;
+  const won = spread + sortAt(trayPiles, clear) + sortMs(players);
+  return [
+    ['spread', spread],
+    ['out', out],
+    ['wash', out + (trayPiles ? TIMING.out : 0)],
+    ['sort', spread + washedAt(trayPiles)],
+    ['won', won],
+    ['sheet', won + TIMING.hold],
+  ];
+}
 const SPREAD_MS = 950; // a card's trip from its pile out into the wash: unhurried, so the mess is made, not thrown
 export const LAND_MS = 620; // a card's trip from the wash onto its owner's pile
 

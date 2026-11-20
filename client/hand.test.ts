@@ -176,7 +176,7 @@ describe('carrying a card (a mouse)', () => {
   });
 
   it('nothing is started while nothing can be: the round is paused, or its end is playing out', () => {
-    for (const t of [seatAt(game(), { room: { paused: { by: 1 } } }), seatAt(game(), { scene: { playingOut: true } })]) {
+    for (const t of [seatAt(game(), { room: { paused: { by: 1 } } }), seatAt(game(), { scene: { playingOut: true } }), seatAt(game(), { ...phone, room: { paused: { by: 1 } } })]) {
       t.drag(t.at('0:H4'), t.work(0));
       t.tap(t.at(t.L.cards.find((c) => c.mine && c.pile === 'stock')!.card.id));
       expect(t.sent).toEqual([]);

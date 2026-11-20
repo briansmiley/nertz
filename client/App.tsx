@@ -11,7 +11,7 @@ import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { openCorner, useCorner } from './Menu';
-import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet, useRtt } from './net';
+import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
 import { Check, CopyIcon, Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
@@ -87,7 +87,7 @@ export function App() {
             {spectating}
             {/* A seat is had only by asking for it; and whoever asked can think again. */}
             {me && !hasSeat(me) && (
-              <button type="button" onClick={() => takeSeat(!me.queued)}>
+              <button type="button" onClick={() => sit(!me.queued)}>
                 {me.queued ? 'Just watch' : free > 0 ? 'Take a seat' : 'Join the queue'}
               </button>
             )}
@@ -195,7 +195,7 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
       {open && (
         <span className="free" role="radiogroup" aria-label="Your colour, and those nobody has">
           {free.map(({ c, i }) => (
-            <button key={c} type="button" role="radio" aria-checked={i === seat} aria-label={i === seat ? `Colour ${i + 1}: yours` : `Colour ${i + 1}`} className={i === seat ? 'mine' : ''} style={{ background: c }} onClick={() => (i === seat || sit(i), setOpen(false))} />
+            <button key={c} type="button" role="radio" aria-checked={i === seat} aria-label={i === seat ? `Colour ${i + 1}: yours` : `Colour ${i + 1}`} className={i === seat ? 'mine' : ''} style={{ background: c }} onClick={() => (i === seat || pickSeat(i), setOpen(false))} />
           ))}
         </span>
       )}
@@ -214,7 +214,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const [step, setStep] = useState<'ask' | 'pick' | null>(null);
   const root = useRef<HTMLSpanElement>(null);
   useDismiss(root, !!step, () => setStep(null));
-  const up = () => (takeSeat(false, mine ? undefined : who.id), setStep(null));
+  const up = () => (sit(false, mine ? undefined : who.id), setStep(null));
   return (
     <span className="pop-at" ref={root}>
       <button type="button" className="standup" aria-label={says} title={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
@@ -263,12 +263,12 @@ function Watching({ room }: { room: RoomView }) {
           <span key={p.id} className={p.id === room.me ? 'you' : ''}>
             {p.name}
             {!p.queued && (p.id === room.me || host) && (
-              <button type="button" className="sit" onClick={() => takeSeat(true, p.id === room.me ? undefined : p.id)}>
+              <button type="button" className="sit" onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
                 {p.id === room.me ? 'Take a seat' : 'Seat'}
               </button>
             )}
             {p.queued && p.id === room.me && (
-              <button type="button" className="sit" onClick={() => takeSeat(false)}>
+              <button type="button" className="sit" onClick={() => sit(false)}>
                 Just watch
               </button>
             )}
@@ -483,7 +483,6 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                   {busy && typed ? '…' : 'Join'}
                 </button>
               </div>
-              {typed && !isRoomCode(typed) && <p className="hint">A table code is {ROOM_CODE_LENGTH} letters.</p>}
             </div>
           </div>
           <Tables onPick={pick} />
@@ -618,7 +617,7 @@ function Lobby({ room }: { room: RoomView }) {
         <TableRules room={room} />
         {/* Whoever is watching (they stood up, or came in to a full table): a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
-          <button className="go" onClick={() => takeSeat(true)}>
+          <button className="go" onClick={() => sit(true)}>
             {freeSeats(room.seats) > 0 ? 'Take a seat' : 'Join the queue for a seat'}
           </button>
         )}
@@ -649,7 +648,7 @@ function StartOver() {
   return (
     <Pop icon={<Again />} label="Start over">
       <h3>Start over?</h3>
-      <p className="hint">Everyone's score goes back to 0 and the table to before round 1. This cannot be undone.</p>
+      <p className="hint">Everyone's score goes back to 0 and the table to before round 1.</p>
       <button type="button" className="plain" onClick={resetTable}>
         Reset the scores
       </button>

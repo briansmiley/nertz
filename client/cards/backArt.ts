@@ -1,6 +1,8 @@
 // Card backs drawn here, not fetched: each is a small SVG picture, white on nothing, that is laid over the player's
 // colour like the one-colour picture backs (`backOf` in Face.tsx). A card is 90 x 126; every back has the same white
 // edge and a thin line inside it, and its own pattern in the field within.
+import type { Back } from '../../shared/protocol';
+
 const W = 90;
 const H = 126;
 const n = (v: number): string => (Math.round(v * 100) / 100).toString();
@@ -16,7 +18,6 @@ const F = { x: 9, y: 9, w: W - 18, h: H - 18 };
  * the sides ('fit': a single figure on bare ground, where that does not show and nothing of the figure is lost).
  */
 let bare: 'fill' | 'fit' | null = null;
-const FIGURES = new Set(['penrose-triangle', 'sunburst', 'mystic-star', 'mystic-day', 'mystic-moons', 'mystic-sun', 'mystic-eye', 'lotus', 'giglio', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'compass', 'lightcone', 'arbor', 'guilloche']);
 
 // (Each picture says how large it is, 90 by 126: without that it has no size of its own, and the end-of-round canvas,
 // which draws a back by its picture's own size, drew only a part of it, out of shape.)
@@ -1654,28 +1655,124 @@ function sashiko(small: boolean): string {
   return frame(clipped(`<path d="${d}" stroke-width="${small ? 1.8 : 1.1}"/>`), 1, small);
 }
 
-const DRAW: Record<string, (small: boolean) => string> = { hilbert, key, braid, loops, rings, guilloche: rosette, voronoi, tree, dragon, koch, mandelbrot, walk, mondrian, diamonds, herringbone, honeycomb, starcross: starCross, houndstooth, shards, pinwheel, mosaic, flowers, compass, lightcone, arbor, fans, tripods, paisley, sashiko, waves, flow, life, penrose, bubbles, 'mystic-moons': mysticMoons, 'mystic-sun': mysticSun, 'mystic-eye': mysticEye, 'mystic-day': mysticDay, 'mystic-star': mysticStar, sunburst, 'penrose-triangle': penroseTriangle, blocks, bathroom, lotus, 'flower-of-life': flowerOfLife, fleur, giglio, hat, 'hat-two': (small) => hat(small, 2), 'hat-lines': (small) => hat(small, 1), chain, pulsar };
+/**
+ * How each back but the plain one is made, the one place that says so. Drawn here: by `draw` (`small`: the simpler
+ * drawing, for a card too small for the full one to read), and `figure` for a single figure on bare ground, which is
+ * fitted whole to a card without an edge where a pattern fills it (see `bare`, above). Or a picture file of its name in
+ * public/cards/backs, shown `small` times larger on a small card (another player's pile) so that only its middle
+ * shows: a fine pattern needs more, and one that is a single figure is shown whole (1).
+ */
+export type BackArt = { k: 'drawn'; draw: (small: boolean) => string; figure: boolean } | { k: 'file'; small: number };
+const pattern = (draw: (small: boolean) => string): BackArt => ({ k: 'drawn', draw, figure: false });
+const figure = (draw: (small: boolean) => string): BackArt => ({ k: 'drawn', draw, figure: true });
+const file = (small: number): BackArt => ({ k: 'file', small });
+export const BACK_ART: Record<Exclude<Back, 'plain'>, BackArt> = {
+  hilbert: pattern(hilbert),
+  key: pattern(key),
+  braid: pattern(braid),
+  loops: pattern(loops),
+  rings: pattern(rings),
+  guilloche: figure(rosette),
+  voronoi: pattern(voronoi),
+  tree: figure(tree),
+  dragon: figure(dragon),
+  koch: figure(koch),
+  mandelbrot: figure(mandelbrot),
+  walk: figure(walk),
+  mondrian: pattern(mondrian),
+  diamonds: pattern(diamonds),
+  herringbone: pattern(herringbone),
+  honeycomb: pattern(honeycomb),
+  starcross: pattern(starCross),
+  houndstooth: pattern(houndstooth),
+  shards: pattern(shards),
+  pinwheel: pattern(pinwheel),
+  mosaic: pattern(mosaic),
+  flowers: pattern(flowers),
+  compass: figure(compass),
+  lightcone: figure(lightcone),
+  arbor: figure(arbor),
+  fans: pattern(fans),
+  tripods: pattern(tripods),
+  paisley: pattern(paisley),
+  sashiko: pattern(sashiko),
+  waves: pattern(waves),
+  flow: pattern(flow),
+  life: pattern(life),
+  penrose: pattern(penrose),
+  bubbles: pattern(bubbles),
+  'mystic-moons': figure(mysticMoons),
+  'mystic-sun': figure(mysticSun),
+  'mystic-eye': figure(mysticEye),
+  'mystic-day': figure(mysticDay),
+  'mystic-star': figure(mysticStar),
+  sunburst: figure(sunburst),
+  'penrose-triangle': figure(penroseTriangle),
+  blocks: pattern(blocks),
+  bathroom: pattern(bathroom),
+  lotus: figure(lotus),
+  'flower-of-life': pattern(flowerOfLife),
+  fleur: pattern(fleur),
+  giglio: figure(giglio),
+  hat: pattern(hat),
+  'hat-two': pattern((small) => hat(small, 2)),
+  'hat-lines': pattern((small) => hat(small, 1)),
+  chain: pattern(chain),
+  pulsar: pattern(pulsar),
+  'carpet-tint': file(1.8),
+  waterlily: file(1.2),
+  lilypads: file(1.2),
+  maple: file(1.2),
+  'dandelion-1': file(1.1),
+  daisy: file(1.2),
+  tulip: file(1.2),
+  poppies: file(1.2),
+  sequoia: file(1.25),
+  birch: file(1.2),
+  fronds: file(1.15),
+  oak: file(1.3),
+  thistle: file(1.2),
+  clover: file(1.2),
+  'clover-2': file(1.2),
+  lily: file(1.2),
+  rose: file(1.25),
+  iris: file(1.15),
+  sunflower: file(1.15),
+  acanthus: file(1.7),
+  fern: file(1.5),
+  ginkgo: file(1),
+  'ginkgo-ring': file(1.4),
+  'ginkgo-scatter': file(2),
+  piatnik: file(1.5),
+  atlas: file(1.4),
+  bicycle: file(1),
+  lion: file(1),
+  ornate: file(1.8),
+  rosette: file(1.8),
+  check: file(2.2),
+  stars: file(2.4),
+  cobble: file(2.8),
+  'tarot-star-tint': file(2),
+  'tarot-eye-tint': file(1.9),
+};
 const made = new Map<string, string>();
 
-/** The backs drawn here, by their names in `CARD_BACKS`. */
-export const isDrawn = (back: string): boolean => back in DRAW;
-
 /**
- * A drawn back as a CSS image. Each is worked out once in this browser, the first time it is wanted, and kept; the
- * dice are fixed, so it is the same picture for everybody. `small`: the simpler drawing of it, with heavier lines,
- * for a card too small for the full one to read (other players' piles). `edgeless`: without the white edge and the
- * thin line, what is inside them drawn out to the edge of the card.
+ * A drawn back as a picture's address (a data: URL). Each is worked out once in this browser, the first time it is
+ * wanted, and kept; the dice are fixed, so it is the same picture for everybody. `small`: the simpler drawing of it,
+ * with heavier lines, for a card too small for the full one to read (other players' piles). `edgeless`: without the
+ * white edge and the thin line, what is inside them drawn out to the edge of the card.
  */
-export function drawnBack(back: string, small = false, edgeless = false): string {
+export function drawnBack(back: Back, art: BackArt & { k: 'drawn' }, small = false, edgeless = false): string {
   const k = `${back} ${small} ${edgeless}`;
-  let url = made.get(k);
-  if (!url) {
-    bare = edgeless ? (FIGURES.has(back) ? 'fit' : 'fill') : null;
+  let src = made.get(k);
+  if (!src) {
+    bare = edgeless ? (art.figure ? 'fit' : 'fill') : null;
     try {
-      made.set(k, (url = `url("data:image/svg+xml,${encodeURIComponent(DRAW[back]!(small))}")`));
+      made.set(k, (src = `data:image/svg+xml,${encodeURIComponent(art.draw(small))}`));
     } finally {
       bare = null;
     }
   }
-  return url;
+  return src;
 }
