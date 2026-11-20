@@ -4,10 +4,10 @@
 import { useMemo } from 'react';
 import type { RoomView } from '../shared/types';
 import { ballot } from './actions';
-import { corners, nameWidth, NO_FITTINGS, type ChatButton, type Corners, type Fittings, type Insets } from './layout';
+import { corners, nameWidth, NO_FITTINGS, type ChatButton, type Corners, type Fittings } from './layout';
 import { usePrefs } from './prefs';
 import { useSocial, type SocialState } from './social';
-import { insets, useViewport } from './viewport';
+import { useWindow } from './viewport';
 import { useVoice } from './voice';
 
 /** A button with a count on it: by how many digits the count has. */
@@ -50,13 +50,6 @@ export function useFittings(room: RoomView | null | undefined): Fittings {
   const key = JSON.stringify(fit);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => fit, [key]);
-}
-
-/** The window, and what the screen keeps of it at its edges (read again whenever the window changes: turning a phone moves its notch). */
-export function useWindow(): { W: number; H: number; pad: Insets } {
-  const [W, H] = useViewport();
-  const pad = useMemo(() => insets(), [W, H]);
-  return { W, H, pad };
 }
 
 /** Where the buttons in the corners stand in this window (layout.ts, `corners`). */
