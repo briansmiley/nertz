@@ -293,7 +293,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <SaidWord said={said} />
       </button>
       {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={openCorner} onDone={() => openCorner(null)} />}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} />}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
       {open === 'settings' && (
         <section className="slip" id="your-settings" aria-label="Settings">
           <header className="slip-head">
