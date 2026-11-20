@@ -211,7 +211,7 @@ describe('chooseIntent', () => {
   it('does nothing when the round is called, when it is not in the round, before play opens, or when it cannot see its own face-up cards', () => {
     const state = table({ nertz: ['S5'], work: [['H6'], [], [], []] });
     for (const stage of ['dealing', 'ready', 'countdown'] as const) expect(look({ ...state, status: { at: stage } })).toBeNull();
-    expect(look({ ...state, status: { at: 'grace', calledBy: 1 } })).toBeNull();
+    expect(look({ ...state, status: { at: 'grace', calledBy: 1, unheard: [] } })).toBeNull();
     expect(look({ ...state, status: { at: 'over', end: { by: 'vote' } } })).toBeNull();
     expect(chooseIntent(viewFor(state, 5), 5, freshMemory(), always)).toBeNull();
     const hide = (c: { id: string; owner: number }) => ({ id: c.id, owner: c.owner, hidden: true as const });

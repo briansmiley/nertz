@@ -2,7 +2,7 @@
 // whether the sound is off, the clock, the vote. The chat, the corner buttons and the table all ask here, so that
 // the layout places exactly what is drawn.
 import { useMemo } from 'react';
-import type { RoomView } from '../shared/types';
+import type { PlayerView, RoomView } from '../shared/types';
 import { ballot } from './actions';
 import { corners, nameWidth, NO_FITTINGS, type ChatButton, type Corners, type Fittings } from './layout';
 import { usePrefs } from './prefs';
@@ -37,8 +37,17 @@ export function fittingsOf(room: RoomView | null | undefined, social: Parameters
     clock: !!room.clock && room.phase !== 'lobby',
     seats: table,
     vote: !!ballot(room)?.pressing,
-    name: me ? nameWidth(me.name, String(me.score)) : 0,
+    name: me ? lineWidth(room, me) : 0,
   };
+}
+
+/**
+ * How wide your own line is written: your name and the total the table shows beside it (Table.tsx, `total`). At the
+ * end of a round that is the total before the round's points, then after them: the line is as wide as the wider.
+ */
+function lineWidth(room: RoomView, me: PlayerView): number {
+  const l = room.phase === 'results' ? room.lastRound?.scores.find((s) => s.seat === me.seat) : undefined;
+  return l ? Math.max(nameWidth(l.name, String(l.total - l.delta)), nameWidth(l.name, String(l.total))) : nameWidth(me.name, String(me.score));
 }
 
 /** The fittings of the table you are at (none: the first page). The same object for as long as nothing of it changes. */

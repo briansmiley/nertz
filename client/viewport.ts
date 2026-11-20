@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Insets } from './layout';
 
 /** The window the game is laid out in: its size, and what the screen keeps for itself at its edges. */
@@ -8,59 +8,66 @@ export interface Viewport {
   pad: Insets;
 }
 
-/** How the page lies under the window: scrolled this far, as far as it reaches, and what is shown of it. */
-export interface Page {
+/** A part of the window, in its px: where it starts, and how big it is. */
+export interface Area {
   x: number;
   y: number;
-  maxX: number;
-  maxY: number;
-  /** How far what is shown is off the window (the visual viewport off the layout one): 0 but while the keyboard is up, or zoomed. */
-  offX: number;
-  offY: number;
-  /** Zoomed in or out by hand. */
-  zoomed: boolean;
-  /** A field has the keyboard up. */
-  typing: boolean;
+  w: number;
+  h: number;
 }
+
+/** What of the window is seen (the visual viewport): where it is in the window, its size, and how far it is pinched in. */
+export interface Seen {
+  offsetLeft: number;
+  offsetTop: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+/** How much shorter than the window what is seen must be for a keyboard to be up: more than a browser's bars come and go by, less than any phone's keyboard. */
+export const KEYBOARD_MIN = 120;
 
 /**
- * Where the page goes back to, or null where it is right. To keep a field clear of the keyboard a phone moves the page
- * under the window, and does not always move it back when the keyboard goes or the phone is turned (iOS); left moved,
- * all that is drawn fixed to the window (the table, its sheets, the menu) is pressed somewhere other than where it shows.
- * So, but while a field is typed into or the page is zoomed, the page is never further down or right than it reaches
- * (at a table, which scrolls not at all, that is the top), and what is shown is the window itself.
+ * The part of the window a phone's keyboard leaves to be seen, or null while no keyboard is up. `H`: the window's
+ * height. A phone's browser does not shrink the window for its keyboard; it shrinks what is seen, and may move that
+ * down the window to show the field being typed in. A pinch shrinks what is seen too, but all of it in proportion.
  */
-export function putBack(p: Page): [number, number] | null {
-  if (p.typing || p.zoomed) return null;
-  const x = Math.min(p.x, Math.max(0, p.maxX));
-  const y = Math.min(p.y, Math.max(0, p.maxY));
-  return p.x - x > 1 || p.y - y > 1 || Math.abs(p.offX) > 1 || Math.abs(p.offY) > 1 ? [x, y] : null;
+export function aboveKeyboard(H: number, seen: Seen): Area | null {
+  return H - seen.height * seen.scale >= KEYBOARD_MIN ? { x: seen.offsetLeft, y: seen.offsetTop, w: seen.width, h: seen.height } : null;
 }
 
-/** The kinds of input that bring no keyboard up. */
-const KEYLESS = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
-const typing = (e: Element | null): boolean =>
-  e instanceof HTMLTextAreaElement || e instanceof HTMLSelectElement || (e instanceof HTMLInputElement && !KEYLESS.has(e.type)) || (e instanceof HTMLElement && e.isContentEditable);
+const sameArea = (a: Area | null, b: Area | null) => a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
 
-function pageNow(): Page {
-  const root = document.documentElement;
-  const v = window.visualViewport;
-  return {
-    x: window.scrollX,
-    y: window.scrollY,
-    maxX: root.scrollWidth - root.clientWidth,
-    maxY: root.scrollHeight - root.clientHeight,
-    offX: v?.offsetLeft ?? 0,
-    offY: v?.offsetTop ?? 0,
-    zoomed: !!v && Math.abs(v.scale - 1) > 0.01,
-    typing: typing(document.activeElement),
-  };
+/** While `on`: the part of the window a phone's keyboard leaves (`aboveKeyboard`), followed as the keyboard comes and goes and as what is seen is moved. */
+export function useAboveKeyboard(on: boolean): Area | null {
+  const [area, setArea] = useState<Area | null>(null);
+  useEffect(() => {
+    const seen = window.visualViewport;
+    if (!on || !seen) return;
+    // (The window's height: the larger of the two, as a pinch can shrink `innerHeight` on iOS.)
+    const read = () => {
+      const next = aboveKeyboard(Math.max(window.innerHeight, document.documentElement.clientHeight), seen);
+      setArea((was) => (sameArea(was, next) ? was : next));
+    };
+    read();
+    seen.addEventListener('resize', read);
+    seen.addEventListener('scroll', read);
+    return () => {
+      seen.removeEventListener('resize', read);
+      seen.removeEventListener('scroll', read);
+      setArea(null);
+    };
+  }, [on]);
+  return on ? area : null;
 }
 
 let probe: HTMLElement | null = null;
 /**
  * What the screen keeps for itself at its edges, in px (`viewport-fit=cover`: the page runs under a phone's notch and
  * its bottom bar, and says here how far they reach). Read off an unseen element whose padding is those insets.
+ * On its side the home bar's strip is not kept: the line is thin and a tap there still lands, and keeping it left a
+ * gap under the menu's button and your cards on top of the table's own margin.
  */
 function insets(): Insets {
   if (!probe) {
@@ -70,7 +77,8 @@ function insets(): Insets {
   }
   const c = getComputedStyle(probe);
   const px = (v: string) => Math.round(parseFloat(v) || 0);
-  return { l: px(c.paddingLeft), r: px(c.paddingRight), b: px(c.paddingBottom) };
+  const sideways = window.innerWidth > window.innerHeight;
+  return { l: px(c.paddingLeft), r: px(c.paddingRight), b: sideways ? 0 : px(c.paddingBottom) };
 }
 
 const read = (): Viewport => ({ W: window.innerWidth, H: window.innerHeight, pad: insets() });
@@ -79,10 +87,8 @@ const same = (a: Viewport, b: Viewport): boolean => a.W === b.W && a.H === b.H &
 /** The window as last looked at: the same object for as long as nothing of it changes. */
 let now: Viewport | null = null;
 const readers = new Set<() => void>();
-/** The page put back where it belongs, and the window read again (told to every reader if it changed). */
+/** The window read again (told to every reader if it changed). */
 function look(): void {
-  const to = putBack(pageNow());
-  if (to) window.scrollTo(to[0], to[1]);
   const seen = read();
   if (now && same(now, seen)) return;
   now = seen;
@@ -93,18 +99,17 @@ let frame = 0;
 let later: ReturnType<typeof setTimeout> | undefined;
 /**
  * A phone that is turned can say so (`resize`, `orientationchange`, the visual viewport's own `resize`) before
- * `innerWidth`, `innerHeight` and the insets have their new values, and moves the page back (if at all) after the
- * keyboard has gone: so after each, the window is looked at again a frame and a moment later. A field just left is
- * looked at only then, once the focus has settled (it may be going to the next field, the keyboard staying up).
+ * `innerWidth`, `innerHeight` and the insets have their new values: so after each, the window is looked at again a
+ * frame and a moment later.
  */
-function soon(e: Event): void {
-  if (e.type !== 'focusout') look();
+function soon(): void {
+  look();
   cancelAnimationFrame(frame);
   frame = requestAnimationFrame(look);
   clearTimeout(later);
   later = setTimeout(look, 350);
 }
-const EVENTS = ['resize', 'orientationchange', 'focusout'] as const;
+const EVENTS = ['resize', 'orientationchange'] as const;
 function subscribe(reader: () => void): () => void {
   if (!readers.size) {
     for (const e of EVENTS) window.addEventListener(e, soon);

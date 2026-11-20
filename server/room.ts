@@ -1,15 +1,15 @@
 // One game room. No IO: it is handed parsed messages for opaque connection
 // handles and decides what each connection is sent. Its only clocks are the
 // deal timer and the "1, 2, 3" start timer at the opening of a round, the
-// held-card grace timer at its end, and one timer per bot (see server/bot.ts); every rule about the first two lives in
-// the engine.
+// held-card grace timer at its end (and within it, the wait for a call to reach every window), and one timer per bot
+// (see server/bot.ts); every rule about the first two lives in the engine.
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, type Rng } from '../shared/engine';
+import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -124,6 +124,11 @@ export interface RoomOptions {
   schedule?: (flush: () => void) => void;
   /** The least time between two cards a person deals off their stock (ms). 0, the default here, is no limit. */
   flipMs?: number;
+  /**
+   * The longest a Nertz call waits to reach the windows of the others who play the round (ms, see HEAR_MS). 0, the
+   * default here: it waits for nobody, and reaches them all at once.
+   */
+  hearMs?: number;
   /** Told each round as it is scored (server/rounds.ts keeps them). */
   record?: (round: RoundRecord) => void;
 }
@@ -172,6 +177,8 @@ export class Room {
    * fired, or the round was dealt anew or is over.
    */
   private roundTimer: { handle: ReturnType<typeof setTimeout>; endsAt: number } | null = null;
+  /** Within the grace after a call, the end of its wait to be heard (`hearMs`): set with the round timer, and called off with it. */
+  private hearTimer: ReturnType<typeof setTimeout> | null = null;
   /** The last round whose start the chat was told of. */
   private startTold = 0;
   /** Who paused the round in play, if it is paused. */
@@ -183,6 +190,7 @@ export class Room {
   private readonly deal: typeof deal;
   private readonly schedule: (flush: () => void) => void;
   private readonly flipMs: number;
+  private readonly hearMs: number;
   private readonly record: RoomOptions['record'];
 
   constructor(
@@ -193,6 +201,7 @@ export class Room {
     this.deal = options.deal ?? deal;
     this.schedule = options.schedule ?? setImmediate;
     this.flipMs = options.flipMs ?? 0;
+    this.hearMs = options.hearMs ?? 0;
     this.record = options.record;
   }
 
@@ -538,20 +547,31 @@ export class Room {
 
   private stopRoundTimer(): void {
     if (this.roundTimer) clearTimeout(this.roundTimer.handle);
-    this.roundTimer = null;
+    if (this.hearTimer) clearTimeout(this.hearTimer);
+    this.roundTimer = this.hearTimer = null;
+  }
+
+  /**
+   * The windows a call by `caller` has yet to reach, once it is made: everyone else who plays the round from a window of
+   * their own (here, sitting at their cards, a person). The round waits for them to say they have it, or `hearMs`.
+   */
+  private listening(caller: Player): number[] {
+    return this.hearMs > 0 ? this.table.filter((p) => p !== caller && playing(p) && !p.bot && p.conn).map((p) => p.seat) : [];
   }
 
   /** The one way anything is played: a person's intent off their socket, or a bot's. Was it accepted? (A bot goes by the answer; a person hears in their next snapshot.) */
-  private intent(player: Player, seq: number, intent: Extract<ClientMsg, { t: 'intent' }>['intent']): boolean {
+  private intent(player: Player, seq: number, sent: Extract<ClientMsg, { t: 'intent' }>['intent']): boolean {
     if (seq <= player.ack) return false; // duplicate or out of order: already answered
     player.ack = seq;
-    if (this.phase !== 'playing' || !this.state || (this.pausedBy && intent.k !== 'end')) return this.changed(player), false; // while paused, only the vote to end the round
-    delete player.standing; // playing is sitting back down
-    if (intent.k === 'flip' && this.flipMs > 0 && !player.bot) {
+    if (this.phase !== 'playing' || !this.state || (this.pausedBy && sent.k !== 'end')) return this.changed(player), false; // while paused, only the vote to end the round
+    if (sent.k !== 'heard') delete player.standing; // playing is sitting back down (hearing a call is not)
+    if (sent.k === 'flip' && this.flipMs > 0 && !player.bot) {
       const now = Date.now();
       if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player), false; // too soon after their last card: refused
       player.flipped = now;
     }
+    // Who a call has yet to reach is the room's to say, whoever sent it.
+    const intent: Intent = sent.k === 'nertz' ? { k: 'nertz', unheard: this.listening(player) } : sent;
     const result = applyIntent(this.state, at(player), intent);
     if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, [], intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
@@ -559,9 +579,13 @@ export class Room {
     if (next === this.state) return this.changed(player), false; // rejected: only the sender needs to hear (its ack moved)
     const called = next.status.at === 'grace' && this.state.status.at !== 'grace';
     this.state = next;
-    // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace. This is the one way
-    // into grace (bots and debugBotOut call Nertz through `intent` too), so the grace window is timed here and nowhere else.
-    if (called) this.timeRound(GRACE_MS, () => this.graceExpired());
+    // Nertz is called: the round waits (at most GRACE_MS) for the players the engine left in grace, and (at most
+    // `hearMs`) for the call to reach the windows it has not yet. This is the one way into grace (bots and debugBotOut
+    // call Nertz through `intent` too), so the grace window is timed here and nowhere else.
+    if (called) {
+      this.timeRound(GRACE_MS, () => this.graceExpired());
+      if (yetToHear(next).length > 0) this.hearTimer = this.later(this.hearMs, () => this.hearingOver());
+    }
     this.settle();
     this.changed();
     return result.ok;
@@ -673,11 +697,30 @@ export class Room {
     this.changed();
   }
 
-  /** The player's connection is gone, or they are getting up from their cards: a card in their hand is put back, which also cuts them off if they were in grace. */
+  /** The call has waited as long as it waits to be heard: every window that has not said it has it is taken to have. */
+  private hearingOver(): void {
+    this.hearTimer = null;
+    if (this.phase !== 'playing' || !this.state || yetToHear(this.state).length === 0) return; // (every window has said)
+    for (const seat of yetToHear(this.state)) this.heard(seat);
+    this.settle();
+    this.changed();
+  }
+
+  /** The call has reached `seat`'s window, or it never will now: no card it takes up from now on is in hand at the call. */
+  private heard(seat: number): void {
+    const result = applyIntent(this.state!, seat, { k: 'heard' });
+    if (result.ok) this.state = result.state;
+  }
+
+  /**
+   * The player's connection is gone, or they are getting up from their cards: a card in their hand is put back, which
+   * also cuts them off if they were in grace, and a call is not waited for in a window that is no longer theirs.
+   */
   private letGo(player: Player): void {
     if (this.phase !== 'playing' || !this.state || !taking(player)) return;
     const result = applyIntent(this.state, at(player), { k: 'release' });
     if (result.ok) this.state = result.state;
+    this.heard(at(player));
   }
 
   private drop(conn: Conn, leaving: boolean): void {
