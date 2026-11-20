@@ -2031,11 +2031,17 @@ button {
   color: var(--ink-soft);
 }
 
-/* On the score sheet, beside the name of whoever called it: the stamp that lay across their hand, small. */
+/* On the score sheet, in the Nertz column of whoever called it (where their 0 would be): the stamp that lay across
+   their hand, small. Pressed on, not written in: it asks the column for no width of its own, so the names keep it. */
+.scores td.nz {
+  position: relative;
+}
+
 .scores .called {
-  display: inline-block;
-  margin-left: 0.5rem;
-  font: 400 1.15rem/1 var(--display);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font: 400 0.8rem/1 var(--display);
   text-transform: uppercase;
   letter-spacing: 0.01em;
   color: var(--marigold);
@@ -2043,8 +2049,7 @@ button {
   paint-order: stroke fill;
   text-shadow: 0 0.06em 0 var(--ink);
   rotate: -5deg;
-  translate: 0 -0.22em;
-  vertical-align: middle;
+  translate: -50% -55%;
 }
 
 /* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
@@ -2128,10 +2133,14 @@ button {
   padding-left: 0;
 }
 
+/* The names' column is what is left once the figures have their width: it asks for none of its own (max-width 0), so
+   the sheet is never wider than the screen, and takes all the room there is (width 100%). A name that does not fit
+   gives way. */
 .scores tbody th {
   font-weight: 600;
   font-size: 1.05rem;
-  max-width: 15rem;
+  width: 100%;
+  max-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -3155,7 +3164,6 @@ label.check {
   }
 
   .scores tbody th {
-    max-width: 7.5rem;
     font-size: 0.95rem;
   }
 
@@ -4354,7 +4362,6 @@ body:has(main.showroom),
   max-width: 100%;
 }
 
-.scores .who .called,
 .scores .who .unseat,
 .scores .who .chip {
   flex: none;
@@ -4401,11 +4408,6 @@ body:has(main.showroom),
   .opening .tally {
     margin-top: 5px;
     font-size: 15px;
-  }
-
-  .scores .called {
-    margin-left: 0.3rem;
-    font-size: 0.95rem;
   }
 
 }
