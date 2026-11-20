@@ -17,19 +17,23 @@ import { Client, startOver, type StateMsg } from './testkit';
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 /**
- * Which cards of a snapshot show a face that the rules say nobody may see yet. Judged from the snapshot alone, by
- * where each card lies: written out here on purpose, not borrowed from `viewFor`.
+ * Which cards of a snapshot sent to `you` show a face that the rules say it may not see yet. Judged from the snapshot
+ * alone, by where each card lies: written out here on purpose, not borrowed from `viewFor`. While cards can move the
+ * player may see its own cards that its next move could turn over: the rest of the group under way off its stock (or
+ * the next three), what is dealt of it, the card under its nertz top, and the top face-down card of each work pile.
+ * Nobody else may, and never deeper into a nertz pile.
  */
-function leaks(g: GameState): string[] {
+function leaks(g: GameState, you: number | null): string[] {
   const out: string[] = [];
   const faceUp = (c: AnyCard) => !isHidden(c);
   const shut = !hasOpened(g);
   for (const p of g.players) {
-    const at = `${g.status.at} seat ${p.seat}`;
-    p.stock.forEach((c) => faceUp(c) && out.push(`${at}: stock card with a face`));
-    p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && out.push(`${at}: nertz card ${i} with a face`));
-    p.work.forEach((w, k) => w.cards.forEach((c, i) => faceUp(c) && (i < w.down || g.status.at === 'dealing') && out.push(`${at}: work ${k} card ${i} with a face`)));
-    p.waste.forEach((c, i) => faceUp(c) && (i >= p.waste.length - p.dealt || shut) && out.push(`${at}: waste card ${i} with a face`));
+    const at = `${g.status.at} seat ${p.seat}${p.seat === you ? ' (yours)' : ''}`;
+    const next = (g.status.at === 'play' || g.status.at === 'grace') && p.seat === you;
+    p.stock.forEach((c, i) => faceUp(c) && !(next && i >= p.stock.length - (3 - p.dealt)) && out.push(`${at}: stock card ${i} with a face`));
+    p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && !(next && i === p.nertz.length - 2) && out.push(`${at}: nertz card ${i} with a face`));
+    p.work.forEach((w, k) => w.cards.forEach((c, i) => faceUp(c) && (i < w.down || g.status.at === 'dealing') && !(next && i === w.down - 1) && out.push(`${at}: work ${k} card ${i} with a face`)));
+    p.waste.forEach((c, i) => faceUp(c) && (shut || (i >= p.waste.length - p.dealt && !next)) && out.push(`${at}: waste card ${i} with a face`));
   }
   return out;
 }
@@ -89,7 +93,7 @@ describe('a hostile client over real sockets', () => {
     for (const c of clients) {
       for (const s of c.states) {
         if (!s.room.game) continue;
-        expect(leaks(s.room.game)).toEqual([]);
+        expect(leaks(s.room.game, s.room.seat)).toEqual([]);
         expect(checkInvariants(s.room.game)).toBeNull();
       }
     }
@@ -204,16 +208,16 @@ describe('a hostile client over real sockets', () => {
     a.send({ t: 'intent', seq: a.seq - 1, intent: { k: 'flip' } });
     await a.synced();
     expect(me(room.game!, a.seat).dealt).toBe(1);
-    // Half-dealt: out of play, and hidden from its owner too.
+    // Half-dealt: out of play, and hidden from everyone but its owner (who was sent it to turn up the moment the group is whole).
     await converged(room, players);
     const top = me(room.game!, a.seat).waste.at(-1)!;
-    for (const p of players) expect(isHidden(me(p.game, a.seat).waste.at(-1)!)).toBe(true);
-    for (const p of players) expect(p.raw.some((text) => text.includes(`"id":"${top.id}","owner":${a.seat},"suit"`))).toBe(false);
+    for (const p of players) expect(isHidden(me(p.game, a.seat).waste.at(-1)!)).toBe(p !== a);
+    for (const p of players) expect(p.raw.some((text) => text.includes(`"id":"${top.id}","owner":${a.seat},"suit"`))).toBe(p === a);
     await a.did({ k: 'hold', cardId: top.id });
     await a.did(move(top.id, { k: 'work', i: 0 }));
     expect(me(room.game!, a.seat)).toMatchObject({ holding: null, waste: { length: 1 } });
     await a.did({ k: 'flip' });
-    for (const p of players) expect(me(p.game, a.seat).waste.every(isHidden)).toBe(true);
+    for (const p of players) expect(me(p.game, a.seat).waste.every(isHidden)).toBe(p !== a);
     await a.did({ k: 'flip' });
     await converged(room, players);
     for (const p of players) expect(me(p.game, a.seat).waste.some(isHidden)).toBe(false); // the third turned the group up
@@ -279,7 +283,9 @@ describe('a hostile client over real sockets', () => {
     expect(players[2]!.last.room.timerMs).toBeLessThanOrEqual(START_MS);
     // The word: every nertz top turns over, for everyone, and now the same messages count.
     await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe('play')), { timeout: START_MS + 1000 });
-    for (const p of players) expect(faceUp(p)).toBe(3 * 5);
+    // (And each is sent the faces its own next move could turn up: the card under its nertz top, three off its stock,
+    // and the top buried card of each of its two work piles that have any.)
+    for (const p of players) expect(faceUp(p)).toBe(3 * 5 + 1 + 3 + 2);
     await a.did({ k: 'flip' });
     expect(me(room.game!, a.seat).waste).toHaveLength(1);
     // Nobody was ever sent the face of a nertz top before the word. (Each client's whole history is checked after the test.)
@@ -388,7 +394,7 @@ describe('four bots and a swarm at one table', () => {
       if (msg.t !== 'state') return;
       this.last = wire(msg);
       const g = this.last.room.game;
-      if (g) this.bad.push(...leaks(g), ...[checkInvariants(g)].filter((x): x is string => x !== null));
+      if (g) this.bad.push(...leaks(g, this.last.room.seat), ...[checkInvariants(g)].filter((x): x is string => x !== null));
     }
     close(): void {}
   }
@@ -450,7 +456,7 @@ describe('four bots and a swarm at one table', () => {
       const played = room.lastRound!.scores.reduce((sum, s) => sum + s.played, 0);
       expect(played).toBe([...room.game!.slots.map((s) => s?.cards ?? []), ...room.game!.tray].flat().length);
       vi.advanceTimersByTime(1);
-      for (const t of taps) expect(t.last!.room.game).toEqual(wire(viewFor(room.game!, 0)));
+      for (const t of taps) expect(t.last!.room.game).toEqual(wire(viewFor(room.game!, t.last!.room.seat ?? -1)));
       room.close();
     });
   }, FUZZ_MS);

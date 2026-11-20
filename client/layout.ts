@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
-import { DEAL_MS, isHidden, WORK_PILES } from '../shared/engine';
+import { DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/engine';
 import { cardSize, feltHw, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -43,6 +43,13 @@ export const revealed = (stage: Stage): boolean => STAGES.indexOf(stage) >= STAG
  */
 export const onCanvas = (stage: Stage, pile: 'slot' | 'tray'): boolean => STAGES.indexOf(stage) >= STAGES.indexOf(pile === 'slot' ? 'spread' : 'wash');
 
+/**
+ * Which side of a card shows. Where it lies says face-up or face-down; a card that lies face-up but whose face this
+ * view does not know yet (just turned up by a move of yours the server has not answered) is `unseen`: it is drawn
+ * part way over, back still showing, until the face comes.
+ */
+export type Showing = 'up' | 'down' | 'unseen';
+
 export interface Placed {
   card: AnyCard;
   x: number;
@@ -50,8 +57,8 @@ export interface Placed {
   /** Scale relative to the CARD_W x CARD_H drawing size. */
   s: number;
   z: number;
-  /** Show the face (the card is known and not lying face-down). */
-  up: boolean;
+  /** Which side shows: see `Showing`. */
+  face: Showing;
   pile: PileKind;
   /** In one of the viewing player's own piles. */
   mine: boolean;
@@ -301,6 +308,8 @@ interface HandSpec {
   peek?: number | null;
   /** A group just completed, this many cards, still drawn held for a beat before it turns over (see STOCK_TURN_MS). */
   hold?: number;
+  /** Whether the tops lie face-up yet: a work pile's once the deal is done, the nertz pile's once play opens. */
+  open: Open;
   /**
    * A hand in two rows (a narrow upright screen): the work piles start at (x, y), and the nertz pile and the stock
    * and waste lie on a second row under them, at `y`: the nertz pile at `nertzX`, the stock at `stockX`. `box` is
@@ -371,6 +380,11 @@ function pilesOf(h: Pick<HandSpec, 'x' | 'y' | 'w' | 'gap' | 'wide' | 'rows'>) {
 /** How far below the row the bottom card of a full stock lies, for cards `w` wide (its top card is level with the row). */
 const stockDrop = (w: number): number => STOCK_FULL_EDGES * 2 * LEAN * (w / CARD_W);
 
+interface Open {
+  work: boolean;
+  nertz: boolean;
+}
+
 function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const s = h.w / CARD_W;
   const ch = h.w * RATIO;
@@ -378,13 +392,13 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const span = 7 * h.w + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const mx = (x: number, w = h.w): number => (h.flip ? 2 * h.x + span - x - w : x);
   const rect = (x: number, y: number): Rect => ({ x: mx(x), y, w: h.w, h: ch });
-  const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind, down = false, at = 0) =>
-    out.push({ card, x: mx(x), y, s, z: h.z + z, up: !isHidden(card) && pile !== 'stock' && !down, pile, mine: h.mine, at, rot: 0 });
+  const put = (card: AnyCard, x: number, y: number, z: number, pile: PileKind, up: boolean, at = 0) =>
+    out.push({ card, x: mx(x), y, s, z: h.z + z, face: !up ? 'down' : isHidden(card) ? 'unseen' : 'up', pile, mine: h.mine, at, rot: 0 });
 
   // Nertz pile: lower cards peek out underneath so the pile shows its thickness.
   const lean = LEAN * s;
   const { nertzX: nx, rowY: ny, workX, stockX, wasteX } = pilesOf(h); // (`ny`: the row the nertz pile, the stock and the waste lie on)
-  p.nertz.forEach((c, i) => put(c, nx, ny + (p.nertz.length - 1 - i) * lean, i, 'nertz'));
+  p.nertz.forEach((c, i) => put(c, nx, ny + (p.nertz.length - 1 - i) * lean, i, 'nertz', h.open.nertz && i === p.nertz.length - 1));
 
   // Work piles fan downwards; the face-down cards at the bottom of the pile take a narrower strip each.
   const margin = h.gap * 0.4;
@@ -403,8 +417,8 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
       // middle's cards) as far as the top of the window. Its drop area and its top card stay where they were.
       const up = clamp(wanted - room, 0, h.y - 8);
       const full = fanOut(show, h.workFan, h.minStrip, room + up);
-      pile.forEach((c, j) => put(c, x, h.y - up + full[j]!, PEEK_Z + j, 'work', false, i));
-    } else pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work', false, i));
+      pile.forEach((c, j) => put(c, x, h.y - up + full[j]!, PEEK_Z + j, 'work', h.open.work && j >= down, i));
+    } else pile.forEach((c, j) => put(c, x, h.y - rise + at[j]!, 40 + i * 20 + j, 'work', h.open.work && j >= down, i));
     workHit.push({ x: mx(x - margin, h.w + 2 * margin), y: h.y - rise - margin, w: h.w + 2 * margin, h: ch + room + rise + 2 * margin });
     return rect(x, h.y - rise + (at.at(-1) ?? 0));
   });
@@ -420,7 +434,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
-    if (j % STOCK_PER_EDGE === 0 || j === top) put(c, stockX, ny + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock');
+    if (j % STOCK_PER_EDGE === 0 || j === top) put(c, stockX, ny + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock', false);
   });
 
   const n = p.waste.length - lifted;
@@ -429,12 +443,12 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // they are held at: each under the ones already held. See level.ts.)
   p.waste.slice(n).forEach((c, k) => {
     const o = HELD_OFF[k % HELD_OFF.length]!;
-    put(c, stockX + h.w * (HELD.x + o.x), ny - ch * (HELD.y - o.y), Math.max(20 + p.stock.length, 34) + HELD_Z + (lifted - 1 - k), 'stock', true); // well above the stock and the waste
+    put(c, stockX + h.w * (HELD.x + o.x), ny - ch * (HELD.y - o.y), Math.max(20 + p.stock.length, 34) + HELD_Z + (lifted - 1 - k), 'stock', false); // well above the stock and the waste
     out.at(-1)!.rot = (h.flip ? -1 : 1) * o.rot;
   });
   // The waste is one squared-up pile: only its top card shows. (The few cards under the top are drawn too, exactly
   // beneath it, so there is something there when the top leaves.)
-  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, ny, 30 + (i - (n - WASTE_SHOWN)), 'waste');
+  for (let i = Math.max(0, n - WASTE_SHOWN); i < n; i++) put(p.waste[i]!, wasteX, ny, 30 + (i - (n - WASTE_SHOWN)), 'waste', true);
 
   return {
     seat: p.seat,
@@ -817,6 +831,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
     : game.players;
   const mine = ring.find((p) => p.seat === you);
+  const open: Open = { work: game.status.at !== 'dealing', nertz: hasOpened(game) };
   // Someone who has no seat at the table at all watches from the first player's chair.
   const view = Math.max(0, ring.indexOf(mine!));
   // Opponents in seat order starting after you: clockwise round the table, from your left.
@@ -919,6 +934,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       // Across the table a hand is seen from the other side: its owner's left is your right.
       flip: where === 'top',
       hold: held?.get(p.seat),
+      open,
     };
     if (where === 'side') {
       // A neighbour sits beside the felt, their hand turned to face it: level with its middle if they are straight to
@@ -1002,6 +1018,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     minStrip: oh * 0.21,
     z: OWN_Z,
     mine: true,
+    open,
     peek,
     hold: held?.get(you),
   };
@@ -1023,12 +1040,12 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       const r = slots[i];
       if (!pile || !r) return;
       if (stage === 'live') {
-        pile.cards.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, up: true, pile: 'slot', mine: false, at: i, rot: r.rot }));
+        pile.cards.slice(-2).forEach((card, k) => cards.push({ card, x: r.x, y: r.y, s: r.w / CARD_W, z: 5000 + i * 4 + k, face: 'up', pile: 'slot', mine: false, at: i, rot: r.rot }));
         return;
       }
       pile.cards.forEach((card, j) => {
         const o = slotStack(i, j, r.w);
-        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5000 + i * 14 + j, up: false, pile: 'slot', mine: false, at: i, rot: r.rot + o.rot });
+        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: 5000 + i * 14 + j, face: 'down', pile: 'slot', mine: false, at: i, rot: r.rot + o.rot });
       });
     });
   }
@@ -1042,7 +1059,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       pile.forEach((card, j) => {
         const o = stage === 'out' ? trayStack(k, j, r.w) : { x: 0, y: 0, rot: 0 };
         // (Out on the table they lie on the spread cards, which are on the finale's canvas: above it.)
-        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: (stage === 'out' ? 20100 : 5200) + k * 20 + j, up: false, pile: 'tray', mine: false, at: k, rot: o.rot });
+        cards.push({ card, x: r.x + o.x, y: r.y + o.y, s: r.w / CARD_W, z: (stage === 'out' ? 20100 : 5200) + k * 20 + j, face: 'down', pile: 'tray', mine: false, at: k, rot: o.rot });
       });
     });
   }

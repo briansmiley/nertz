@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { roomWith, send as told, startRound } from '../server/testkit';
 import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
-import { inPlay, lcg, roomOf, toPlay, upWork, withPile } from '../shared/testkit';
+import { card as c, felt, inPlay, lcg, move, roomOf, table, toPlay, upWork, withPile, work } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { freshSync, hello, onSend, onSnapshot, predict, type Sync } from './net';
 
@@ -129,7 +129,7 @@ describe('prediction', () => {
     expect(predict(sync)).toBe(sync.server);
   });
 
-  it('predicts cards dealt off the stock one by one, face-down, and keeps their ids when the group turns up', () => {
+  it('predicts cards dealt off the stock one by one, face-down, and turns the group up with its faces before the server answers', () => {
     const s = server(inPlay([0, 1], lcg(2)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     const mine = () => predict(sync)!.game!.players[0]!;
@@ -137,28 +137,64 @@ describe('prediction', () => {
     expect([mine().waste.length, mine().dealt]).toEqual([1, 1]);
     sync = send(sync, { k: 'flip' });
     expect([mine().waste.length, mine().dealt]).toEqual([2, 2]);
-    // The server has the first card only: the snapshot shows it face-down too, and the second is still replayed over it.
+    // The server has the first card only: still face-down and out of play in the snapshot (its owner knows its face),
+    // and the second is still replayed over it.
     s.apply(0, { k: 'flip' }, 1);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.server!.game!.players[0]!).toMatchObject({ dealt: 1 });
-    expect(sync.server!.game!.players[0]!.waste.every(isHidden)).toBe(true);
+    expect(sync.server!.game!.players[0]!.waste.some(isHidden)).toBe(false);
+    expect(applyIntent(sync.server!.game!, 0, { k: 'hold', cardId: sync.server!.game!.players[0]!.waste[0]!.id }).ok).toBe(false);
     expect([mine().waste.length, mine().dealt]).toEqual([2, 2]);
-    // The third is predicted: the group counts as turned up, but its faces are the server's to show.
+    // The third is predicted: the group turns up, faces and all, and its top can be played at once.
     sync = send(sync, { k: 'flip' });
     const predicted = mine();
     expect([predicted.waste.length, predicted.dealt]).toEqual([3, 0]);
-    expect(predicted.waste.every(isHidden)).toBe(true);
+    expect(predicted.waste.some(isHidden)).toBe(false);
     expect(checkInvariants(predict(sync)!.game!)).toBeNull();
-    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: predicted.waste.at(-1)!.id }).ok).toBe(false); // not until it is seen
+    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: predicted.waste.at(-1)!.id }).ok).toBe(true);
 
+    // The server's answer is exactly what was drawn.
     s.apply(0, { k: 'flip' }, 2);
     s.apply(0, { k: 'flip' }, 3);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
-    const real = mine();
-    expect(real.waste.map((c) => c.id)).toEqual(predicted.waste.map((c) => c.id));
-    expect(real.waste.some(isHidden)).toBe(false);
-    expect(real.dealt).toBe(0);
+    expect(mine().waste).toEqual(predicted.waste);
+    expect(mine().dealt).toBe(0);
+  });
+
+  it('turns up a buried work card at once for a move between your own piles, and only once confirmed for a move to the middle', () => {
+    const start = table([{ work: [{ down: 'C9', up: 'H6' }, 'S7', { down: 'D4', up: 'SA' }, []] }, {}]);
+    const s = server(start, 0);
+    let sync = onSnapshot(freshSync, s.snapshot());
+    const pile = (i: number) => predict(sync)!.game!.players[0]!.work[i]!;
+    // Onto your own pile: nobody can refuse it, and the C9 (sent ahead) shows at once.
+    sync = send(sync, move('0:H6', work(1)));
+    expect(pile(0).cards).toEqual([c('C9')]);
+    // To the middle: it could lose a race, so the D4 lies face-up but unknown until the server says it landed...
+    sync = send(sync, move('0:SA', felt(0, 0)));
+    expect(pile(2)).toEqual({ cards: [{ id: '0:D4', owner: 0, hidden: true }], down: 0 });
+    // ...and the snapshot that confirms it turns it up.
+    s.apply(0, move('0:H6', work(1)), 1);
+    s.apply(0, move('0:SA', felt(0, 0)), 2);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(pile(2).cards).toEqual([c('D4')]);
+  });
+
+  it('turns up the next nertz card at once for a play onto your own pile, and only once confirmed for a play to the middle', () => {
+    const start = table([{ nertz: 'D2 C9 H6 SA', work: ['S7', 'H10', [], []] }, {}]);
+    const s = server(start, 0);
+    let sync = onSnapshot(freshSync, s.snapshot());
+    const nertz = () => predict(sync)!.game!.players[0]!.nertz;
+    // To the middle: the H6 (sent ahead) lies face-up but unknown until the server says the ace landed...
+    sync = send(sync, move('0:SA', felt(0, 0)));
+    expect(nertz().at(-1)).toEqual({ id: '0:H6', owner: 0, hidden: true });
+    // ...and the snapshot that confirms it turns it up.
+    s.apply(0, move('0:SA', felt(0, 0)), 1);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(nertz().at(-1)).toEqual(c('H6'));
+    // Onto your own pile: nobody can refuse it, and the C9 (sent ahead with that snapshot) shows at once.
+    sync = send(sync, move('0:H6', work(0)));
+    expect(nertz().at(-1)).toEqual(c('C9'));
   });
 
   it('keeps unacknowledged intents applied over a snapshot that does not include them yet', () => {

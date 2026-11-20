@@ -178,7 +178,8 @@ describe('dealing', () => {
       // The same ids, now with the face-up cards showing: the nertz top and the four work tops of every player.
       const view = viewFor(open, seat);
       expect(ids(allCards(view))).toEqual(ids(allCards(viewFor(fresh, seat))));
-      for (const p of view.players) expect([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(5);
+      // (And for its own hand, the faces its next move could turn up: the card under the nertz top, three off the stock, a buried card per work pile that has one.)
+      for (const p of view.players) expect([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(p.seat === seat ? 5 + 1 + 3 + p.work.filter((w) => w.down > 0).length : 5);
       view.players.forEach((p, i) => expect(p.nertz.at(-1)).toEqual(open.players[i]!.nertz.at(-1)));
       ok(applyIntent(open, seat, { k: 'flip' }));
       ok(applyIntent(view, seat, hold(view.players.find((p) => p.seat === seat)!.nertz.at(-1)!.id)));
@@ -360,24 +361,28 @@ describe('face-down work cards', () => {
     expect(ids(ok(applyIntent(e, 0, move('0:HQ', work(0), 2))).players[0]!.work[0]!.cards)).toEqual(['0:HQ', '0:CJ']);
   });
 
-  it('are redacted in every view, the owner included, with stable ids; the client sees the flip only in the next snapshot', () => {
-    for (const seat of [0, 1]) {
-      const v = viewFor(s, seat).players[0]!;
-      expect(v.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }, c('H6')]);
-      expect(v.work[2]!.cards).toEqual([{ id: '0:C2', owner: 0, hidden: true }, c('SK'), c('HQ')]);
-      expect(downs(v)).toEqual(downs(s.players[0]!));
+  it('are redacted for everyone but their owner, who is shown only the one its next move off the pile turns up; ids are stable', () => {
+    const theirs = viewFor(s, 1).players[0]!;
+    expect(theirs.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }, c('H6')]);
+    expect(theirs.work[2]!.cards).toEqual([{ id: '0:C2', owner: 0, hidden: true }, c('SK'), c('HQ')]);
+    const mine = viewFor(s, 0).players[0]!;
+    expect(mine.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, c('C9'), c('H6')]);
+    expect(mine.work[2]!.cards).toEqual([c('C2'), c('SK'), c('HQ')]);
+    for (const v of [theirs, mine]) expect(downs(v)).toEqual(downs(s.players[0]!)); // still face-down, known or not
+    for (const id of ['0:C9', '0:C2']) {
+      expect(grab(viewFor(s, 0), 0, id)).toBeNull();
+      rejected(applyIntent(viewFor(s, 0), 0, hold(id)));
     }
-    // Prediction on the view: the pile shrinks and `down` drops, but the new top's face is unknown...
+    // Prediction on the owner's view: the pile shrinks, `down` drops, and the card turned up has its face at once...
     const predicted = ok(applyIntent(viewFor(s, 0), 0, move('0:H6', work(1))));
     expect(downs(predicted.players[0]!)).toEqual([1, 0, 1, 0]);
-    expect(predicted.players[0]!.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, { id: '0:C9', owner: 0, hidden: true }]);
-    // ...so it can be neither moved, held nor built on until the server reveals it.
-    rejected(applyIntent(predicted, 0, move('0:C9', work(3))));
-    rejected(applyIntent(predicted, 0, hold('0:C9')));
-    rejected(applyIntent(predicted, 0, move('0:D8', work(0))));
-    // The server's next snapshot has the same ids with the face filled in.
+    expect(predicted.players[0]!.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, c('C9')]);
+    // ...so it plays on at once, as the server will have it.
+    ok(applyIntent(predicted, 0, hold('0:C9')));
+    ok(applyIntent(predicted, 0, move('0:D8', work(0))));
+    // The server's next snapshot agrees, and shows the owner the card now under it.
     const truth = viewFor(ok(applyIntent(s, 0, move('0:H6', work(1)))), 0);
-    expect(truth.players[0]!.work[0]!.cards).toEqual([{ id: '0:D4', owner: 0, hidden: true }, c('C9')]);
+    expect(truth.players[0]!.work[0]!.cards).toEqual([c('D4'), c('C9')]);
     expect(downs(truth.players[0]!)).toEqual(downs(predicted.players[0]!));
   });
 });
@@ -635,7 +640,7 @@ describe('dealing off the stock and recycling', () => {
     expect(checkInvariants(two)).toBeNull();
   });
 
-  it('shows nobody, the owner included, a card of a half-dealt group; ids are stable and the faces come when it turns up', () => {
+  it('shows nobody but its owner a card of a half-dealt group; ids are stable and the faces come when it turns up', () => {
     const under = flips(s, 0, 3);
     for (const n of [1, 2]) {
       const mid = flips(under, 0, n);
@@ -643,10 +648,11 @@ describe('dealing off the stock and recycling', () => {
         const waste = viewFor(mid, seat).players[0]!.waste;
         expect(ids(waste)).toEqual(ids(me(mid).waste));
         expect(waste.slice(0, 3)).toEqual(me(under).waste); // the group beneath stays as it was
-        expect(waste.slice(3)).toEqual(me(mid).waste.slice(3).map((x) => ({ id: x.id, owner: 0, hidden: true })));
-        expect(JSON.stringify(viewFor(mid, seat))).not.toContain(`"rank":${3 + n}`);
+        // (Its owner was sent them to turn the group up the moment it is whole: still out of play, see below.)
+        expect(waste.slice(3)).toEqual(seat === 0 ? me(mid).waste.slice(3) : me(mid).waste.slice(3).map((x) => ({ id: x.id, owner: 0, hidden: true })));
         expect(checkInvariants(viewFor(mid, seat))).toBeNull();
       }
+      expect(JSON.stringify(viewFor(mid, 1))).not.toContain(`"rank":${3 + n}`);
     }
     const up = flips(under, 0, 3);
     expect(viewFor(up, 1).players[0]!.waste).toEqual(me(up).waste);
@@ -1421,8 +1427,9 @@ describe('held-card grace after a Nertz call', () => {
     const truth = ok(applyIntent(called, 1, move('1:H2', slot(0))));
     expect(inGrace(predicted)).toEqual(inGrace(truth));
     expect(predicted.slots).toEqual(truth.slots);
-    expect(isHidden(predicted.players[1]!.nertz[0]!)).toBe(true); // the uncovered nertz card stays unknown
-    expect(ok(applyIntent(viewFor(s, 0), 0, NERTZ))).toEqual(viewFor(ok(applyIntent(s, 0, NERTZ)), 0));
+    expect(predicted.players[1]!.nertz.at(-1)).toEqual(truth.players[1]!.nertz.at(-1)); // its face was sent ahead (the client still holds it back until the server confirms: net.ts `unconfirmed`)
+    // (Called with nobody holding a card, the round is over at once, and the faces sent early are taken back.)
+    expect(viewFor(ok(applyIntent(viewFor(s, 0), 0, NERTZ)), 0)).toEqual(viewFor(ok(applyIntent(s, 0, NERTZ)), 0));
     expect(ok(applyIntent(viewFor(ok(applyIntent(s, 1, hold('1:H2'))), 0), 0, NERTZ))).toEqual(viewFor(run(s, [1, hold('1:H2')], [0, NERTZ]), 0));
   });
 });
@@ -1432,9 +1439,11 @@ describe('held-card grace after a Nertz call', () => {
 describe('viewFor', () => {
   const full = inPlay([0, 1], seeded(3));
   const flipped = flips(full, 0, 3);
-  const view = viewFor(flipped, 0);
+  /** Someone watching: no hand is theirs. */
+  const WATCHER = -1;
+  const view = viewFor(flipped, WATCHER);
 
-  it('hides every stock (your own too), everything under each nertz top and the face-down work cards, keeping ids and owners', () => {
+  it('hides from a watcher every stock, everything under each nertz top and the face-down work cards, keeping ids and owners', () => {
     for (const [pi, p] of view.players.entries()) {
       const real = flipped.players[pi]!;
       expect(p.stock.every(isHidden)).toBe(true);
@@ -1461,8 +1470,30 @@ describe('viewFor', () => {
     expect(JSON.stringify(view)).not.toMatch(/"rank":\d+,"hidden"|"hidden":true,"suit"/);
   });
 
+  it('shows a player, and nobody else, the faces its next move could turn up; never deeper than the card under its nertz top, nor before play opens', () => {
+    const mine = viewFor(flipped, 0);
+    const [own, real] = [mine.players[0]!, flipped.players[0]!];
+    expect(own.stock.slice(-3)).toEqual(real.stock.slice(-3)); // the next group
+    expect(own.stock.slice(0, -3).every(isHidden)).toBe(true);
+    for (const [i, w] of own.work.entries()) {
+      const down = real.work[i]!.down;
+      expect(w.cards.slice(0, Math.max(0, down - 1)).every(isHidden)).toBe(true);
+      if (down > 0) expect(w.cards[down - 1]).toEqual(real.work[i]!.cards[down - 1]);
+    }
+    expect(own.nertz.at(-2)).toEqual(real.nertz.at(-2)); // the card under the top
+    expect(own.nertz.slice(0, -2).every(isHidden)).toBe(true);
+    expect(mine.players[1]).toEqual(view.players[1]); // the other hand exactly as a watcher sees it
+    expect(checkInvariants(mine)).toBeNull();
+    // Before play opens: nothing.
+    const ready = finishDeal(dealRound([0, 1], seeded(3)));
+    expect(viewFor(ready, 0)).toEqual(viewFor(ready, WATCHER));
+    // So a group dealt on the player's own view turns up with its faces, just as the server will have it.
+    expect(flips(mine, 0, 3).players[0]!.waste).toEqual(flips(flipped, 0, 3).players[0]!.waste);
+  });
+
   it('is idempotent, passes the invariant check, and does not mutate its input', () => {
     expect(viewFor(view, 1)).toEqual(view);
+    expect(viewFor(viewFor(flipped, 0), 0)).toEqual(viewFor(flipped, 0));
     expect(checkInvariants(view)).toBeNull();
     const frozen = deepFreeze(inPlay([0, 1], seeded(4)));
     expect(() => viewFor(frozen, 0)).not.toThrow();
@@ -1477,7 +1508,7 @@ describe('viewFor', () => {
 
   it('lets the reducer run structurally on hidden cards but never judge them', () => {
     // dealing on a view: hidden cards land in the waste, and stay hidden when the group turns up (the faces come with the snapshot)
-    const predicted = flips(viewFor(full, 0), 0, 3);
+    const predicted = flips(viewFor(full, WATCHER), 0, 3);
     expect(predicted.players[0]!.dealt).toBe(0);
     expect(predicted.players[0]!.waste.every(isHidden)).toBe(true);
     expect(ids(predicted.players[0]!.waste)).toEqual(ids(flipped.players[0]!.waste));
@@ -1489,11 +1520,13 @@ describe('viewFor', () => {
     rejected(applyIntent(withGap, 0, hold(hiddenTop)));
     expect(grab(withGap, 0, hiddenTop)).toBeNull();
     expect(legalDrops(withGap, 0, hiddenTop)).toEqual([]);
-    // playing the nertz top uncovers a hidden card, which is stuck until the server reveals it
-    const v = viewFor(table([{ nertz: 'S9 H6', work: ['S7', [], [], []] }]), 0);
-    const after = ok(applyIntent(v, 0, move('0:H6', work(0))));
-    expect(isHidden(after.players[0]!.nertz[0]!)).toBe(true);
-    rejected(applyIntent(after, 0, move('0:S9', work(1))));
+    // playing the nertz top twice uncovers a hidden card (only the one under the top is sent ahead), which is stuck until the server reveals it
+    const v = viewFor(table([{ nertz: 'D4 S9 H6', work: ['S7', 'H10', [], []] }]), 0);
+    const once = ok(applyIntent(v, 0, move('0:H6', work(0))));
+    expect(isHidden(once.players[0]!.nertz.at(-1)!)).toBe(false); // the card under the top was sent ahead: it turns up at once
+    const twice = ok(applyIntent(once, 0, move('0:S9', work(1))));
+    expect(isHidden(twice.players[0]!.nertz.at(-1)!)).toBe(true);
+    rejected(applyIntent(twice, 0, move('0:D4', work(2))));
   });
 });
 
@@ -1999,9 +2032,14 @@ function expectPredictionMatches(predicted: GameState, truth: GameState) {
   }
 }
 
-/** Cards face-up in a fresh view but still hidden in the prediction: the "newly revealed" ones. */
+/** Cards lying face-up in a fresh view, their faces showing, but still hidden in the prediction: the "newly revealed" ones. */
 const unrevealed = (predicted: GameState, freshView: GameState): number => {
-  const shown = new Set(allCards(freshView).filter((x) => !isHidden(x)).map((x) => x.id));
+  const lyingUp = [
+    ...freshView.slots.flatMap((pile) => pile?.cards ?? []),
+    ...freshView.tray.flat(),
+    ...freshView.players.flatMap((p) => [...p.nertz.slice(-1), ...p.work.flatMap((w) => w.cards.slice(w.down)), ...p.waste.slice(0, p.waste.length - p.dealt)]),
+  ];
+  const shown = new Set(lyingUp.filter((x) => !isHidden(x)).map((x) => x.id));
   return allCards(predicted).filter((x) => isHidden(x) && shown.has(x.id)).length;
 };
 
@@ -2021,8 +2059,11 @@ describe('client prediction on a redacted view agrees with the server', () => {
           if (calledBy(state) !== null) reached('grace');
           expectPredictionMatches(onView.state, onTruth.state);
           const revealed = unrevealed(onView.state, viewFor(onTruth.state, seat));
-          expect(revealed).toBeLessThanOrEqual(intent.k === 'flip' ? 3 : 1);
-          if (intent.k !== 'move' && intent.k !== 'flip') expect(onView.state).toEqual(viewFor(onTruth.state, seat));
+          // A flip and a move off a work pile turn up only cards the player was sent already: at most the card
+          // under a nertz top is left to come with the snapshot.
+          expect(revealed).toBeLessThanOrEqual(intent.k === 'move' ? 1 : 0);
+          // (Except a call that ends the round at once: the faces sent early stay, face-down, until the snapshot takes them back.)
+          if (intent.k !== 'move' && intent.k !== 'flip' && !isOver(onTruth.state)) expect(onView.state).toEqual(viewFor(onTruth.state, seat));
           state = resolveStuck(onTruth.state, seats);
         }
         if (calledBy(state) !== null && rng() < 0.1) state = expireGrace(state);
@@ -2033,7 +2074,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
 
   it('chains of unacknowledged intents: whatever the client accepts, the server accepts identically', () => {
     // Seeds until a whole chain of several has been predicted, and a chain has run into a card the client could not see.
-    untilReached(['whole chain', 'resync'], 12, (rng, reached) => {
+    untilReached(['whole chain', 'resync'], 60, /* (a resync needs two cards played off one pile in a chain now) */ (rng, reached) => {
       const seats = [0, 1];
       let state = inPlay(seats, rng);
       let diverged = 0;

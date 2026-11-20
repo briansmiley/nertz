@@ -442,7 +442,7 @@ describe('table layout', () => {
     for (const p of game.players) {
       p.work.forEach(({ cards: pile, down }) => {
         const placed = pile.map((c) => L.cards.find((x) => x.card.id === c.id)!);
-        expect(placed.map((c) => c.up)).toEqual(pile.map((_, j) => j >= down));
+        expect(placed.map((c) => c.face === 'up')).toEqual(pile.map((_, j) => j >= down));
         for (let j = 1; j < placed.length; j++) expect(placed[j]!.y).toBeGreaterThan(placed[j - 1]!.y);
       });
     }
@@ -474,15 +474,15 @@ describe('table layout', () => {
     for (const c of kings) expect(inside(live.tray, c.x + 1, c.y + 1)).toBe(true);
 
     const flip = computeLayout(1280, 800, game, 0, 'flip');
-    expect(flip.cards.filter((c) => c.pile === 'slot').every((c) => !c.up)).toBe(true);
+    expect(flip.cards.filter((c) => c.pile === 'slot').every((c) => c.face !== 'up')).toBe(true);
     // A finished pile lies face-down in the tray from the moment it is put aside.
-    expect([...live.cards, ...flip.cards].filter((c) => c.pile === 'tray').every((c) => !c.up)).toBe(true);
+    expect([...live.cards, ...flip.cards].filter((c) => c.pile === 'tray').every((c) => c.face !== 'up')).toBe(true);
     // The centre piles are spread out first (on the finale's canvas); the tray's piles are still in the tray.
     const spread = computeLayout(1280, 800, game, 0, 'spread');
     expect(spread.cards.some((c) => c.pile === 'slot')).toBe(false);
     expect(spread.cards.filter((c) => c.pile === 'tray').every((c) => inside(spread.tray, c.x + 1, c.y + 1))).toBe(true);
     const out = computeLayout(1280, 800, game, 0, 'out');
-    expect(out.cards.filter((c) => c.pile === 'tray').every((c) => !c.up && !inside(out.tray, c.x + 1, c.y + 1))).toBe(true);
+    expect(out.cards.filter((c) => c.pile === 'tray').every((c) => c.face !== 'up' && !inside(out.tray, c.x + 1, c.y + 1))).toBe(true);
     // From the wash on, the middle's cards are the canvas's business.
     expect(computeLayout(1280, 800, game, 0, 'wash').cards.some((c) => c.pile === 'slot' || c.pile === 'tray')).toBe(false);
   });
@@ -526,7 +526,7 @@ describe('table layout', () => {
         const got = canvas.filter(([mv]) => was.has(mv.id));
         for (const [mv, x, y, rot, size] of got) {
           const c = was.get(mv.id)!;
-          expect(c.up).toBe(false);
+          expect(c.face).toBe('down');
           expect(x).toBeCloseTo(c.x + (c.s * CARD_W) / 2, 6);
           expect(y).toBeCloseTo(c.y + (c.s * CARD_H) / 2, 6);
           expect(rot).toBeCloseTo((c.rot * Math.PI) / 180, 9);
@@ -936,7 +936,7 @@ describe('a group dealt off the stock', () => {
       const group = three.map((id) => at(L, id)!);
       // Only the cards dealt so far have left the stock, each to its own place in the fan.
       const held = group.slice(0, k);
-      expect(held.every((c) => c.pile === 'stock' && !c.up && c.x > L.me!.stock.x && c.x < L.me!.waste.x && c.y < L.me!.stock.y)).toBe(true);
+      expect(held.every((c) => c.pile === 'stock' && c.face !== 'up' && c.x > L.me!.stock.x && c.x < L.me!.waste.x && c.y < L.me!.stock.y)).toBe(true);
       expect(new Set(held.map((c) => `${c.x},${c.y}`)).size).toBe(k);
       expect(held.every((c, i) => i === 0 || c.z < held[i - 1]!.z)).toBe(true); // each comes up under the one before
       expect(group.slice(k).every((c) => !c || c.x === L.me!.stock.x)).toBe(true); // the rest still lie on the stock (drawn or not)
@@ -946,12 +946,12 @@ describe('a group dealt off the stock', () => {
     // The whole group is held a beat, all three off the stock, before it lands.
     const beat = computeLayout(1280, 720, g, 0, 'live', null, new Map([[0, 3]]));
     const whole = three.map((id) => at(beat, id)!);
-    expect(whole.every((c) => c.pile === 'stock' && !c.up && c.y < beat.me!.stock.y)).toBe(true);
+    expect(whole.every((c) => c.pile === 'stock' && c.face !== 'up' && c.y < beat.me!.stock.y)).toBe(true);
     expect(new Set(whole.map((c) => `${c.x},${c.y}`)).size).toBe(3);
     const L = computeLayout(1280, 720, g, 0);
     const landed = three.map((id) => at(L, id)!);
     expect(landed.every((c) => c.pile === 'waste' && c.x === L.me!.waste.x && c.y === L.me!.waste.y && c.rot === 0)).toBe(true);
-    expect(landed[2]!.up).toBe(true);
+    expect(landed[2]!.face).toBe('up');
     expect(landed[2]!.z).toBeGreaterThan(Math.max(landed[0]!.z, landed[1]!.z)); // the last card dealt covers the other two
   });
 

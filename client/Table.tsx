@@ -15,7 +15,7 @@ import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings, useWindow } from './fittings';
 import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
@@ -37,6 +37,17 @@ const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
 const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const;
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
+/**
+ * A card turned up by your own move before its face has come (`unseen`): it starts over at once, slower than a flip,
+ * and waits at AJAR (degrees; 180 is face-down, 90 edge-on) with its back still showing. When the face comes it
+ * finishes the turn (FINISH); if the move is refused it settles back down.
+ */
+const AJAR = 125;
+const OPENING = () => ({ duration: calm() ? 0 : 0.22, ease: 'easeOut' }) as const;
+const FINISH = () => ({ duration: calm() ? 0 : 0.12, ease: 'easeIn' }) as const;
+const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? AJAR : 180);
+/** How a card turns from showing `was` to showing `face`: the one place that is decided. */
+const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? OPENING() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
@@ -95,7 +106,7 @@ interface CardProps {
   rot: number;
   /** In one of your own piles. */
   mine: boolean;
-  up: boolean;
+  face: Showing;
   mini: boolean;
   /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
   deck: Deck;
@@ -129,7 +140,7 @@ const CardView = memo(function CardView(p: CardProps) {
   const mine = useRef(p.mine);
   const pile = useRef(p.pile);
   const flight = useRef(0);
-  const upWas = useRef(p.up);
+  const faceWas = useRef(p.face);
   const el = useRef<HTMLDivElement>(null);
   /** When this card leaves the deck (performance clock), if it is in one. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0).current;
@@ -191,7 +202,7 @@ const CardView = memo(function CardView(p: CardProps) {
     const on = moving(from, p.pile);
     go(wasMine || p.mine);
     // Turning face-up on the way (a group off the stock going over onto the waste): see `levelOf`.
-    if (!upWas.current && p.up && !calm()) {
+    if (faceWas.current === 'down' && p.face !== 'down' && !calm()) {
       const n = flight.current;
       be(TURNING);
       setTimeout(() => flight.current === n && be(on), FLIP().duration * 500);
@@ -199,8 +210,8 @@ const CardView = memo(function CardView(p: CardProps) {
   }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.pile, p.slow, p.deal?.x, p.deal?.y, go, be, x, y, s]);
 
   useEffect(() => {
-    upWas.current = p.up; // (after the effect above, which asks what it was)
-  }, [p.up]);
+    faceWas.current = p.face; // (after the effect above, which asks what it was)
+  }, [p.face]);
 
   // Its turn to be dealt: out of the deck, to its place in the layout.
   useEffect(() => {
@@ -227,7 +238,7 @@ const CardView = memo(function CardView(p: CardProps) {
 
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
-      <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: p.up ? 0 : 180 }} transition={p.slow ? TURN() : FLIP()}>
+      <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: turnedTo(p.face) }} transition={turnOf(faceWas.current, p.face, p.slow)}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} night={p.night} /> : null}</div>
         <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini)} />
       </motion.div>
@@ -815,7 +826,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (aloft.has(c.card.id)) cls += ' aloft';
     if (c.mine && !frozen && !must.blocked) {
       if (c.pile === 'stock') cls += ' tap';
-      else if (c.up) cls += ' grab';
+      else if (c.face === 'up') cls += ' grab';
     }
     return cls;
   };
@@ -1045,7 +1056,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             z={c.z}
             rot={c.rot}
             mine={c.mine}
-            up={c.up && !replaying}
+            face={replaying ? 'down' : c.face}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
             {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}

@@ -705,7 +705,8 @@ describe('Room', () => {
     expect(workTop(room.game!, 0, 1)).toBe(twoA); // a's card never left its pile
     expect(a.last.ack).toBe(1);
     expect(b.last.ack).toBe(1);
-    expect(a.last.room.game).toEqual(b.last.room.game);
+    expect(a.last.room.game).toEqual(wire(viewFor(room.game!, a.last.room.seat!)));
+    expect(b.last.room.game).toEqual(wire(viewFor(room.game!, b.last.room.seat!)));
     expect(checkInvariants(room.game!)).toBeNull();
   });
 
@@ -1303,8 +1304,8 @@ describe('Room', () => {
       for (const conn of conns) {
         expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: null, game: { status: { at: 'play' } } });
         expect(conn.last.rev).toBe(a.last.rev);
-        expect(nertzFaces(conn.last)).toBe(3);
-        expect(conn.last.room.game).toEqual(wire(viewFor(toPlay(waiting), 0)));
+        expect(nertzFaces(conn.last)).toBe(3 + 1); // every top, and the card under its own (sent ahead)
+        expect(conn.last.room.game).toEqual(wire(viewFor(toPlay(waiting), conn.last.room.seat!)));
       }
       room.handle(a, { t: 'go' }); // nothing to start any more
       expect(vi.getTimerCount()).toBe(0);
@@ -1368,7 +1369,7 @@ describe('Room', () => {
       expect(b3.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } });
       const b4 = again('tok-0001', 'P1');
       expect(b4.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } });
-      expect(nertzFaces(b4.last)).toBe(3);
+      expect(nertzFaces(b4.last)).toBe(3 + 1); // (and the card under its own top)
       expect(vi.getTimerCount()).toBe(0);
     });
 
@@ -1415,7 +1416,7 @@ describe('Room', () => {
       room.flush();
       for (const conn of [a2, b, c]) {
         expect(conn.last.room).toMatchObject({ timerMs: null, game: { status: { at: 'play' } } });
-        expect(nertzFaces(conn.last)).toBe(2);
+        expect(nertzFaces(conn.last)).toBe(conn === a2 ? 2 : 2 + 1); // the two tops; and, for each player in the round, the card under its own
       }
     });
 
