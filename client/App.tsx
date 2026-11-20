@@ -726,7 +726,7 @@ function Results({ room }: { room: RoomView }) {
     <main className="solo over">
       <Pad wide>
         <h2>Round {room.round}</h2>
-        {/* Who got Nertz is said in their own lines of the sheet, with the stamp; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
+        {/* Who got Nertz is said in their own lines of the sheet, with the stamp in the Nertz column; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
         {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
         <table className="scores">
           <thead>
@@ -753,18 +753,18 @@ function Results({ room }: { room: RoomView }) {
                   <Name host={p?.isHost} className="nm">
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}
                   </Name>
-                  {out.includes(s.seat) && (
-                    <span className="called" title={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
-                      Nertz!
-                    </span>
-                  )}
                   {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
                 </th>
                 <td>{signed(s.played)}</td>
-                <td>
-                  {s.nertzLeft ? (
+                {/* Whoever got Nertz has no cards left in that pile: where the 0 would be, the stamp that lay across their hand. */}
+                <td className="nz">
+                  {out.includes(s.seat) ? (
+                    <span className="called" title={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
+                      Nertz!
+                    </span>
+                  ) : s.nertzLeft ? (
                     <>
                       <small className="left" title={`${s.nertzLeft} left in the nertz pile`}>{s.nertzLeft}</small>
                       {signed(-2 * s.nertzLeft)}
@@ -785,10 +785,12 @@ function Results({ room }: { room: RoomView }) {
               .map((p) => (
                 <tr key={`new${p.id}`} className={`joining${p.id === room.me ? ' you' : ''}`}>
                   <th scope="row">
+                    <span className="who">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
-                    <Name host={p.isHost}>{p.name}</Name>
+                    <Name host={p.isHost} className="nm">{p.name}</Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
+                    </span>
                   </th>
                   <td colSpan={3} className="note">
                     In next round
