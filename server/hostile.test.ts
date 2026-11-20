@@ -20,7 +20,8 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
  * Which cards of a snapshot sent to `you` show a face that the rules say it may not see yet. Judged from the snapshot
  * alone, by where each card lies: written out here on purpose, not borrowed from `viewFor`. While cards can move the
  * player may see its own cards that its next move could turn over: the rest of the group under way off its stock (or
- * the next three), what is dealt of it, and the top face-down card of each work pile. Nobody else may, and never the card under a nertz top.
+ * the next three), what is dealt of it, the card under its nertz top, and the top face-down card of each work pile.
+ * Nobody else may, and never deeper into a nertz pile.
  */
 function leaks(g: GameState, you: number | null): string[] {
   const out: string[] = [];
@@ -30,7 +31,7 @@ function leaks(g: GameState, you: number | null): string[] {
     const at = `${g.status.at} seat ${p.seat}${p.seat === you ? ' (yours)' : ''}`;
     const next = (g.status.at === 'play' || g.status.at === 'grace') && p.seat === you;
     p.stock.forEach((c, i) => faceUp(c) && !(next && i >= p.stock.length - (3 - p.dealt)) && out.push(`${at}: stock card ${i} with a face`));
-    p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && out.push(`${at}: nertz card ${i} with a face`));
+    p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && !(next && i === p.nertz.length - 2) && out.push(`${at}: nertz card ${i} with a face`));
     p.work.forEach((w, k) => w.cards.forEach((c, i) => faceUp(c) && (i < w.down || g.status.at === 'dealing') && !(next && i === w.down - 1) && out.push(`${at}: work ${k} card ${i} with a face`)));
     p.waste.forEach((c, i) => faceUp(c) && (shut || (i >= p.waste.length - p.dealt && !next)) && out.push(`${at}: waste card ${i} with a face`));
   }
@@ -282,9 +283,9 @@ describe('a hostile client over real sockets', () => {
     expect(players[2]!.last.room.timerMs).toBeLessThanOrEqual(START_MS);
     // The word: every nertz top turns over, for everyone, and now the same messages count.
     await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe('play')), { timeout: START_MS + 1000 });
-    // (And each is sent the faces its own next move could turn up: three off its stock, and the top buried card of
-    // each of its two work piles that have any.)
-    for (const p of players) expect(faceUp(p)).toBe(3 * 5 + 3 + 2);
+    // (And each is sent the faces its own next move could turn up: the card under its nertz top, three off its stock,
+    // and the top buried card of each of its two work piles that have any.)
+    for (const p of players) expect(faceUp(p)).toBe(3 * 5 + 1 + 3 + 2);
     await a.did({ k: 'flip' });
     expect(me(room.game!, a.seat).waste).toHaveLength(1);
     // Nobody was ever sent the face of a nertz top before the word. (Each client's whole history is checked after the test.)

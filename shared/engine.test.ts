@@ -178,8 +178,8 @@ describe('dealing', () => {
       // The same ids, now with the face-up cards showing: the nertz top and the four work tops of every player.
       const view = viewFor(open, seat);
       expect(ids(allCards(view))).toEqual(ids(allCards(viewFor(fresh, seat))));
-      // (And for its own hand, the faces its next move could turn up: three off the stock, a buried card per work pile that has one.)
-      for (const p of view.players) expect([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(p.seat === seat ? 5 + 3 + p.work.filter((w) => w.down > 0).length : 5);
+      // (And for its own hand, the faces its next move could turn up: the card under the nertz top, three off the stock, a buried card per work pile that has one.)
+      for (const p of view.players) expect([...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].filter((x) => !isHidden(x))).toHaveLength(p.seat === seat ? 5 + 1 + 3 + p.work.filter((w) => w.down > 0).length : 5);
       view.players.forEach((p, i) => expect(p.nertz.at(-1)).toEqual(open.players[i]!.nertz.at(-1)));
       ok(applyIntent(open, seat, { k: 'flip' }));
       ok(applyIntent(view, seat, hold(view.players.find((p) => p.seat === seat)!.nertz.at(-1)!.id)));
@@ -1427,7 +1427,7 @@ describe('held-card grace after a Nertz call', () => {
     const truth = ok(applyIntent(called, 1, move('1:H2', slot(0))));
     expect(inGrace(predicted)).toEqual(inGrace(truth));
     expect(predicted.slots).toEqual(truth.slots);
-    expect(isHidden(predicted.players[1]!.nertz[0]!)).toBe(true); // the uncovered nertz card stays unknown
+    expect(predicted.players[1]!.nertz.at(-1)).toEqual(truth.players[1]!.nertz.at(-1)); // its face was sent ahead (the client still holds it back until the server confirms: net.ts `unconfirmed`)
     // (Called with nobody holding a card, the round is over at once, and the faces sent early are taken back.)
     expect(viewFor(ok(applyIntent(viewFor(s, 0), 0, NERTZ)), 0)).toEqual(viewFor(ok(applyIntent(s, 0, NERTZ)), 0));
     expect(ok(applyIntent(viewFor(ok(applyIntent(s, 1, hold('1:H2'))), 0), 0, NERTZ))).toEqual(viewFor(run(s, [1, hold('1:H2')], [0, NERTZ]), 0));
@@ -1470,7 +1470,7 @@ describe('viewFor', () => {
     expect(JSON.stringify(view)).not.toMatch(/"rank":\d+,"hidden"|"hidden":true,"suit"/);
   });
 
-  it('shows a player, and nobody else, the faces its next move could turn up; never the card under its nertz top, nor before play opens', () => {
+  it('shows a player, and nobody else, the faces its next move could turn up; never deeper than the card under its nertz top, nor before play opens', () => {
     const mine = viewFor(flipped, 0);
     const [own, real] = [mine.players[0]!, flipped.players[0]!];
     expect(own.stock.slice(-3)).toEqual(real.stock.slice(-3)); // the next group
@@ -1480,7 +1480,8 @@ describe('viewFor', () => {
       expect(w.cards.slice(0, Math.max(0, down - 1)).every(isHidden)).toBe(true);
       if (down > 0) expect(w.cards[down - 1]).toEqual(real.work[i]!.cards[down - 1]);
     }
-    expect(own.nertz.slice(0, -1).every(isHidden)).toBe(true);
+    expect(own.nertz.at(-2)).toEqual(real.nertz.at(-2)); // the card under the top
+    expect(own.nertz.slice(0, -2).every(isHidden)).toBe(true);
     expect(mine.players[1]).toEqual(view.players[1]); // the other hand exactly as a watcher sees it
     expect(checkInvariants(mine)).toBeNull();
     // Before play opens: nothing.
@@ -1519,11 +1520,13 @@ describe('viewFor', () => {
     rejected(applyIntent(withGap, 0, hold(hiddenTop)));
     expect(grab(withGap, 0, hiddenTop)).toBeNull();
     expect(legalDrops(withGap, 0, hiddenTop)).toEqual([]);
-    // playing the nertz top uncovers a hidden card, which is stuck until the server reveals it
-    const v = viewFor(table([{ nertz: 'S9 H6', work: ['S7', [], [], []] }]), 0);
-    const after = ok(applyIntent(v, 0, move('0:H6', work(0))));
-    expect(isHidden(after.players[0]!.nertz[0]!)).toBe(true);
-    rejected(applyIntent(after, 0, move('0:S9', work(1))));
+    // playing the nertz top twice uncovers a hidden card (only the one under the top is sent ahead), which is stuck until the server reveals it
+    const v = viewFor(table([{ nertz: 'D4 S9 H6', work: ['S7', 'H10', [], []] }]), 0);
+    const once = ok(applyIntent(v, 0, move('0:H6', work(0))));
+    expect(isHidden(once.players[0]!.nertz.at(-1)!)).toBe(false); // the card under the top was sent ahead: it turns up at once
+    const twice = ok(applyIntent(once, 0, move('0:S9', work(1))));
+    expect(isHidden(twice.players[0]!.nertz.at(-1)!)).toBe(true);
+    rejected(applyIntent(twice, 0, move('0:D4', work(2))));
   });
 });
 
@@ -2071,7 +2074,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
 
   it('chains of unacknowledged intents: whatever the client accepts, the server accepts identically', () => {
     // Seeds until a whole chain of several has been predicted, and a chain has run into a card the client could not see.
-    untilReached(['whole chain', 'resync'], 12, (rng, reached) => {
+    untilReached(['whole chain', 'resync'], 60, /* (a resync needs two cards played off one pile in a chain now) */ (rng, reached) => {
       const seats = [0, 1];
       let state = inPlay(seats, rng);
       let diverged = 0;

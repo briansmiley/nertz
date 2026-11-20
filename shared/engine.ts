@@ -575,11 +575,11 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
  *
  * While cards can still move (play, and the grace after a call), `seat` is also shown the faces of its own cards that its
  * next move could turn over (`comingUp`), still lying face-down: so a move it
- * makes turns them up on its own screen at once, not a round trip later. Not
- * the card under its nertz top: a play to the middle can lose a race the
- * client has not heard about yet, and that card must not show and then hide.
- * (A work pile's buried card can be uncovered by such a play too: the client
- * keeps that one face-unknown until the move is confirmed, net.ts `unconfirmed`.)
+ * makes turns them up on its own screen at once, not a round trip later.
+ * A play to the middle can lose a race the client has not heard about yet, so a
+ * card such a play uncovers (the one under the nertz top, or a work pile's
+ * buried card) is kept face-unknown by the client until the move is confirmed:
+ * net.ts `unconfirmed`. It never shows and then hides.
  */
 export function viewFor(state: GameState, seat: number): GameState {
   const dealing = state.status.at === 'dealing';
@@ -591,7 +591,7 @@ export function viewFor(state: GameState, seat: number): GameState {
       const show = (c: AnyCard): AnyCard => (shown.has(c.id) ? c : hide(c));
       return {
         ...p,
-        nertz: p.nertz.map((c, i) => (i === p.nertz.length - 1 && opened ? c : hide(c))),
+        nertz: p.nertz.map((c, i) => ((i === p.nertz.length - 1 && opened) || shown.has(c.id) ? c : hide(c))),
         work: p.work.map(({ cards, down }) => ({ cards: cards.map((c, j) => (dealing ? hide(c) : j < down ? show(c) : c)), down })),
         stock: p.stock.map(show),
         waste: p.waste.map((c, i) => (dealing ? hide(c) : i >= p.waste.length - p.dealt ? show(c) : c)),
@@ -603,11 +603,13 @@ export function viewFor(state: GameState, seat: number): GameState {
 const NONE: ReadonlySet<string> = new Set();
 
 /**
- * The face-down cards a hand's next move could turn over: the group under way off its stock (what is dealt of it,
- * and the rest; or the whole next group), and the face-down card at the top of each work pile's buried part.
+ * The face-down cards a hand's next move could turn over: the card under its nertz top, the group under way off its
+ * stock (what is dealt of it, and the rest; or the whole next group), and the face-down card at the top of each work
+ * pile's buried part.
  */
 function comingUp(p: PlayerState): ReadonlySet<string> {
   return new Set([
+    ...p.nertz.slice(-2, -1),
     ...p.stock.slice(-(FLIP_COUNT - p.dealt)),
     ...p.waste.slice(p.waste.length - p.dealt),
     ...p.work.flatMap((w) => (w.down > 0 ? [w.cards[w.down - 1]!] : [])),

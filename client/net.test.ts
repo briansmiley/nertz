@@ -180,6 +180,23 @@ describe('prediction', () => {
     expect(pile(2).cards).toEqual([c('D4')]);
   });
 
+  it('turns up the next nertz card at once for a play onto your own pile, and only once confirmed for a play to the middle', () => {
+    const start = table([{ nertz: 'D2 C9 H6 SA', work: ['S7', 'H10', [], []] }, {}]);
+    const s = server(start, 0);
+    let sync = onSnapshot(freshSync, s.snapshot());
+    const nertz = () => predict(sync)!.game!.players[0]!.nertz;
+    // To the middle: the H6 (sent ahead) lies face-up but unknown until the server says the ace landed...
+    sync = send(sync, move('0:SA', felt(0, 0)));
+    expect(nertz().at(-1)).toEqual({ id: '0:H6', owner: 0, hidden: true });
+    // ...and the snapshot that confirms it turns it up.
+    s.apply(0, move('0:SA', felt(0, 0)), 1);
+    sync = onSnapshot(sync, s.snapshot());
+    expect(nertz().at(-1)).toEqual(c('H6'));
+    // Onto your own pile: nobody can refuse it, and the C9 (sent ahead with that snapshot) shows at once.
+    sync = send(sync, move('0:H6', work(0)));
+    expect(nertz().at(-1)).toEqual(c('C9'));
+  });
+
   it('keeps unacknowledged intents applied over a snapshot that does not include them yet', () => {
     const s = server(dealWithAces(), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
