@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { expect, vi } from 'vitest';
 import WebSocket from 'ws';
 import type { ChatLine } from '../shared/chat';
+import { yetToHear } from '../shared/engine';
 import { DEAL_MS, parseClientMsg, START_MS, type ServerMsg } from '../shared/protocol';
 import { seeded, wire } from '../shared/testkit';
 import type { GameState, RoomView } from '../shared/types';
@@ -120,6 +121,8 @@ export class Client {
   raw: string[] = [];
   seq = 0;
   closeCode: number | null = null;
+  /** The round whose Nertz call this window last said it heard. */
+  private heardIn = -1;
   private constructor(
     readonly ws: WebSocket,
     readonly token: string,
@@ -128,8 +131,15 @@ export class Client {
       const text = data.toString();
       this.raw.push(text);
       const msg = JSON.parse(text) as ServerMsg;
-      if (msg.t === 'state') this.states.push(msg);
-      else if (msg.t === 'drag') this.drags.push(msg);
+      if (msg.t === 'state') {
+        this.states.push(msg);
+        // A window says it has a Nertz call as soon as it does, as a browser's does (client/net.ts).
+        const { game, seat, round } = msg.room;
+        if (game && seat !== null && yetToHear(game).includes(seat) && this.heardIn !== round) {
+          this.heardIn = round;
+          this.intent({ k: 'heard' });
+        }
+      } else if (msg.t === 'drag') this.drags.push(msg);
       else if (msg.t === 'error') this.errors.push(msg.message);
     });
     ws.on('close', (code) => (this.closeCode = code));
