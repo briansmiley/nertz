@@ -299,6 +299,15 @@ export function planFinale(L: Layout, game: GameState): Plan {
     mv.delay = noise(i, 5);
     mv.tilt = (noise(i, 6) - 0.5) * TILT;
     mv.k = piles[mv.pile]!.total++;
+    // On the felt the wash lies until each pile's turn, and the labels show up beside it one by one: no card lies
+    // under a label, so only a card on its way somewhere is ever over the words. Its way out from the middle is
+    // drawn in to where it would first touch one. (On a phone the wash is drawn in to the middle of the ring first.)
+    if (!table.gather) {
+      const r = mv.radius;
+      let clear = 0;
+      for (let k = 1; k <= 50 && !table.piles.some((p) => overlap(washBox(table, { ...mv, radius: k / 50 }), p.label) > 0); k++) clear = k / 50;
+      mv.radius = r * clear;
+    }
   });
   for (const mv of shuffled) mv.of = piles[mv.pile]!.total;
   return { ...table, sortAt: sortAt(game.tray.length, L.phone), movers: shuffled };
@@ -308,6 +317,20 @@ export function planFinale(L: Layout, game: GameState): Plan {
 function washOnFelt(L: Layout, n: number, w: number, h: number): Pick<Plan, 'cx' | 'cy' | 'rx' | 'ry'> {
   const [rx, ry] = [feltHw(n) * L.felt.u, L.felt.u];
   return { cx: L.felt.cx, cy: L.felt.cy, rx: Math.max(w, rx * 0.8 - w / 2), ry: Math.max(h * 0.2, ry * 0.88 - h / 2) };
+}
+
+/** Where a card lies in the wash once it has spread: its centre and its turn (radians). */
+export function washSpot(plan: Pick<Plan, 'cx' | 'cy' | 'rx' | 'ry'>, mv: Pick<Mover, 'angle' | 'radius' | 'spin'>): { x: number; y: number; rot: number } {
+  const r = mv.radius;
+  return { x: plan.cx + Math.cos(mv.angle) * r * plan.rx * WASH_SPREAD.x, y: plan.cy + Math.sin(mv.angle) * r * plan.ry * WASH_SPREAD.y, rot: mv.spin * 0.5 };
+}
+
+/** ...and the box it covers there, turned as it is. */
+export function washBox(plan: Pick<Plan, 'cx' | 'cy' | 'rx' | 'ry' | 'w' | 'h'>, mv: Pick<Mover, 'angle' | 'radius' | 'spin'>): Rect {
+  const { x, y, rot } = washSpot(plan, mv);
+  const [c, s] = [Math.abs(Math.cos(rot)), Math.abs(Math.sin(rot))];
+  const [hw, hh] = [(plan.w * c + plan.h * s) / 2, (plan.h * c + plan.w * s) / 2];
+  return { x: x - hw, y: y - hh, w: 2 * hw, h: 2 * hh };
 }
 
 /** Where the piles are gathered and how far the wash spreads: all of a plan but the cards. */
@@ -664,8 +687,6 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
   const landed = plan.piles.map(() => 0);
   // The wash is simply one big mixed-up mess in the middle: the cards slide out of their piles to scattered places,
   // at all angles, and lie there. It does not turn, and it is not tidied up before the cards go out to their owners.
-  const rx = plan.rx * WASH_SPREAD.x;
-  const ry = plan.ry * WASH_SPREAD.y;
   const wash: Stamp[] = [];
   const resting: Stamp[] = [];
   for (const mv of plan.movers) {
@@ -683,9 +704,10 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
     const spread = glideEase(clamp01((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
     const a = mv.angle;
     const r = mv.radius;
-    let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
-    let y = lerp(mv.y + h / 2, plan.cy + Math.sin(a) * r * ry, spread);
-    let rot = lerp(mv.rot0, mv.spin * 0.5, spread);
+    const spot = washSpot(plan, mv);
+    let x = lerp(mv.x + w / 2, spot.x, spread);
+    let y = lerp(mv.y + h / 2, spot.y, spread);
+    let rot = lerp(mv.rot0, spot.rot, spread);
     let size = 1;
     if (plan.gather) {
       const g = glideEase(clamp01((t - plan.gather.at - mv.delay * (GATHER_MS * 0.3)) / (GATHER_MS * 0.7)));

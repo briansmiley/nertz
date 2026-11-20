@@ -917,7 +917,8 @@ button {
 }
 
 /* The label beside a sorted pile. It is laid out in a box of a fixed size (LABEL in Finale.tsx), which the table
-   places clear of every hand, the tray, the wash and the other labels: nothing in it may spill out of that box.
+   places clear of every hand, the tray, the piles and the other labels; no card of the wash lies under it (planFinale),
+   so the only cards over it are ones on their way somewhere. Nothing in it may spill out of that box.
    Name on top; under it "+N played" and the nertz penalty, the same size; beside those the net score, largest. */
 .heap {
   position: absolute;

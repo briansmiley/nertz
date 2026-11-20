@@ -3,7 +3,7 @@ import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, v
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
-import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
+import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt, washBox, washSpot } from './Finale';
 import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -609,6 +609,34 @@ describe('table layout', () => {
         }
       }
     }
+  });
+
+  it('on the felt no card of the wash lies under a label while the piles are gathered: only a card on its way somewhere is ever over the words, 2 to 6 players', () => {
+    // Regression: the labels kept off a strip along the middle only, and at 1280x720 with four players a side seat's
+    // label had its net score under cards that lay still for seconds. (Those sizes, and an iPad on its side.)
+    const under: string[] = [];
+    for (const [W, H] of [[1280, 720], [1366, 768], [1024, 700], [1180, 820], [1440, 900], [1920, 1080]] as const) {
+      for (let n = 2; n <= 6; n++) {
+        const game = played(inPlay(seats(n), lcg(n)));
+        for (const you of [0, n - 1]) {
+          const L = computeLayout(W, H, game, you, 'sort');
+          const plan = planFinale(L, game);
+          const where = `${n} players at ${W}x${H}, seat ${you}`;
+          expect(plan.gather, where).toBeUndefined();
+          for (let i = 0; i < n; i++) {
+            for (const t of [plan.sortAt + i * TIMING.sortEach, plan.sortAt + (i + 0.5) * TIMING.sortEach]) {
+              const still = frameAt(plan, 'sort', t, trayAt).cards.filter(([mv, x, y]) => {
+                const s = washSpot(plan, mv);
+                return Math.abs(x - s.x) < 1e-6 && Math.abs(y - s.y) < 1e-6;
+              });
+              if (t === plan.sortAt) expect(still.length, where).toBeGreaterThan(0); // (the test sees the wash at all)
+              for (const [mv] of still) for (const p of plan.piles) if (overlap(washBox(plan, mv), p.label)) under.push(`${where}, ${t}ms: card ${mv.id} under the label of seat ${p.seat}`);
+            }
+          }
+        }
+      }
+    }
+    expect(under).toEqual([]);
   });
 
   it('on a phone the table is cleared for the end of a round: the piles stand round the edges of the window, each with its label, touching nothing: 2 to 10 players, upright and on its side', () => {
