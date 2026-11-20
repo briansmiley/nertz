@@ -5,6 +5,7 @@
 // canvas from pre-rendered back sprites instead of being 300 animated
 // elements; the labels beside the piles are ordinary DOM.
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { calledBy } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, type Back, type Look } from '../shared/protocol';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
@@ -128,6 +129,25 @@ export function blockParts(p: SortedPile): Rect[] {
   const b = across ? Math.max(r.x, l.x) : Math.max(r.y, l.y);
   const bridge: Rect = across ? { x: a - 1, y: lo, w: b - a + 2, h: Math.max(0, hi - lo) } : { x: lo, y: a - 1, w: Math.max(0, hi - lo), h: b - a + 2 };
   return bridge.w > 0 && bridge.h > 0 ? [r, l, bridge] : [r, l];
+}
+
+/** The NERTZ! stamp on a cleared table: its letters this high at a pile shown at full size, and about this many times as wide. */
+export const STAMP = { size: 16, wide: 4.4 };
+
+/**
+ * Where the NERTZ! stamp comes down again on a cleared table (`Layout.cleared`), the one across the caller's hand having
+ * gone with the hands: across the top edge of the caller's block, over the pile as far as the block allows; lower
+ * down it where a block above (`others`) or the top of the window is in the way.
+ */
+export function stampAt(p: SortedPile, k: number, others: readonly SortedPile[]): Rect {
+  const [w, h] = [STAMP.size * STAMP.wide * k, STAMP.size * k];
+  const parts = blockParts(p);
+  const left = Math.min(...parts.map((r) => r.x));
+  const right = Math.max(...parts.map((r) => r.x + r.w));
+  const top = Math.min(...parts.map((r) => r.y));
+  const x = Math.max(left + w / 2, Math.min(right - w / 2, p.x + p.w / 2)) - w / 2;
+  const above = others.filter((o) => o.seat !== p.seat).flatMap(blockParts).filter((r) => r.x < x + w && x < r.x + r.w && r.y < top);
+  return { x, y: Math.max(EDGE / 2, top - h / 2, ...above.map((r) => r.y + r.h + 1)), w, h };
 }
 const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 
@@ -722,6 +742,9 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
   const delta = (seat: number) => scores.find((s) => s.seat === seat)?.delta ?? 0;
   const turn = useMemo(() => gatherOrder(plan.piles.map((p) => delta(p.seat))), [plan, scores]);
   const best = Math.max(...plan.piles.map((p) => delta(p.seat)));
+  /** On a cleared table the NERTZ! stamp has gone with the hands: it comes down again on the caller's pile. */
+  const callerPile = L.cleared ? plan.piles.find((p) => p.seat === calledBy(game)) : undefined;
+  const stamp = callerPile && stampAt(callerPile, plan.label.k, plan.piles);
 
   // Before the browser paints: the commit that takes a pile's cards off the table is the one that draws them here.
   useLayoutEffect(() => {
@@ -814,6 +837,11 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
           </div>
         );
       })}
+      {stamp && (
+        <div className="restamp" style={{ left: stamp.x, top: stamp.y, width: stamp.w, height: stamp.h, fontSize: stamp.h }}>
+          <span>Nertz!</span>
+        </div>
+      )}
     </>
   );
 }

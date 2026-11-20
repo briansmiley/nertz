@@ -3,7 +3,7 @@ import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, v
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
-import { blockParts, frameAt, LABEL, planFinale, restAt, TILT, TIMING, trayAt } from './Finale';
+import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
 import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -637,6 +637,11 @@ describe('table layout', () => {
             const span = Math.hypot(plan.w, plan.h) / 2; // (the heap's box allows for cards lying upright; one turned reaches this far from its middle)
             const [ax, ay] = [plan.heap.w / 2 - plan.w / 2 + span, plan.heap.h / 2 - plan.h / 2 + span];
             for (const r of parts) expect(Math.hypot(Math.max(r.x - ox, 0, ox - r.x - r.w) / ax, Math.max(r.y - oy, 0, oy - r.y - r.h) / ay), `${at}: under the wash`).toBeGreaterThanOrEqual(1);
+            // The NERTZ! stamp, were this the caller's: on the window, on this block, and off every other.
+            const s = stampAt(plan.piles[i]!, plan.label.k, plan.piles);
+            expect(s.x >= 0 && s.y >= 0 && s.x + s.w <= W && s.y + s.h <= H, `${at}: stamp off the window`).toBe(true);
+            expect(parts.some((r) => overlap(r, s)), `${at}: stamp away from its block`).toBe(true);
+            for (const other of blocks.filter((_, j) => j !== i)) for (const b of other) expect(overlap(s, b), `${at}: stamp over another`).toBe(false);
           }
           // Yours is at the bottom, in the middle; everyone else in the order of the seats, clockwise from there.
           const mid = (p: Rect & { label: Rect }) => ({ x: (Math.min(p.x, p.label.x) + Math.max(p.x + p.w, p.label.x + p.label.w)) / 2, y: p.y + p.h / 2 });
