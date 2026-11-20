@@ -7,7 +7,7 @@ import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
-import type { TableSummary } from '../shared/types';
+import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
 import { dataFromEnv, openDb } from './db';
@@ -145,13 +145,16 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
           return void res.end('Method not allowed');
         }
         // Only tables someone is at just now: one left behind is kept for a while for whoever was there, not for anyone else.
-        const listed: TableSummary[] = [...rooms.values()]
-          .filter((room) => room.connected > 0)
-          .sort((a, b) => b.changedAt - a.changedAt)
-          .slice(0, MAX_LISTED)
-          .map((room) => room.summary());
+        const open = [...rooms.values()].filter((room) => room.connected > 0);
+        const body: OpenTables = {
+          open: open.length,
+          tables: open
+            .sort((a, b) => b.changedAt - a.changedAt)
+            .slice(0, MAX_LISTED)
+            .map((room) => room.summary()),
+        };
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ tables: listed }));
+        res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body));
       } else if (path === '/stats') {
         // The record of whoever asks: theirs alone, by their cookie.
         const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));

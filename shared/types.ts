@@ -313,3 +313,9 @@ export interface TableSummary {
   /** Round `round` is on: dealt, and not yet scored. */
   playing: boolean;
 }
+
+/** What `GET /tables` answers: how many tables someone is at just now, and the latest of them to change (the list is cut short). */
+export interface OpenTables {
+  open: number;
+  tables: TableSummary[];
+}
