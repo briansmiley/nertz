@@ -1973,8 +1973,29 @@ button {
 /* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
 .scores thead th.over {
   height: auto;
+  font-weight: 700;
   padding-bottom: 0.15rem;
   text-align: center;
+}
+
+/* Before the totals, top to bottom, a rule like the pad's margin: what this round brought on one side, what is kept on the other. */
+.scores th.over,
+.scores thead tr + tr th:first-child,
+.scores td.calls {
+  border-left: 1.5px solid rgba(207, 34, 51, 0.45);
+}
+
+/* The totals: each figure under the middle of its heading, the two columns no wider than those headings (the sheet's
+   spare width goes to the names). The rule stands midway between the round's figures and the count after it. */
+.scores thead tr + tr th,
+.scores td.total {
+  width: 1%;
+  padding: 0 0.55rem;
+  text-align: center;
+}
+
+.scores td.round {
+  padding-right: 1.3rem;
 }
 
 .scores thead tr + tr th {
