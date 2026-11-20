@@ -9,7 +9,7 @@
 // putting it back (`hold`, `release`) are intents like any other.
 import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
-import { applyIntent, grab, refused } from '../shared/engine';
+import { applyIntent, grab, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
 import { CLOSE_OVER, isRoomCode, PING_MS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
@@ -83,6 +83,9 @@ function unconfirmed(before: GameState, after: GameState, seat: number, intent: 
   if (!top || pile.down === was.down) return after; // nothing was turned over
   return swap({ ...me, work: me.work.map((w, i) => (i === from.i ? { ...w, cards: [...w.cards.slice(0, -1), unknown(top)] } : w)) });
 }
+
+/** A Nertz call is on the table that this window has not yet said it heard (it has not sent `heard`, or not been answered). */
+export const hearsCall = (room: RoomView | null): boolean => !!room?.game && room.seat !== null && yetToHear(room.game).includes(room.seat);
 
 /** What a socket says first: sit down at the table we know, or ask the server to open one. */
 export function hello(room: string | null, name: string, token: string): ClientMsg {
@@ -259,6 +262,9 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     }
     sync = onSnapshot(sync, msg);
     set({ status: 'online', room: predict(sync), error: null });
+    // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
+    // (a card taken up before this went is in hand at the call; one after it, too late).
+    if (hearsCall(state.room)) send({ k: 'heard' });
   },
   error: (msg) => set({ error: msg.message }),
   snipe: (msg) => {

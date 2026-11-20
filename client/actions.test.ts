@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyIntent, deal, finishDeal, RESHUFFLES_BEFORE_VOTE, resolveEndVote, seatedPeople } from '../shared/engine';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 import type { GameState, PlayerView, RoomView } from '../shared/types';
-import { ballot, canPause, canRedeal, canResume, standing, tableActions } from './actions';
+import { ballot, canPause, canRedeal, canReset, canResume, standing, tableActions } from './actions';
 
 const live = inPlay([0, 1, 2], lcg(7));
 const voting = (g: GameState, seat: number): GameState => {
@@ -55,11 +55,14 @@ describe("the table's actions", () => {
     expect(canResume(watching(true))).toBe(true);
   });
 
-  it('none between rounds: the lobby and the score sheet carry their own', () => {
-    expect(tableActions(roomOf(live, 0, { phase: 'lobby', game: null }))).toEqual([]);
+  it('between rounds: leaving for anyone, and on the score sheet starting over for whoever deals (SMI-117)', () => {
+    expect(ids(roomOf(live, 0, { phase: 'lobby', game: null }))).toEqual(['leave']);
     const over = resolveEndVote([0, 1, 2].reduce(voting, live), [0, 1, 2]);
     const room = roomOf(over, 0, { phase: 'results' });
-    expect(tableActions(room)).toEqual([]);
+    expect(ids(room)).toEqual(['reset', 'leave']);
+    expect(ids(roomOf(over, 1, { phase: 'results' }))).toEqual(['leave']);
+    expect(tableActions(room).find((a) => a.id === 'reset')?.sure).toBeTruthy();
+    expect(canReset(roomOf(live, 0))).toBe(false); // (not during a round)
     expect(canRedeal(room)).toBe(false);
     expect(canPause(room)).toBe(false);
   });

@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { CLOSE_OVER, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
@@ -72,6 +72,8 @@ export interface ServerOptions {
   rate?: number;
   /** Least time between two cards one person deals off their stock (ms). Defaults to a little under the client's pace. */
   flipMs?: number;
+  /** The longest a Nertz call waits to reach the others' windows (see `RoomOptions.hearMs`). Defaults to HEAR_MS. */
+  hearMs?: number;
   /** How every table deals a round (see `RoomOptions.deal`): the engine's, unless a test rigs the hands. */
   deal?: RoomOptions['deal'];
   /** Where bug reports are passed on to (server/feedback.ts): defaults to what the environment says. They are kept in the database, if there is one. */
@@ -86,6 +88,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const dist = resolve(options.dist ?? fileURLToPath(new URL('../dist', import.meta.url)));
   const rate = options.rate ?? RATE_PER_SECOND;
   const flipMs = options.flipMs ?? STOCK_CARD_MS - FLIP_SLACK_MS;
+  const hearMs = options.hearMs ?? HEAR_MS;
   const rooms = new Map<string, Room>();
   const idleSince = new Map<Room, number>();
   const forget = (room: Room): void => {
@@ -271,7 +274,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (!target) return over(`Table ${msg.room} not found.`);
           } else {
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
-            target = new Room(freshCode(), { flipMs, deal: options.deal, record });
+            target = new Room(freshCode(), { flipMs, hearMs, deal: options.deal, record });
           }
           const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', account?.id ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);

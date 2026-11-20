@@ -1,10 +1,10 @@
-// What can be done to the table during a round, as opposed to your own settings (Settings.tsx): pause it or
-// unpause it, vote to end it, restart it, stand up from it for now, leave. Each has one rule here for whether it is open to you now; the menu
+// What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
+// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. Each has one rule here for whether it is open to you now; the menu
 // (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here.
 import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, redeal, sit } from './net';
+import { leave, pause, redeal, resetTable, sit } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -32,6 +32,9 @@ export function standing(room: RoomView): boolean | null {
 /** Can you deal the round over? Whoever deals, at any point of a round. */
 export const canRedeal = (room: RoomView): boolean => room.phase === 'playing' && !!room.game && !!meOf(room)?.isHost;
 
+/** Can you start the table over (every score to nothing, back to before round 1)? Whoever deals, on the score sheet. */
+export const canReset = (room: RoomView): boolean => room.phase === 'results' && !!meOf(room)?.isHost;
+
 export interface Ballot {
   /** How many have a say, and how many of them have voted. */
   voters: number;
@@ -57,7 +60,7 @@ export function ballot(room: RoomView): Ballot | null {
   return { ...tally, mine: !!me.ending, pressing: dragsOn(game) || tally.voted > 0 };
 }
 
-export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'stand' | 'leave';
+export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'leave';
 
 export interface TableAction {
   id: ActionId;
@@ -70,9 +73,8 @@ export interface TableAction {
   sure?: string;
 }
 
-/** The actions open to you now, in the order the menu lists them. None unless a round is being played. */
+/** The actions open to you now, in the order the menu lists them. Leaving is always one. */
 export function tableActions(room: RoomView): TableAction[] {
-  if (room.phase !== 'playing' || !room.game) return [];
   const vote = ballot(room);
   const up = standing(room);
   return [
@@ -80,6 +82,7 @@ export function tableActions(room: RoomView): TableAction[] {
     canResume(room) && { id: 'resume' as const, label: 'Unpause' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Really restart?' },
+    canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: 'Really reset?' },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: 'Really leave?' },
@@ -97,6 +100,8 @@ export function perform(id: ActionId, room: RoomView): void {
       return void send({ k: 'end', on: !ballot(room)?.mine });
     case 'redeal':
       return redeal();
+    case 'reset':
+      return resetTable();
     case 'stand':
       return sit(!!standing(room));
     case 'leave':

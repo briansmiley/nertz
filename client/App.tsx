@@ -13,7 +13,7 @@ import { Name } from './Host';
 import { openCorner, useCorner } from './Menu';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
-import { Check, CopyIcon, Door, Eye, Gear } from './icons';
+import { Again, Check, CopyIcon, Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -646,23 +646,13 @@ function SettingsGear() {
 /** For whoever deals, on the score sheet: start the table over (every score to nothing, back to before the first deal). Asked twice, since it cannot be undone. */
 function StartOver() {
   return (
-    <Pop icon={<Again />} label="Start over">
-      <h3>Start over?</h3>
+    <Pop icon={<Again />} label="Reset table">
+      <h3>Reset table?</h3>
       <p className="hint">Everyone's score goes back to 0 and the table to before round 1.</p>
       <button type="button" className="plain" onClick={resetTable}>
         Reset the scores
       </button>
     </Pop>
-  );
-}
-
-/** A turning arrow: again from the start. */
-function Again() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5.5 12a6.5 6.5 0 1 0 2.2-4.9" />
-      <path d="M5 4.5v3.4h3.4" />
-    </svg>
   );
 }
 
@@ -736,7 +726,7 @@ function Results({ room }: { room: RoomView }) {
     <main className="solo over">
       <Pad wide>
         <h2>Round {room.round}</h2>
-        {/* Who got Nertz is said in their own lines of the sheet, with the stamp; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
+        {/* Who got Nertz is said in their own lines of the sheet, with the stamp in the Nertz column; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
         {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
         <table className="scores">
           <thead>
@@ -763,18 +753,18 @@ function Results({ room }: { room: RoomView }) {
                   <Name host={p?.isHost} className="nm">
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}
                   </Name>
-                  {out.includes(s.seat) && (
-                    <span className="called" title={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
-                      Nertz!
-                    </span>
-                  )}
                   {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
                 </th>
                 <td>{signed(s.played)}</td>
-                <td>
-                  {s.nertzLeft ? (
+                {/* Whoever got Nertz has no cards left in that pile: where the 0 would be, the stamp that lay across their hand. */}
+                <td className="nz">
+                  {out.includes(s.seat) ? (
+                    <span className="called" title={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
+                      Nertz!
+                    </span>
+                  ) : s.nertzLeft ? (
                     <>
                       <small className="left" title={`${s.nertzLeft} left in the nertz pile`}>{s.nertzLeft}</small>
                       {signed(-2 * s.nertzLeft)}
@@ -795,10 +785,12 @@ function Results({ room }: { room: RoomView }) {
               .map((p) => (
                 <tr key={`new${p.id}`} className={`joining${p.id === room.me ? ' you' : ''}`}>
                   <th scope="row">
+                    <span className="who">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
-                    <Name host={p.isHost}>{p.name}</Name>
+                    <Name host={p.isHost} className="nm">{p.name}</Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
+                    </span>
                   </th>
                   <td colSpan={3} className="note">
                     In next round
