@@ -23,11 +23,8 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
-
-/** Is this key press going into a text field (a name, a table code)? */
-const typing = (el: EventTarget | null): boolean => (el instanceof HTMLInputElement ? !['range', 'checkbox'].includes(el.type) : el instanceof HTMLTextAreaElement);
 
 /** Each hotkey as the settings list it. */
 const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic' };
@@ -263,11 +260,10 @@ export function Corner({ room }: { room?: RoomView | null }) {
     setPrefs({ muted });
     return muted ? 'Muted' : 'Unmuted';
   });
-  // P pauses or unpauses.
+  // P pauses or unpauses: pressed as any hotkey is (`hotkeyPressed`).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.code === 'KeyP' && !typing(e.target) && (pausable || resumable)) pause(pausable);
+      if (hotkeyPressed(e, 'KeyP') && (pausable || resumable)) pause(pausable);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -325,7 +321,6 @@ export function Corner({ room }: { room?: RoomView | null }) {
           <div className={`level${styling ? '' : ' locked'}`}>
             <span>Card back</span>
             <YourBacks colour={BACKS[0]} locked={!styling} />
-            {!styling && <small className="why">You can change card styles between rounds.</small>}
           </div>
           {/* Keys: only where there is a keyboard. */}
           {!touchOnly() && (

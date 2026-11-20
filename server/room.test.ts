@@ -608,6 +608,40 @@ describe('Room', () => {
     expect(them()).not.toHaveProperty('standing');
   });
 
+  it('with the cards dealt and one of two gone before Start, the dealer cannot start alone: Start waits for a second player, who is dealt in', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'start' });
+    vi.advanceTimersByTime(DEAL_MS);
+    room.handle(b, { t: 'leave' });
+    room.handle(a, { t: 'go' });
+    expect(room.game!.status.at).toBe('ready');
+    const c = new FakeConn();
+    room.join(c, 'C', 'tok-cccc');
+    sitDown(room, c); // (dealt again, with them and without B's cards)
+    expect(room.game!.players).toHaveLength(2);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'C@2']);
+    opening(room, a);
+    expect(room.game!.status.at).toBe('play');
+    vi.useRealTimers();
+  });
+
+  it('a deal over counts nobody who is standing up from their cards: with one other at the table it is refused, and the round goes on', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    startRound(room, a);
+    standUp(room, b);
+    const before = room.game;
+    room.handle(a, { t: 'redeal' }); // (it would stand B up to watch, and deal to A alone)
+    expect(room.game).toBe(before);
+    expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1']);
+    sitDown(room, b);
+    room.handle(a, { t: 'redeal' });
+    expect(room.game).not.toBe(before);
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+  });
+
   it('a host who stands up still hosts, unless they hand the table on: to a person at it, who has it for good', () => {
     const { room, conns } = roomWith(3, { deal: rigged([1]) });
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];

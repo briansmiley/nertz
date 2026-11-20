@@ -483,7 +483,6 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                   {busy && typed ? '…' : 'Join'}
                 </button>
               </div>
-              {typed && !isRoomCode(typed) && <p className="hint">A table code is {ROOM_CODE_LENGTH} letters.</p>}
             </div>
           </div>
           <Tables onPick={pick} />
@@ -649,7 +648,7 @@ function StartOver() {
   return (
     <Pop icon={<Again />} label="Start over">
       <h3>Start over?</h3>
-      <p className="hint">Everyone's score goes back to 0 and the table to before round 1. This cannot be undone.</p>
+      <p className="hint">Everyone's score goes back to 0 and the table to before round 1.</p>
       <button type="button" className="plain" onClick={resetTable}>
         Reset the scores
       </button>

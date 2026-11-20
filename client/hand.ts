@@ -320,7 +320,7 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
       // takes it up without carrying it, and the next tap or click puts it down (see 'down').
       const taken = d?.phase === 'pressed' && g.pointer === d.pointer && scene.live && scene.tapToMove && !was.spent ? take(d, 'tapped', g, scene) : null;
       if (taken) return { spent: false, ...taken };
-      const fan: Effect[] = g.touch && (!d || d.phase === 'pressed') && scene.live && !was.spent ? [{ k: 'fan', x: g.x, y: g.y }] : [];
+      const fan: Effect[] = g.touch && (!d || d.phase === 'pressed') && scene.live && !scene.frozen && !was.spent ? [{ k: 'fan', x: g.x, y: g.y }] : [];
       if (!d || d.phase === 'tapped' || g.pointer !== d.pointer) return { hand: d, spent: false, effects: fan };
       if (d.phase === 'pressed') return { hand: null, spent: false, effects: fan };
       return { hand: null, spent: false, effects: put(d, { pointer: g, centre: centreOf(d) }, scene) };

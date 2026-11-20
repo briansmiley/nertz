@@ -100,10 +100,10 @@ export function takeKey(p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): Pa
 }
 /**
  * Is this key press the hotkey `code`? Pressed bare (no Shift, Ctrl, Alt or Cmd, not held down), and not while typing
- * in a text field or choosing a hotkey. (A slider or a checkbox that has the focus does not swallow it.)
+ * in a text field. (A slider or a checkbox that has the focus does not swallow it.)
  */
 export const hotkeyPressed = (e: KeyboardEvent, code: string | null): boolean =>
-  !!code && e.code === code && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !(e.target as Element | null)?.closest?.('input:not([type=range]):not([type=checkbox]),textarea,[data-keying]');
+  !!code && e.code === code && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !(e.target as Element | null)?.closest?.('input:not([type=range]):not([type=checkbox]),textarea');
 /** A phone or tablet: no keyboard to speak of, so no key is offered or named. */
 export const touchOnly = (): boolean => typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
 /** A key as it is shown: "V" for KeyV, "7" for Digit7, otherwise its own name. */

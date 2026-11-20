@@ -4,7 +4,7 @@
 // read off `timerMs`, and the word appears when the snapshot that opens play does.
 import { useEffect, useRef, useState } from 'react';
 import { hasSay, plays } from '../shared/engine';
-import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
+import { MIN_PLAYERS, START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { PlayerView, RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { go, ready } from './net';
@@ -69,6 +69,8 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
   const me = dealt.find((p) => p.id === room.me);
   const waiting = dealt.filter((p) => !p.isHost);
   const late = notReady(room);
+  /** Start is for a round someone will play against someone: not when all but one have got up from the cards dealt (the server's rule: `go`, server/room.ts). */
+  const enough = dealt.length >= MIN_PLAYERS;
   const lateKey = late.map((p) => p.id).join();
   const beat = useBeat(stage === 'countdown' ? room.timerMs : null);
 
@@ -102,6 +104,7 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
     return () => clearTimeout(lapse);
   }, [ask?.at]);
   const press = () => {
+    if (!enough) return;
     const now = Date.now();
     const does = pressStart(late.length, ask, now);
     if (does === 'go') (go(), setAsk(null));
@@ -123,7 +126,9 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
   const inner =
     stage === 'ready' ? (
       <>
-        {mine ? (
+        {mine && !enough ? (
+          <p className="waiting">Waiting for a second player</p>
+        ) : mine ? (
           <>
             {warned && <p className="waitfor">Waiting for {late.map((p) => p.name).join(', ')}</p>}
             <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
@@ -133,7 +138,7 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
         ) : me ? (
           <button type="button" className={`kickoff readyup${me.ready ? ' on' : ''}`} aria-pressed={!!me.ready} onClick={(e) => (ready(!me.ready), e.currentTarget.blur())}>
             {me.ready ? 'Ready ✓' : 'Ready?'}
-            <small>{me.ready ? `Waiting for ${dealer?.name ?? 'the dealer'} to start` : 'Press when you are set'}</small>
+            {me.ready && <small>Waiting for {dealer?.name ?? 'the dealer'} to start</small>}
           </button>
         ) : (
           <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>

@@ -30,7 +30,7 @@ import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
 import { calm, lookOf, usePrefs } from './prefs';
-import { beaten, sniped as snipeSound, stage as stageSound } from './sound';
+import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
 const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
@@ -394,6 +394,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     stageSound(stageWas.current, stage, sortings(game, room.lastRound?.scores ?? [], clears));
     stageWas.current = stage;
   }, [stage]);
+  useEffect(() => hush, []); // (a table left mid-wash, back to the lobby or sent away, takes its sound with it)
   /** Your work pile that is being looked at (fanned out in full): the mouse rested on it, or it was tapped. */
   const [peek, setPeek] = useState<number | null>(null);
   const peekWait = useRef<{ i: number; t: number } | null>(null);

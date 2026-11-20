@@ -1,6 +1,7 @@
 # Push to `staging` -> https://nertz-staging.fly.dev ; push to `main` -> https://nertz.fly.dev .
 # Both run the checks first. A deploy drops every table (they live in the server's memory), so `main` waits until
-# nobody is connected before it deploys; staging does not wait.
+# nobody is connected before it deploys; staging does not wait. The image is built before the wait, not after it: what
+# follows "nobody connected" is then only the swap, not minutes of building in which a table can open.
 name: Deploy
 
 on:
@@ -39,6 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Build the image
+        run: flyctl deploy --app "$APP" --remote-only --build-only --push --image-label "$GITHUB_SHA"
       - name: Wait until nobody is connected
         if: github.ref_name == 'main'
         run: |
@@ -51,4 +54,4 @@ jobs:
           done
           echo "Still in use after 90 minutes. Re-run this job when the tables are empty."
           exit 1
-      - run: flyctl deploy --app "$APP" --ha=false --remote-only
+      - run: flyctl deploy --app "$APP" --ha=false --image "registry.fly.io/$APP:$GITHUB_SHA"
