@@ -10,7 +10,7 @@ import { deal } from './sound';
 /** (Six, as the fan was drawn: the table seats ten now, the picture does not have to.) */
 const CARDS = 6;
 /** Each half of the turn: edge-on, then down again. */
-const HALF = 0.16;
+const HALF = 0.22;
 
 /** Once the picture of `back` is in (or has failed, or taken too long), so that a card turned over never lands blank. */
 function loaded(back: Back): Promise<unknown> {
