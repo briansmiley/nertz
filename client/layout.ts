@@ -704,7 +704,8 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
  *   button; narrower than that, its pills shrink.
  * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
- *   (and the clock above it). Otherwise it is one line level with the button, as wide as what it says: ending under
+ *   (and the clock above it). Otherwise it is one line, as wide as what it says: tucked under the pile and its count
+ *   while that is clear of everything and short of your work piles; failing that, level with the button: ending under
  *   the end of the nertz pile, or short of the count on the pile or a pill where one of them is in its row; where that
  *   would put it on the button, right after the button, and only then cut short, by whatever is in its way (too little
  *   room for a name: none).
@@ -803,6 +804,10 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
     const y = at.knobs.y + (at.knobs.h - NAME.h) / 2;
     const w = clamp(fit.name, NAME.min, NAME.max);
     const left = knobsR + 10;
+    // Tucked under the pile and its count, from the pile's left edge: moved left only as far as keeps it short of your
+    // first work pile (which fans down there).
+    const tuck: NameAt = { x: Math.max(left, Math.min(nertzX, workX - 6 - w)), y: Math.max(base, badge.y + badge.h) + 4, w, h: NAME.h, full: false, align: 'start' };
+    if (tuck.y + tuck.h <= H - 4 && tuck.x + w <= workX - 6 && ![at.knobs, ...(clock ? [clock] : []), ...shown, badge].some((p) => meets(tuck, p, 4))) return tuck;
     // The line moves out of the way rather than grow shorter than what it says: it stops 8 short of the first thing in
     // its row right of the button (the count on the nertz pile, which hangs below the pile's corner, or a pill).
     const row: Rect = { x: left, y, w: right - left, h: NAME.h };
