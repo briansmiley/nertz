@@ -93,11 +93,11 @@ What you see around a round:
 - **Face-down work cards** lie under each work pile, yours and everyone's, and turn over when the cards above them leave.
 - **A long work pile** of yours may start a little higher up, into what room there is between your hand and the felt.
   Past that the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
-- **A pile you finished** (you placed its King) glows and says "Drag to tray"; other people's finished piles are dimmed and
+- **A pile you finished** (you placed its King) glows and gives a small nod; other people's finished piles are dimmed and
   ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
   NERTZ! first, or try to deal from the stock or to start a pile on the felt, nothing moves, the pile shakes, the tray
-  flashes, there is a soft tap and a small notice right by the pile, wherever on the table it lies, says "Move your
-  finished pile to the tray first" for a couple of seconds. Your cards do not look grabbable meanwhile.
+  flashes and there is a soft tap. From then on the pile says "Drag to tray"; left alone, it says so after four seconds.
+  Your cards do not look grabbable meanwhile.
   The **tray** runs off the right edge of the window beside your hand: finished piles are pushed half
   off-screen there, the near side of every King peeking out from under the next. While you carry a finished pile it
   lights up and comes a little way in; let go anywhere from just short of it to the edge of the screen.
@@ -508,7 +508,7 @@ later snapshots, reconnects, the end of the round and coming back from the score
 **Clear-first is a rule of the reducer.** `mustClear(state, seat)` is "some centre pile was completed by this seat and
 the round is live". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
 pile to the tray is a single intent; it never used `hold`). The client's replay applies the same rule, so after a
-predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the nudge and the notice.
+predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the shake and the words on the pile.
 
 **The final table.** During `results` the snapshot still holds the finished round (`game`: piles and their places, tray, hands) next to
 `lastRound` (how it ended, and per player the name, the cards played, the nertz cards left and the running total), so the
@@ -596,7 +596,7 @@ client/   Vite + React
   level.ts      pure: a card's stacking level, from the level the layout gives it and what it is doing (in its pile, travelling, turning over, in the deck, in a hand)
   hand.ts       pure: the card or finished pile in your hand (pressed, carried or tapped), and what a press, a move, a release or a tap does
   Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
-  clearFirst.tsx  the nudge and the notice when you try something else while your finished pile waits for the tray
+  clearFirst.tsx  what your finished pile does while it waits for the tray: a nod, a shake when you try something else, and then its words
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
   Settings.tsx  the corner (the menu button, and your settings it leads to, the host's table settings at their foot), the table rules on the lobby sheet, and the small icon buttons the sheets share
