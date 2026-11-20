@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anotherBack, CARD_BACKS, cleanName, DRAG_HZ, DRAG_RATE, isBack, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, parseClientMsg, parseIntent, PLAIN_LOOK, randomRoomCode } from './protocol';
+import { anotherBack, CARD_BACKS, cleanName, DRAG_HZ, DRAG_RATE, isBack, isRoomCode, MAX_MESSAGE_BYTES, MAX_NAME_LENGTH, MAX_PLAYERS, parseClientMsg, parseIntent, PLAIN_LOOK, randomRoomCode } from './protocol';
 import { TABLE } from './table';
 
 const TOKEN = 'abcDEF123_-xyz';
@@ -22,7 +22,7 @@ describe('parseClientMsg', () => {
       intent: { k: 'move', cardId: 'c1', count: 2, to: { k: 'work', i: 3 } },
     });
     expect(parseClientMsg({ t: 'intent', seq: 0, intent: { k: 'stuck', on: false } })).toEqual({ t: 'intent', seq: 0, intent: { k: 'stuck', on: false } });
-    for (const intent of [{ k: 'move', cardId: 'c1', count: 1, to: { k: 'slot', i: 23 } }, { k: 'hold', cardId: 'c1' }, { k: 'release' }, { k: 'clear', slot: 0 }, { k: 'nertz' }]) {
+    for (const intent of [{ k: 'move', cardId: 'c1', count: 1, to: { k: 'slot', i: 23 } }, { k: 'hold', cardId: 'c1' }, { k: 'release' }, { k: 'clear', slot: 0 }, { k: 'nertz' }, { k: 'heard' }]) {
       expect(parseClientMsg({ t: 'intent', seq: 1, intent: { ...intent, extra: true } })).toEqual({ t: 'intent', seq: 1, intent });
     }
     expect(parseClientMsg({ t: 'tried', card: 'c1', seen: ['c2', null], by: 0 })).toEqual({ t: 'tried', card: 'c1', seen: ['c2', null] }); // (who did it is the server's to say)
@@ -141,6 +141,9 @@ describe('small helpers', () => {
     expect(parseIntent({ k: 'clear', slot: 3, x: 1 })).toEqual({ k: 'clear', slot: 3 });
     expect(parseIntent({ k: 'move', cardId: 'a', count: 1, to: { k: 'newFoundation' } })).toBeNull(); // the old "anywhere in the middle" target is gone
     expect(parseIntent({ k: 'stuck' })).toBeNull();
+    expect(parseIntent({ k: 'nertz', unheard: [2, 0, 2] })).toEqual({ k: 'nertz', unheard: [2, 0] });
+    for (const unheard of [2, [-1], [1.5], ['1'], [MAX_PLAYERS], null]) expect(parseIntent({ k: 'nertz', unheard })).toBeNull();
+    expect(parseIntent({ k: 'heard', seat: 1 })).toEqual({ k: 'heard' });
   });
 
   it('cleanName and room codes', () => {

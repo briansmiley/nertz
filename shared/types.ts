@@ -104,9 +104,12 @@ export interface GameState {
  * - `play`: the nertz tops are turned over and the round is on.
  * - `grace`: `calledBy` called "Nertz!". Everyone is frozen but those who were holding a playable card at the call:
  *   each may still make exactly one move with it. Who they are is not kept here: exactly the seats holding a card (`inGrace`).
+ *   The call reaches each window a moment after it is made: `unheard` are the seats whose windows have not said yet that
+ *   they have it (`heard`). Until then a seat may still take a card up, as it could just before, and that card earns
+ *   it grace too: it was in hand at the call, as that player saw it.
  * - `over`: nothing can change any more; `end` says how it came to that.
  */
-export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | { at: 'grace'; calledBy: number } | { at: 'over'; end: RoundEnd };
+export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | { at: 'grace'; calledBy: number; unheard: number[] } | { at: 'over'; end: RoundEnd };
 
 /**
  * How a round ended: `seat` called Nertz, and `out` got it: every seat whose nertz pile was empty when the round ended
@@ -140,7 +143,13 @@ export type Intent =
   | { k: 'stuck'; on: boolean }
   /** Vote (or stop voting) to end the round where it stands. */
   | { k: 'end'; on: boolean }
-  | { k: 'nertz' }
+  /**
+   * Call Nertz. `unheard`: the others whose windows the call has yet to reach, whom the round waits for a moment (see
+   * `RoundStatus`). Only the server can say who they are, and it always does; none, and everyone hears it at once.
+   */
+  | { k: 'nertz'; unheard?: number[] }
+  /** Nertz has been called, and this window has it. */
+  | { k: 'heard' }
   /** Move the completed pile in `slot` to the tray. Only for the player who placed its King, and the only thing they may do until it is done. */
   | { k: 'clear'; slot: number }
   /** A drag started on `cardId`. */

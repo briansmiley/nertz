@@ -1428,6 +1428,141 @@ function bathroom(small: boolean): string {
 }
 
 /**
+ * Hotel carpet: a honeycomb of hexagons in three nested tones, a white band at the edge of each, a half-white ring
+ * within it and a small white hexagon at the heart, with thin lines of the card's colour between the cells.
+ */
+function corridor(small: boolean): string {
+  const across = small ? 2 : 4;
+  const wide = F.w / across; // across the flats
+  const r = wide / Math.sqrt(3);
+  const hex = (cx: number, cy: number, s: number): string => poly(Array.from({ length: 6 }, (_, i) => [cx + s * Math.sin((i * Math.PI) / 3), cy - s * Math.cos((i * Math.PI) / 3)] as const));
+  let [white, half] = ['', ''];
+  for (let row = -1; row * 1.5 * r < F.h + r; row++) {
+    for (let c = -1; c <= across; c++) {
+      const [cx, cy] = [F.x + (c + (row % 2 ? 0.5 : 0) + 0.5) * wide, F.y + row * 1.5 * r + r];
+      white += hex(cx, cy, r * 0.93) + hex(cx, cy, r * 0.7) + hex(cx, cy, r * 0.2);
+      half += hex(cx, cy, r * 0.52) + hex(cx, cy, r * 0.36);
+    }
+  }
+  return frame(clipped(`<path d="${white}" fill="#fff" fill-rule="evenodd" stroke="none"/><path d="${half}" fill="${HALF}" fill-rule="evenodd" stroke="none"/>`), 1, small);
+}
+
+/**
+ * The Overlook's carpet, in one colour: hexagons in two families, each a half-white heart in a ring of the card's
+ * colour, and round every one a white band shared with its neighbours. Each ring opens into a stem, down out of one
+ * family and up out of the other, that runs between two hexagons of the other family. (In apothems of the heart's
+ * hexagon: rings out to 72/37, bands to 103/37; a family's hexagons 250/37 apart across, 347/37 down, the second
+ * family half across from the first and 135/37 lower.)
+ */
+function overlook(small: boolean): string {
+  const u = (F.w / (small ? 1.5 : 2.5)) / 250; // one unit of the carpet
+  const [across, down, lower] = [250 * u, 347 * u, 135 * u];
+  const [heart, ring, band, stem] = [37 * u, 72 * u, 103 * u, 22 * u];
+  // A pointy-topped hexagon by its apothem.
+  const hex = (cx: number, cy: number, a: number): string => poly(Array.from({ length: 6 }, (_, i) => [cx + ((2 * a) / Math.sqrt(3)) * Math.sin((i * Math.PI) / 3), cy - ((2 * a) / Math.sqrt(3)) * Math.cos((i * Math.PI) / 3)] as const));
+  let [outer, inner, stems, hearts] = ['', '', '', ''];
+  const [x0, y0] = [F.x + F.w / 2, F.y + F.h / 2 - lower / 2];
+  for (let i = -Math.ceil(F.w / across) - 1; i * across < F.w + across; i++) {
+    for (let j = -Math.ceil(F.h / down) - 1; j * down < F.h + down; j++) {
+      for (const second of [false, true]) {
+        const [cx, cy] = [x0 + i * across + (second ? across / 2 : 0), y0 + j * down + (second ? lower : 0)];
+        outer += hex(cx, cy, band);
+        inner += hex(cx, cy, ring);
+        // (The stem is cut from the centre out through the band; beyond it, it is the ground between the other family's bands.)
+        stems += `M${n(cx - stem)} ${n(cy)}h${n(2 * stem)}V${n(cy + (second ? -1 : 1) * band * 1.2)}h${n(-2 * stem)}Z`;
+        hearts += hex(cx, cy, heart);
+      }
+    }
+  }
+  return frame(
+    clipped(`<mask id="o"><path d="${outer}" fill="#fff" stroke="none"/><path d="${inner}" fill="#000" stroke="none"/><path d="${stems}" fill="#000" stroke="none"/></mask><rect x="${F.x}" y="${F.y}" width="${F.w}" height="${F.h}" fill="#fff" stroke="none" mask="url(#o)"/><path d="${hearts}" fill="${HALF}" stroke="none"/>`),
+    1,
+    small,
+  );
+}
+
+/** A pointy-topped hexagon's corners, from the top round to the right: `r` from the middle to a corner. */
+const hexCorners = (cx: number, cy: number, r: number, turn = 0): [number, number][] =>
+  Array.from({ length: 6 }, (_, i) => [cx + r * Math.sin(((i + turn) * Math.PI) / 3), cy - r * Math.cos(((i + turn) * Math.PI) / 3)]);
+
+/**
+ * Frames: hollow cubes of square beams, seen from a corner. Each face is a frame round a hole, in its own tone, and
+ * inside every hole the beams' inner sides show along the two edges the light does not reach.
+ */
+function frames(small: boolean): string {
+  const a = small ? 17 : 12; // from the middle of a cube to a corner
+  const t = 0.24; // a beam's width, as a part of a face's side
+  const dx = (a * Math.sqrt(3)) / 2;
+  const tone = ['#fff', HALF, 'rgba(255,255,255,0.75)', 'rgba(255,255,255,0.25)'];
+  const paths = ['', '', '', ''];
+  const mix = (p: [number, number], q: [number, number], f: number): [number, number] => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f];
+  for (let row = -1; row * 1.5 * a < F.h + 2 * a; row++) {
+    for (let col = -1; col * 2 * dx < F.w + 2 * dx; col++) {
+      const [x, y] = [F.x + col * 2 * dx + (row % 2 ? dx : 0), F.y + row * 1.5 * a];
+      const c = hexCorners(x, y, a);
+      // The faces, each from the middle of the cube: the top, the right and the left.
+      const faces: [number, number][][] = [[[x, y], c[5]!, c[0]!, c[1]!], [[x, y], c[1]!, c[2]!, c[3]!], [[x, y], c[3]!, c[4]!, c[5]!]];
+      faces.forEach((q, f) => {
+        // The hole: the face less a beam's width from each side (a rhombus, so the same part of each diagonal).
+        const [o, p1, far, p2] = q as [[number, number], [number, number], [number, number], [number, number]];
+        const hole: [number, number][] = [mix(o, far, t), mix(p1, p2, t), mix(far, o, t), mix(p2, p1, t)];
+        paths[f] += poly(q) + poly(hole.slice().reverse());
+        // Inside the hole, the inner sides of the two beams nearest the cube's middle, in shadow.
+        const depth = t * 0.9;
+        const [h0, h1, h2, h3] = hole as [[number, number], [number, number], [number, number], [number, number]];
+        const sink = (pt: [number, number]): [number, number] => [pt[0] + (h2[0] - h0[0]) * depth, pt[1] + (h2[1] - h0[1]) * depth];
+        paths[3] += poly([h3, h0, h1, sink(h1), sink(h0), sink(h3)]);
+      });
+    }
+  }
+  return frame(clipped(paths.map((d, f) => `<path d="${d}" fill="${tone[f]}" fill-rule="evenodd" stroke="none"/>`).join('')), 1, small);
+}
+
+/** Facets: a grid of triangles, every one with lines fanned from one of its corners, which corner falling as it may. */
+function facets(small: boolean): string {
+  const side = small ? 26 : 17;
+  const h = (side * Math.sqrt(3)) / 2;
+  const fan = small ? 5 : 7;
+  const roll = dice(small ? 5 : 21);
+  let d = '';
+  for (let row = -1; row * h < F.h + h; row++) {
+    for (let k = -2; (k / 2) * side < F.w + side; k++) {
+      const x0 = F.x + (k * side) / 2 + (row % 2 ? side / 2 : 0);
+      const y0 = F.y + row * h;
+      const up = (k + 2) % 2 === 0;
+      const tri: [number, number][] = up ? [[x0, y0 + h], [x0 + side / 2, y0], [x0 + side, y0 + h]] : [[x0, y0], [x0 + side, y0], [x0 + side / 2, y0 + h]];
+      d += poly(tri);
+      const i = Math.floor(roll() * 3);
+      const [a, b, c] = [tri[i]!, tri[(i + 1) % 3]!, tri[(i + 2) % 3]!];
+      for (let j = 1; j < fan; j++) d += pts([a, [b[0] + ((c[0] - b[0]) * j) / fan, b[1] + ((c[1] - b[1]) * j) / fan]]);
+    }
+  }
+  return frame(clipped(`<path d="${d}"/>`), small ? 1.1 : 0.6, small);
+}
+
+/** Hatch: cubes seen from a corner, each face ruled in stripes along one of its edges, a different edge on every face. */
+function hatch(small: boolean): string {
+  const a = small ? 13 : 10.5; // from the middle of a cube to a corner
+  const lines = small ? 3 : 4;
+  const [dx, dy] = [(a * Math.sqrt(3)) / 2, a / 2];
+  let d = '';
+  for (let row = -1; row * 1.5 * a < F.h + 2 * a; row++) {
+    for (let col = -1; col * 2 * dx < F.w + 2 * dx; col++) {
+      const [x, y] = [F.x + col * 2 * dx + (row % 2 ? dx : 0), F.y + row * 1.5 * a];
+      // Each face from the middle of the cube: two edges, the stripes running along the second.
+      const faces: [[number, number], [number, number]][] = [[[-dx, -dy], [dx, -dy]], [[0, a], [-dx, -dy]], [[dx, -dy], [0, a]]];
+      for (const [[ux, uy], [vx, vy]] of faces) {
+        for (let j = 0; j < lines; j++) {
+          const t = (j + 0.5) / lines;
+          d += pts([[x + ux * t, y + uy * t], [x + ux * t + vx, y + uy * t + vy]]);
+        }
+      }
+    }
+  }
+  return frame(clipped(`<path d="${d}" stroke-linecap="butt"/>`), (a / lines) * 0.48, small);
+}
+
+/**
  * The Penrose triangle: three square bars that each meet the next at a right angle and yet close into a triangle,
  * which no solid thing can. Drawn flat, as it always is: each bar an L in one tone (white, half, faint), running
  * along the outside of one side and the inside of the next. Two of them on a full card, the lower one turned over.
@@ -1710,6 +1845,11 @@ export const BACK_ART: Record<Exclude<Back, 'plain'>, BackArt> = {
   'penrose-triangle': figure(penroseTriangle),
   blocks: pattern(blocks),
   bathroom: pattern(bathroom),
+  corridor: pattern(corridor),
+  overlook: pattern(overlook),
+  frames: pattern(frames),
+  facets: pattern(facets),
+  hatch: pattern(hatch),
   lotus: figure(lotus),
   'flower-of-life': pattern(flowerOfLife),
   fleur: pattern(fleur),

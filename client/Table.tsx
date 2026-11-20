@@ -16,7 +16,8 @@ import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
 import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
-import { useFittings, useWindow } from './fittings';
+import { useFittings } from './fittings';
+import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
@@ -834,8 +835,19 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const vote = ballot(room);
   /** You have stood up from your cards for now (actions.ts `standing`): as good as away, until you sit back down. */
   const up = !!standing(room);
-  /** Your own line, where the layout has room for it: in full under your nertz pile, or as one line. */
-  const mineAt = L.name && { className: `mine ${L.name.full ? 'full' : 'line'} ${L.name.align}`, style: { left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h } };
+  /** Your own line, where the layout has room for it: in full under your nertz pile, or as one line. (Cut short, your name gives way, never your total.) */
+  const mineLine = L.name && (
+    <div className={`mine ${L.name.full ? 'full' : 'line'} ${L.name.align}`} style={{ left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h }}>
+      <span className="who">
+        <i className="chip" style={{ background: backColour(you) }} />
+        <span className="name">{name(you)}</span>
+        <b>{points(total(you))}</b>
+      </span>
+      <span className="where">
+        Round {room.round} at table {room.code}
+      </span>
+    </div>
+  );
   const pill = L.pills ? ' pill' : '';
   // The NERTZ! stamp comes down on the place each nertz pile that went out stood (now empty), not across the whole hand:
   // large enough to read at any seat, and kept inside the window.
@@ -923,17 +935,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           {[me.nertz, ...me.workAt, me.stockPad, me.waste].map((r, i) => (
             <div key={i} className="slot" style={box(r)} />
           ))}
-          {mineAt && (
-            <div {...mineAt}>
-              <span className="who">
-                <i className="chip" style={{ background: backColour(you) }} />
-                {name(you)} <b>{points(total(you))}</b>
-              </span>
-              <span className="where">
-                Round {room.round} at table {room.code}
-              </span>
-            </div>
-          )}
+          {mineLine}
         </div>
       )}
 
@@ -952,17 +954,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           {/* Your pile wears its count as everyone else's does. (None left: the call stands there instead.) */}
           {!dealing && me.nertzCount > 0 && count(me)}
 
-          {mineAt && (
-            <div {...mineAt}>
-              <span className="who">
-                <i className="chip" style={{ background: backColour(you) }} />
-                {name(you)} <b>{points(total(you))}</b>
-              </span>
-              <span className="where">
-                Round {room.round} at table {room.code}
-              </span>
-            </div>
-          )}
+          {mineLine}
 
           {/* Saying you are stuck, and beside it, once the round drags on, voting to end it: each in the place the
               layout keeps for it by your stock, clear of your cards and of everything else. */}
@@ -1103,8 +1095,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} looks={dress} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
-        // (On a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the sound and settings buttons on its side.)
-        <button type="button" className={`skip${phone ? ' aside' : ''}`} style={L.tall ? { left: L.at.chat.x + L.at.chat.w + 8 } : phone ? { left: L.at.knobs.x + L.at.knobs.w + 8 } : undefined} onClick={skip}>
+        // Level with the menu's button, on every screen (so clear of what the screen keeps at its bottom, as that is). On
+        // a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the menu's on its side.
+        <button
+          type="button"
+          className={`skip${phone ? ' aside' : ''}`}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.tall ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          onClick={skip}
+        >
           {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>
         </button>
       )}

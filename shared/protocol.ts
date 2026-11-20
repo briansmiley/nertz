@@ -57,6 +57,11 @@ export const CARD_BACKS = {
   'mystic-day': 'Sun',
   'mystic-star': 'Star',
   bathroom: 'Tiles',
+  corridor: 'Hexes',
+  overlook: 'Overlook',
+  frames: 'Frames',
+  facets: 'Facets',
+  hatch: 'Hatch',
   sunburst: 'Sunburst',
   'penrose-triangle': 'Penrose',
   blocks: 'Blocks',
@@ -116,7 +121,7 @@ export type Back = keyof typeof CARD_BACKS;
 /** The backs by kind, as they are shown to choose among (the gallery, your settings). One left out of every group is shown last, under "Other". */
 export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = [
   { name: 'Patterns', backs: ['plain', 'key', 'braid', 'loops', 'chain', 'waves', 'flow', 'rings', 'bubbles', 'flower-of-life', 'paisley', 'sashiko'] },
-  { name: 'Tilings', backs: ['check', 'diamonds', 'herringbone', 'honeycomb', 'starcross', 'houndstooth', 'shards', 'pinwheel', 'mosaic', 'flowers', 'voronoi', 'mondrian', 'penrose', 'hat-lines', 'hat-two', 'hat', 'bathroom', 'blocks', 'fans', 'tripods'] },
+  { name: 'Tilings', backs: ['check', 'diamonds', 'herringbone', 'honeycomb', 'starcross', 'houndstooth', 'shards', 'pinwheel', 'mosaic', 'flowers', 'voronoi', 'mondrian', 'penrose', 'hat-lines', 'hat-two', 'hat', 'bathroom', 'corridor', 'overlook', 'frames', 'facets', 'hatch', 'blocks', 'fans', 'tripods'] },
   { name: 'Maths', backs: ['hilbert', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'life', 'pulsar', 'penrose-triangle'] },
   { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'clover', 'clover-2', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia', 'birch'] },
   { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'stars', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
@@ -303,6 +308,12 @@ export const WORK_PILES = 4;
 export const SLOTS_PER_PLAYER = 4;
 /** How long a player who was holding a card when Nertz was called has to put it down. */
 export const GRACE_MS = 4000;
+/**
+ * The longest a call waits to reach a window, from when it is made (within `GRACE_MS`). A window says at once that it
+ * has it, a round trip after the call; one that has not by then (asleep in the background, or on a line slower than
+ * this) is taken to have, and a card it takes up from then on is too late.
+ */
+export const HEAR_MS = 1000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
 /**
@@ -380,8 +391,13 @@ export function parseIntent(raw: unknown): Intent | null {
       return typeof raw.on === 'boolean' ? { k: 'stuck', on: raw.on } : null;
     case 'end':
       return typeof raw.on === 'boolean' ? { k: 'end', on: raw.on } : null;
-    case 'nertz':
-      return { k: 'nertz' };
+    case 'nertz': {
+      const { unheard } = raw;
+      if (unheard === undefined) return { k: 'nertz' };
+      return Array.isArray(unheard) && unheard.length <= MAX_PLAYERS && unheard.every((s) => isIndex(s, MAX_PLAYERS)) ? { k: 'nertz', unheard: [...new Set(unheard as number[])] } : null;
+    }
+    case 'heard':
+      return { k: 'heard' };
     case 'clear':
       return isIndex(raw.slot, MAX_SLOTS) ? { k: 'clear', slot: raw.slot } : null;
     case 'hold':
