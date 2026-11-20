@@ -7,10 +7,17 @@
 // and one limiter, and at most MAX_VOICES play at once, so a
 // busy table gets denser but never clicks or clips. Nothing sounds before the
 // first click or key press: browsers do not let a page start audio by itself.
+//
+// A shot is timed on the page's clock, as everything drawn is: it waits until
+// just before its moment (pending.ts) and is never heard late. Nothing sounds
+// while the page is out of sight, and whatever was on its way to the speakers
+// when it went is cut off, so coming back to the table brings no sound of what
+// happened while you were away.
 import { useEffect, useRef } from 'react';
 import type { RoomView } from '../shared/types';
 import type { Sorting } from './Finale';
 import { dealTimes, type Stage } from './layout';
+import { Pending, type Start, type Stop } from './pending';
 import { getPrefs, loudness, watchPrefs } from './prefs';
 import { graceTicking, soundCues, type Cue, type Frame, type Who } from './soundEvents';
 import { Voices, type Voice } from './voices';
@@ -28,10 +35,16 @@ interface Sample {
 }
 
 let ctx: AudioContext | null = null;
+/** The last stage before the speakers. */
+let limiter: DynamicsCompressorNode | null = null;
 /** Where a one-shot goes, by whose it is. */
 let buses: Record<Who, GainNode> | null = null;
 const cap = new Voices(MAX_VOICES);
+const pending = new Pending();
 const samples = new Map<string, Sample>();
+
+/** The page is on screen. */
+const inSight = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 const pick = <T>(of: readonly T[]): T => of[Math.floor(Math.random() * of.length)]!;
@@ -50,6 +63,23 @@ function onset(buffer: AudioBuffer): number {
   return Math.max(0, i / buffer.sampleRate - 0.004);
 }
 
+/**
+ * New buses into the limiter, and the old ones cut off from it with every shot already on its way through them: those
+ * are never heard. (The page went out of sight: the browser may stop the audio clock, and a shot it holds would sound
+ * when the clock starts again, whenever that is.)
+ */
+function rewire(): void {
+  if (!ctx || !limiter) return;
+  if (buses) for (const g of Object.values(buses)) g.disconnect();
+  const bus = (who: Who): GainNode => {
+    const g = ctx!.createGain();
+    g.gain.value = level(who);
+    g.connect(limiter!);
+    return g;
+  };
+  buses = { me: bus('me'), other: bus('other') };
+}
+
 /** First user gesture: make the audio context and fetch the samples. Later gestures: wake it if the browser put it to sleep. */
 function wake(): void {
   if (!ctx) {
@@ -60,20 +90,14 @@ function wake(): void {
     } catch {
       return;
     }
-    const limiter = ctx.createDynamicsCompressor();
+    limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -14;
     limiter.knee.value = 10;
     limiter.ratio.value = 12;
     limiter.attack.value = 0.002;
     limiter.release.value = 0.12;
     limiter.connect(ctx.destination);
-    const bus = (who: Who): GainNode => {
-      const g = ctx!.createGain();
-      g.gain.value = level(who);
-      g.connect(limiter);
-      return g;
-    };
-    buses = { me: bus('me'), other: bus('other') };
+    rewire();
     const audio = ctx;
     for (const [path, url] of Object.entries(FILES)) {
       const name = path.slice(path.lastIndexOf('/') + 1, -4);
@@ -87,44 +111,85 @@ function wake(): void {
   if (ctx.state !== 'running') void ctx.resume().catch(() => {});
 }
 
+let looking: ReturnType<typeof setTimeout> | undefined;
+/** Hands the audio clock whatever of `pending` is coming due, and comes back when more will be. */
+function pump(): void {
+  pending.run(performance.now());
+  arm();
+}
+function arm(): void {
+  clearTimeout(looking);
+  const next = pending.next;
+  looking = next === null ? undefined : setTimeout(pump, Math.max(0, next - performance.now()));
+}
+
+/** `start` puts a shot on the audio clock: it is given it just before the shot's moment, `delay` seconds from now by the page's clock. */
+function later(delay: number | undefined, start: Start): Stop {
+  const now = performance.now();
+  const stop = pending.add(now, now + (delay ?? 0) * 1000, start);
+  arm();
+  return stop;
+}
+
 if (typeof window !== 'undefined') {
   for (const type of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(type, wake, { capture: true, passive: true });
   watchPrefs(() => {
     if (ctx && buses) for (const who of ['me', 'other'] as const) buses[who].gain.setTargetAtTime(level(who), ctx.currentTime, 0.015);
   });
+  document.addEventListener('visibilitychange', () => {
+    if (inSight()) return pump(); // (a shot still to come is heard in step with its cards; one whose moment went by while away is not)
+    rewire();
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  });
 }
 
 interface Shot {
   gain?: number;
-  /** Seconds from now. */
+  /** Seconds from now, by the page's clock. */
   delay?: number;
   who?: Who;
 }
 
-/** Whether a one-shot `length` seconds long may sound: when it starts, at what gain (before its channel's), and its place under the cap. Null = stay silent. */
-function admit(o: Shot, length: number): { t: number; g: number; voice: Voice } | null {
-  if (!ctx || !buses || ctx.state !== 'running') return null;
+/** Whether a one-shot `length` seconds long, starting `delay` seconds from now, may sound: when on the audio clock, at what gain (before its channel's), and its place under the cap. Null = stay silent. */
+function admit(o: Shot, delay: number, length: number): { t: number; g: number; voice: Voice } | null {
+  if (!ctx || !buses || ctx.state !== 'running' || !inSight()) return null;
   const g = o.gain ?? 1;
   if (g * level(o.who ?? 'me') < 0.002) return null;
-  const t = ctx.currentTime + (o.delay ?? 0);
+  const t = ctx.currentTime + delay;
   const voice = cap.take(ctx.currentTime, t, t + length);
   return voice && { t, g, voice };
 }
 
-type Stop = () => void;
 const NOTHING: Stop = () => {};
+
+type HitShot = Shot & { rate?: number; dull?: number; thin?: number; attack?: number };
+type ToneShot = Shot & { dur?: number; partials?: readonly (readonly [number, number])[] };
 
 /**
  * Plays a recording. `rate` is playback speed (pitch); `dull` low-passes it; `thin` high-passes it (the body of the
  * knock goes, the papery edge stays); `attack` is the fade-in in seconds (longer: no click at the front). Returns a
  * way to cut it short.
  */
-function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: number; attack?: number } = {}): Stop {
+function hit(name: string, o: HitShot = {}): Stop {
+  return later(o.delay, (delay) => startHit(name, o, delay));
+}
+
+/** A soft bell-like tone: a few sine partials under one fast-attack, exponential-decay envelope. */
+function tone(freq: number, o: ToneShot = {}): void {
+  later(o.delay, (delay) => startTone(freq, o, delay));
+}
+
+/** A note that slides from `from` to `to` (Hz) as it sounds, fading out as it goes. */
+function glide(from: number, to: number, o: ToneShot = {}): void {
+  later(o.delay, (delay) => startGlide(from, to, o, delay));
+}
+
+function startHit(name: string, o: HitShot, delay: number): Stop {
   const s = samples.get(name);
   if (!s) return NOTHING;
   const rate = o.rate ?? 1;
   const length = (s.buffer.duration - s.at) / rate;
-  const a = admit(o, length);
+  const a = admit(o, delay, length);
   if (!a || !ctx || !buses) return NOTHING;
   const { t, g, voice } = a;
   const src = ctx.createBufferSource();
@@ -163,11 +228,10 @@ function hit(name: string, o: Shot & { rate?: number; dull?: number; thin?: numb
   };
 }
 
-/** A soft bell-like tone: a few sine partials under one fast-attack, exponential-decay envelope. */
-function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
+function startTone(freq: number, o: ToneShot, delay: number): Stop {
   const dur = o.dur ?? 0.45;
-  const a = admit(o, dur + 0.03);
-  if (!a || !ctx || !buses) return;
+  const a = admit(o, delay, dur + 0.03);
+  if (!a || !ctx || !buses) return NOTHING;
   const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
@@ -187,13 +251,13 @@ function tone(freq: number, o: Shot & { dur?: number; partials?: readonly (reado
       osc.onended = () => env.disconnect();
     }
   });
+  return NOTHING;
 }
 
-/** A note that slides from `from` to `to` (Hz) as it sounds, fading out as it goes. */
-function glide(from: number, to: number, o: Shot & { dur?: number; partials?: readonly (readonly [number, number])[] } = {}): void {
+function startGlide(from: number, to: number, o: ToneShot, delay: number): Stop {
   const dur = o.dur ?? 0.2;
-  const a = admit(o, dur + 0.03);
-  if (!a || !ctx || !buses) return;
+  const a = admit(o, delay, dur + 0.03);
+  if (!a || !ctx || !buses) return NOTHING;
   const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
@@ -214,6 +278,7 @@ function glide(from: number, to: number, o: Shot & { dur?: number; partials?: re
       osc.onended = () => env.disconnect();
     }
   });
+  return NOTHING;
 }
 
 const BELL = [[1, 1], [2, 0.3], [3, 0.1], [4.2, 0.04]] as const;
@@ -341,7 +406,7 @@ const ROBOTS = ['Zarvox', 'Trinoids', 'Cellos', 'Fred', 'Ralph', 'Albert', 'Juni
 export function botSays(): void {
   const p = getPrefs();
   const loud = Math.sqrt(loudness(p, 'mine')); // (speech by the slider itself, not squared, as it always was)
-  if (!p.botVoice || loud <= 0 || typeof speechSynthesis === 'undefined') return;
+  if (!p.botVoice || loud <= 0 || typeof speechSynthesis === 'undefined' || !inSight()) return;
   try {
     const say = new SpeechSynthesisUtterance('Nertz');
     const voices = speechSynthesis.getVoices();
