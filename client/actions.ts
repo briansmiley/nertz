@@ -1,5 +1,5 @@
 // What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
-// unpause it, vote to end it, restart it, stand up from it for now; between rounds, start it over; at any time, leave. Each has one rule here for whether it is open to you now; the menu
+// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. Each has one rule here for whether it is open to you now; the menu
 // (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here.
 import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
@@ -82,7 +82,7 @@ export function tableActions(room: RoomView): TableAction[] {
     canResume(room) && { id: 'resume' as const, label: 'Unpause' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Really restart?' },
-    canReset(room) && { id: 'reset' as const, label: 'Start over', sure: 'Really start over?' },
+    canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: 'Really reset?' },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: 'Really leave?' },

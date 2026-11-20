@@ -646,8 +646,8 @@ function SettingsGear() {
 /** For whoever deals, on the score sheet: start the table over (every score to nothing, back to before the first deal). Asked twice, since it cannot be undone. */
 function StartOver() {
   return (
-    <Pop icon={<Again />} label="Start over">
-      <h3>Start over?</h3>
+    <Pop icon={<Again />} label="Reset table">
+      <h3>Reset table?</h3>
       <p className="hint">Everyone's score goes back to 0 and the table to before round 1.</p>
       <button type="button" className="plain" onClick={resetTable}>
         Reset the scores

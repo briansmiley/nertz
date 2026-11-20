@@ -1845,7 +1845,7 @@ button {
   font-size: 1rem;
 }
 
-/* Under a sheet's main button: small round icon buttons (table rules, add a bot, start over, leave). */
+/* Under a sheet's main button: small round icon buttons (table rules, add a bot, reset the table, leave). */
 .tools {
   display: flex;
   justify-content: flex-end;
