@@ -751,7 +751,8 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
     const el = canvas.current;
     const c = el?.getContext('2d');
     if (!el || !c) return;
-    const full = Math.min(2, window.devicePixelRatio || 1);
+    // As sharp as the cards it takes over from: a phone's screen is 3x.
+    const full = Math.min(3, window.devicePixelRatio || 1);
     let scale = full;
     let sprites = new Map<number, HTMLCanvasElement>();
     const setup = (k: number) => {
@@ -775,12 +776,20 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
     let shown = '';
     let last = 0;
     let late = 0;
+    /** The screen's own frame: the shortest gap between two frames so far. A phone saving power gives 30 a second, and keeps to it. */
+    let beat = Infinity;
     const frame = (now: number) => {
       const t = instant ? end : now - began.current;
       // Measured, not guessed: if this machine keeps missing frames at full resolution (a high-density screen
       // without a GPU), draw the moving cards at 1x. Nobody can tell while they move, and the piles they come
-      // to rest in are redrawn sharp below.
-      if (scale > 1 && last && now - last > 24 && ++late >= 5) setup(1);
+      // to rest in are redrawn sharp below. Missing means losing a whole frame of the screen's own, five times in a
+      // row: a slow screen is not a slow machine, and one slow commit is not either.
+      if (last) {
+        const gap = now - last;
+        beat = Math.min(beat, gap);
+        late = gap > Math.max(24, beat * 2) ? late + 1 : 0;
+        if (scale > 1 && late >= 5) setup(1);
+      }
       last = now;
       if (t >= end && scale < full) setup(full);
       const { cards, landed: counts } = frameAt(plan, stage, t, trayFrom.current, turn);
