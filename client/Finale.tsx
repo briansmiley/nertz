@@ -5,7 +5,7 @@
 // canvas from pre-rendered back sprites instead of being 300 animated
 // elements; the labels beside the piles are ordinary DOM.
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { calledBy } from '../shared/engine';
+import { wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, type Back, type Look } from '../shared/protocol';
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
@@ -742,9 +742,9 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
   const delta = (seat: number) => scores.find((s) => s.seat === seat)?.delta ?? 0;
   const turn = useMemo(() => gatherOrder(plan.piles.map((p) => delta(p.seat))), [plan, scores]);
   const best = Math.max(...plan.piles.map((p) => delta(p.seat)));
-  /** On a cleared table the NERTZ! stamp has gone with the hands: it comes down again on the caller's pile. */
-  const callerPile = L.cleared ? plan.piles.find((p) => p.seat === calledBy(game)) : undefined;
-  const stamp = callerPile && stampAt(callerPile, plan.label.k, plan.piles);
+  /** On a cleared table the NERTZ! stamps have gone with the hands: they come down again on the pile of everyone who went out. */
+  const out = L.cleared ? wentOut(game) : [];
+  const stamps = plan.piles.filter((p) => out.includes(p.seat)).map((p) => ({ seat: p.seat, at: stampAt(p, plan.label.k, plan.piles) }));
 
   // Before the browser paints: the commit that takes a pile's cards off the table is the one that draws them here.
   useLayoutEffect(() => {
@@ -837,11 +837,11 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
           </div>
         );
       })}
-      {stamp && (
-        <div className="restamp" style={{ left: stamp.x, top: stamp.y, width: stamp.w, height: stamp.h, fontSize: stamp.h }}>
+      {stamps.map(({ seat, at }) => (
+        <div key={seat} className="restamp" style={{ left: at.x, top: at.y, width: at.w, height: at.h, fontSize: at.h }}>
           <span>Nertz!</span>
         </div>
-      )}
+      ))}
     </>
   );
 }

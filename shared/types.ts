@@ -109,10 +109,12 @@ export interface GameState {
 export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | { at: 'grace'; calledBy: number } | { at: 'over'; end: RoundEnd };
 
 /**
- * How a round ended: a seat called Nertz; or without a call, scored as it stands: a 'jam' when everyone said they were
- * stuck and no hand could ever get a card to the middle or off its nertz pile (`canProgress`); a 'vote' when every connected person voted to end it.
+ * How a round ended: `seat` called Nertz, and `out` got it: every seat whose nertz pile was empty when the round ended
+ * (in seat order, the caller among them; another may have emptied theirs without calling, or with the last move of
+ * grace). Or without a call, scored as it stands: a 'jam' when everyone said they were stuck and no hand could ever
+ * get a card to the middle or off its nertz pile (`canProgress`); a 'vote' when every connected person voted to end it.
  */
-export type RoundEnd = { by: 'nertz'; seat: number } | { by: 'jam' } | { by: 'vote' };
+export type RoundEnd = { by: 'nertz'; seat: number; out: number[] } | { by: 'jam' } | { by: 'vote' };
 
 /**
  * Where a card can be dropped: one of your own work piles, one specific centre
@@ -165,7 +167,7 @@ export interface RoundLine extends RoundScore {
   total: number;
   /** How many rounds that is the total of, this one included. */
   rounds: number;
-  /** How many of those rounds they ended by calling Nertz, this one included if they did. */
+  /** How many of those rounds they got Nertz in (`RoundEnd.out`), this one included if they did. */
   calls: number;
   /** A bot, or a person, that whoever deals has sent away since: their line is no longer shown on the score sheet. */
   gone?: boolean;
@@ -205,7 +207,7 @@ export interface PlayerView {
   score: number;
   /** How many rounds that is the total of: the ones they were dealt into (fewer than the table has played, for someone who came later or was away). */
   rounds: number;
-  /** How many of those rounds they ended by calling Nertz. */
+  /** How many of those rounds they got Nertz in (`RoundEnd.out`). */
   calls: number;
   isHost: boolean;
   /** Once the cards are dealt, until play opens: has said they are ready for the dealer's Start (a bot always is). */

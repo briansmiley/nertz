@@ -37,10 +37,11 @@ export type ChatEvent =
   /** Round `round` has started: play is open (once a round: not again when it is dealt over and started anew). */
   | { k: 'started'; round: number }
   /**
-   * Round `round` is over: called by `end` (with their points), or ended without a call (`RoundResult.end`). `best`
-   * scored the most in it and so won it, all of them if it is a tie; the one who called is not always among them.
+   * Round `round` is over: by a call, and `end` got Nertz (with their points; `RoundEnd.out`), or without a call
+   * (`RoundResult.end`). `best` scored the most in it and so won it, all of them if it is a tie; those who got Nertz
+   * are not always among them.
    */
-  | { k: 'over'; round: number; end: Scored | 'jam' | 'vote'; best: Scored[] }
+  | { k: 'over'; round: number; end: Scored[] | 'jam' | 'vote'; best: Scored[] }
   /** `by` started the table over: every score back to nothing. */
   | { k: 'reset'; by: Named };
 

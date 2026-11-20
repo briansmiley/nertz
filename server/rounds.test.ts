@@ -27,12 +27,12 @@ describe('rounds kept', () => {
     expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, best: null, snipes: 0, sniped: 0 } satisfies Stats);
   });
 
-  it("adds up one person's rounds: how many, their points, their best, and the ones they called", () => {
+  it("adds up one person's rounds: how many, their points, their best, and the ones they got Nertz in", () => {
     const rounds = openRounds(db);
-    rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)], { by: 'nertz', seat: 0 }));
-    rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4)], { by: 'nertz', seat: 0 }, 2));
+    rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)], { by: 'nertz', seat: 0, out: [0] }));
+    rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4)], { by: 'nertz', seat: 0, out: [0, 1] }, 2)); // (ada went out too, without calling)
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], { by: 'jam' }, 3));
-    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 1, points: 15, best: 12, snipes: 0, sniped: 0 });
+    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 2, points: 15, best: 12, snipes: 0, sniped: 0 });
     expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, nertz: 1, points: 25, best: 20, snipes: 0, sniped: 0 });
   });
 
@@ -49,7 +49,7 @@ describe('rounds kept', () => {
     const rounds = openRounds(db);
     expect(() => rounds.keep(round([hand(0, 'ada', 1), hand(0, 'bob', 2)]))).toThrow(); // (two hands at one seat)
     expect(db.prepare('select count(*) as n from round').get()).toEqual({ n: 0 });
-    rounds.keep(round([hand(0, 'ada', 1), hand(1, null, 2, 'slow')], { by: 'nertz', seat: 1 }), 1234);
+    rounds.keep(round([hand(0, 'ada', 1), hand(1, null, 2, 'slow')], { by: 'nertz', seat: 1, out: [1] }), 1234);
     expect(db.prepare('select created_at, code, number, ending, ms from round').all()).toEqual([{ created_at: 1234, code: 'TEST', number: 1, ending: 'nertz', ms: 60_000 }]);
     expect(db.prepare('select seat, account, bot, delta, nertz from hand order by seat').all()).toEqual([
       { seat: 0, account: 'ada', bot: null, delta: 1, nertz: 0 },

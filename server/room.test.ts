@@ -138,13 +138,13 @@ describe('Room', () => {
     sendIntent(room, b, 0, move(workTop(room.game!, 1, 0), felt(0.6, 0)));
     sendIntent(room, b, 1, move(workTop(room.game!, 1, 1), slot(1)));
     sendIntent(room, b, 2, move(workTop(room.game!, 1, 2), felt(1.5, 0)));
-    sendIntent(room, a, 2, { k: 'nertz' }); // called by a, with fewer cards played than b
+    sendIntent(room, a, 2, { k: 'nertz' }); // called by a, with fewer cards played than b (whose nertz pile is empty too: both got Nertz)
     expect(room.phase).toBe('results');
     expect(room.lastRound!.scores.map((s) => s.delta)).toEqual([2, 3]);
     room.handle(a, { t: 'reset' });
     const lines = [
       { k: 'started', round: 1 },
-      { k: 'over', round: 1, end: { who: 0, name: 'P0', points: 2 }, best: [{ who: 1, name: 'P1', points: 3 }] },
+      { k: 'over', round: 1, end: [{ who: 0, name: 'P0', points: 2 }, { who: 1, name: 'P1', points: 3 }], best: [{ who: 1, name: 'P1', points: 3 }] },
       { k: 'reset', by: { who: 0, name: 'P0' } },
     ];
     expect(told(got)).toEqual(lines);
@@ -945,6 +945,19 @@ describe('Room', () => {
     expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
   });
 
+  it('counts Nertz for everyone whose nertz pile is empty when it is called, not only for the one who called', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(3, { deal: rigged([0, 1]) });
+    const [a, b] = conns as [FakeConn, FakeConn, FakeConn];
+    startRound(room, a);
+    sendIntent(room, b, 0, { k: 'nertz' });
+    room.flush();
+    expect(room.phase).toBe('results');
+    expect(room.lastRound!.end).toEqual({ by: 'nertz', seat: 1, out: [0, 1] });
+    expect(room.lastRound!.scores.map((s) => s.calls)).toEqual([1, 1, 0]);
+    expect(a.last.room.players.map((p) => p.calls)).toEqual([1, 1, 0]);
+  });
+
   it('ends the round on "Nertz!" (at once when nobody holds a card), scores it, and deals the next round without players who left', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3, { deal: rigged([1]) });
@@ -965,7 +978,7 @@ describe('Room', () => {
     expect(a.last.ack).toBe(2);
     expect(a.last.room.timerMs).toBeNull();
     expect(a.last.room.lastRound).toEqual({
-      end: { by: 'nertz', seat: 1 },
+      end: { by: 'nertz', seat: 1, out: [1] },
       scores: [
         { seat: 0, id: 0, name: 'P0', played: 1, nertzLeft: 13, rounds: 1, calls: 0, delta: -25, total: -25, look: PLAIN_LOOK },
         { seat: 1, id: 1, name: 'P1', played: 2, nertzLeft: 0, rounds: 1, calls: 1, delta: 2, total: 2, look: PLAIN_LOOK }, // no bonus for going out
@@ -1066,7 +1079,7 @@ describe('Room', () => {
     room.flush();
     expect(a.last.room.lastRound!.scores).toEqual([
       { seat: 0, id: 0, name: 'P0', played: 2, nertzLeft: 0, rounds: 1, calls: 1, delta: 2, total: 2, look: PLAIN_LOOK },
-      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game!.players[1]!.nertz.length, rounds: 1, calls: 0, delta: 12 - 2 * room.game!.players[1]!.nertz.length, total: 12 - 2 * room.game!.players[1]!.nertz.length, look: PLAIN_LOOK },
+      { seat: 1, id: 1, name: 'P1', played: 12, nertzLeft: room.game!.players[1]!.nertz.length, rounds: 1, calls: 1, delta: 12 - 2 * room.game!.players[1]!.nertz.length, total: 12 - 2 * room.game!.players[1]!.nertz.length, look: PLAIN_LOOK }, // (their nertz pile is empty too: Nertz for them as well)
     ]);
     expect(a.last.room.game!.tray).toHaveLength(1); // still there for the end-of-round sequence
     expect(checkInvariants(room.game!)).toBeNull();
@@ -1514,7 +1527,7 @@ describe('Room', () => {
       expect(room.phase).toBe('results');
       expect(vi.getTimerCount()).toBe(0);
       expect(a.last.room).toMatchObject({ phase: 'results', timerMs: null });
-      expect(a.last.room.game!.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1 } });
+      expect(a.last.room.game!.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1, out: [1] } });
       expect(a.last.room.game!.slots[0]!.cards.map((x) => x.id)).toEqual([A.aceS]);
       expect(a.last.room.lastRound!.scores.map((x) => [x.played, x.delta])).toEqual([[1, -25], [0, 0], [0, -26]]); // the grace move counted
       const rev = room.rev;
@@ -1633,7 +1646,7 @@ describe('Room', () => {
       room.flush();
       expect(a.states.length).toBe(sent + 1); // everyone is told
       expect(a.last.room).toMatchObject({ phase: 'results', timerMs: null });
-      expect(a.last.room.game!.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1 } });
+      expect(a.last.room.game!.status).toEqual({ at: 'over', end: { by: 'nertz', seat: 1, out: [1] } });
       expect(holding(room)).toEqual([null, null, null]); // the drag is cancelled
       expect(workTop(room.game!, 0, 0)).toBe(A.aceS);
       expect(filled(room.game!)).toEqual([]);

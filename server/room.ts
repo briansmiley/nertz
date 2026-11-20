@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, calledBy, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
@@ -596,10 +596,10 @@ export class Room {
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
     if (status.at !== 'over') return;
     this.stopRoundTimer();
-    const caller = calledBy(this.state);
+    const out = wentOut(this.state);
     const scored = scoreRound(this.state).map((s) => ({ s, p: this.players.find((p) => p.seat === s.seat) }));
     const scores = scored.map(({ s, p }) => {
-      const called = s.seat === caller ? 1 : 0;
+      const called = out.includes(s.seat) ? 1 : 0;
       if (p) p.score += s.delta;
       if (p) p.rounds = (p.rounds ?? 0) + 1;
       if (p) p.calls = (p.calls ?? 0) + called;
