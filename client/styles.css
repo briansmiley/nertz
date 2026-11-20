@@ -4213,18 +4213,27 @@ label.check {
 
 /* Writing on a phone (Feedback.tsx): the slip lies level across what the keyboard leaves of the screen (where and how
    big, from the slip), the words written on the paper's own lines, Send at their end. What kind, and the screenshot,
-   are there again once the keyboard is put away. */
+   are there again once the keyboard is put away. The paper runs on down behind the keyboard and the bar iOS floats
+   over it (`--under`, from the slip), so the table never shows between them. */
 .slip.feedback.writing {
   position: fixed;
   right: auto;
-  bottom: auto;
+  bottom: 0;
   grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) auto;
   gap: 0.4rem 0.9rem;
   max-height: none;
   overflow: visible;
-  padding: max(0.8rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.6rem max(1rem, env(safe-area-inset-left));
+  padding: max(0.8rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) calc(0.6rem + var(--under, 0px)) max(1rem, env(safe-area-inset-left));
   border-radius: 0;
   rotate: none;
+}
+
+/* (On its side what the keyboard leaves is a strip: the words get all of it they can.) */
+@media (orientation: landscape) and (max-height: 500px) {
+  .slip.feedback.writing {
+    padding-top: max(0.3rem, env(safe-area-inset-top));
+    padding-bottom: calc(0.3rem + var(--under, 0px));
+  }
 }
 
 .corner:has(.writing) {

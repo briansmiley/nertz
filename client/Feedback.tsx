@@ -1,7 +1,7 @@
 // Feedback, from the corner's menu: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
 // On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: the words, and Send.
-import { useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
+import { useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';
 import { Bug as BugIcon } from './icons';
@@ -85,7 +85,7 @@ export function FeedbackSlip({ room, back }: { room?: RoomView | null; back: () 
 
   return (
     // (Keys typed here are not the game's: Space deals, M mutes.)
-    <form className={`slip feedback${pad ? ' writing' : ''}`} style={pad ? { left: pad.x, top: pad.y, width: pad.w, height: pad.h } : undefined} aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
+    <form className={`slip feedback${pad ? ' writing' : ''}`} style={pad ? ({ left: pad.x, top: pad.y, width: pad.w, '--under': `${Math.max(0, document.documentElement.clientHeight - pad.y - pad.h)}px` } as CSSProperties) : undefined} aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
       <header className="slip-head">
         <Back onClick={back} />
         <h3>Feedback</h3>
