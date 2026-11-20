@@ -13,7 +13,7 @@ import { Name } from './Host';
 import { openCorner, useCorner } from './Menu';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
-import { Check, CopyIcon, Door, Eye, Gear } from './icons';
+import { Again, Check, CopyIcon, Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -653,16 +653,6 @@ function StartOver() {
         Reset the scores
       </button>
     </Pop>
-  );
-}
-
-/** A turning arrow: again from the start. */
-function Again() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5.5 12a6.5 6.5 0 1 0 2.2-4.9" />
-      <path d="M5 4.5v3.4h3.4" />
-    </svg>
   );
 }
 
