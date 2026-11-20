@@ -1696,7 +1696,9 @@ button {
 .named {
   display: flex;
   align-items: center;
+  justify-content: space-between; /* the card keeps to the right, however long the name */
   gap: 0.7rem;
+  margin-top: -0.3rem;
 }
 
 .named input {

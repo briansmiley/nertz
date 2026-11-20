@@ -442,7 +442,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
         <form onSubmit={submit}>
           <h2>Pull up a chair</h2>
           <label>
-            Your name
+            Name
             {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
             <span className="named">
               <input
@@ -451,7 +451,6 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                 value={name}
                 maxLength={MAX_NAME_LENGTH}
                 onChange={(e) => setName(e.target.value)}
-                aria-label="Your name"
                 autoComplete="nickname"
               />
               <YourBacks colour={BACKS[0]} compact />
