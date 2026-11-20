@@ -2367,6 +2367,11 @@ label.check {
   cursor: default;
 }
 
+/* A rule that is off reads a little faded beside the ones that are on. */
+.rules .check:has(input:not(:checked)) > span {
+  color: var(--ink-soft);
+}
+
 .check small {
   display: block;
   margin-top: 0.1rem;
@@ -2507,8 +2512,9 @@ label.check {
   position: absolute;
   z-index: 50;
   left: 0;
-  right: 0;
   top: calc(100% + 4px);
+  width: max-content;
+  max-width: min(17rem, 100%);
   padding: 0.5rem 0.65rem;
   border-radius: 8px;
   background: var(--ink);

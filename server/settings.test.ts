@@ -68,28 +68,28 @@ describe('the settings message', () => {
 });
 
 describe('table settings in a room', () => {
-  it('start out as the defaults (a card moved without dragging) and are in every view', () => {
+  it('start out as the defaults (a card moves only by dragging) and are in every view', () => {
     const { room, conns } = roomWith(2, { rng: lcg(3) });
     room.flush();
-    expect(DEFAULT_SETTINGS).toEqual({ tapToMove: true });
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true });
+    expect(DEFAULT_SETTINGS).toEqual({ tapToMove: false });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
   });
 
   it('only the host changes them, and everyone is told', () => {
     const { room, conns } = roomWith(3, { rng: lcg(3) });
     const [host, guest, other] = conns as [FakeConn, FakeConn, FakeConn];
-    room.handle(guest, { t: 'settings', patch: { tapToMove: false } });
-    room.flush();
-    expect(room.settings.tapToMove).toBe(true);
-    expect(other.room.settings.tapToMove).toBe(true);
-
-    room.handle(host, { t: 'settings', patch: { tapToMove: false } });
+    room.handle(guest, { t: 'settings', patch: { tapToMove: true } });
     room.flush();
     expect(room.settings.tapToMove).toBe(false);
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
+    expect(other.room.settings.tapToMove).toBe(false);
+
+    room.handle(host, { t: 'settings', patch: { tapToMove: true } });
+    room.flush();
+    expect(room.settings.tapToMove).toBe(true);
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true });
   });
 
-  it('moving without dragging is the host\'s to turn off and on between rounds', () => {
+  it('moving without dragging is the host\'s to turn on and off between rounds', () => {
     vi.useFakeTimers();
     // Seat 0 is dealt no nertz pile, so its player can call.
     const outFirst = (seats: readonly number[], rng: Rng): GameState => {
@@ -98,23 +98,23 @@ describe('table settings in a room', () => {
     };
     const { room, conns } = roomWith(2, { rng: lcg(3), deal: outFirst });
     const [host, guest] = conns as [FakeConn, FakeConn];
-    room.handle(guest, { t: 'settings', patch: { tapToMove: false } });
-    expect(room.settings.tapToMove).toBe(true);
-    room.handle(host, { t: 'settings', patch: { tapToMove: false } });
+    room.handle(guest, { t: 'settings', patch: { tapToMove: true } });
+    expect(room.settings.tapToMove).toBe(false);
+    room.handle(host, { t: 'settings', patch: { tapToMove: true } });
     room.flush();
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true });
 
     room.handle(host, { t: 'start' });
-    room.handle(host, { t: 'settings', patch: { tapToMove: true } }); // a round is on: not now
+    room.handle(host, { t: 'settings', patch: { tapToMove: false } }); // a round is on: not now
     room.flush();
-    for (const c of conns) expect(c.room).toMatchObject({ phase: 'playing', settings: { tapToMove: false } });
+    for (const c of conns) expect(c.room).toMatchObject({ phase: 'playing', settings: { tapToMove: true } });
 
     opening(room, host);
     room.handle(host, { t: 'intent', seq: 0, intent: { k: 'nertz' } });
     expect(room.phase).toBe('results');
-    room.handle(host, { t: 'settings', patch: { tapToMove: true } });
+    room.handle(host, { t: 'settings', patch: { tapToMove: false } });
     room.flush();
-    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: true });
+    for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
   });
 
   it('a flip is one card off the stock: a client that sends flips on its own gains nothing', () => {
@@ -130,8 +130,8 @@ describe('table settings in a room', () => {
     const { room, conns } = roomWith(3, { rng: lcg(3) });
     const [host, guest] = conns as [FakeConn, FakeConn, FakeConn];
     room.disconnect(host);
-    room.handle(guest, { t: 'settings', patch: { tapToMove: false } });
-    expect(room.settings.tapToMove).toBe(false);
+    room.handle(guest, { t: 'settings', patch: { tapToMove: true } });
+    expect(room.settings.tapToMove).toBe(true);
   });
 
   it('deals a small table fewer face-down cards, by how many are dealt in', () => {
