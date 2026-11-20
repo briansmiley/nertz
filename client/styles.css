@@ -911,7 +911,7 @@ button {
 
 .wash {
   position: absolute;
-  z-index: 20000;
+  z-index: 20000; /* over the sorted piles' blocks and labels: a card on its way to its pile passes over the words, never under them */
   pointer-events: none;
 }
 
@@ -920,7 +920,7 @@ button {
 .heap-block {
   position: absolute;
   inset: 0;
-  z-index: 19999;
+  z-index: 19998;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s;
@@ -939,10 +939,11 @@ button {
 
 /* The label beside a sorted pile. It is laid out in a box of a fixed size (LABEL in Finale.tsx), which the table
    places clear of every hand, the tray, the wash and the other labels: nothing in it may spill out of that box.
+   It is under the wash's canvas, so a card on its way to its pile passes over the words.
    Name on top; under it "+N played" and the nertz penalty, the same size; beside those the net score, largest. */
 .heap {
   position: absolute;
-  z-index: 20001;
+  z-index: 19999;
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, max-content) auto;
