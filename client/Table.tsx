@@ -1094,8 +1094,14 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} looks={dress} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
-        // (On a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the sound and settings buttons on its side.)
-        <button type="button" className={`skip${phone ? ' aside' : ''}`} style={L.tall ? { left: L.at.chat.x + L.at.chat.w + 8 } : phone ? { left: L.at.knobs.x + L.at.knobs.w + 8 } : undefined} onClick={skip}>
+        // Level with the menu's button, on every screen (so clear of what the screen keeps at its bottom, as that is). On
+        // a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the menu's on its side.
+        <button
+          type="button"
+          className={`skip${phone ? ' aside' : ''}`}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.tall ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          onClick={skip}
+        >
           {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>
         </button>
       )}

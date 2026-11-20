@@ -91,6 +91,8 @@ let probe: HTMLElement | null = null;
 /**
  * What the screen keeps for itself at its edges, in px (`viewport-fit=cover`: the page runs under a phone's notch and
  * its bottom bar, and says here how far they reach). Read off an unseen element whose padding is those insets.
+ * On its side the home bar's strip is not kept: the line is thin and a tap there still lands, and keeping it left a
+ * gap under the menu's button and your cards on top of the table's own margin.
  */
 export function insets(): { l: number; r: number; b: number } {
   if (!probe) {
@@ -100,5 +102,6 @@ export function insets(): { l: number; r: number; b: number } {
   }
   const c = getComputedStyle(probe);
   const px = (v: string) => Math.round(parseFloat(v) || 0);
-  return { l: px(c.paddingLeft), r: px(c.paddingRight), b: px(c.paddingBottom) };
+  const sideways = window.innerWidth > window.innerHeight;
+  return { l: px(c.paddingLeft), r: px(c.paddingRight), b: sideways ? 0 : px(c.paddingBottom) };
 }

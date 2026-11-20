@@ -1205,8 +1205,7 @@ button {
   position: absolute;
   z-index: 20001;
   left: 50%;
-  bottom: 10px;
-  translate: -50% 0;
+  translate: -50% -50%; /* (its middle on the menu's button's: `top` is set where it is drawn) */
   margin: 0;
   padding: 4px 12px;
   border-radius: 99px;
@@ -3138,12 +3137,7 @@ label.check {
 }
 
 .skip.aside {
-  translate: none;
-}
-
-.table.tall .skip {
-  top: 9px;
-  bottom: auto;
+  translate: 0 -50%;
 }
 
 @media (max-width: 480px) {
