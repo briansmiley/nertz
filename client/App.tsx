@@ -13,7 +13,7 @@ import { Name } from './Host';
 import { openCorner, useCorner } from './Menu';
 import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, sit, start, takeSeat, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
-import { Door, Eye, Gear } from './icons';
+import { Check, CopyIcon, Door, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -451,7 +451,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                 value={name}
                 maxLength={MAX_NAME_LENGTH}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="What the others will see"
+                aria-label="Your name"
                 autoComplete="nickname"
               />
               <YourBacks colour={BACKS[0]} compact />
@@ -463,8 +463,11 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
             </p>
           )}
           <div className="ways">
+            <button type="button" className="go" disabled={!ready} onClick={() => enter(null, clean)}>
+              {busy && !typed ? 'Connecting…' : 'New Table'}
+            </button>
             <div className="way">
-              <label htmlFor="code">Join a table with its code</label>
+              <label htmlFor="code">Join existing table</label>
               <div className="pair">
                 <input
                   id="code"
@@ -477,15 +480,12 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                   autoComplete="off"
                   spellCheck={false}
                 />
-                <button type="button" className={typed ? 'go' : 'plain'} disabled={!ready || !isRoomCode(typed)} onClick={() => enter(typed, clean)}>
-                  {busy && typed ? 'Connecting…' : 'Join table'}
+                <button type="button" className="go" disabled={!ready || !isRoomCode(typed)} onClick={() => enter(typed, clean)}>
+                  {busy && typed ? '…' : 'Join'}
                 </button>
               </div>
               {typed && !isRoomCode(typed) && <p className="hint">A table code is {ROOM_CODE_LENGTH} letters.</p>}
             </div>
-            <button type="button" className={typed ? 'plain' : 'go'} disabled={!ready} onClick={() => enter(null, clean)}>
-              {busy && !typed ? 'Connecting…' : 'New Table'}
-            </button>
           </div>
           <Tables onPick={pick} />
         </form>
@@ -547,9 +547,9 @@ function Lobby({ room }: { room: RoomView }) {
           </button>
         </h2>
         <div className="invite">
-          <input readOnly value={link} onFocus={(e) => e.target.select()} aria-label="Invite link" />
-          <button type="button" onClick={copy}>
-            {copied ? 'Copied' : 'Copy link'}
+          <span className="link">{link}</span>
+          <button type="button" onClick={copy} aria-label="Copy link" title={copied ? 'Copied' : 'Copy link'}>
+            {copied ? <Check /> : <CopyIcon />}
           </button>
         </div>
         <ul className="seats">

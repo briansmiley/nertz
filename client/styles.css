@@ -1448,40 +1448,25 @@ button {
   align-items: end;
 }
 
-.pair .go {
-  flex: 1;
-}
-
-/* The way in the form is not set up for: written on the pad, not a second button. */
-.ways .plain {
-  padding: 0.4rem 0.2rem;
-  border: 0;
-  background: none;
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-thickness: 1.5px;
-  text-underline-offset: 4px;
-}
-
-.pair .plain {
-  flex: 1;
-  text-align: right;
-}
-
-.ways > .plain {
-  justify-self: center;
-}
-
-.ways .plain:disabled {
-  text-decoration-color: transparent;
-}
-
-/* Waiting on a name: the same marigold, faded, not a grey box. */
+/* Waiting (on a name, or a code): the same marigold, faded, not a grey box. */
 .ways .go:disabled {
   font: 400 1.15rem/1.2 var(--display);
   color: var(--ink);
   background: var(--marigold);
+  box-shadow: none;
   opacity: 0.35;
+}
+
+/* Join: always there, always the same size, beside the code it joins. */
+.pair .go,
+.pair .go:disabled {
+  width: 5rem;
+  padding: 0.4rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.pair .go:not(:disabled) {
+  box-shadow: 0 3px 0 #b47f0c;
 }
 
 .plain {
@@ -1584,24 +1569,44 @@ button {
   font-weight: 600;
 }
 
+/* The lobby's link: written out, with a copy icon after it. */
 .invite {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.invite input {
+.invite .link {
   min-width: 0;
-  font-size: 0.9rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  user-select: all;
 }
 
 .invite button {
   flex: none;
-  min-width: 6.2rem;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  background: var(--ink);
-  color: var(--paper);
-  font-weight: 600;
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.invite button:hover {
+  color: var(--ink);
+}
+
+.invite svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .seats {
@@ -1695,8 +1700,12 @@ button {
 }
 
 .named input {
-  flex: 1;
-  min-width: 0;
+  /* As long as the name, from a short line up to the whole width. */
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 9rem;
+  max-width: 100%;
+  field-sizing: content;
 }
 
 .mybacks.compact .mini {
