@@ -407,7 +407,7 @@ function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
       <label className="check">
         <input type="checkbox" checked={room.settings.tapToMove} disabled={!mine} onChange={(e) => set({ tapToMove: e.target.checked })} />
         <span>
-          Move without dragging <Info>Tap or click a card, then where it goes.</Info>
+          Tap to play <Info>Allows tapping a card then its destination, without dragging</Info>
         </span>
       </label>
       <SeatCount room={room} mine={mine} />

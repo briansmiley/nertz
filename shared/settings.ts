@@ -14,7 +14,7 @@ export interface TableSettings {
   tapToMove: boolean;
 }
 
-export const DEFAULT_SETTINGS: TableSettings = { tapToMove: true };
+export const DEFAULT_SETTINGS: TableSettings = { tapToMove: false };
 
 /**
  * How many face-down cards lie under the face-up one in each of the four work piles, by how many are dealt into the
