@@ -303,6 +303,12 @@ export const WORK_PILES = 4;
 export const SLOTS_PER_PLAYER = 4;
 /** How long a player who was holding a card when Nertz was called has to put it down. */
 export const GRACE_MS = 4000;
+/**
+ * The longest a call waits to reach a window, from when it is made (within `GRACE_MS`). A window says at once that it
+ * has it, a round trip after the call; one that has not by then (asleep in the background, or on a line slower than
+ * this) is taken to have, and a card it takes up from then on is too late.
+ */
+export const HEAR_MS = 1000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
 /**
@@ -380,8 +386,13 @@ export function parseIntent(raw: unknown): Intent | null {
       return typeof raw.on === 'boolean' ? { k: 'stuck', on: raw.on } : null;
     case 'end':
       return typeof raw.on === 'boolean' ? { k: 'end', on: raw.on } : null;
-    case 'nertz':
-      return { k: 'nertz' };
+    case 'nertz': {
+      const { unheard } = raw;
+      if (unheard === undefined) return { k: 'nertz' };
+      return Array.isArray(unheard) && unheard.length <= MAX_PLAYERS && unheard.every((s) => isIndex(s, MAX_PLAYERS)) ? { k: 'nertz', unheard: [...new Set(unheard as number[])] } : null;
+    }
+    case 'heard':
+      return { k: 'heard' };
     case 'clear':
       return isIndex(raw.slot, MAX_SLOTS) ? { k: 'clear', slot: raw.slot } : null;
     case 'hold':
