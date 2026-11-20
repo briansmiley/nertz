@@ -795,10 +795,12 @@ function Results({ room }: { room: RoomView }) {
               .map((p) => (
                 <tr key={`new${p.id}`} className={`joining${p.id === room.me ? ' you' : ''}`}>
                   <th scope="row">
+                    <span className="who">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
-                    <Name host={p.isHost}>{p.name}</Name>
+                    <Name host={p.isHost} className="nm">{p.name}</Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
+                    </span>
                   </th>
                   <td colSpan={3} className="note">
                     In next round
