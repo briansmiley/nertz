@@ -8,7 +8,7 @@ import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
 import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
 
-export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
+export { DEAL_MS, GRACE_MS, HEAR_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
 export const NERTZ_SIZE = 13;
 /** Cards in a group dealt off the stock: each is one action, and the group turns face-up when the last one lands. */
@@ -51,11 +51,15 @@ const emptied = (state: GameState): number[] => state.players.filter((p) => p.ne
 export const wentOut = (state: GameState): number[] => (state.status.at === 'grace' ? emptied(state) : state.status.at === 'over' && state.status.end.by === 'nertz' ? state.status.end.out : []);
 /** The seats in the held-card grace window: after a call everyone else's hand is emptied, so exactly those still holding a card. */
 export const inGrace = (state: GameState): number[] => (state.status.at === 'grace' ? state.players.filter((p) => p.holding !== null).map((p) => p.seat) : []);
+/** The seats whose windows Nertz has been called in but have not said yet that they have it (`heard`). None but in grace. */
+export const yetToHear = (state: GameState): number[] => (state.status.at === 'grace' ? state.status.unheard : []);
+/** `seat` placed the King of a centre pile that is still on the table. */
+const finishedOn = (state: GameState, seat: number): boolean => state.slots.some((pile) => completedBy(pile) === seat);
 /**
  * Clear-first: `seat` put a King on a centre pile and has not carried the pile to the tray yet. Until they do,
  * `applyIntent` refuses everything else from them. (While the round is live: once it is called or over nothing can be cleared.)
  */
-export const mustClear = (state: GameState, seat: number): boolean => isLive(state) && state.slots.some((pile) => completedBy(pile) === seat);
+export const mustClear = (state: GameState, seat: number): boolean => isLive(state) && finishedOn(state, seat);
 export const CLEAR_FIRST = 'Move your finished pile to the tray first';
 const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
 /** The face-up run of a work pile, bottom first: what can be picked up off it. */
@@ -264,7 +268,14 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
     case 'nertz': {
       if (me.nertz.length > 0) return 'Your nertz pile is not empty';
       me.holding = null; // the caller pressed a button, they are not dragging: the caller is never in grace
-      next = { ...state, status: { at: 'grace', calledBy: seat } };
+      // (Nor waited for: the call is theirs. Only seats of the round can hear it.)
+      const unheard = state.players.flatMap((p) => (p.seat !== seat && intent.unheard?.includes(p.seat) ? [p.seat] : []));
+      next = { ...state, status: { at: 'grace', calledBy: seat, unheard } };
+      break;
+    }
+    case 'heard': {
+      if (state.status.at !== 'grace') return 'Nothing has been called';
+      next = { ...state, status: { ...state.status, unheard: state.status.unheard.filter((s) => s !== seat) } };
       break;
     }
     case 'hold': {
@@ -329,12 +340,12 @@ function endCalled(state: GameState, calledBy: number): GameState {
 /**
  * After a Nertz call, and after each thing done in grace: whoever holds a card that has nowhere legal to go has it
  * taken out of their hand (their drag is cancelled), which leaves in grace those still holding one. With nobody left
- * in it the round is over: the one way out of grace.
+ * in it, and nobody left to hear the call, the round is over: the one way out of grace.
  */
 function settleGrace(state: GameState): GameState {
   if (state.status.at !== 'grace') return state;
   const players = state.players.map((p) => (p.holding === null || legalDrops(state, p.seat, p.holding).length > 0 ? p : { ...p, holding: null }));
-  return players.some((p) => p.holding !== null) ? { ...state, players } : endCalled(state, state.status.calledBy);
+  return players.some((p) => p.holding !== null) || state.status.unheard.length > 0 ? { ...state, players } : endCalled(state, state.status.calledBy);
 }
 
 // The opening of a round is the first steps of its status: dealing -> ready -> countdown -> play. Each step is taken by
@@ -369,8 +380,14 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  * are holding a card with at least one legal destination (`inGrace`).
  * Each of them may make exactly one more intent: a `move` of the held card, or
  * a `release`. Either takes them out of grace (a refused move too, see `refused`), and anyone else in grace whose
- * card now has nowhere to go is cut off with them. When nobody is left in it the
- * round is over.
+ * card now has nowhere to go is cut off with them. When nobody is left in it, and
+ * the call has reached every window it was waiting for, the round is over.
+ *
+ * The call reaches a window a moment after it is made: until a seat says it has
+ * (`heard`), it may still take a card up (`hold`), as it could just before, and
+ * a card with somewhere to go puts it in grace. So a card someone was taking up
+ * as the call went out is in hand at the call, as they saw it, wherever it was
+ * on its way to the server.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
  * (`mustClear`) may only `clear` it; every other intent is refused until it has.
@@ -392,6 +409,12 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent): 
     case 'over':
       return fail('The round is over');
     case 'grace': {
+      // Whoever the call has yet to reach may still take a card up, as they could a moment ago (not with a finished
+      // pile of their own to clear, as then), and say that they have heard it.
+      if (state.status.unheard.includes(seat) && (intent.k === 'hold' || intent.k === 'heard')) {
+        if (intent.k === 'hold' && finishedOn(state, seat)) return fail(CLEAR_FIRST);
+        break;
+      }
       const held = state.players[index]!.holding;
       if (held === null) return fail('The round is over');
       if (intent.k !== 'release' && !(intent.k === 'move' && intent.cardId === held)) return fail('Only the held card may be played');
@@ -713,9 +736,11 @@ export function checkInvariants(state: GameState): string | null {
   if (!hasOpened(state) && (middle.some(([, pile]) => pile.length > 0) || state.players.some((p) => p.holding !== null || p.waste.length > 0))) {
     return 'play began before the round was open';
   }
-  if (state.players.some((p) => p.holding !== null && mustClear(state, p.seat))) return 'holding a card with a finished pile still to clear';
+  if (state.players.some((p) => p.holding !== null && finishedOn(state, p.seat))) return 'holding a card with a finished pile still to clear';
   if (state.status.at === 'grace') {
-    if (inGrace(state).length === 0) return 'grace with nobody holding a card';
+    const { calledBy: by, unheard } = state.status;
+    if (new Set(unheard).size !== unheard.length || unheard.some((s) => s === by || !seats.has(s))) return 'the call waits to be heard where it cannot be';
+    if (inGrace(state).length === 0 && unheard.length === 0) return 'grace with nobody holding a card or yet to hear the call';
     for (const p of state.players) {
       if (p.holding !== null && legalDrops(state, p.seat, p.holding).length === 0) return `seat ${p.seat}: in grace without a playable held card`;
     }

@@ -33,6 +33,7 @@ import {
   startCountdown,
   viewFor,
   wentOut,
+  yetToHear,
   type Result,
   type Rng,
 } from './engine';
@@ -598,6 +599,9 @@ describe('clear first: a finished pile must go to the tray before its player doe
     const grace = run(emptyNertz(s, 1), [0, hold('0:SK')], [1, NERTZ]);
     expect(inGrace(grace)).toEqual([0]);
     expect(isOver(ok(applyIntent(grace, 0, move('0:SK', slot(2)))))).toBe(true);
+    // Nor before a call has reached its window: what it could not pick up a moment ago, it cannot now.
+    const unheard = ok(applyIntent(emptyNertz(done, 1), 1, { k: 'nertz', unheard: [0] }));
+    expect(applyIntent(unheard, 0, hold('0:C4'))).toEqual({ ok: false, reason: CLEAR_FIRST });
     // checkInvariants knows it too: seat 0's spades are a finished pile, and the waste card it would hold is not to be held.
     const waiting = table([{ waste: 'HA' }, {}], { slots: [pile('SK')] });
     expect(checkInvariants(waiting)).toBeNull();
@@ -1455,6 +1459,52 @@ describe('held-card grace after a Nertz call', () => {
     expect(viewFor(ok(applyIntent(viewFor(s, 0), 0, NERTZ)), 0)).toEqual(viewFor(ok(applyIntent(s, 0, NERTZ)), 0));
     expect(ok(applyIntent(viewFor(ok(applyIntent(s, 1, hold('1:H2'))), 0), 0, NERTZ))).toEqual(viewFor(run(s, [1, hold('1:H2')], [0, NERTZ]), 0));
   });
+
+  // The call reaches each window a moment after it is made, and a card may be on its way up meanwhile.
+  const HEARD: Intent = { k: 'heard' };
+  const call = (unheard: number[]): Intent => ({ k: 'nertz', unheard });
+
+  it('waits for the windows it has not reached: with nobody holding a card, it is over once the last of them has heard', () => {
+    const called = ok(applyIntent(s, 0, call([1, 3])));
+    expect([calledBy(called), inGrace(called), yetToHear(called), isOver(called)]).toEqual([0, [], [1, 3], false]);
+    expect(checkInvariants(called)).toBeNull();
+    const one = ok(applyIntent(called, 3, HEARD));
+    expect([yetToHear(one), isOver(one)]).toEqual([[1], false]);
+    rejected(applyIntent(one, 3, HEARD)); // once
+    const over = ok(applyIntent(one, 1, HEARD));
+    expect(over).toEqual(ok(applyIntent(s, 0, NERTZ))); // as if everyone had heard it at once
+  });
+
+  it('a card taken up before the call reached that window was in hand at the call: with somewhere to go, it has its one move', () => {
+    const called = ok(applyIntent(s, 0, call([1, 2, 3])));
+    const held = ok(applyIntent(called, 1, hold('1:H2'))); // sent before seat 1 had the call, though it reached the server after
+    expect([inGrace(held), holding(held), isOver(held)]).toEqual([[1], [null, '1:H2', null, null], false]);
+    const heard = run(held, [1, HEARD], [2, HEARD], [3, HEARD]);
+    expect([inGrace(heard), yetToHear(heard), isOver(heard)]).toEqual([[1], [], false]);
+    expect(checkInvariants(heard)).toBeNull();
+    ok(applyIntent(held, 3, hold('3:H2'))); // seat 3 could have, until it heard
+    rejected(applyIntent(heard, 3, hold('3:H2')));
+    const over = ok(applyIntent(heard, 1, move('1:H2', slot(0))));
+    expect(over).toEqual(run(s, [1, hold('1:H2')], [0, NERTZ], [1, move('1:H2', slot(0))])); // as if the hold had come first
+    // A card taken up and put down before the call reached that window: the move counts all the same.
+    const quick = run(called, [1, hold('1:H2')], [1, move('1:H2', slot(0))], [2, HEARD], [3, HEARD]);
+    expect([isOver(quick), ids(quick.slots[0]!.cards)]).toEqual([false, ['0:HA', '1:H2']]);
+    expect(isOver(ok(applyIntent(quick, 1, HEARD)))).toBe(true);
+  });
+
+  it('...but not a card with nowhere to go; and the windows it has not reached may only take a card up, or say they heard', () => {
+    const called = ok(applyIntent(s, 0, call([2, 3])));
+    const cut = ok(applyIntent(called, 2, hold('2:D9')));
+    expect([inGrace(cut), holding(cut), yetToHear(cut)]).toEqual([[], [null, null, null, null], [2, 3]]);
+    rejected(applyIntent(called, 1, hold('1:H2'))); // seat 1's window was not waited for: it has heard
+    for (const intent of [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'end', on: true }, NERTZ, RELEASE, move('3:C3', work(3)), { k: 'clear', slot: 0 }] as Intent[]) {
+      rejected(applyIntent(called, 3, intent));
+    }
+    rejected(applyIntent(called, 0, HEARD)); // the call is the caller's own
+    rejected(applyIntent(s, 1, HEARD)); // nothing has been called
+    expect(yetToHear(ok(applyIntent(s, 0, call([0, 3, 3, 7]))))).toEqual([3]); // only others at the table
+    expect(isOver(expireGrace(called))).toBe(true); // the window shuts on them too
+  });
 });
 
 // ---------------------------------------------------------------- views
@@ -1596,10 +1646,12 @@ describe('checkInvariants', () => {
   });
   it('catches inconsistent grace', () => {
     const emptied = withPlayer0((p) => ({ nertz: [], stock: [...p.stock, ...p.nertz] }));
-    expect(checkInvariants({ ...emptied, status: { at: 'grace', calledBy: 0 } })).toMatch(/grace with nobody/);
+    expect(checkInvariants({ ...emptied, status: { at: 'grace', calledBy: 0, unheard: [] } })).toMatch(/grace with nobody/);
     const holder = { ...emptied, players: emptied.players.map((p, i) => (i === 1 ? { ...p, holding: p.nertz.at(-1)!.id } : p)) };
     expect(checkInvariants({ ...holder, status: { at: 'over', end: { by: 'nertz', seat: 0, out: [0] } } })).toMatch(/frozen player/);
-    expect(checkInvariants({ ...holder, status: { at: 'grace', calledBy: 0 } })).toMatch(/in grace without/); // that card has nowhere to go
+    expect(checkInvariants({ ...holder, status: { at: 'grace', calledBy: 0, unheard: [] } })).toMatch(/in grace without/); // that card has nowhere to go
+    expect(checkInvariants({ ...emptied, status: { at: 'grace', calledBy: 0, unheard: [1] } })).toBeNull(); // waiting to be heard
+    for (const unheard of [[0], [1, 1], [5]]) expect(checkInvariants({ ...emptied, status: { at: 'grace', calledBy: 0, unheard } })).toMatch(/heard where it cannot/);
   });
 });
 

@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, startCountdown, viewFor, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
-import { CLOSE_OVER, DEAL_MS, GRACE_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
@@ -1492,10 +1492,10 @@ describe('Room', () => {
   });
 
   describe('held-card grace', () => {
-    /** Three players on the rigged deal, and then `also`; seat 1's nertz pile is empty, so `b` can call. */
-    function table(also = (g: GameState) => g) {
+    /** Three players on the rigged deal, and then `also`; seat 1's nertz pile is empty, so `b` can call. `hearMs`: see RoomOptions. */
+    function table(also = (g: GameState) => g, hearMs = 0) {
       vi.useFakeTimers();
-      const { room, conns } = roomWith(3, { deal: (seats, rng) => also(rigged([1])(seats, rng)) });
+      const { room, conns } = roomWith(3, { deal: (seats, rng) => also(rigged([1])(seats, rng)), hearMs });
       const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
       startRound(room, a);
       const g = room.game!;
@@ -1538,7 +1538,7 @@ describe('Room', () => {
       expect(room.phase).toBe('playing');
       for (const conn of [a, b, c]) {
         expect(conn.last.room).toMatchObject({ phase: 'playing', timerMs: GRACE_MS, lastRound: null });
-        expect(conn.last.room.game!.status).toEqual({ at: 'grace', calledBy: 1 });
+        expect(conn.last.room.game!.status).toEqual({ at: 'grace', calledBy: 1, unheard: [] });
         expect(conn.last.room.game!.players.map((p) => p.holding)).toEqual([A.aceS, null, null]);
       }
       expect(GRACE_MS).toBe(4000);
@@ -1765,6 +1765,82 @@ describe('Room', () => {
       expect(room.phase).toBe('results');
       expect(vi.getTimerCount()).toBe(0);
       expect(holding(room)).toEqual([null, null, null]);
+    });
+
+    describe('a call reaches each window a moment after it is made', () => {
+      /** The same table, waiting for a call to reach the others' windows as the server does. */
+      const listening = () => table(undefined, HEAR_MS);
+      const HEARD: Intent = { k: 'heard' };
+
+      it('a card taken up as the call went out, its hold reaching the server after the call, has its one move', () => {
+        const { room, a, b, c, A, C } = listening();
+        sendIntent(room, b, 0, { k: 'nertz' });
+        expect([calledBy(room.game!), inGrace(room.game!), yetToHear(room.game!)]).toEqual([1, [], [0, 2]]);
+        expect(room.phase).toBe('playing'); // nobody holds a card, but the call has not reached a's window, nor c's
+        sendIntent(room, a, 0, hold(A.aceS)); // sent before a's window had the call
+        sendIntent(room, a, 1, HEARD);
+        sendIntent(room, c, 0, HEARD);
+        sendIntent(room, c, 1, hold(C.aceS)); // sent after c's window had it: too late
+        expect([inGrace(room.game!), yetToHear(room.game!), holding(room)]).toEqual([[0], [], [A.aceS, null, null]]);
+        room.flush();
+        expect(a.last.room).toMatchObject({ phase: 'playing', timerMs: GRACE_MS });
+        sendIntent(room, a, 2, move(A.aceS, felt(0, 0)));
+        expect(room.phase).toBe('results');
+        expect(vi.getTimerCount()).toBe(0);
+        expect(filled(room.game!)).toEqual([[A.aceS]]);
+        expect(room.lastRound!.scores.map((x) => x.played)).toEqual([1, 0, 0]);
+      });
+
+      it('with nobody holding a card it is over once the last window has heard; a bot, anyone away or standing, and the caller are not waited for', () => {
+        vi.useFakeTimers();
+        const { room, conns } = roomWith(4, { deal: rigged([0]), hearMs: HEAR_MS });
+        const [a, b, c, d] = conns as [FakeConn, FakeConn, FakeConn, FakeConn];
+        room.handle(a, { t: 'addBot', level: 'slow' });
+        startRound(room, a);
+        room.disconnect(c);
+        standUp(room, d);
+        send(room, a, { t: 'intent', seq: 0, intent: { k: 'nertz', unheard: [] } }); // who has yet to hear it is the room's to say
+        expect(yetToHear(room.game!)).toEqual([1]);
+        expect(room.phase).toBe('playing');
+        sendIntent(room, b, 0, HEARD);
+        expect(room.phase).toBe('results');
+        expect(room.lastRound!.end).toEqual({ by: 'nertz', seat: 0, out: [0] });
+      });
+
+      it('waits HEAR_MS at most: then a window that has not said is taken to have, and the round goes on only for cards in hand', () => {
+        const { room, a, b, c, A } = listening();
+        sendIntent(room, b, 0, { k: 'nertz' });
+        sendIntent(room, c, 0, HEARD);
+        vi.advanceTimersByTime(HEAR_MS - 1);
+        expect(room.phase).toBe('playing');
+        vi.advanceTimersByTime(1);
+        expect(room.phase).toBe('results');
+        expect(vi.getTimerCount()).toBe(0);
+        sendIntent(room, a, 0, hold(A.aceS)); // too late
+        expect(holding(room)).toEqual([null, null, null]);
+
+        const held = listening();
+        sendIntent(held.room, held.a, 0, hold(held.A.aceS));
+        sendIntent(held.room, held.b, 0, { k: 'nertz' });
+        vi.advanceTimersByTime(HEAR_MS);
+        expect([yetToHear(held.room.game!), inGrace(held.room.game!)]).toEqual([[], [0]]);
+        sendIntent(held.room, held.c, 0, hold(held.C.aceS)); // c's window never said it had the call: too late now
+        expect(holding(held.room)).toEqual([held.A.aceS, null, null]);
+        held.room.flush();
+        expect(held.a.last.room.timerMs).toBe(GRACE_MS - HEAR_MS); // the one grace window, timed from the call
+        vi.advanceTimersByTime(GRACE_MS - HEAR_MS);
+        expect(held.room.phase).toBe('results');
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it('a window that goes away is not waited for', () => {
+        const { room, a, b, c } = listening();
+        sendIntent(room, b, 0, { k: 'nertz' });
+        sendIntent(room, c, 0, HEARD);
+        room.disconnect(a);
+        expect(room.phase).toBe('results');
+        expect(vi.getTimerCount()).toBe(0);
+      });
     });
   });
 
