@@ -1,21 +1,20 @@
 // Clear-first, on the client. The rule itself is the engine's (`mustClear`): a
 // player who put a King on a centre pile may do nothing else until they have
-// carried the pile to the tray. Here is only what the player is shown when they
-// try anyway: nothing moves, the pile gives a nudge, the tray flashes, a short
-// notice appears by the pile and there is a soft tap. Never a modal.
+// carried the pile to the tray. Here is what the player is shown of it. The
+// finished pile glows and gives a small nod. It says nothing until they need
+// telling: they try something else (nothing moves, the pile shakes, the tray
+// flashes, there is a soft tap), or a few seconds go by. Then it says "Drag to
+// tray", and goes on saying it until the pile is carried. Never a modal.
 import { useEffect, useState } from 'react';
-import { CLEAR_FIRST, completedBy, mustClear } from '../shared/engine';
+import { completedBy, mustClear } from '../shared/engine';
 import type { Intent, RoomView } from '../shared/types';
-import type { Rect } from './layout';
 import { current, send as netSend } from './net';
 import { home } from './sound';
 
-/** How long the notice stays after the last attempt. */
-const NOTICE_MS = 2200;
+/** How long a finished pile waits before it says what to do with it, if nothing else was tried first. */
+export const TELL_MS = 4000;
 /** Attempts closer together than this make one sound (a held Space bar, a double click). */
 const QUIET_MS = 250;
-/** Half the notice's width, near enough: it is kept that far from either side of the window. */
-const HALF = 150;
 
 const listeners = new Set<() => void>();
 let sounded = 0;
@@ -50,45 +49,35 @@ export interface ClearFirst {
   blocked: boolean;
   /** The slot it is in, or -1. */
   slot: number;
-  /** '' until the player tries something else; then a class that alternates with every attempt, so the nudge plays again. */
+  /** What the pile does: a nod as it is finished; then, with every try at something else, a shake (two names in turn, so that it plays again). */
   cls: string;
-  /** The notice is up. */
-  shown: boolean;
+  /** The pile says what to do with it: something else was tried, or `TELL_MS` went by. Until it is carried. */
+  told: boolean;
 }
+
+/**
+ * What a waiting pile does and whether it speaks, after `tries` at something else and, if it has `waited` out
+ * `TELL_MS`, that too. The one place that says when the words come.
+ */
+export const cue = (tries: number, waited: boolean): Pick<ClearFirst, 'cls' | 'told'> => ({ cls: tries === 0 ? ' nod' : tries % 2 ? ' nudge' : ' nudge2', told: tries > 0 || waited });
 
 /** What the table needs to know about clear-first for the round on screen. */
 export function useClearFirst(room: RoomView): ClearFirst {
   const slot = waitingPile(room);
   const waiting = slot >= 0;
   const [tries, setTries] = useState(0);
-  const [shown, setShown] = useState(false);
+  const [waited, setWaited] = useState(false);
   useEffect(() => {
     setTries(0);
-    setShown(false);
+    setWaited(false);
     if (!waiting) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const on = () => {
-      setTries((n) => n + 1);
-      setShown(true); // one notice, however often they try: its clock just starts again
-      clearTimeout(timer);
-      timer = setTimeout(() => setShown(false), NOTICE_MS);
-    };
+    const timer = setTimeout(() => setWaited(true), TELL_MS);
+    const on = () => setTries((n) => n + 1);
     listeners.add(on);
     return () => {
       listeners.delete(on);
       clearTimeout(timer);
     };
   }, [waiting]);
-  return { blocked: waiting, slot, cls: !waiting || tries === 0 ? '' : tries % 2 ? ' nudge' : ' nudge2', shown: waiting && shown };
-}
-
-/** The notice, just above the waiting pile `rect` (below it when the pile is at the top of the window). */
-export function ClearNotice({ must, rect }: { must: ClearFirst; rect: Rect | undefined }) {
-  if (!must.shown || !rect) return null;
-  const below = rect.y < 56;
-  return (
-    <p className={`clearfirst${below ? ' below' : ''}`} role="status" style={{ left: Math.max(HALF, Math.min(window.innerWidth - HALF, rect.x + rect.w / 2)), top: below ? rect.y + rect.h + 8 : rect.y - 8 }}>
-      {CLEAR_FIRST}
-    </p>
-  );
+  return { blocked: waiting, slot, ...(waiting ? cue(tries, waited) : { cls: '', told: false }) };
 }

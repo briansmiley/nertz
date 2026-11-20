@@ -17,7 +17,7 @@ import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './ca
 import { Finale, finaleSteps, sortings } from './Finale';
 import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings, useWindow } from './fittings';
-import { ClearNotice, nag, send, useClearFirst } from './clearFirst';
+import { nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
 import { Opening } from './Opening';
@@ -597,7 +597,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   useEffect(() => {
     if (stage !== 'live' || frozen) setPeek(null);
   }, [stage, frozen]);
-  /** Clear-first: with a finished pile of yours waiting, anything but carrying it to the tray is answered with a nudge (clearFirst.tsx). */
+  /** Clear-first: with a finished pile of yours waiting, anything but carrying it to the tray is answered with a shake, and the pile then says what it wants (clearFirst.tsx). */
   const must = useClearFirst(room);
 
   // The deal. Every player's cards start as one deck where their stock lies, and the nertz pile and the work piles
@@ -878,7 +878,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         const full = finished(i) && stage === 'live' && !(held?.k === 'pile' && held.slot === i);
         return (
           <div key={i} className={`slot centre${full ? (toClear(i) ? ' yours' : ' done') : ''}`} style={box(slot)}>
-            {full && toClear(i) && <em>Drag to tray</em>}
+            {full && toClear(i) && must.told && <em>Drag to tray</em>}
           </div>
         );
       })}
@@ -1063,7 +1063,6 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       })}
 
       {/* (Not while the pile is in hand, on its way: that is what the notice asks for.) */}
-      <ClearNotice must={must} rect={held?.k === 'pile' ? undefined : (L.slots[must.slot] ?? undefined)} />
       <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} />
 
       {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
