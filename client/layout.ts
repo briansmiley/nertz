@@ -704,8 +704,10 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
  *   button; narrower than that, its pills shrink.
  * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
- *   (and the clock above it). Otherwise it is one line level with the button: under the nertz pile if that is clear of
- *   it, else right after it, and no further than the pills (too little room for a name: none).
+ *   (and the clock above it). Otherwise it is one line level with the button, as wide as what it says: ending under
+ *   the end of the nertz pile, or short of the count on the pile or a pill where one of them is in its row; where that
+ *   would put it on the button, right after the button, and only then cut short, by whatever is in its way (too little
+ *   room for a name: none).
  * - The count on your nertz pile is placed first, and all of this keeps clear of it; where its place under the pile's
  *   corner is the menu's button, it stands at the top corner instead.
  */
@@ -800,9 +802,13 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
     }
     const y = at.knobs.y + (at.knobs.h - NAME.h) / 2;
     const w = clamp(fit.name, NAME.min, NAME.max);
-    const under = nertzR - w >= knobsR + 10;
-    const line: NameAt = { x: under ? nertzR - w : knobsR + 10, y, w, h: NAME.h, full: false, align: under ? 'end' : 'start' };
-    for (const p of [...shown, badge]) if (meets(line, p, 8) && p.x > line.x) line.w = Math.min(line.w, p.x - 8 - line.x);
+    const left = knobsR + 10;
+    // The line moves out of the way rather than grow shorter than what it says: it stops 8 short of the first thing in
+    // its row right of the button (the count on the nertz pile, which hangs below the pile's corner, or a pill).
+    const row: Rect = { x: left, y, w: right - left, h: NAME.h };
+    const stop = Math.min(right, ...[...shown, badge].filter((p) => p.x > left && meets(row, p, 8)).map((p) => p.x - 8));
+    const end = Math.min(nertzR, stop);
+    const line: NameAt = end - w >= left ? { x: end - w, y, w, h: NAME.h, full: false, align: 'end' } : { x: left, y, w: Math.min(w, stop - left), h: NAME.h, full: false, align: 'start' };
     return line.w >= NAME.min && ![...shown, badge].some((p) => meets(line, p, 4)) ? line : null;
   })();
 

@@ -573,7 +573,8 @@ button {
 
 /* Your own line, in the place the layout keeps for it (client/layout.ts, `furnish`): under the nertz pile in full
    (how many are left in it, your name and total, the round and the table), or one line (your name and total). It is
-   written from the end of its place that the layout says, and never past it. */
+   written from the end of its place that the layout says, and never past it: where it must be cut short, your name
+   gives way and your total stays whole. */
 .mine {
   position: absolute;
   display: grid;
@@ -607,9 +608,16 @@ button {
 }
 
 .mine .who {
+  display: flex;
+  align-items: baseline;
   line-height: 20px;
   color: var(--chalk);
   font-weight: 600;
+}
+
+.mine .who .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* In full: two lines, your name and the table under it. */
@@ -625,10 +633,12 @@ button {
 
 .mine .who .chip {
   margin-right: 6px;
+  translate: 0 0.12em; /* (as `vertical-align: -0.12em` sets it in a line of text) */
 }
 
 .mine .who b {
-  margin-left: 4px;
+  flex: none;
+  margin-left: 0.4em; /* (a space, and 4px) */
   color: var(--marigold);
 }
 
