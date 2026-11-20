@@ -1,36 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { Insets } from './layout';
 
-/**
- * The window's size, kept up to date. A phone that is turned can fire `resize` before `innerWidth` / `innerHeight`
- * have their new values (iOS Safari), which would leave the table laid out for the old shape on half the screen:
- * so the size is also read on `orientationchange` and on the visual viewport's own `resize`, and once more a frame
- * and a moment later.
- */
-export function useViewport(): [number, number] {
-  const [size, setSize] = useState<[number, number]>([window.innerWidth, window.innerHeight]);
-  useEffect(() => {
-    let frame = 0;
-    let later: ReturnType<typeof setTimeout> | undefined;
-    const read = () => setSize((was) => (was[0] === window.innerWidth && was[1] === window.innerHeight ? was : [window.innerWidth, window.innerHeight]));
-    const on = () => {
-      read();
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(read);
-      clearTimeout(later);
-      later = setTimeout(read, 350);
-    };
-    window.addEventListener('resize', on);
-    window.addEventListener('orientationchange', on);
-    window.visualViewport?.addEventListener('resize', on);
-    return () => {
-      window.removeEventListener('resize', on);
-      window.removeEventListener('orientationchange', on);
-      window.visualViewport?.removeEventListener('resize', on);
-      cancelAnimationFrame(frame);
-      clearTimeout(later);
-    };
-  }, []);
-  return size;
+/** The window the game is laid out in: its size, and what the screen keeps for itself at its edges. */
+export interface Viewport {
+  W: number;
+  H: number;
+  pad: Insets;
 }
 
 /** A part of the window, in its px: where it starts, and how big it is. */
@@ -94,7 +69,7 @@ let probe: HTMLElement | null = null;
  * On its side the home bar's strip is not kept: the line is thin and a tap there still lands, and keeping it left a
  * gap under the menu's button and your cards on top of the table's own margin.
  */
-export function insets(): { l: number; r: number; b: number } {
+function insets(): Insets {
   if (!probe) {
     probe = document.createElement('div');
     probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:0 env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
@@ -104,4 +79,55 @@ export function insets(): { l: number; r: number; b: number } {
   const px = (v: string) => Math.round(parseFloat(v) || 0);
   const sideways = window.innerWidth > window.innerHeight;
   return { l: px(c.paddingLeft), r: px(c.paddingRight), b: sideways ? 0 : px(c.paddingBottom) };
+}
+
+const read = (): Viewport => ({ W: window.innerWidth, H: window.innerHeight, pad: insets() });
+const same = (a: Viewport, b: Viewport): boolean => a.W === b.W && a.H === b.H && a.pad.l === b.pad.l && a.pad.r === b.pad.r && a.pad.b === b.pad.b;
+
+/** The window as last looked at: the same object for as long as nothing of it changes. */
+let now: Viewport | null = null;
+const readers = new Set<() => void>();
+/** The window read again (told to every reader if it changed). */
+function look(): void {
+  const seen = read();
+  if (now && same(now, seen)) return;
+  now = seen;
+  for (const r of readers) r();
+}
+
+let frame = 0;
+let later: ReturnType<typeof setTimeout> | undefined;
+/**
+ * A phone that is turned can say so (`resize`, `orientationchange`, the visual viewport's own `resize`) before
+ * `innerWidth`, `innerHeight` and the insets have their new values: so after each, the window is looked at again a
+ * frame and a moment later.
+ */
+function soon(): void {
+  look();
+  cancelAnimationFrame(frame);
+  frame = requestAnimationFrame(look);
+  clearTimeout(later);
+  later = setTimeout(look, 350);
+}
+const EVENTS = ['resize', 'orientationchange'] as const;
+function subscribe(reader: () => void): () => void {
+  if (!readers.size) {
+    for (const e of EVENTS) window.addEventListener(e, soon);
+    window.visualViewport?.addEventListener('resize', soon);
+    look();
+  }
+  readers.add(reader);
+  return () => {
+    readers.delete(reader);
+    if (readers.size) return;
+    for (const e of EVENTS) window.removeEventListener(e, soon);
+    window.visualViewport?.removeEventListener('resize', soon);
+    cancelAnimationFrame(frame);
+    clearTimeout(later);
+  };
+}
+
+/** The window, kept up to date: one watcher for the page, however many read it. */
+export function useWindow(): Viewport {
+  return useSyncExternalStore(subscribe, () => (now ??= read()));
 }
