@@ -8,6 +8,7 @@ import type { Suit } from '../../shared/types';
 import { getPrefs, watchPrefs } from '../prefs';
 import { drawnBack, isDrawn } from './backArt';
 import { CLASSIC_FIGURE, CLASSIC_SUIT } from './classicGlyphs';
+import { atLeastLight } from './ink';
 import { Pixel, PIXEL, PIXEL_NIGHT } from './pixel';
 
 /** Cards are drawn at this size (CSS px) and scaled by the table. */
@@ -17,6 +18,12 @@ export const CARD_H = 126;
 /** Back colour per seat. */
 export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#272b35', '#d4428e', '#0f8a9c', '#d2601a', '#7a5c40'] as const;
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
+/**
+ * A seat's colour as its player's name is written on the cloth, before the brightening that the chat and the snipe
+ * notice give it (styles.css): a colour too dark for that to lift (the near-black seat) is first made light enough to
+ * come out slate. The rest are as they are.
+ */
+export const nameColour = (seat: number): string => atLeastLight(backColour(seat), 0.5);
 
 /**
  * Which issue of the picture files this is: put after their addresses, so that a browser that has an older picture

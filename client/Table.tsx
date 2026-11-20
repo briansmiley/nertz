@@ -13,7 +13,7 @@ import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrac
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
-import { backColour, backOf, CARD_H, CARD_W, Face, warm } from './cards/Face';
+import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, sortAt, sortings, sortMs, TIMING, washedAt } from './Finale';
 import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings, useWindow } from './fittings';
@@ -1089,7 +1089,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {aside && !called && (
         <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           <span>
-            <b style={{ color: backColour(aside.by) }}>{name(aside.by)}</b> sniped <b style={{ color: backColour(aside.of) }}>{name(aside.of)}</b>
+            <b style={{ color: nameColour(aside.by) }}>{name(aside.by)}</b> sniped <b style={{ color: nameColour(aside.of) }}>{name(aside.of)}</b>
           </span>
         </div>
       )}

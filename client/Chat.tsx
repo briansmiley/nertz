@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
-import { backColour } from './cards/Face';
+import { backColour, nameColour } from './cards/Face';
 import { SaidWord, Slash, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { Speaker } from './icons';
@@ -96,9 +96,10 @@ export function Chat({ room }: { room: RoomView }) {
   const hosting = !!room.players.find((p) => p.id === room.me)?.isHost;
   const root = useRef<HTMLElement>(null);
   const name = (who: number) => room.players.find((p) => p.id === who)?.name ?? 'Someone';
+  const seat = (who: number) => room.players.find((p) => p.id === who)?.seat ?? null;
   const colour: Colour = (who) => {
-    const seat = room.players.find((p) => p.id === who)?.seat;
-    return seat == null ? undefined : backColour(seat);
+    const s = seat(who);
+    return s === null ? undefined : nameColour(s);
   };
   // With a card in hand everything here lets the pointer through, so it can never take a drop or a click meant for the table.
   const holding = room.phase === 'playing' && !!room.game?.players.find((p) => p.seat === room.seat)?.holding;
@@ -281,9 +282,10 @@ export function Chat({ room }: { room: RoomView }) {
             {social.inVoice.map((m) => {
               const me = m.id === room.me;
               const off = me ? voice.muted : m.muted;
+              const at = seat(m.id);
               return (
                 <li key={m.id} className={`${voice.speaking.includes(m.id) && !off ? 'speaking' : ''}${me ? ' you' : ''}`}>
-                  <i style={{ background: colour(m.id) }} />
+                  <i style={{ background: at === null ? undefined : backColour(at) }} />
                   {name(m.id)}
                   {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
                   {me ? (
