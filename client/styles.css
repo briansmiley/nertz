@@ -1370,19 +1370,31 @@ button {
   color: var(--ink-soft);
 }
 
+/* Fields are written on the pad: a line to write on, no box. */
 .pad input {
   width: 100%;
-  padding: 0.55rem 0.7rem;
-  border: 1.5px solid var(--ink);
-  border-radius: 6px;
-  background: #fffdf6;
+  padding: 0.2rem 0.1rem 0.15rem;
+  border: 0;
+  border-bottom: 1.5px solid rgba(27, 39, 51, 0.45);
+  border-radius: 0;
+  background: none;
   color: var(--ink);
+  font-size: 1.15rem;
+}
+
+.pad input:hover {
+  border-bottom-color: var(--ink);
+}
+
+.pad input:focus-visible {
+  outline: none;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: -0.5px;
 }
 
 .pad input.code {
-  width: 7.5rem;
-  font-size: 1.3rem;
-  padding-block: 0.3rem;
+  width: 6.5rem;
+  font-size: 1.35rem;
   text-transform: uppercase;
 }
 
@@ -1432,9 +1444,44 @@ button {
   gap: 0.5rem;
 }
 
-.pair .go,
+.pair {
+  align-items: end;
+}
+
+.pair .go {
+  flex: 1;
+}
+
+/* The way in the form is not set up for: written on the pad, not a second button. */
+.ways .plain {
+  padding: 0.4rem 0.2rem;
+  border: 0;
+  background: none;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+
 .pair .plain {
   flex: 1;
+  text-align: right;
+}
+
+.ways > .plain {
+  justify-self: center;
+}
+
+.ways .plain:disabled {
+  text-decoration-color: transparent;
+}
+
+/* Waiting on a name: the same marigold, faded, not a grey box. */
+.ways .go:disabled {
+  font: 400 1.15rem/1.2 var(--display);
+  color: var(--ink);
+  background: var(--marigold);
+  opacity: 0.35;
 }
 
 .plain {
