@@ -4561,7 +4561,7 @@ button.code.copy {
   padding: 0;
   border: 0;
   background: none;
-  cursor: copy;
+  cursor: pointer;
 }
 
 button.code.copy:hover {
