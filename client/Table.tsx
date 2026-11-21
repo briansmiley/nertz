@@ -24,6 +24,7 @@ import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } fro
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
+import { useFeed } from './feed';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
@@ -65,6 +66,9 @@ const SLOW = 0.002;
 const GLIDE_MS = 70;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
+/** How long a snipe you were in, and one between others, stays on the felt (the stylesheet's `sniped` animation, and the aside's). */
+const SNIPE_MS = 1125;
+const ASIDE_MS = 2400;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 /** "A", "A and B", "A, B and C". */
 const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
@@ -437,22 +441,18 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [held, setHeld] = useState<Held | null>(null);
   /** The finished pile in hand is over the tray. */
   const [hot, setHot] = useState(false);
-  /** The last snipe the server told of that you were in, and the last between two others: who beat whom to a pile (and a count, so that the same names flash again). Kept apart so that one does not put out the other. */
-  const [snipe, setSnipe] = useState<{ by: number; of: number; n: number } | null>(null);
-  const [aside, setAside] = useState<{ by: number; of: number; n: number } | null>(null);
-  useEffect(() => {
-    setSnipe(null);
-    setAside(null);
-  }, [room.round]);
+  /** Snipes the server told of, as they stack on the felt while they last: those you were in, across the middle, and those between others, small along its lower edge (feed.ts). */
+  const [snipes, addSnipe] = useFeed<{ by: number; of: number }>(SNIPE_MS, room.round);
+  const [asides, addAside] = useFeed<{ by: number; of: number }>(ASIDE_MS, room.round);
   useEffect(
     () =>
       onSnipe(({ by, of }) => {
         if (by === you) snipeSound('me');
         else if (of === you) beaten();
         else snipeSound('other');
-        (by === you || of === you ? setSnipe : setAside)((s) => ({ by, of, n: (s?.n ?? 0) + 1 }));
+        (by === you || of === you ? addSnipe : addAside)({ by, of });
       }),
-    [you],
+    [you, addSnipe, addAside],
   );
   /** The outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
@@ -1063,18 +1063,24 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
-      {/* A snipe you were in: who by, or whom, across the middle, there and gone in under a second. */}
-      {snipe && !called && (
-        <div key={`sniped${snipe.n}`} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          <span style={{ color: backColour(snipe.by === you ? snipe.of : snipe.by) }}>{snipe.by === you ? `You sniped ${name(snipe.of)}!` : `Sniped by ${name(snipe.by)}!`}</span>
+      {/* Snipes you were in: who by, or whom, across the middle, each there and gone in under a second; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
+      {snipes.length > 0 && !called && (
+        <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
+          {snipes.map((s) => (
+            <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }}>
+              {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
+            </motion.span>
+          ))}
         </div>
       )}
-      {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies. */}
-      {aside && !called && (
-        <div key={`aside${aside.n}`} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
-          <span>
-            <b style={{ color: nameColour(aside.by) }}>{name(aside.by)}</b> sniped <b style={{ color: nameColour(aside.of) }}>{name(aside.of)}</b>
-          </span>
+      {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies; more at once stack upward. */}
+      {asides.length > 0 && !called && (
+        <div className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
+          {asides.map((a) => (
+            <motion.span layout="position" key={a.id}>
+              <b style={{ color: nameColour(a.by) }}>{name(a.by)}</b> sniped <b style={{ color: nameColour(a.of) }}>{name(a.of)}</b>
+            </motion.span>
+          ))}
         </div>
       )}
       {stamps.map((s) => (
