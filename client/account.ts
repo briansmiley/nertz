@@ -133,21 +133,25 @@ export async function rename(name: string): Promise<boolean> {
 /** The side of a picture as it is sent: the server draws it afresh at its own size (server/pictures.ts); this only keeps what is sent small. */
 const SENT_SIDE = 256;
 
-/** The middle square of a picture, shrunk to SENT_SIDE (never grown): as a WebP, or a PNG where the browser will not make a WebP. */
-async function square(file: Blob): Promise<Blob> {
+/** The square of a picture to put up, in the picture's own px (turned upright, as its camera said): from its top left corner, and how wide. */
+export type Crop = { x: number; y: number; side: number };
+
+/** A square of a picture (`crop`, else the middle one), shrunk to SENT_SIDE (never grown): as a WebP, or a PNG where the browser will not make a WebP. */
+async function square(file: Blob, crop?: Crop): Promise<Blob> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  const side = Math.min(bitmap.width, bitmap.height);
-  const out = Math.min(SENT_SIDE, side);
+  const middle = Math.min(bitmap.width, bitmap.height);
+  const { x, y, side } = crop ?? { x: (bitmap.width - middle) / 2, y: (bitmap.height - middle) / 2, side: middle };
+  const out = Math.max(1, Math.round(Math.min(SENT_SIDE, side)));
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = out;
-  canvas.getContext('2d')!.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, out, out);
+  canvas.getContext('2d')!.drawImage(bitmap, x, y, side, side, 0, 0, out, out);
   bitmap.close();
   return new Promise((done, failed) => canvas.toBlob((b) => (b ? done(b) : failed(new Error('no picture'))), 'image/webp', 0.9));
 }
 
-/** A picture of you put up, or yours taken down (for null): whether it went. */
-export async function repicture(file: Blob | null): Promise<boolean> {
-  const body = file && (await square(file).catch(() => null));
+/** A picture of you put up (the square `crop` of it), or yours taken down (for null): whether it went. */
+export async function repicture(file: Blob | null, crop?: Crop): Promise<boolean> {
+  const body = file && (await square(file, crop).catch(() => null));
   if (file && !body) return false;
   const res = await fetch(`${PROFILE}/picture`, { method: body ? 'PUT' : 'DELETE', credentials: 'same-origin', ...(body ? { headers: { 'content-type': body.type }, body } : {}) }).catch(() => null);
   if (!res?.ok) return false;

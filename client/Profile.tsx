@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { cleanName, MAX_NAME_LENGTH } from '../shared/protocol';
 import { AMONG, type Account, type Among } from '../shared/types';
-import { deleteAccount, rename, repicture, signOut, useStats } from './account';
+import { deleteAccount, rename, repicture, signOut, useStats, type Crop } from './account';
+import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
 const written = (n: number, places = 0): string => {
@@ -155,24 +156,34 @@ function YourName({ account }: { account: Account }) {
 }
 
 /**
- * Your picture: the one you put up, else Google's, else your initial. Pressed, a picture of your own to put up in its
- * place; yours, a cross by it takes it down.
+ * Your picture: the one you put up, else Google's, else your initial. Under the pointer, a pencil over it. Pressed, a
+ * picture of your own to put up in its place: first moved and zoomed to fit the circle (PictureCrop). Yours, a cross
+ * by it takes it down.
  */
 function YourPicture({ account }: { account: Account }) {
   const [busy, setBusy] = useState(false);
   const [broken, setBroken] = useState<string | null>(null);
+  /** A picture chosen, being fitted to the circle before it is put up. */
+  const [fitting, setFitting] = useState<File | null>(null);
   const shown = account.picture ?? account.image;
-  const put = async (file: Blob | null): Promise<void> => {
+  const put = async (file: Blob | null, crop?: Crop): Promise<void> => {
     setBusy(true);
-    await repicture(file);
+    await repicture(file, crop);
     setBusy(false);
   };
   return (
     <span className={`yourpicture${busy ? ' busy' : ''}`}>
       <label data-tip={account.picture ? 'Change picture' : 'Put up a picture'}>
-        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} aria-label="Your picture" onChange={(e) => (void put(e.target.files?.[0] ?? null), (e.target.value = ''))} />
+        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} aria-label="Your picture" onChange={(e) => (setFitting(e.target.files?.[0] ?? null), (e.target.value = ''))} />
         {shown && broken !== shown ? <img src={shown} alt="" referrerPolicy="no-referrer" onError={() => setBroken(shown)} /> : <i aria-hidden="true">{account.name ? [...account.name][0]!.toUpperCase() : ''}</i>}
+        <span className="edit" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 20h4L19 9l-4-4L4 16z" />
+            <path d="M13.5 6.5l4 4" />
+          </svg>
+        </span>
       </label>
+      {fitting && <PictureCrop file={fitting} onCancel={() => setFitting(null)} onSave={(crop) => (setFitting(null), void put(fitting, crop))} />}
       {account.picture && (
         <button type="button" className="unpicture" aria-label="Remove picture" data-tip="Remove picture" disabled={busy} onClick={() => void put(null)}>
           <svg viewBox="0 0 10 10" aria-hidden="true">
