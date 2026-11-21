@@ -31,7 +31,7 @@ export function profileHandler({ db, accounts, rounds, reports, home, gone }: Pr
     const said = method === 'PUT' ? await read(req) : null;
     if (said === TOO_BIG) return void res.writeHead(413, { connection: 'close' }).end();
     const me = await accounts.who(req.headers);
-    if (!me) return json(401, null);
+    if (!me) return json(401, { ways: accounts.ways }); // (nobody: and the ways in there are)
     if (method === 'GET') return json(200, me);
     if (method === 'PUT') {
       const raw = (said as { name?: unknown } | null)?.name;

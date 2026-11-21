@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_PATH, accountsFromEnv, openAccounts } from './accounts';
+import { AUTH_PATH, accountsFromEnv, EMAIL_FROM, openAccounts } from './accounts';
 import { dataFromEnv, openDb, type Db } from './db';
 import { startServer, type NertzServer } from './index';
 import { ACCOUNTS, ADA, Browser, fakeGoogle, rows as allRows } from './testkit';
@@ -102,13 +102,21 @@ describe('with no accounts set up', () => {
     }
   });
 
-  it('the environment sets accounts up only with all of it there, and says what is not', () => {
-    const all = { NODE_ENV: 'production', PUBLIC_URL: 'https://nertz.example/', AUTH_SECRET: 's', GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'x' };
-    expect(accountsFromEnv(all)).toEqual({ url: 'https://nertz.example', secret: 's', google: { id: 'id', secret: 'x' } });
-    expect(accountsFromEnv({ ...all, GOOGLE_CLIENT_SECRET: undefined })).toEqual({ missing: ['GOOGLE_CLIENT_SECRET'] });
-    expect(accountsFromEnv({ ...all, AUTH_SECRET: undefined, PUBLIC_URL: undefined })).toEqual({ missing: ['AUTH_SECRET', 'PUBLIC_URL'] });
+  it('the environment sets accounts up with a way in, a secret and an address, and says what is not there', () => {
+    const all = { NODE_ENV: 'production', PUBLIC_URL: 'https://nertz.example/', AUTH_SECRET: 's', GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'x', RESEND_API_KEY: 're' };
+    expect(accountsFromEnv(all)).toEqual({ url: 'https://nertz.example', secret: 's', google: { id: 'id', secret: 'x' }, email: { resend: 're', from: EMAIL_FROM } });
+    expect(accountsFromEnv({ ...all, EMAIL_FROM: 'Me <me@example.com>' })).toMatchObject({ email: { from: 'Me <me@example.com>' } });
+    // Either way in will do.
+    expect(accountsFromEnv({ ...all, RESEND_API_KEY: undefined })).toMatchObject({ google: { id: 'id' }, email: null });
+    expect(accountsFromEnv({ ...all, GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined })).toMatchObject({ google: null, email: { resend: 're' } });
+    // Half a Google client is a mistake, even with email there.
+    expect(accountsFromEnv({ ...all, GOOGLE_CLIENT_SECRET: undefined })).toEqual({ missing: ['GOOGLE_CLIENT_SECRET'], asked: true });
+    expect(accountsFromEnv({ ...all, AUTH_SECRET: undefined, PUBLIC_URL: undefined })).toEqual({ missing: ['AUTH_SECRET', 'PUBLIC_URL'], asked: true });
+    expect(accountsFromEnv({ NODE_ENV: 'production', AUTH_SECRET: 's', PUBLIC_URL: 'https://nertz.example' })).toEqual({ missing: ['GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or RESEND_API_KEY'], asked: true });
+    // None of it: nobody asked.
+    expect(accountsFromEnv({ NODE_ENV: 'production' })).toMatchObject({ asked: false });
     // Outside production the app is reached at Vite's address, without saying.
-    expect(accountsFromEnv({ AUTH_SECRET: 's', GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'x' })).toEqual({ url: 'http://localhost:5173', secret: 's', google: { id: 'id', secret: 'x' } });
+    expect(accountsFromEnv({ AUTH_SECRET: 's', GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'x' })).toEqual({ url: 'http://localhost:5173', secret: 's', google: { id: 'id', secret: 'x' }, email: null });
   });
 
   it('the environment names the database: in DATA_DIR, which outside production is ./data', () => {
