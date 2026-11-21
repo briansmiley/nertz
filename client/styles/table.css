@@ -231,6 +231,16 @@
   vertical-align: -0.12em;
 }
 
+/* In the chip's place, the picture someone put up of themselves, ringed in their colour. */
+.face {
+  flex: none;
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  object-fit: cover;
+}
+
 /* Opponent name line. */
 .tag {
   position: absolute;
@@ -417,6 +427,10 @@
 
 .mine.line .where {
   display: none;
+}
+
+.mine .who .face {
+  margin-right: 6px;
 }
 
 .mine .who .chip {

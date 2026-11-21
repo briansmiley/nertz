@@ -1,5 +1,6 @@
 // One's own profile, end to end against a real server, signed in with Google played by a fake `fetch`.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import sharp from 'sharp';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -44,8 +45,8 @@ describe('profile', () => {
   it('starts from the first name Google gives, with Google picture', async () => {
     const ada = await signedIn(ADA);
     const id = (rows('user')[0] as { id: string }).id;
-    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture });
-    expect(rows('profile')).toEqual([{ account: id, name: 'Ada' }]);
+    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null });
+    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null }]);
     expect(firstName('  Grace  Brewster Hopper')).toBe('Grace');
     expect(firstName('   ')).toBeNull();
   });
@@ -107,6 +108,75 @@ describe('profile', () => {
     const again = await signedIn(ADA);
     expect(await profile(again)).toMatchObject({ name: 'Ada' });
     expect(rows('user')).toHaveLength(2);
+  });
+
+  describe('picture', () => {
+    const PICTURE = '/profile/picture';
+    const kept = (): string[] => (existsSync(join(dir, 'pictures')) ? readdirSync(join(dir, 'pictures')) : []);
+    /** A photo as a phone takes one: a JPEG, wider than tall, with where and on what it was taken. */
+    const photo = (): Promise<Buffer> =>
+      sharp({ create: { width: 600, height: 400, channels: 3, background: '#c33' } })
+        .jpeg()
+        .withExif({ IFD0: { Make: 'Phonemaker', Model: 'Pocket 9' }, IFD3: { GPSLatitudeRef: 'N', GPSLatitude: '40/1 44/1 0/1' } })
+        .toBuffer();
+
+    it('is drawn afresh, small and square and with nothing of where it was taken, and served from here as only a picture', async () => {
+      const ada = await signedIn(ADA);
+      const sent = await photo();
+      expect((await sharp(sent).metadata()).exif).toBeDefined();
+      const res = await ada.ask(PICTURE, sent, { method: 'PUT' });
+      expect(res.status).toBe(200);
+      const { picture } = (await res.json()) as { picture: string };
+      expect(picture).toMatch(/^\/pictures\/[0-9a-f]{16}\.webp$/);
+      expect(await profile(ada)).toMatchObject({ picture, image: ADA.picture });
+
+      const got = await fetch(`http://localhost:${server.port}${picture}`);
+      expect(got.status).toBe(200);
+      expect(got.headers.get('content-type')).toBe('image/webp');
+      expect(got.headers.get('x-content-type-options')).toBe('nosniff');
+      const bytes = Buffer.from(await got.arrayBuffer());
+      const meta = await sharp(bytes).metadata();
+      expect([meta.format, meta.width, meta.height]).toEqual(['webp', 128, 128]);
+      expect(meta.exif).toBeUndefined();
+      expect(bytes.includes('Phonemaker')).toBe(false);
+      expect(kept()).toEqual([picture.slice('/pictures/'.length)]);
+    });
+
+    it('put up again is a new address, the old one gone; taken down, none, and Google’s is left', async () => {
+      const ada = await signedIn(ADA);
+      const first = ((await (await ada.ask(PICTURE, await photo(), { method: 'PUT' })).json()) as { picture: string }).picture;
+      const second = ((await (await ada.ask(PICTURE, await photo(), { method: 'PUT' })).json()) as { picture: string }).picture;
+      expect(second).not.toBe(first);
+      expect((await fetch(`http://localhost:${server.port}${first}`)).status).toBe(404);
+      expect(kept()).toHaveLength(1);
+      const down = await ada.ask(PICTURE, undefined, { method: 'DELETE' });
+      expect(await down.json()).toMatchObject({ picture: null, image: ADA.picture });
+      expect(kept()).toEqual([]);
+    });
+
+    it('takes nothing that is not a picture, nor too much, nor from nobody or another site', async () => {
+      const ada = await signedIn(ADA);
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
+      const gif = await sharp({ create: { width: 10, height: 10, channels: 3, background: '#000' } }).gif().toBuffer();
+      expect((await ada.ask(PICTURE, svg, { method: 'PUT' })).status).toBe(400);
+      expect((await ada.ask(PICTURE, gif, { method: 'PUT' })).status).toBe(400);
+      expect((await ada.ask(PICTURE, Buffer.from('<html><script>alert(1)</script>'), { method: 'PUT' })).status).toBe(400);
+      expect((await ada.ask(PICTURE, Buffer.alloc(2 << 20), { method: 'PUT' })).status).toBe(413);
+      expect((await ada.ask(PICTURE, await photo(), { method: 'PUT', origin: 'https://evil.example' })).status).toBe(403);
+      expect((await new Browser(server.port).ask(PICTURE, await photo(), { method: 'PUT' })).status).toBe(401);
+      expect(kept()).toEqual([]);
+      expect(await profile(ada)).toMatchObject({ picture: null });
+      expect((await fetch(`http://localhost:${server.port}/pictures/../nertz.db`)).status).toBe(404);
+      expect((await fetch(`http://localhost:${server.port}/pictures/0123456789abcdef.webp`)).status).toBe(404);
+    });
+
+    it('goes with the account', async () => {
+      const ada = await signedIn(ADA);
+      await ada.ask(PICTURE, await photo(), { method: 'PUT' });
+      expect(kept()).toHaveLength(1);
+      expect((await ada.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+      expect(kept()).toEqual([]);
+    });
   });
 
   it('is made for anyone who signed up before there were profiles', async () => {
