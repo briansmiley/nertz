@@ -87,12 +87,12 @@ export function Record() {
         [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
         [written(stats.won), 'won'],
         [written(stats.nertz), 'Nertz'],
-        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Your average ending rank: 1st = 100%, last = 0%'],
+        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Average ending rank: 1st = 100%, last = 0%'],
         [per(stats.points), 'avg score'],
         [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best score'],
         [per(stats.cards), 'avg cards'],
         [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
-        [per(stats.nertzLeft), 'nertz left', 'Cards left in your nertz pile at the end of a round, on average'],
+        [per(stats.nertzLeft), 'avg nertz left'],
         [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes', undefined, 'good'],
         [written(stats.sniped), 'sniped', undefined, 'bad'],
       ];
@@ -141,6 +141,7 @@ function YourName({ account }: { account: Account }) {
       placeholder="Name"
       value={name}
       maxLength={MAX_NAME_LENGTH}
+      size={Math.max(4, name.length)} /* (where field-sizing is not had: about as wide as the name) */
       autoComplete="nickname"
       spellCheck={false}
       onChange={(e) => setName(e.target.value)}
