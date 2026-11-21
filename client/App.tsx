@@ -128,9 +128,17 @@ function Pad({ children, wide, side }: { children: ReactNode; wide?: boolean; si
   useEffect(() => {
     const pad = scope.current;
     if (up === side) {
-      // Settled (or turned back before edge-on): down flat, from wherever the turn had got to.
-      if (turned.current) void animate(pad, { rotateY: 0, transformPerspective: PAD_PERSPECTIVE }, { duration: calm() ? 0 : PAD_HALF, ease: 'easeOut' });
-      return;
+      // Settled (or turned back before edge-on): down flat, from wherever the turn had got to. Flat, it drops its
+      // transform: the held perspective would leave the pad a containing block, trapping a fixed overlay (the delete
+      // confirm) inside it on phones.
+      if (!turned.current) return;
+      let off = false;
+      void animate(pad, { rotateY: 0, transformPerspective: PAD_PERSPECTIVE }, { duration: calm() ? 0 : PAD_HALF, ease: 'easeOut' }).then(() => {
+        if (!off) pad.style.transform = '';
+      });
+      return () => {
+        off = true;
+      };
     }
     if (calm()) return setUp(side);
     turned.current = true;
