@@ -285,12 +285,18 @@ export interface RoomView {
  */
 export interface Account {
   id: string;
-  name: string;
+  /** The name they go by, theirs to change (server/profile.ts): null for none chosen yet. */
+  name: string | null;
+  /** Google's picture of them, if it has one. */
   image: string | null;
 }
 
+/** Which of someone's rounds their record counts: every one; those with someone else there who is no bot; those with no bot there at all. */
+export const AMONG = ['all', 'people', 'no-bots'] as const;
+export type Among = (typeof AMONG)[number];
+
 /**
- * One person's record, over every round they played to its end signed in (server/rounds.ts).
+ * One person's record, over the rounds they played to the end signed in (server/rounds.ts): all of them, or some (`Among`).
  */
 export interface Stats {
   rounds: number;
@@ -300,6 +306,8 @@ export interface Stats {
   nertz: number;
   /** Everything they scored, added up. */
   points: number;
+  /** Where they finished, on average, in rounds with someone else in them: 1 for first (shared with whoever tied), null for no such round. */
+  place: number | null;
   /** The most they scored in one round: null with no round played. */
   best: number | null;
   /** Times they sniped someone, and times someone sniped them. */

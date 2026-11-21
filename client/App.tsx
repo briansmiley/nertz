@@ -1,5 +1,6 @@
 // Screens around the table: home, lobby, round results.
-import { signIn, signOut, useAccount, useStats } from './account';
+import { signIn, useAccount } from './account';
+import { Profile } from './Profile';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
@@ -10,7 +11,7 @@ import { lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { ICONS, openCorner, Sure, useCorner } from './Menu';
+import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
@@ -357,8 +358,8 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
-/** Who is signed in, and the way in or out. Nothing at all where the server keeps no accounts, or has not said yet. */
-function Who() {
+/** Signed out, the way in; signed in, who you are, which opens all about you (`onOpen`). Nothing at all where the server keeps no accounts, or has not said yet. */
+function Who({ onOpen }: { onOpen: () => void }) {
   const account = useAccount();
   if (account === 'unknown' || account === 'off') return null;
   if (account === 'out') {
@@ -369,41 +370,10 @@ function Who() {
     );
   }
   return (
-    <span className="who in">
+    <button type="button" className="who in" onClick={onOpen}>
       {account.image && <img src={account.image} alt="" referrerPolicy="no-referrer" onError={(e) => (e.currentTarget.hidden = true)} />}
-      <span>{account.name}</span>
-      <button type="button" onClick={() => void signOut()}>
-        Sign out
-      </button>
-    </span>
-  );
-}
-
-/** Your record, if you are signed in and have played a round: the figures, and under each what it counts. */
-function Record() {
-  const stats = useStats();
-  if (!stats?.rounds) return null;
-  /** A figure as it is written: a true minus sign, and no "-0.0". */
-  const written = (n: number, places = 0): string => {
-    const text = Math.abs(n).toFixed(places);
-    return n < 0 && Number(text) !== 0 ? `−${text}` : text;
-  };
-  const figures: [string, string][] = [
-    [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
-    [written(stats.won), 'won'],
-    [written(stats.nertz), 'Nertz'],
-    [written(stats.points / stats.rounds, 1), 'a round'],
-    [written(stats.best ?? 0), 'best'],
-  ];
-  return (
-    <dl className="record">
-      {figures.map(([n, what]) => (
-        <div key={what}>
-          <dt>{what}</dt>
-          <dd>{n}</dd>
-        </div>
-      ))}
-    </dl>
+      <span>{account.name ?? 'You'}</span>
+    </button>
   );
 }
 
@@ -411,11 +381,19 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(rememberedName);
   const account = useAccount();
-  // Signed in, and no name of their own yet: the first name Google has for them, to keep or change.
-  const given = typeof account === 'object' ? cleanName(account.name.split(' ')[0] ?? '') : '';
+  // Signed in: the name they go by, to sit down under. Changed there, it changes here too, unless it was changed here first.
+  const given = typeof account === 'object' ? (account.name ?? '') : '';
+  const gave = useRef('');
   useEffect(() => {
-    if (given) setName((was) => was || given);
+    if (given) setName((was) => (!was || was === gave.current ? given : was));
+    gave.current = given;
   }, [given]);
+  /** Whether the pad is turned to your page. */
+  const [yours, setYours] = useState(false);
+  const signedIn = typeof account === 'object' ? account : null;
+  useEffect(() => {
+    if (!signedIn) setYours(false);
+  }, [signedIn]);
   const [code, setCode] = useState(invited);
   const nameField = useRef<HTMLInputElement>(null);
   const clean = cleanName(name);
@@ -445,59 +423,64 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
       </div>
 
       <Pad>
-        <form onSubmit={submit}>
-          <h2>Pull up a chair</h2>
-          <label>
-            <span className="label">Name</span>
-            {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
-            <span className="named">
-              <input
-                ref={nameField}
-                autoFocus
-                placeholder="Name" /* (shown only where the label isn't: a phone on its side) */
-                value={name}
-                maxLength={MAX_NAME_LENGTH}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="nickname"
-              />
-              <YourBacks colour={BACKS[0]} compact />
-            </span>
-          </label>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="ways">
-            <button type="button" className="go" disabled={!ready} onClick={() => enter(null, clean)}>
-              {busy && !typed ? 'Connecting…' : 'New Table'}
-            </button>
-            <div className="way">
-              <label htmlFor="code">Join existing table</label>
-              <div className="pair">
+        {yours && signedIn ? (
+          <Profile account={signedIn} head={<Back onClick={() => setYours(false)} />} />
+        ) : (
+          <form onSubmit={submit}>
+            <h2>Pull up a chair</h2>
+            <label>
+              <span className="label">Name</span>
+              {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
+              <span className="named">
                 <input
-                  id="code"
-                  className="code"
-                  value={code}
-                  maxLength={ROOM_CODE_LENGTH}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="ABCD"
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  spellCheck={false}
+                  ref={nameField}
+                  autoFocus
+                  placeholder="Name" /* (shown only where the label isn't: a phone on its side) */
+                  value={name}
+                  maxLength={MAX_NAME_LENGTH}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="nickname"
                 />
-                <button type="button" className="go" disabled={!ready || !isRoomCode(typed)} onClick={() => enter(typed, clean)}>
-                  {busy && typed ? '…' : 'Join'}
-                </button>
+                <YourBacks colour={BACKS[0]} compact />
+              </span>
+            </label>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="ways">
+              <button type="button" className="go" disabled={!ready} onClick={() => enter(null, clean)}>
+                {busy && !typed ? 'Connecting…' : 'New Table'}
+              </button>
+              <div className="way">
+                <label htmlFor="code">Join existing table</label>
+                <div className="pair">
+                  <input
+                    id="code"
+                    className="code"
+                    value={code}
+                    maxLength={ROOM_CODE_LENGTH}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="ABCD"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <button type="button" className="go" disabled={!ready || !isRoomCode(typed)} onClick={() => enter(typed, clean)}>
+                    {busy && typed ? '…' : 'Join'}
+                  </button>
+                </div>
               </div>
             </div>
+            <Tables onPick={pick} />
+          </form>
+        )}
+        {!yours && (
+          <div className="whofoot">
+            <Who onOpen={() => setYours(true)} />
           </div>
-          <Tables onPick={pick} />
-        </form>
-        <Record />
-        <div className="whofoot">
-          <Who />
-        </div>
+        )}
       </Pad>
     </main>
   );

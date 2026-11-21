@@ -44,6 +44,8 @@ export interface Reports {
   add(id: string, at: number, report: Report, account: string | null): void;
   /** What became of it once it was passed on: what it was titled, how much it was judged to matter (if it was judged), and the address of the issue filed for it (if one was). */
   passedOn(id: string, heading: Heading, issue: string | null): void;
+  /** Keeps `account`'s reports, but as nobody's, with no name to them. */
+  forget(account: string): void;
 }
 
 export interface ReportsOptions {
@@ -56,6 +58,7 @@ export function openReports(db: Db, { dir, maxImageBytes = MAX_KEPT_IMAGE_BYTES 
   const add = db.prepare('insert into report (id, created_at, kind, text, name, room, context, account, image_bytes) values (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const pictures = db.prepare('select coalesce(sum(image_bytes), 0) as bytes from report');
   const passedOn = db.prepare('update report set title = ?, priority = ?, issue = ? where id = ?');
+  const forget = db.prepare('update report set account = null, name = null where account = ?');
   return {
     add(id, at, r, account) {
       const fits = dir && r.image && (pictures.get() as { bytes: number }).bytes + r.image.length <= maxImageBytes;
@@ -71,5 +74,6 @@ export function openReports(db: Db, { dir, maxImageBytes = MAX_KEPT_IMAGE_BYTES 
       }
     },
     passedOn: (id, heading, issue) => void passedOn.run(heading.title, heading.priority ?? null, issue, id),
+    forget: (account) => void forget.run(account),
   };
 }
