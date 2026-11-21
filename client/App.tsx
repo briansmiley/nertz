@@ -155,7 +155,7 @@ function AddBot({ room }: { room: RoomView }) {
 /** A small × beside a name, for whoever deals: a bot is sent away; a person is put out of the table, as if they had left. */
 function Unseat({ who }: { who: PlayerView }) {
   return (
-    <button type="button" className="unseat" aria-label={`Remove ${who.name}`} title={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>
+    <button type="button" className="unseat" aria-label={`Remove ${who.name}`} data-tip={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>
       ×
     </button>
   );
@@ -168,7 +168,7 @@ function BotName({ name, seat }: { name: string; seat: number }) {
       key={name}
       className="botname"
       aria-label={`Rename ${name}`}
-      title="Rename this bot"
+      data-tip="Rename this bot"
       defaultValue={name}
       maxLength={MAX_NAME_LENGTH}
       size={Math.max(4, name.length)}
@@ -195,7 +195,7 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
   const free = BACKS.map((c, i) => ({ c, i })).filter(({ i }) => i === seat || !room.players.some((p) => p.seat === i));
   return (
     <span className="colour" ref={root}>
-      <button type="button" className="dot" style={{ background: backColour(seat) }} aria-expanded={open} aria-label="Change your colour" title={free.length > 1 ? 'Change your colour' : 'Every other colour is taken'} disabled={free.length < 2} onClick={() => setOpen(!open)} />
+      <button type="button" className="dot" style={{ background: backColour(seat) }} aria-expanded={open} aria-label="Change your colour" data-tip={free.length > 1 ? 'Change your colour' : 'Every other colour is taken'} disabled={free.length < 2} onClick={() => setOpen(!open)} />
       {open && (
         <span className="free" role="radiogroup" aria-label="Your colour, and those nobody has">
           {free.map(({ c, i }) => (
@@ -221,7 +221,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const up = () => (sit(false, mine ? undefined : who.id), setStep(null));
   return (
     <span className="pop-at" ref={root}>
-      <button type="button" className="standup" aria-label={says} title={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
+      <button type="button" className="standup" aria-label={says} data-tip={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
         <Eye />
       </button>
       {step && (
@@ -295,7 +295,7 @@ function Act({ id, room }: { id: ActionId; room: RoomView }) {
   if (!a) return null;
   const Icon = ICONS[id];
   return (
-    <button type="button" className="icon" aria-label={a.label} title={a.label} onClick={() => press(id, room)}>
+    <button type="button" className="icon" aria-label={a.label} data-tip={a.label} onClick={() => press(id, room)}>
       <Icon />
     </button>
   );
@@ -341,7 +341,7 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
           <ul>
             {known.tables.map((t) => (
               <li key={t.code}>
-                <button type="button" title={t.watching ? `${t.watching} watching` : undefined} onClick={() => onPick(t.code)}>
+                <button type="button" data-tip={t.watching ? `${t.watching} watching` : undefined} onClick={() => onPick(t.code)}>
                   <b>{t.code}</b>
                   <span className="names">{t.names.join(', ')}</span>
                   <span>
@@ -455,7 +455,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
               <div className="named">
                 <span className="guest">
                   {signedIn && (
-                    <button type="button" className="you" aria-label="Your page" title="Your page" onClick={() => setTurned('page')}>
+                    <button type="button" className="you" aria-label="Your page" data-tip="Your page" onClick={() => setTurned('page')}>
                       <Avatar image={signedIn.image} name={null} />
                     </button>
                   )}
@@ -560,14 +560,14 @@ function Lobby({ room }: { room: RoomView }) {
         <h2>
           Table{' '}
           {/* The code itself is a button: pressed, it is copied (just the code, for saying or typing; the link is below). */}
-          <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} title="Copy the code" onClick={copyCode}>
+          <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} data-tip="Copy the code" onClick={copyCode}>
             {room.code}
             {codeCopied && <small>Copied</small>}
           </button>
         </h2>
         <div className="invite">
           <span className="link">{link}</span>
-          <button type="button" onClick={copy} aria-label="Copy link" title={copied ? 'Copied' : 'Copy link'}>
+          <button type="button" onClick={copy} aria-label="Copy link" data-tip={copied ? 'Copied' : 'Copy link'}>
             {copied ? <Check /> : <CopyIcon />}
           </button>
         </div>
@@ -578,14 +578,14 @@ function Lobby({ room }: { room: RoomView }) {
             <li key={p.id} className={`${p.connected ? '' : 'away'}${p.id === room.me ? ' you' : ''}`}>
               {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
               {p.id === room.me || (me?.isHost && p.bot) ? (
-                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} title={p.id === room.me ? (prefs.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
+                <button type="button" className="swatch" aria-label={p.id === room.me ? 'Change your card backs' : `Change ${p.name}'s card backs`} data-tip={p.id === room.me ? (prefs.random ? 'Your card backs: drawn by lot when the round is dealt. Change them' : 'Change your card backs') : `Change ${p.name}'s card backs`} onClick={() => setPicking(p.seat)}>
                   <Mini seat={p.seat} look={p.id === room.me ? lookOf(prefs) : p.look} />
                 </button>
               ) : (
                 <Mini seat={p.seat} look={p.look} />
               )}
               {/* The name, with the dealer's button. On a phone the note and what you may do go on a small line under it. */}
-              <span className="person" title={p.name}>
+              <span className="person" data-tip={p.name}>
                 <Name host={p.isHost} className="name">
                   {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
                 </Name>
@@ -594,7 +594,7 @@ function Lobby({ room }: { room: RoomView }) {
                 {[p.id === room.me && 'you', p.left ? 'left' : !p.connected && 'away'].filter(Boolean).join(', ')}
                 {/* A bot: the robot, and how quick it is. */}
                 {p.bot && (
-                  <span className="botnote" title={`${p.bot} bot`} aria-label={`${p.bot} bot`}>
+                  <span className="botnote" data-tip={`${p.bot} bot`} aria-label={`${p.bot} bot`}>
                     <Robot plain />
                     {p.bot === 'medium' ? 'med' : p.bot}
                   </span>
@@ -658,7 +658,7 @@ function Lobby({ room }: { room: RoomView }) {
 function SettingsGear() {
   const open = useCorner() === 'settings';
   return (
-    <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-controls={open ? 'your-settings' : undefined} aria-label="Settings" title="Settings" onClick={() => openCorner('settings')}>
+    <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-controls={open ? 'your-settings' : undefined} aria-label="Settings" data-tip="Settings" onClick={() => openCorner('settings')}>
       <Gear />
     </button>
   );
@@ -670,7 +670,7 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
   return (
     <section className="snipes" aria-label="Snipes">
       {/* The whole line is the button: a chevron right after it says there is more underneath. */}
-      <button type="button" className="top" aria-expanded={all} title={all ? 'Hide the snipes' : 'Show every snipe'} onClick={() => setAll(!all)}>
+      <button type="button" className="top" aria-expanded={all} data-tip={all ? 'Hide the snipes' : 'Show every snipe'} onClick={() => setAll(!all)}>
         <small>Top sniper</small>
         <i className="chip" style={{ background: backColour(top.by) }} />
         <b>{who(top.by)}</b>
@@ -682,7 +682,7 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
       {all && (
         <ul>
           {snipes.map((s) => (
-            <li key={`${s.by}>${s.of}`} title={`${who(s.by)} sniped ${who(s.of)}${s.n > 1 ? ` ${s.n} times` : ''}`}>
+            <li key={`${s.by}>${s.of}`} data-tip={`${who(s.by)} sniped ${who(s.of)}${s.n > 1 ? ` ${s.n} times` : ''}`}>
               <i className="chip" style={{ background: backColour(s.by) }} />
               {who(s.by)}
               <span className="to" aria-label="sniped">
@@ -725,7 +725,7 @@ function Results({ room }: { room: RoomView }) {
     <td className="total calls">{calls}</td>
     <td className="total">
       {score < 0 ? `−${-score}` : score}
-      {rounds > 0 && rounds < room.round && <small title={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
+      {rounds > 0 && rounds < room.round && <small data-tip={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
     </>
   );
@@ -769,12 +769,12 @@ function Results({ room }: { room: RoomView }) {
                 {/* Whoever got Nertz has no cards left in that pile: where the 0 would be, the stamp that lay across their hand. */}
                 <td>
                   {out.includes(s.seat) ? (
-                    <span className="called" title={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
+                    <span className="called" data-tip={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
                       Nertz!
                     </span>
                   ) : s.nertzLeft ? (
                     <>
-                      <small className="left" title={`${s.nertzLeft} left in the nertz pile`}>{s.nertzLeft}</small>
+                      <small className="left" data-tip={`${s.nertzLeft} left in the nertz pile`}>{s.nertzLeft}</small>
                       {signed(-2 * s.nertzLeft)}
                     </>
                   ) : (

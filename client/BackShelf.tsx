@@ -48,7 +48,7 @@ export function BackShelf({ colour, bare, back, random, onPick, onRandom }: { co
       {shown && (
         <div key={shown.name} className="dealt" style={{ '--at': groups.indexOf(shown), '--piles': groups.length } as CSSProperties}>
           {/* First in every spread: any one of this kind, drawn by lot for a table, when its first round is dealt. */}
-          <button type="button" className={`lay lot${random === shown.name ? ' on' : ''}`} style={{ '--lie': '-2deg', '--n': 0 } as CSSProperties} aria-pressed={random === shown.name} title={`One of ${shown.name}, drawn by lot when a table's first round is dealt, and kept for that table`} onClick={() => onRandom(random === shown.name ? null : shown.name)}>
+          <button type="button" className={`lay lot${random === shown.name ? ' on' : ''}`} style={{ '--lie': '-2deg', '--n': 0 } as CSSProperties} aria-pressed={random === shown.name} data-tip={`One of ${shown.name}, drawn by lot when a table's first round is dealt, and kept for that table`} onClick={() => onRandom(random === shown.name ? null : shown.name)}>
             <span className="mini">
               <span {...backOf(colour, null, bare)} />
             </span>
