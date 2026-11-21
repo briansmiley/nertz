@@ -1,0 +1,39 @@
+/* The game's tooltip (client/tip.ts: one for the page, over everything, beside whatever has a data-tip) and the look it
+   shares with a setting's (i): ink, with paper's colour for its words, and a hairline of chalk that holds it apart from
+   the felt. */
+.tooltip,
+.info .tip {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: var(--ink);
+  box-shadow:
+    0 0 0 1px rgba(241, 234, 216, 0.22),
+    0 6px 18px rgba(0, 0, 0, 0.3);
+  color: var(--paper);
+  font: 400 0.85rem/1.35 var(--ui);
+  font-style: normal;
+  white-space: normal;
+  text-align: left;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50001; /* over everything, the connection banner too: it is there only while pointed at */
+  left: 0;
+  top: 0;
+  max-width: min(17rem, calc(100vw - 16px));
+  width: max-content;
+  padding: 0.3rem 0.55rem;
+  pointer-events: none;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+/* A long press shows the tip (client/tip.ts), so it must not also bring up the phone's own menu or select words. */
+[data-tip] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

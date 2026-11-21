@@ -35,13 +35,13 @@ export function BackPicker({ title, colour, bare, back, random, onPick, onRandom
             </div>
           )}
           {panel === 'backs' && onBare && (
-            <button type="button" className={`edge${bare ? ' on' : ''}`} aria-pressed={bare} title="Backs without the white edge: the pattern runs to the edge of the card" onClick={() => onBare(!bare)}>
+            <button type="button" className={`edge${bare ? ' on' : ''}`} aria-pressed={bare} data-tip="Backs without the white edge: the pattern runs to the edge of the card" onClick={() => onBare(!bare)}>
               <span className="lever" />
               Borderless
             </button>
           )}
           {panel === 'backs' && (
-            <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} title="Any back at all, drawn by lot when the first round is dealt, and kept for the table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
+            <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} data-tip="Any back at all, drawn by lot when the first round is dealt, and kept for the table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
               <span className="lever" />
               Random
             </button>
@@ -73,7 +73,7 @@ export function YourBacks({ colour, compact, locked }: { colour: string; compact
   }, [locked]);
   return (
     <>
-      <button type="button" className={`mybacks${compact ? ' compact' : ''}`} disabled={locked} aria-label="Choose your card backs" title={locked ? 'You can change card styles between rounds' : 'Your card backs: change them'} onClick={() => setOpen(true)}>
+      <button type="button" className={`mybacks${compact ? ' compact' : ''}`} disabled={locked} aria-label="Choose your card backs" data-tip={locked ? 'You can change card styles between rounds' : 'Your card backs: change them'} onClick={() => setOpen(true)}>
         <span className="mini">
           <span {...backOf(colour, prefs.random ? null : prefs.back, prefs.bare, true)} />
         </span>

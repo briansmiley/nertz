@@ -34,7 +34,7 @@ export function FaceShelf() {
         {/* Light or dark cards: two counters, as the backs have for their colour. */}
         <div className="inks" role="radiogroup" aria-label="Light or dark cards">
           {([false, true] as const).map((night) => (
-            <button key={String(night)} type="button" role="radio" aria-checked={prefs.night === night} aria-label={night ? 'Dark cards' : 'Light cards'} title={night ? 'Dark cards' : 'Light cards'} className={prefs.night === night ? 'on' : ''} style={{ background: night ? '#1b2132' : '#fffdf7' }} onClick={() => setPrefs({ night })} />
+            <button key={String(night)} type="button" role="radio" aria-checked={prefs.night === night} aria-label={night ? 'Dark cards' : 'Light cards'} data-tip={night ? 'Dark cards' : 'Light cards'} className={prefs.night === night ? 'on' : ''} style={{ background: night ? '#1b2132' : '#fffdf7' }} onClick={() => setPrefs({ night })} />
           ))}
         </div>
       </div>
