@@ -185,7 +185,7 @@
   margin-bottom: 0.5rem;
 }
 
-.way {
+.signin .by {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -200,11 +200,11 @@
   background: #fff;
 }
 
-.way:hover {
+.signin .by:hover {
   background: #f6f6f4;
 }
 
-.way svg {
+.signin .by svg {
   flex: none;
   width: 1.25rem;
   height: 1.25rem;

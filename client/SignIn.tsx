@@ -73,14 +73,14 @@ export function SignIn({ ways, head }: { ways: Way[]; head: ReactNode }) {
         <h2>Sign in</h2>
       </div>
       {ways.includes('google') && !sentTo && (
-        <button type="button" className="way" onClick={() => void signIn()}>
+        <button type="button" className="by" onClick={() => void signIn()}>
           <GoogleG />
           Sign in with Google
         </button>
       )}
       {ways.includes('email') &&
         (!byEmail ? (
-          <button type="button" className="way" onClick={() => setByEmail(true)}>
+          <button type="button" className="by" onClick={() => setByEmail(true)}>
             <Envelope />
             Sign in with email
           </button>
