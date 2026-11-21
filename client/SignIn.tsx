@@ -5,7 +5,7 @@ import type { Way } from '../shared/types';
 import { enterCode, sendCode, signIn, type Asked, type Entered } from './account';
 
 /** What went wrong, said shortly. */
-const SAID: Partial<Record<Asked | Entered, string>> = { bad: 'That isn’t an email address', busy: 'Too many tries: wait a minute', failed: 'Couldn’t reach the server', wrong: 'Not the code', spent: 'That code is used up: send another' };
+const SAID: Partial<Record<Asked | Entered, string>> = { bad: 'That isn’t an email address', busy: 'Too many tries: wait a minute', enough: 'Enough codes for this address today', unsent: 'Couldn’t send the code: try again', failed: 'Couldn’t reach the server', wrong: 'Not the code', spent: 'That code is used up: send another' };
 
 const CODE_LENGTH = 6;
 

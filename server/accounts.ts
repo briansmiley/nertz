@@ -11,8 +11,10 @@
 //
 // Better Auth does the work: the OAuth exchange, the session cookie, and its own tables (user, session, account,
 // verification) in the database, which it brings up to date on boot. This file is the only one that knows it.
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import { betterAuth } from 'better-auth';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
@@ -52,6 +54,41 @@ export interface AccountsOptions {
   email: { resend: string; from: string } | null;
 }
 
+/**
+ * Codes sent to any one address in a day, whoever asks. Each allows three tries, so this caps the guesses at any
+ * address, from anywhere, at 3 x CODES_A_DAY a day (the limit by place only slows each place down). Kept in memory:
+ * there is one machine (fly.toml), and a restart forgiving a day's count costs little.
+ */
+export const CODES_A_DAY = 8;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SEND_PATH = '/email-otp/send-verification-otp';
+
+/** How many codes each address has been sent over the last day: `take` one if it may have another, `give` back one that never went. */
+export function codeAllowance(limit = CODES_A_DAY, windowMs = DAY_MS, now: () => number = Date.now) {
+  const sent = new Map<string, number[]>();
+  return {
+    take(address: string): boolean {
+      const t = now();
+      for (const [a, times] of sent) {
+        const live = times.filter((at) => t - at < windowMs);
+        if (live.length) sent.set(a, live);
+        else sent.delete(a);
+      }
+      const times = sent.get(address) ?? [];
+      if (times.length >= limit) return false;
+      sent.set(address, [...times, t]);
+      return true;
+    },
+    give(address: string): void {
+      const times = sent.get(address);
+      if (times?.length) sent.set(address, times.slice(0, -1));
+    },
+  };
+}
+
+/** Whether the code this request asked for went: Better Auth swallows a failed send and answers 200 regardless. */
+const sending = new AsyncLocalStorage<{ failed: boolean }>();
+
 /** Who the codes come from, unless EMAIL_FROM says: an address of a domain Resend has verified. */
 export const EMAIL_FROM = 'Nertz <nertz@mail.binarysmile.com>';
 
@@ -83,6 +120,7 @@ const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
 
 export async function openAccounts(db: Db, options: AccountsOptions): Promise<Accounts> {
   const made = db.prepare('insert into profile (account, name) values (?, ?) on conflict do nothing');
+  const allowance = codeAllowance();
   const config = {
     appName: 'Nertz',
     baseURL: options.url,
@@ -93,6 +131,19 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     // (Said outright because Better Auth leaves these checks off by itself when it is run by a test.)
     // Whose request it is, for the limit on how often anyone may try to sign in: Fly's word for it, which a client cannot forge.
     advanced: { disableOriginCheck: false, disableCSRFCheck: false, ipAddress: { ipAddressHeaders: ['fly-client-ip'] } },
+    // A code asked for: to an address that has had its day's codes, refused; one that did not go (Resend refused it),
+    // said so, as 502, rather than the 200 Better Auth gives, and not counted. Neither depends on whether there is an
+    // account at the address.
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === SEND_PATH && !allowance.take(addressOf(ctx.body))) throw new APIError('TOO_MANY_REQUESTS', { message: 'Enough codes for this address today', code: 'ADDRESS_LIMIT' });
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== SEND_PATH || !sending.getStore()?.failed) return;
+        allowance.give(addressOf(ctx.body));
+        throw new APIError('BAD_GATEWAY', { message: 'The code could not be sent', code: 'NOT_SENT' });
+      }),
+    },
     // Name and picture are Google's, taken afresh at each signing in: nobody sets their own.
     socialProviders: options.google ? { google: { clientId: options.google.id, clientSecret: options.google.secret, overrideUserInfoOnSignIn: true } } : {},
     // By email, a code: asked for (three a minute from any one place, as Better Auth has it), sent, and typed back
@@ -116,7 +167,14 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     // Kept: who someone is (name, email, picture). Not kept: where they signed in from and on what, nor Google's own
     // keys to their account, which nothing here has a use for. (public/privacy.html says as much.)
     databaseHooks: {
-      user: { create: { after: async (user) => void made.run(user.id, firstName(user.name)) } },
+      // An account made any way but Google's has no name or picture from the request that made it (Better Auth would
+      // take them from the body of a first sign-in by email): its owner chooses a name on their page.
+      user: {
+        create: {
+          before: async (user, ctx) => (ctx?.path?.startsWith('/callback/') ? undefined : { data: { ...user, name: '', image: null } }),
+          after: async (user) => void made.run(user.id, firstName(user.name)),
+        },
+      },
       session: { create: { before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }) } },
       account: {
         create: { before: async (account) => ({ data: { ...account, ...NO_KEYS } }) },
@@ -138,7 +196,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   const handler = toNodeHandler(auth);
   return {
     ways: [...(options.google ? (['google'] as const) : []), ...(options.email ? (['email'] as const) : [])],
-    handle: handler,
+    handle: (req, res) => sending.run({ failed: false }, () => handler(req, res)),
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
@@ -151,10 +209,22 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   };
 }
 
+/** The address a request for a code names, as Better Auth keys it. */
+const addressOf = (body: unknown): string => String((body as { email?: unknown } | null)?.email ?? '').trim().toLowerCase();
+
 /** Sends a code to sign in with, by Resend; throws if it is not taken to be sent. Anything but a code to sign in with is not sent at all. */
 function sendCode({ resend, from }: NonNullable<AccountsOptions['email']>) {
   return async ({ email, otp, type }: { email: string; otp: string; type: string }): Promise<void> => {
     if (type !== 'sign-in') return;
+    try {
+      await post({ email, otp });
+    } catch (err) {
+      const said = sending.getStore();
+      if (said) said.failed = true;
+      throw err;
+    }
+  };
+  async function post({ email, otp }: { email: string; otp: string }): Promise<void> {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${resend}`, 'content-type': 'application/json' },
@@ -168,5 +238,5 @@ function sendCode({ resend, from }: NonNullable<AccountsOptions['email']>) {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`Resend: ${res.status} ${await res.text().catch(() => '')}`);
-  };
+  }
 }

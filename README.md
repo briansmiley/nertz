@@ -809,7 +809,9 @@ does the exchange with Google, sends and checks codes by email (its `emailOTP` p
 session in a cookie, and keeps its tables in the database. Everything of Better Auth's is served under `/api/auth`. One
 email address is one account whichever way someone comes in: Google's word for an address and a code sent to it are both
 proof of it. A code is six digits, good for ten minutes and three tries, kept hashed, and asked for at most three times a
-minute from one place.
+minute from one place; any one address is sent eight a day at most, whoever asks (`CODES_A_DAY`), which caps the guesses
+at it from everywhere together. A code Resend will not take is said to be unsent (502), and does not count. An account
+made by email takes no name or picture from the request that makes it: only Google's are kept.
 
 Accounts are **off unless set up**. With any of the settings below missing, `/api/auth` answers 404, and the client
 takes that to mean there is no signing in and shows nothing about it. The same with no database, or if accounts cannot

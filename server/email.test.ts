@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_PATH } from './accounts';
+import { AUTH_PATH, codeAllowance, CODES_A_DAY } from './accounts';
 import { startServer, type NertzServer } from './index';
 import { ACCOUNTS, ADA, Browser, codeIn, fakeGoogle, fakeResend, rows as allRows, type Sent } from './testkit';
 
@@ -74,16 +74,34 @@ describe('signing in by email', () => {
     expect(rows('user')).toHaveLength(2);
   });
 
-  it('when the code cannot be sent, says so in the log and nowhere else, and signs nobody in', async () => {
+  it('when the code cannot be sent, says so (502, and in the log), does not count it, and signs nobody in', async () => {
     vi.unstubAllGlobals();
     const refused = fakeResend({ refuse: true });
     const said = vi.spyOn(console, 'error').mockImplementation(() => {});
     const browser = new Browser(server.port);
-    expect((await send(browser, 'grace@example.com')).status).toBe(200); // (Better Auth's way: nothing told about the address)
+    expect((await send(browser, 'grace@example.com')).status).toBe(502); // said, whatever the address: it is the sending that failed
     expect(refused).toHaveLength(0);
     expect(said.mock.calls.flat().join(' ')).toContain('Resend: 422');
     said.mockRestore();
     expect((await enter(browser, 'grace@example.com', '123456')).status).toBeGreaterThanOrEqual(400);
+  });
+
+  it(`sends any one address ${CODES_A_DAY} codes a day at most, whoever asks, known or not; other addresses go on`, async () => {
+    for (let i = 0; i < CODES_A_DAY; i++) expect((await send(new Browser(server.port), 'Grace@example.com')).status).toBe(200);
+    const over = await send(new Browser(server.port), 'grace@example.com');
+    expect(over.status).toBe(429);
+    expect(((await over.json()) as { code?: string }).code).toBe('ADDRESS_LIMIT');
+    expect(sent).toHaveLength(CODES_A_DAY);
+    expect((await send(new Browser(server.port), 'bob@example.com')).status).toBe(200);
+  });
+
+  it('takes no name or picture from the request that makes an account by email', async () => {
+    const browser = new Browser(server.port);
+    await send(browser, 'grace@example.com');
+    const res = await browser.ask(`${AUTH_PATH}/sign-in/email-otp`, { email: 'grace@example.com', otp: codeIn(sent, 'grace@example.com'), name: 'Mallory', image: 'https://example.com/x.png' });
+    expect(res.status).toBe(200);
+    expect(await profile(browser)).toEqual({ id: expect.any(String), name: null, image: null });
+    expect(rows('user')).toMatchObject([{ name: '', image: null }]);
   });
 
   it('does nothing but sign in: no verifying, resetting or changing by email', async () => {
@@ -93,5 +111,19 @@ describe('signing in by email', () => {
     }
     expect((await send(browser, 'not an email')).status).toBe(400);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe('the codes an address may be sent', () => {
+  it('counts over a sliding day, and gives back one that never went', () => {
+    let t = 0;
+    const a = codeAllowance(2, 1000, () => t);
+    expect([a.take('x'), a.take('x'), a.take('x')]).toEqual([true, true, false]);
+    a.give('x');
+    expect(a.take('x')).toBe(true);
+    t = 999;
+    expect(a.take('x')).toBe(false);
+    t = 1000;
+    expect(a.take('x')).toBe(true);
   });
 });

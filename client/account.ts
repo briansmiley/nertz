@@ -73,13 +73,16 @@ export async function signIn(): Promise<void> {
   else await ask(); // no way to Google: see whether there is still any signing in, so the way in is not left there doing nothing
 }
 
-/** What came of asking for a code: sent; not, for an address that is none; not yet, for asking too often; or no answer. */
-export type Asked = 'sent' | 'bad' | 'busy' | 'failed';
+/** What came of asking for a code: sent; not, for an address that is none; not yet, for asking too often from here; not today, for an address sent its day's codes; not, for the email not going; or no answer. */
+export type Asked = 'sent' | 'bad' | 'busy' | 'enough' | 'unsent' | 'failed';
 
 /** A code to sign in with, sent to `email`. */
 export async function sendCode(email: string): Promise<Asked> {
   const res = await post('/email-otp/send-verification-otp', { email, type: 'sign-in' }).catch(() => null);
-  return !res ? 'failed' : res.ok ? 'sent' : res.status === 429 ? 'busy' : res.status === 400 ? 'bad' : 'failed';
+  if (!res) return 'failed';
+  if (res.ok) return 'sent';
+  if (res.status === 429) return ((await res.json().catch(() => null)) as { code?: unknown } | null)?.code === 'ADDRESS_LIMIT' ? 'enough' : 'busy';
+  return res.status === 400 ? 'bad' : res.status === 502 ? 'unsent' : 'failed';
 }
 
 /** What came of typing a code in: signed in; the wrong code (or one too old); one tried too often, so a new one is wanted; not yet, for trying too often; or no answer. */
