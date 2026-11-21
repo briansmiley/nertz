@@ -3,8 +3,9 @@
  * under a mouse (or pen) after a moment, at once while another tip is still fresh, and on keyboard focus. There is one
  * tooltip for the page, drawn over everything and taking no pointer events, so it never stands in the way of a click;
  * it goes under the element unless there is no room, then over it, and stays on screen. A press, Escape or the pointer
- * leaving puts it away, and a scroll puts away the pointer's. A touch has no hover, so a tap shows nothing: what a
- * control does is in its aria-label or its text, and the tip only says it again or adds a detail.
+ * leaving puts it away, and a scroll puts away the pointer's. A touch has no hover: a tap shows nothing, but a finger
+ * held still on the element shows its tip over it, clear of the finger, until the next touch. The press that showed it
+ * does not also press the element.
  *
  * The pointer must come to rest: the wait starts again while it moves. By a big element the tip stands where the
  * pointer stopped, and goes again once it moves on.
@@ -29,14 +30,19 @@ const FRESH_MS = 400;
 const BIG = { width: 320, height: 72 };
 /** How far the pointer may drift by a big element before its tip goes. */
 const DRIFT = 6;
+/** How long a finger is held, and how far it may wander, for a long press. */
+const HOLD_MS = 500;
+const WANDER = 10;
 
-/** Where the tip goes (its top left corner, in the window): under the anchor, or over it when only that fits, and
+/** Where the tip goes (its top left corner, in the window): under the anchor (over it, `up`, for a finger), or the
+ *  other side when only that fits, and
  *  centred on it but never closer than MARGIN to the window's edge. */
-export function place(anchor: Box, tip: Size, view: Size): { x: number; y: number; above: boolean } {
+export function place(anchor: Box, tip: Size, view: Size, up = false): { x: number; y: number; above: boolean } {
   const below = anchor.top + anchor.height + GAP;
   const over = anchor.top - GAP - tip.height;
   const fitsBelow = below + tip.height <= view.height - MARGIN;
-  const above = !fitsBelow && (over >= MARGIN || anchor.top > view.height - anchor.top - anchor.height);
+  const fitsOver = over >= MARGIN;
+  const above = up ? fitsOver || !fitsBelow : !fitsBelow && (fitsOver || anchor.top > view.height - anchor.top - anchor.height);
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
   return {
     x: clamp(anchor.left + anchor.width / 2 - tip.width / 2, MARGIN, view.width - MARGIN - tip.width),
@@ -76,7 +82,7 @@ function described(changes: MutationRecord[]): void {
 }
 
 /** The one tip on the page: which element it is for, and whether a pointer or the keyboard brought it. */
-type Shown = { el: HTMLElement; by: 'pointer' | 'focus'; at: { x: number; y: number } | null };
+type Shown = { el: HTMLElement; by: 'pointer' | 'focus' | 'touch'; at: { x: number; y: number } | null };
 
 /** Set the page's tooltip going (once, at start): returns what takes it away again. */
 export function startTips(doc: Document = document): () => void {
@@ -95,6 +101,9 @@ export function startTips(doc: Document = document): () => void {
   let pressed: HTMLElement | null = null;
   let goneAt = -Infinity;
   let frame = 0;
+  /** A finger held on an element, and whether its long press showed a tip (so the click it ends in is swallowed). */
+  let holding: { el: HTMLElement; x: number; y: number; timer: number } | null = null;
+  let swallow = false;
 
   const cancel = () => {
     if (waiting) win.clearTimeout(waiting.timer);
@@ -118,7 +127,8 @@ export function startTips(doc: Document = document): () => void {
     if (bubble.textContent !== text) bubble.textContent = text;
     // By the pointer: a box around the arrow, so the tip goes just under it.
     const anchor = shown.at ? { left: shown.at.x, top: shown.at.y - 10, width: 0, height: 26 } : shown.el.getBoundingClientRect();
-    const p = place(anchor, { width: bubble.offsetWidth, height: bubble.offsetHeight }, { width: win.innerWidth, height: win.innerHeight });
+    const size = { width: bubble.offsetWidth, height: bubble.offsetHeight };
+    const p = place(anchor, size, { width: win.innerWidth, height: win.innerHeight }, shown.by === 'touch');
     bubble.style.left = `${Math.round(p.x)}px`;
     bubble.style.top = `${Math.round(p.y)}px`;
     frame = win.requestAnimationFrame(follow);
@@ -152,6 +162,7 @@ export function startTips(doc: Document = document): () => void {
 
   /** The wait for a rest starts again where the pointer is now; by a big element, a tip it has left behind goes. */
   const move = (e: PointerEvent) => {
+    wander(e);
     if (!hoverable(e)) return;
     const at = { x: e.clientX, y: e.clientY };
     if (waiting) {
@@ -174,9 +185,44 @@ export function startTips(doc: Document = document): () => void {
     if (shown?.by === 'pointer' && shown.el === from) hide();
   };
 
+  const letGo = () => {
+    if (holding) win.clearTimeout(holding.timer);
+    holding = null;
+  };
+
   const down = (e: PointerEvent) => {
     pressed = tipOf(e.target);
     hide();
+    letGo();
+    swallow = false;
+    if (e.pointerType !== 'touch' || !pressed || !e.isPrimary) return;
+    const el = pressed;
+    holding = {
+      el,
+      x: e.clientX,
+      y: e.clientY,
+      timer: win.setTimeout(() => {
+        holding = null;
+        swallow = true;
+        show(el, 'touch');
+      }, HOLD_MS),
+    };
+  };
+
+  /** A finger that wanders is a drag or a scroll, not a long press. */
+  const wander = (e: PointerEvent) => {
+    if (holding && e.pointerType === 'touch' && Math.hypot(e.clientX - holding.x, e.clientY - holding.y) > WANDER) letGo();
+  };
+
+  // The long press was for the tip: the click it ends in (and the browser's own long-press menu) goes nowhere.
+  const click = (e: Event) => {
+    if (!swallow) return;
+    swallow = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const menu = (e: Event) => {
+    if (holding || swallow) e.preventDefault();
   };
 
   const focus = (e: FocusEvent) => {
@@ -200,6 +246,7 @@ export function startTips(doc: Document = document): () => void {
 
   // A scroll moves the page from under the pointer; a tip from focus follows its element instead (focus can scroll).
   const scroll = () => {
+    letGo();
     if (shown?.by !== 'focus') hide();
   };
 
@@ -208,6 +255,10 @@ export function startTips(doc: Document = document): () => void {
     ['pointermove', move as EventListener],
     ['pointerout', out as EventListener],
     ['pointerdown', down as EventListener],
+    ['pointerup', letGo],
+    ['pointercancel', letGo],
+    ['click', click],
+    ['contextmenu', menu],
     ['focusin', focus as EventListener],
     ['focusout', blur as EventListener],
     ['keydown', key as EventListener],
@@ -222,6 +273,7 @@ export function startTips(doc: Document = document): () => void {
   return () => {
     watch.disconnect();
     hide();
+    letGo();
     for (const [type, fn] of listeners) doc.removeEventListener(type, fn, true);
     win.removeEventListener('blur', hide);
     bubble.remove();

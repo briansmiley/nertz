@@ -30,3 +30,10 @@
 .tooltip[hidden] {
   display: none;
 }
+
+/* A long press shows the tip (client/tip.ts), so it must not also bring up the phone's own menu or select words. */
+[data-tip] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

@@ -215,7 +215,7 @@ export function Clock({ clock, at }: { clock: NonNullable<RoomView['clock']>; at
   const s = Math.floor(ms / 1000);
   const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   return (
-    <time className={`clock${at.small ? ' small' : ''}${clock.running ? '' : ' stopped'}`} style={{ left: at.x, top: at.y }} role="timer" aria-label={`Round time ${text}`} data-tip="This round">
+    <time className={`clock${at.small ? ' small' : ''}${clock.running ? '' : ' stopped'}`} style={{ left: at.x, top: at.y }} role="timer" aria-label={`Round time ${text}`}>
       {text}
     </time>
   );

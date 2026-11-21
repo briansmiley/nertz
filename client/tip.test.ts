@@ -29,3 +29,14 @@ describe('where a tip goes', () => {
     expect(place({ left: 150, top: 10, width: 40, height: 40 }, { width: 500, height: 30 }, view).x).toBe(8);
   });
 });
+
+describe('a tip for a finger', () => {
+  const tip = { width: 100, height: 30 };
+  const view = { width: 400, height: 400 };
+  it('goes over the element, clear of the finger', () => {
+    expect(place({ left: 150, top: 100, width: 40, height: 40 }, tip, view, true)).toEqual({ x: 120, y: 64, above: true });
+  });
+  it('goes under it when there is no room over it', () => {
+    expect(place({ left: 150, top: 10, width: 40, height: 40 }, tip, view, true)).toEqual({ x: 120, y: 56, above: false });
+  });
+});
