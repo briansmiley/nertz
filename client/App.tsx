@@ -442,12 +442,13 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
         <form onSubmit={submit}>
           <h2>Pull up a chair</h2>
           <label>
-            Name
+            <span className="label">Name</span>
             {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
             <span className="named">
               <input
                 ref={nameField}
                 autoFocus
+                placeholder="Name" /* (shown only where the label isn't: a phone on its side) */
                 value={name}
                 maxLength={MAX_NAME_LENGTH}
                 onChange={(e) => setName(e.target.value)}
