@@ -44,7 +44,7 @@ Controls:
 | Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
-| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Unpause**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (for now: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot) |
+| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Unpause**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (for now: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot, picked with the picture beside Send or dropped or pasted onto the slip; Tab from the words goes to Send) |
 | Press M (or the key you set under Hotkeys in the settings) | mute or unmute. While the sound is off a small amber speaker sits at the end of the chat bar, top left: press it to turn the sound back on |
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
@@ -92,8 +92,13 @@ What you see around a round:
   else's (mirrored with the rest of the hand for the players across the table). While a group is being dealt its cards
   lie squarely on it face-down, and all turn over when the third lands.
 - **Face-down work cards** lie under each work pile, yours and everyone's, and turn over when the cards above them leave.
-- **A long work pile** of yours may start a little higher up, into what room there is between your hand and the felt.
-  Past that the oldest cards of the pile narrow to slivers and the newest keep their rank readable.
+- **A long work pile** of yours may start a little higher up, into what room there is between your hand and the felt
+  (and short of anyone's hand above it). Past that the oldest cards of the pile narrow to slivers and the newest keep
+  their rank readable.
+- **More than six at the table**, or a phone on its side: everyone else sits in a column at each side of the felt. The
+  left one runs down beside your hand only where your hand leaves it the room (a phone's); otherwise it stops above
+  your hand, as the right one does. Too many for a column even at the smallest cards, they lie a little over each
+  other; never over your hand.
 - **A pile you finished** (you placed its King) glows and gives a small nod; other people's finished piles are dimmed and
   ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
   NERTZ! first, or try to deal from the stock or to start a pile on the felt, nothing moves, the pile shakes, the tray
@@ -316,6 +321,10 @@ pile to the tray is not reported: the pile is seen to go when it gets there.
 Cards that move without having been seen on their way (a bot's, or after lost reports) cross the table in 0.2 to
 0.45 seconds depending on the distance, see-through while in the air. With "reduce motion" on, other players' held
 cards jump from report to report instead of gliding.
+
+Someone else's card in the air, held or crossing, is drawn over everyone else's hands and the middle, and under your
+own hand: whatever comes across from another seat never hides your cards (`levelOf` in `client/level.ts`). Your own
+card in hand is over everything.
 
 ## Bots
 
@@ -615,7 +624,7 @@ client/   Vite + React
   net.ts        websocket store and prediction
   layout.ts     pure geometry: where the felt, every hand, card, pile, tray pile, drop area and the countdown goes for a given window size; where another player's held card is drawn; the deal's schedule
   Table.tsx     the table: the deal, the card in your hand (it listens to the pointer and carries out what hand.ts decides), other players' cards in the air, the Nertz call, the grace countdown, the steps of the end-of-round sequence
-  level.ts      pure: a card's stacking level, from the level the layout gives it and what it is doing (in its pile, travelling, turning over, in the deck, in a hand)
+  level.ts      pure: a card's stacking level, from the level the layout gives it, what it is doing (in its pile, travelling, turning over, in the deck, in a hand) and whose it is (yours, someone else's, the table's)
   hand.ts       pure: the card or finished pile in your hand (pressed, carried or tapped), and what a press, a move, a release or a tap does
   Opening.tsx   the dealer's Start button, "Waiting for ...", and "1, 2, 3, NERTZ!" in the middle of the table
   clearFirst.tsx  what your finished pile does while it waits for the tray: a nod, a shake when you try something else, and then its words
@@ -772,7 +781,8 @@ would still need one of the options above, and serving both from one origin is s
 
 Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
 guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
-is with Google or with a code sent to their email, and they are then known across tables and visits. Signed in, their
+is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
+and Send code), and they are then known across tables and visits. Signed in, their
 picture (or initial) and name stand where the name was written, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
 to their page or the way in and back again (with reduced motion, the other side simply comes up).

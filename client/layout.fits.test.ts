@@ -1,10 +1,11 @@
 // What stands round the cards (layout.ts, `corners` and `furnish`) has a place of its own in every window: the
-// buttons in the corners, the round's clock, your own line, "I'm stuck" and the vote, your cards, the tray.
+// buttons in the corners, the round's clock, your own line, "I'm stuck" and the vote, your cards, the tray, and
+// everyone else's hands with their names.
 import { describe, expect, it } from 'vitest';
 import { inPlay, lcg, seats } from '../shared/testkit';
 import type { Card, GameState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
-import { computeLayout, countBox, nameWidth, type ChatButton, type Fittings, type Insets, type Layout, type Rect } from './layout';
+import { computeLayout, countBox, nameWidth, TAG_H, type ChatButton, type Fittings, type Insets, type Layout, type Rect } from './layout';
 
 /** Phones upright and on their sides, small and low desktop windows, and the usual ones. */
 const WINDOWS: [number, number][] = [
@@ -26,6 +27,7 @@ const WINDOWS: [number, number][] = [
   [1366, 625],
   [1280, 800],
   [1024, 768],
+  [1174, 1043],
   [1920, 1080],
 ];
 const PLAYERS = [2, 3, 4, 5, 6, 7, 8];
@@ -57,6 +59,8 @@ function things(L: Layout, W: number, H: number, vote: boolean): Record<string, 
     vote: vote ? [L.vote!] : [],
     cards: [...L.cards.filter((c) => c.mine).map((c) => ({ x: c.x, y: c.y, w: c.s * CARD_W, h: c.s * CARD_H })), me.nertz, ...me.workAt, me.stockPad, me.waste],
     tray: [{ x: L.tray.x, y: L.tray.y, w: W - L.tray.x, h: L.tray.h }],
+    // (Seven and more at the table at a middling width: the column on your left ran down beside your hand, and over it.)
+    others: L.opponents.map((o) => ({ ...o.box, y: o.box.y - TAG_H, h: o.box.h + TAG_H })),
   };
 }
 
@@ -68,11 +72,12 @@ function wrong(L: Layout, W: number, H: number, keep: Insets, vote: boolean): st
   names.forEach((a, i) =>
     names.slice(i + 1).forEach((b) => {
       if (a === 'count' && b === 'cards') return; // (the count lies on the pile it counts)
+      if (a === 'chat' && b === 'others') return; // (the widest of the chat's buttons still reach a hand across the top: a known limit)
       if (all[a]!.some((p) => all[b]!.some((q) => meets(p, q)))) out.push(`${a} on ${b}`);
     }),
   );
   for (const name of names) {
-    const loose = name === 'cards' || name === 'tray'; // (the tray runs off the right edge: that is where it is)
+    const loose = name === 'cards' || name === 'tray' || name === 'others'; // (the tray runs off the right edge: that is where it is)
     const [l, r, bottom] = loose ? [0, W, H] : [keep.l, W - keep.r, H - keep.b];
     if (all[name]!.some((p) => p.x < l - 0.01 || p.y < -0.01 || (name !== 'tray' && p.x + p.w > r + 0.01) || p.y + p.h > bottom + 0.01)) out.push(`${name} off the window`);
   }
@@ -94,6 +99,22 @@ describe('what stands round the cards', () => {
               if (found.length) bad.push(`${W}x${H}, ${n} players${keep.l || keep.b ? ', notched' : ''}, ${said}${vote ? ', vote' : ''}: ${found.join('; ')}`);
             }
           }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('keeps everyone else\'s hands off yours, up to ten at the table: more of them than fit lie over each other, never over you', () => {
+    const bad: string[] = [];
+    for (const [W, H] of WINDOWS) {
+      for (let n = 2; n <= 10; n++) {
+        for (const keep of insetsOf(W, H)) {
+          const fit: Fittings = { chat: CHATS.out, clock: true, seats: n, vote: true, name: nameWidth('Brian', '120') };
+          const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, undefined, keep, [], fit);
+          const { others, chat: _, ...yours } = things(L, W, H, true);
+          const hit = Object.entries(yours).filter(([, rs]) => rs.some((r) => others!.some((o) => meets(r, o))));
+          if (hit.length) bad.push(`${W}x${H}, ${n} players${keep.l || keep.b ? ', notched' : ''}: ${hit.map(([name]) => name).join(', ')}`);
         }
       }
     }

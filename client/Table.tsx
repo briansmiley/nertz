@@ -20,7 +20,7 @@ import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
-import { inHand, levelOf, moving, IN_PILE, TRAVELLING, TURNING, type Doing } from './level';
+import { inHand, levelOf, mover, moving, whoseOf, IN_PILE, type Doing, type Whose } from './level';
 import { Opening } from './Opening';
 import { ending, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
@@ -108,8 +108,8 @@ interface CardProps {
   z: number;
   /** Tilt, degrees. */
   rot: number;
-  /** In one of your own piles. */
-  mine: boolean;
+  /** Whose the place it lies in is: one of your own piles, someone else's, or the table's. */
+  whose: Whose;
   face: Showing;
   mini: boolean;
   /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
@@ -133,7 +133,7 @@ const drawn = (look: Look): Pick<CardProps, 'deck' | 'night' | 'back' | 'bare'> 
 const CardView = memo(function CardView(p: CardProps) {
   const dealt = useRef(p.deal).current;
   /** What it is doing: in the deck until it is dealt, if it was in one when it first appeared (it is dealt once). */
-  const doing = useRef<Doing>(dealt ? { k: 'deck', under: dealt.under } : IN_PILE);
+  const doing = useRef<Doing>(dealt ? { k: 'deck', under: dealt.under, by: p.whose } : IN_PILE);
   const x = useMotionValue(dealt?.x ?? p.x);
   const y = useMotionValue(dealt?.y ?? p.y);
   const s = useMotionValue(p.s);
@@ -141,7 +141,7 @@ const CardView = memo(function CardView(p: CardProps) {
   const r = useMotionValue(p.rot);
   const o = useMotionValue(1);
   const goal = useRef({ x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot });
-  const mine = useRef(p.mine);
+  const whose = useRef(p.whose);
   const pile = useRef(p.pile);
   const flight = useRef(0);
   const faceWas = useRef(p.face);
@@ -191,10 +191,10 @@ const CardView = memo(function CardView(p: CardProps) {
 
   useEffect(() => {
     const was = goal.current;
-    const wasMine = mine.current;
+    const by = mover(whose.current, p.whose);
     const from = pile.current;
     goal.current = { x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot };
-    mine.current = p.mine;
+    whose.current = p.whose;
     pile.current = p.pile;
     if (inHand(doing.current)) return; // settles when it is let go
     if (doing.current.k === 'deck') {
@@ -203,15 +203,15 @@ const CardView = memo(function CardView(p: CardProps) {
       return;
     }
     if (was.x === p.x && was.y === p.y && was.s === p.s && was.rot === p.rot) return be(doing.current); // (the level it lies at may be another)
-    const on = moving(from, p.pile);
-    go(wasMine || p.mine);
+    const on = moving(from, p.pile, by);
+    go(by === 'yours');
     // Turning face-up on the way (a group off the stock going over onto the waste): see `levelOf`.
     if (faceWas.current === 'down' && p.face !== 'down' && !calm()) {
       const n = flight.current;
-      be(TURNING);
+      be({ k: 'turning', by });
       setTimeout(() => flight.current === n && be(on), FLIP().duration * 500);
     } else be(on);
-  }, [p.x, p.y, p.s, p.z, p.rot, p.mine, p.pile, p.slow, p.deal?.x, p.deal?.y, go, be, x, y, s]);
+  }, [p.x, p.y, p.s, p.z, p.rot, p.whose, p.pile, p.slow, p.deal?.x, p.deal?.y, go, be, x, y, s]);
 
   useEffect(() => {
     faceWas.current = p.face; // (after the effect above, which asks what it was)
@@ -221,7 +221,7 @@ const CardView = memo(function CardView(p: CardProps) {
   useEffect(() => {
     if (doing.current.k !== 'deck') return;
     const turn = setTimeout(() => {
-      be(TRAVELLING);
+      be({ k: 'travelling', by: whose.current });
       fly(DEAL);
     }, leaves - performance.now());
     return () => clearTimeout(turn);
@@ -233,8 +233,10 @@ const CardView = memo(function CardView(p: CardProps) {
       be({ k, i });
     };
     const settle = () => {
-      be(TRAVELLING);
-      go(mine.current);
+      // Out of your hand or someone else's: that hand's, on its way to its place.
+      const from: Whose = doing.current.k === 'held' ? 'yours' : doing.current.k === 'carried' ? 'theirs' : whose.current;
+      be({ k: 'travelling', by: mover(from, whose.current) });
+      go(whose.current === 'yours');
     };
     p.handles.set(p.id, { x, y, s, o, r, take, settle });
     return () => void p.handles.delete(p.id);
@@ -1044,7 +1046,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             s={c.s}
             z={c.z}
             rot={c.rot}
-            mine={c.mine}
+            whose={whoseOf(c)}
             face={replaying ? 'down' : c.face}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}

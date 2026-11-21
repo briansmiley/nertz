@@ -298,7 +298,8 @@ interface HandSpec {
   rooms?: readonly number[];
   /** The count on the nertz pile stands at its top right corner, not its bottom right (`furnish`: the bottom one is taken). */
   countUp?: boolean;
-  workRise: number; // how far above the row a pile too long for that may start instead (free felt above the hand)
+  /** How far above the row each pile, too long for its room, may start instead: as far up as the cloth over it is clear of the felt and of everyone else's hands. */
+  workRise: readonly number[];
   minStrip: number; // the least a face-up card may show while there is room: its whole rank. 0 = squeeze all alike
   z: number;
   mine: boolean;
@@ -410,7 +411,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
     // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
     const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
-    const rise = clamp(wanted - room, 0, h.workRise);
+    const rise = clamp(wanted - room, 0, h.workRise[i] ?? 0);
     const at = fanOut(show, h.workFan, h.minStrip, room + rise);
     if (i === h.peek) {
       // Looked at: every card shows its whole strip, the pile reaching up over whatever is above it (and above the
@@ -513,13 +514,16 @@ const OWN_K = 0.108;
 const OWN_MAX = 150;
 /** The widest an opponent's card is drawn, on however large a screen. */
 const OPP_MAX = 96;
+/** The narrowest an opponent's card is drawn in a row or column of hands (a phone, or more than six at the table). */
+const OPP_LEAST = 11;
 /** The widest a card in the middle is drawn, in widths of your own. */
 const CENTRE_MAX = 1.2;
 /**
- * Your own hand lies over the middle's cards (z 5000 and up, the tray's among them): what of it reaches onto the felt
- * (the group held over the stock, above all) covers a pile lying at your edge of it.
+ * Your own hand lies over the middle's cards (z 5000 to 6000, the tray's among them): what of it reaches onto the felt
+ * (the group held over the stock, above all) covers a pile lying at your edge of it. It lies over everyone else's cards
+ * in the air too, which come between the two (level.ts).
  */
-const OWN_Z = 6000;
+const OWN_Z = 6400;
 /** A work pile being looked at is drawn above the rest of your hand and below anything flying or held. */
 const PEEK_Z = 1000;
 /** Width of a hand in card widths, for the gaps used below. */
@@ -879,7 +883,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const feltRoom = W - 2 * (tall ? 6 : edge);
   // Upright: the hands of the others in rows under the bar. As few to a row as leaves the cards largest in the room
   // there is above the felt (one opponent to a row is twice the size of two, while the rows fit).
-  const grid = { cols: 1, w: 0 };
+  const grid = { cols: 1, w: -Infinity }; // (however small the cards come out, the most to a row that leaves them largest)
   if (tall) {
     const above = ownTop - CLEAR - 4 - Math.min(feltRoom / hw, (ow * CENTRE_MAX * 2) / size.w || Infinity) - CLEAR - TALL.bar;
     for (let cols = Math.min(TALL.cols, Math.max(1, seats.length)); cols >= 1; cols--) {
@@ -899,14 +903,22 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     col.u = Math.max(40, Math.min(most / (2 * hw), ((mine ? ownTop : H - 12) - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const each = (room: number, k: number) => (k ? (room / k - TAG_H - 6) / (RATIO * 1.85) : Infinity);
-    col.w = Math.min(wide / OPP_UNITS, each(col.botL - col.topL, col.left), each(col.botR - col.topR, seats.length - col.left), mine ? ow * 0.62 : OPP_MAX);
+    const width = (botL: number) => Math.min(wide / OPP_UNITS, each(botL - col.topL, col.left), each(col.botR - col.topR, seats.length - col.left), mine ? ow * 0.62 : OPP_MAX);
+    // The left column runs down to the menu's button only beside your hand, clear of it (a phone's hand is narrow and
+    // leaves it the room); otherwise it stops above your hand, as the right one does, and above the count on your
+    // nertz pile, which may stand at the pile's top corner. Whichever has its hands larger.
+    const over = Math.min(H - LOW.knobs, col.botR - (mine ? (0.5 + COUNT_OUT) * countD(ow) + 2 : 0));
+    const beside = Math.min(width(H - LOW.knobs), (handX - CLEAR - sideL) / OPP_UNITS);
+    const above = width(over);
+    if (beside >= Math.max(above, OPP_LEAST)) col.w = beside;
+    else Object.assign(col, { w: above, botL: over });
   }
   const tops = seats.filter((s) => s.where === 'top');
   const sides = seats.some((s) => s.where === 'side');
   const mw = tall
-    ? clamp(grid.w, 11, OPP_MAX)
+    ? clamp(grid.w, OPP_LEAST, OPP_MAX)
     : low
-      ? clamp(col.w, 11, OPP_MAX)
+      ? clamp(col.w, OPP_LEAST, OPP_MAX)
       : clamp(
     Math.min(
       H * OPP_SIZE[Math.min(5, others.length)]!,
@@ -944,7 +956,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       fan: 0,
       workFan: mh * 0.4,
       workRoom: mh * 0.85,
-      workRise: 0,
+      workRise: [],
       minStrip: 0,
       z: 1000 + i * 200,
       mine: false,
@@ -969,8 +981,10 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       const count = left ? col.left : seats.length - col.left;
       const k = left ? col.left - 1 - i : i - col.left; // from the top
       const [top, bottom] = left ? [col.topL, col.botL] : [col.topR, col.botR];
+      // (More of them than the column holds at the smallest cards: they lie over each other a little, and stay in it.)
       const share = (bottom - top) / count;
-      const y = top + k * share + TAG_H + Math.max(0, (share - TAG_H - handH) / 2);
+      const tight = share < TAG_H + handH && count > 1;
+      const y = tight ? top + TAG_H + (k * (bottom - top - TAG_H - handH)) / (count - 1) : top + k * share + TAG_H + Math.max(0, (share - TAG_H - handH) / 2);
       // (On the right the hand is mirrored: either way the nertz pile is at the outer edge.)
       return placeHand(p, { ...spec, flip: !left, x: left ? sideL : W - sideR - handW, y }, cards);
     }
@@ -1030,8 +1044,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     workFan: oh * 0.3,
     workRoom: tall ? oh * TALL.room : H - 8 - ownTop - oh,
     rows: tall ? { y: rowY, nertzX: edge, stockX: W - edge - 2 * ow - gapT, box: { x: edge, y: ownTop, w: W - 2 * edge, h: H - 10 - ownTop } } : undefined,
-    // (Not once the wash begins: the labels of the sorted piles are placed clear of the hand's box.)
-    workRise: onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - (cy + u)),
+    workRise: [],
     minStrip: oh * 0.21,
     z: OWN_Z,
     mine: true,
@@ -1039,6 +1052,15 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     peek,
     hold: held?.get(you),
   };
+  // A pile rises as far as the cloth over it is clear: up to the felt, or to the bottom of a hand above it (a column
+  // of hands that stops above yours). (Not once the wash begins: the labels of the sorted piles are placed clear of
+  // the hand's box.)
+  const { workX } = pilesOf(own);
+  own.workRise = [0, 1, 2, 3].map((i) => {
+    const x = workX + i * (ow + own.gap);
+    const over = opponents.filter((o) => o.box.x < x + ow && x < o.box.x + o.box.w).map((o) => o.box.y + o.box.h);
+    return onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - Math.max(cy + u, ...over));
+  });
   // What stands by it is placed first, and the work piles fan down as far as that leaves them room.
   const at = corners(W, fullH, keep, { ...fit, seats: ring.length });
   // The clock stands in the first of its places where nothing of the table is: the felt, someone's hand and name, your own cards.
