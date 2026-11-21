@@ -97,8 +97,8 @@ export function Sure({ room }: { room: RoomView }) {
   const Icon = ICONS[a.id];
   return (
     <div className="asked" onPointerDown={(e) => e.target === e.currentTarget && answer(false, room)}>
-      <div className="paper-card" role="alertdialog" aria-label={a.sure}>
-        <h2>{a.sure}</h2>
+      <div className="paper-card" role="alertdialog" aria-label={`${a.label}: are you sure?`}>
+        <h2>Are you sure?</h2>
         <button type="button" className="go" onClick={() => answer(true, room)}>
           <Icon />
           {a.label}

@@ -71,8 +71,8 @@ export interface TableAction {
   tally?: string;
   /** Yours is in (the vote): pressed again, it is taken back. */
   on?: boolean;
-  /** It cannot be undone, so it is asked first: the question. */
-  sure?: string;
+  /** It cannot be undone, so it is asked first (`Sure`). */
+  sure?: boolean;
 }
 
 /** The actions open to you now, in the order the menu lists them. Leaving is always one. */
@@ -83,11 +83,11 @@ export function tableActions(room: RoomView): TableAction[] {
     canPause(room) && { id: 'pause' as const, label: 'Pause' },
     canResume(room) && { id: 'resume' as const, label: 'Unpause' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
-    canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Restart the round?' },
-    canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: 'Reset the table?' },
+    canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: true },
+    canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
-    { id: 'leave' as const, label: 'Leave table', sure: 'Leave the table?' },
+    { id: 'leave' as const, label: 'Leave table', sure: true },
   ].filter((a) => !!a);
 }
 
