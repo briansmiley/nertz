@@ -1,0 +1,122 @@
+# A pull request into staging -> its own app, https://nertz-pr-<number>.fly.dev (see README "Previews"). Each push runs
+# the checks and deploys the merge of the PR into staging; closing the PR destroys the app. PRs from forks get none:
+# they are not given the secrets.
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [staging]
+
+permissions:
+  contents: read
+
+# A newer push to the PR replaces an older run; closing it replaces a deploy still going.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  APP: nertz-pr-${{ github.event.pull_request.number }}
+  FLY_ORG: personal
+  PR: ${{ github.event.pull_request.number }}
+  MARK: '<!-- nertz-preview -->'
+
+jobs:
+  test:
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run --testTimeout=180000
+      - run: npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # the comment with the address
+    # Only here, not in the job that runs the PR's own code (npm ci, the tests).
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PREVIEW }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The token is there
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then echo "::error::No FLY_API_TOKEN_PREVIEW secret: see README \"Previews\"."; exit 1; fi
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Make the app, the first time
+        run: |
+          if flyctl apps list --org "$FLY_ORG" --json | jq -e --arg app "$APP" 'any(.[]; .Name == $app)' > /dev/null; then
+            echo "$APP is there."
+          else
+            flyctl apps create "$APP" --org "$FLY_ORG"
+          fi
+      - name: Its secrets
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          # Sign-in by emailed code only (Google's redirect addresses cannot be registered per preview). Nothing for
+          # feedback: a preview's reports go nowhere. AUTH_SECRET is made once per app, so later pushes keep sessions.
+          set -- PUBLIC_URL="https://$APP.fly.dev"
+          if ! flyctl secrets list --app "$APP" --json | jq -e 'any(.[]; .name == "AUTH_SECRET")' > /dev/null; then
+            set -- "$@" AUTH_SECRET="$(openssl rand -hex 32)"
+          fi
+          if [ -n "$RESEND_API_KEY" ]; then set -- "$@" RESEND_API_KEY="$RESEND_API_KEY"; fi
+          if [ -n "$EMAIL_FROM" ]; then set -- "$@" EMAIL_FROM="$EMAIL_FROM"; fi
+          # Staged: the deploy below takes them up.
+          flyctl secrets set --app "$APP" --stage "$@"
+      - name: Deploy
+        run: flyctl deploy --app "$APP" --config fly.preview.toml --remote-only --ha=false
+      - name: Say where, on the PR
+        env:
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          body="$MARK
+          Preview: https://$APP.fly.dev (at ${SHA:0:7})"
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARK\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
+
+  destroy:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # the comment with the address
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PREVIEW }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Destroy the app
+        run: |
+          if flyctl apps list --org "$FLY_ORG" --json | jq -e --arg app "$APP" 'any(.[]; .Name == $app)' > /dev/null; then
+            flyctl apps destroy "$APP" --yes
+          else
+            echo "No $APP to destroy."
+          fi
+      - name: Say so, on the PR
+        run: |
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARK\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$MARK
+          Preview taken down with the PR." > /dev/null
+          fi

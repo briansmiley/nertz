@@ -1,0 +1,35 @@
+# Fly.io config for the pull-request previews, `nertz-pr-<number>` (see README "Previews"), which
+# .github/workflows/preview.yml names with --app. As fly.toml, but with no volume: a preview keeps its accounts on the
+# machine's own disk, and they go with each deploy and with the app when the PR closes.
+# (Never add [mounts] here: a mount added to a machine that has no volume destroys the machine.)
+app = "nertz-pr"
+primary_region = "sjc"
+
+[env]
+  DATA_DIR = "/app/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # One machine, suspended when nobody is connected and resumed on the next request, as in fly.toml.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 800
+    hard_limit = 1000
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+# As much as the real apps: a picture sent to the profile (sharp) decodes up to 4096x4096, about 64 MB, on top of Node,
+# and a preview that runs out of memory where the real app would not tests nothing.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
