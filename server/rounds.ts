@@ -33,23 +33,28 @@ export function openRounds(db: Db): Rounds {
   const hand = db.prepare('insert into hand (round, seat, player, name, account, bot, out, played, nertz_left, delta, nertz) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const snipe = db.prepare('insert into snipe (round, by_seat, of_seat, card) values (?, ?, ?, ?)');
   // A round is won by the best score in it, by everyone who has it; a round of one hand is nobody's to win, and has no
-  // place in it. A place is one more than the hands that scored more: those who tie share it.
+  // one else to be ahead of. How far ahead someone finished is the share of the others in the round who scored less
+  // than they did, a tie counting half: 1 for first, 0 for last, ½ for the middle of the table, whatever its size.
   const stats = db.prepare(
     `with mine as (
-       select h.round, h.seat, h.delta, h.nertz,
+       select h.round, h.seat, h.delta, h.played, h.nertz_left, h.nertz,
               (select count(*) from hand o where o.round = h.round) as hands,
               (select count(*) from hand o where o.round = h.round and o.seat <> h.seat and o.bot is null) as people,
               (select count(*) from hand o where o.round = h.round and o.bot is not null) as bots,
-              1 + (select count(*) from hand o where o.round = h.round and o.delta > h.delta) as place
+              (select count(*) from hand o where o.round = h.round and o.delta > h.delta) as above,
+              (select count(*) from hand o where o.round = h.round and o.seat <> h.seat and o.delta = h.delta) as level
          from hand h where h.account = $account)
      select count(*) as rounds,
+            coalesce(sum(above = 0 and hands > 1), 0) as won,
             coalesce(sum(nertz), 0) as nertz,
             coalesce(sum(delta), 0) as points,
-            max(delta) as best,
-            avg(case when hands > 1 then place end) as place,
+            max(delta) as bestPoints,
+            coalesce(sum(played), 0) as cards,
+            max(played) as bestCards,
+            coalesce(sum(nertz_left), 0) as nertzLeft,
+            avg(case when hands > 1 then (hands - 1 - above - level + level / 2.0) / (hands - 1) end) as ahead,
             coalesce(sum((select count(*) from snipe s where s.round = mine.round and s.by_seat = mine.seat)), 0) as snipes,
-            coalesce(sum((select count(*) from snipe s where s.round = mine.round and s.of_seat = mine.seat)), 0) as sniped,
-            coalesce(sum(place = 1 and hands > 1), 0) as won
+            coalesce(sum((select count(*) from snipe s where s.round = mine.round and s.of_seat = mine.seat)), 0) as sniped
        from mine
       where $among = 'all' or ($among = 'people' and people > 0) or ($among = 'no-bots' and bots = 0)`,
   );
@@ -64,7 +69,7 @@ export function openRounds(db: Db): Rounds {
     },
     stats: (account, among = 'all') => {
       const s = stats.get({ $account: account, $among: among }) as unknown as Stats;
-      return { rounds: s.rounds, won: s.won, nertz: s.nertz, points: s.points, place: s.place, best: s.best, snipes: s.snipes, sniped: s.sniped };
+      return { rounds: s.rounds, won: s.won, nertz: s.nertz, points: s.points, bestPoints: s.bestPoints, cards: s.cards, bestCards: s.bestCards, nertzLeft: s.nertzLeft, ahead: s.ahead, snipes: s.snipes, sniped: s.sniped };
     },
     forget: (account) => void forget.run(account),
   };
