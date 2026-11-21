@@ -77,6 +77,13 @@ const MIGRATIONS: string[] = [
      priority integer check (priority between 0 and 4),
      issue text
    ) strict;`,
+  // Who someone is at the table, theirs to change (server/profile.ts): for now the name they go by, null for none
+  // chosen yet. `account` is a row of Better Auth's `user`, as for `hand` (and not declared as one, for the same reason).
+  // A profile is made with its account (server/accounts.ts), and goes with it.
+  `create table profile (
+     account text primary key,
+     name text
+   ) strict, without rowid;`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

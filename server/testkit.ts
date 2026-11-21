@@ -255,12 +255,12 @@ export class Browser {
   get cookie(): string {
     return [...this.kept].map(([k, v]) => `${k}=${v}`).join('; ');
   }
-  /** GET `path`; or with `body`, POST it as JSON. */
-  async ask(path: string, body?: object): Promise<Response> {
+  /** GET `path`; or with `body`, POST it as JSON (or `method` it, from `origin`). */
+  async ask(path: string, body?: object, { method = body ? 'POST' : 'GET', origin = ACCOUNTS.url }: { method?: string; origin?: string } = {}): Promise<Response> {
     const res = await fetch(`http://localhost:${this.port}${path}`, {
-      method: body ? 'POST' : 'GET',
+      method,
       redirect: 'manual',
-      headers: { cookie: this.cookie, origin: ACCOUNTS.url, ...(body ? { 'content-type': 'application/json' } : {}) },
+      headers: { cookie: this.cookie, origin, ...(body ? { 'content-type': 'application/json' } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     for (const line of res.headers.getSetCookie()) {

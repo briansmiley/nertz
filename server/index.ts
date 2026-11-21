@@ -1,5 +1,5 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts) and one's own record (/stats);
+// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile (/profile: server/profile.ts) and record (/stats);
 // websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -8,8 +8,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
-import type { Account } from '../shared/types';
+import { AMONG, type Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
+import { PROFILE_PATH, profileHandler } from './profile';
 import { dataFromEnv, openDb } from './db';
 import { openReports } from './reports';
 import { openRounds } from './rounds';
@@ -133,7 +134,9 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const home = options.accounts?.url;
   /** Screenshots sent with reports are files here, beside the database (nowhere, for a database in memory). */
   const reportDir = options.data && options.data !== ':memory:' ? join(dirname(options.data), 'reports') : null;
-  const feedback = feedbackHandler(options.feedback, { reports: db && openReports(db, { dir: reportDir }), who: accounts?.who });
+  const reports = db && openReports(db, { dir: reportDir });
+  const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
+  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, home, gone: (account) => rooms.forEach((room) => room.forgetAccount(account)) }) : null;
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {
@@ -163,10 +166,21 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
         const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
         if (!accounts || !rounds) return json(404, null);
         if (req.method !== 'GET') return json(405, null);
+        // Which of their rounds: every one, unless they say.
+        const asked = new URL(req.url ?? '/', 'http://localhost').searchParams.get('among') ?? 'all';
+        const among = AMONG.find((a) => a === asked);
+        if (!among) return json(400, null);
         accounts
           .who(req.headers)
-          .then((account) => (account ? json(200, rounds.stats(account.id)) : json(401, null)))
+          .then((account) => (account ? json(200, rounds.stats(account.id, among)) : json(401, null)))
           .catch((err: unknown) => (console.error('stats', err), res.headersSent ? void res.end() : json(500, null))); // (the database gone wrong, or closed under us: an answer, not a crash)
+      } else if (path === PROFILE_PATH) {
+        if (!profile) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
+        profile(req, res).catch((err: unknown) => {
+          console.error('profile', err);
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('null');
+        });
       } else if (path === '/feedback') {
         feedback(req, res).catch(() => {
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });

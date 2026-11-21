@@ -1,5 +1,8 @@
 // Accounts: who someone is beyond one table. Signing in is with Google, and nothing else; nobody has to.
 //
+// Who signed in is Better Auth's `user`, as Google says, and nothing here writes to it. Who they are at the table is
+// their `profile` (server/db.ts), ours, theirs to change: made with the account, from Google's first name, and gone with it.
+//
 // The game runs without any of this. Accounts are on when there is a database to keep them in (server/db.ts) and the
 // environment names a Google OAuth client (see .env.example); otherwise /api/auth answers 404 and the client shows no
 // way to sign in.
@@ -10,8 +13,9 @@ import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:
 import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
+import { cleanName } from '../shared/protocol';
 import type { Account } from '../shared/types';
-import type { Db } from './db';
+import { transaction, type Db } from './db';
 
 /** Every route of Better Auth's is under this path. Google is told to come back to `${url}${AUTH_PATH}/callback/google`. */
 export const AUTH_PATH = '/api/auth';
@@ -19,8 +23,17 @@ export const AUTH_PATH = '/api/auth';
 export interface Accounts {
   /** Answers a request under `AUTH_PATH`. */
   handle(req: IncomingMessage, res: ServerResponse): Promise<void>;
-  /** Who a request's cookie says is signed in: null for nobody. Never rejects: asking gone wrong is said in the log, and is nobody. */
+  /**
+   * Who a request's cookie says is signed in: null for nobody (and for an account gone, whose cookie may still be good
+   * for a few minutes). Never rejects: asking gone wrong is said in the log, and is nobody.
+   */
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
+  /** Gives `account` a name to go by, already clean and not empty. */
+  rename(account: string, name: string): void;
+  /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
+  signOut(headers: IncomingHttpHeaders): Promise<string[]>;
+  /** Everything accounts keep of `account`: its profile, its sessions, its link to Google, and it. (Run it in a transaction, with whatever else of theirs goes too.) */
+  forget(account: string): void;
 }
 
 export interface AccountsOptions {
@@ -45,10 +58,14 @@ export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsO
   return { url: url.replace(/\/+$/, ''), secret, google: { id, secret: googleSecret } };
 }
 
+/** The name a profile starts from: the first of the names Google gives, null for none. */
+export const firstName = (name: string): string | null => cleanName(name.trim().split(' ')[0] ?? '') || null;
+
 /** Google's keys to someone's account, which signing in hands over and nothing here needs. */
 const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
 
 export async function openAccounts(db: Db, options: AccountsOptions): Promise<Accounts> {
+  const made = db.prepare('insert into profile (account, name) values (?, ?) on conflict do nothing');
   const config = {
     appName: 'Nertz',
     baseURL: options.url,
@@ -65,6 +82,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     // Kept: who someone is (name, email, picture). Not kept: where they signed in from and on what, nor Google's own
     // keys to their account, which nothing here has a use for. (public/privacy.html says as much.)
     databaseHooks: {
+      user: { create: { after: async (user) => void made.run(user.id, firstName(user.name)) } },
       session: { create: { before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }) } },
       account: {
         create: { before: async (account) => ({ data: { ...account, ...NO_KEYS } }) },
@@ -75,6 +93,13 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
   } satisfies Parameters<typeof betterAuth>[0];
   await (await getMigrations(config)).runMigrations();
+  // Anyone signed up before there were profiles has one made now, as if just signed up. (Here, not in db.ts: `user` is
+  // not there until Better Auth has made it.)
+  const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
+  if (unmade.length) transaction(db, () => unmade.forEach((u) => made.run(u.id, firstName(u.name))));
+  const named = db.prepare('select name from profile where account = ?');
+  const rename = db.prepare('update profile set name = ? where account = ?');
+  const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
   const auth = betterAuth(config);
   const handler = toNodeHandler(auth);
   return {
@@ -82,7 +107,11 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
-      return session ? { id: session.user.id, name: session.user.name, image: session.user.image ?? null } : null;
+      const profile = session && (named.get(session.user.id) as { name: string | null } | undefined);
+      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null } : null;
     },
+    rename: (account, name) => void rename.run(name, account),
+    signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
+    forget: (account) => forgets.forEach((f) => f.run(account)),
   };
 }
