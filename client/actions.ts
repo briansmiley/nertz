@@ -1,6 +1,6 @@
 // What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
 // unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. Each has one rule here for whether it is open to you now; the menu
-// (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here. One that
+// (Menu.tsx), the pause key, the card over a paused table and the "End round" button at the table all ask it here. One that
 // cannot be undone is asked first (`press`), wherever it was pressed: the menu or the score sheet.
 import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
@@ -89,6 +89,12 @@ export function tableActions(room: RoomView): TableAction[] {
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: true },
   ].filter((a) => !!a);
+}
+
+/** What the pause key presses now: Pause or Unpause, whichever the menu has open to you; neither, nothing. */
+export function pauseKeyAction(room: RoomView | null | undefined): 'pause' | 'resume' | null {
+  for (const a of room ? tableActions(room) : []) if (a.id === 'pause' || a.id === 'resume') return a.id;
+  return null;
 }
 
 /** Does it. (Each is refused by the server too, by its own rule, if the table has changed since.) */

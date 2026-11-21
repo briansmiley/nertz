@@ -31,7 +31,7 @@ import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { calm, lookOf, usePrefs } from './prefs';
+import { calm, hotkeyName, lookOf, usePrefs } from './prefs';
 import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -592,6 +592,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const dealing = game.status.at === 'dealing' || replaying;
   /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over). (A card already in hand may still land during grace.) */
   const paused = !!room.paused && !results;
+  /** The key that unpauses, named on the card over a paused table (none on a phone). */
+  const pauseKey = hotkeyName(prefs.pauseKey);
   const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
   useEffect(() => {
@@ -1118,7 +1120,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
         {canResume(room) && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
-            Unpause <small>P</small>
+            Unpause {pauseKey && <small>{pauseKey}</small>}
           </button>
         )}
       </div>

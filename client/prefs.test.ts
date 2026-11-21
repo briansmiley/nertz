@@ -3,9 +3,16 @@ import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, takeKey, t
 
 describe('cleanPrefs: hotkeys', () => {
   it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
-    expect(cleanPrefs(null)).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV' });
+    expect(cleanPrefs(null)).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' });
     expect(cleanPrefs({ muted: true, voiceKey: 'KeyB' })).toMatchObject({ muted: true, soundKey: 'KeyM', voiceKey: 'KeyB' });
     expect(cleanPrefs({ voiceKey: null })).toMatchObject({ soundKey: 'KeyM', voiceKey: null });
+  });
+
+  it('gives the pause key P to prefs stored before it was a hotkey, unless another has P', () => {
+    expect(cleanPrefs({ soundKey: 'KeyS', voiceKey: 'KeyB' })).toMatchObject({ soundKey: 'KeyS', voiceKey: 'KeyB', pauseKey: 'KeyP' });
+    expect(cleanPrefs({ soundKey: 'KeyP' })).toMatchObject({ soundKey: 'KeyP', pauseKey: null });
+    expect(cleanPrefs({ pauseKey: 'KeyK' })).toMatchObject({ pauseKey: 'KeyK' });
+    expect(cleanPrefs({ pauseKey: null })).toMatchObject({ pauseKey: null });
   });
 
   it('keeps a key chosen, and none', () => {
@@ -14,8 +21,8 @@ describe('cleanPrefs: hotkeys', () => {
   });
 
   it('puts back the default for a key the game uses, a modifier, or anything damaged', () => {
-    for (const bad of ['KeyP', 'Space', 'Enter', 'Escape', 'Tab', 'ShiftLeft', 'MetaRight', 'Backspace', 'Delete', '', 'Key-M', 'x'.repeat(21), 7, true, {}])
-      expect(cleanPrefs({ soundKey: bad, voiceKey: bad })).toMatchObject({ soundKey: DEFAULT_PREFS.soundKey, voiceKey: DEFAULT_PREFS.voiceKey });
+    for (const bad of ['Space', 'Enter', 'Escape', 'Tab', 'ShiftLeft', 'MetaRight', 'Backspace', 'Delete', '', 'Key-M', 'x'.repeat(21), 7, true, {}])
+      expect(cleanPrefs({ soundKey: bad, voiceKey: bad, pauseKey: bad })).toMatchObject({ soundKey: DEFAULT_PREFS.soundKey, voiceKey: DEFAULT_PREFS.voiceKey, pauseKey: DEFAULT_PREFS.pauseKey });
   });
 
   it('never gives both the same key', () => {
@@ -23,6 +30,7 @@ describe('cleanPrefs: hotkeys', () => {
     expect(cleanPrefs({ soundKey: 'KeyV', voiceKey: 'KeyV' })).toMatchObject({ soundKey: 'KeyV', voiceKey: null });
     expect(cleanPrefs({ soundKey: 'KeyV' })).toMatchObject({ soundKey: 'KeyV', voiceKey: null });
     expect(cleanPrefs({ voiceKey: 'KeyM' })).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV' });
+    expect(cleanPrefs({ voiceKey: 'KeyX', pauseKey: 'KeyX' })).toMatchObject({ voiceKey: 'KeyX', pauseKey: 'KeyP' });
   });
 });
 
@@ -77,30 +85,40 @@ describe('loudness', () => {
 });
 
 describe('keyFree', () => {
-  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV' };
+  const none = { soundKey: null, voiceKey: null, pauseKey: null };
+  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
   it('refuses the other hotkey, but not the key the same one already has', () => {
     expect(keyFree(keys, 'soundKey', 'KeyV')).toBe(false);
     expect(keyFree(keys, 'voiceKey', 'KeyM')).toBe(false);
     expect(keyFree(keys, 'soundKey', 'KeyM')).toBe(true);
-    expect(keyFree({ soundKey: 'KeyM', voiceKey: null }, 'voiceKey', 'KeyN')).toBe(true);
+    expect(keyFree(keys, 'soundKey', 'KeyP')).toBe(false);
+    expect(keyFree(keys, 'pauseKey', 'KeyM')).toBe(false);
+    expect(keyFree(keys, 'pauseKey', 'KeyP')).toBe(true);
+    expect(keyFree({ ...none, soundKey: 'KeyM' }, 'voiceKey', 'KeyN')).toBe(true);
   });
   it('refuses the keys the game uses', () => {
-    for (const code of ['KeyP', 'Space', 'Enter', 'Escape', 'Tab']) expect(keyFree({ soundKey: null, voiceKey: null }, 'soundKey', code)).toBe(false);
+    for (const code of ['Space', 'Enter', 'Escape', 'Tab']) for (const k of ['soundKey', 'pauseKey'] as const) expect(keyFree(none, k, code)).toBe(false);
+  });
+  it("lets P go to another hotkey: it is the pause key's own, not the game's", () => {
+    expect(keyFree(none, 'soundKey', 'KeyP')).toBe(true);
   });
 });
 
 describe('takeKey', () => {
-  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV' };
+  const keys = { soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
   it('takes a key the other hotkey has, and leaves that one with none', () => {
     expect(takeKey(keys, 'soundKey', 'KeyV')).toEqual({ soundKey: 'KeyV', voiceKey: null });
     expect(takeKey(keys, 'voiceKey', 'KeyM')).toEqual({ voiceKey: 'KeyM', soundKey: null });
+    expect(takeKey(keys, 'soundKey', 'KeyP')).toEqual({ soundKey: 'KeyP', pauseKey: null });
+    expect(takeKey(keys, 'pauseKey', 'KeyV')).toEqual({ pauseKey: 'KeyV', voiceKey: null });
   });
   it('takes a key nobody has, and touches nothing else', () => {
     expect(takeKey(keys, 'soundKey', 'KeyB')).toEqual({ soundKey: 'KeyB' });
     expect(takeKey(keys, 'soundKey', 'KeyM')).toEqual({ soundKey: 'KeyM' });
+    expect(takeKey(keys, 'pauseKey', 'KeyK')).toEqual({ pauseKey: 'KeyK' });
   });
   it('refuses a key the game uses, and a modifier', () => {
-    for (const code of ['KeyP', 'Space', 'Escape', 'ShiftLeft', 'Backspace']) expect(takeKey(keys, 'soundKey', code)).toBeNull();
+    for (const code of ['Space', 'Escape', 'ShiftLeft', 'Backspace']) for (const k of ['soundKey', 'pauseKey'] as const) expect(takeKey(keys, k, code)).toBeNull();
   });
 });
 
