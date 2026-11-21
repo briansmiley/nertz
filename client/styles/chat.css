@@ -136,6 +136,7 @@
 .chat-bar button.sound-off {
   display: grid;
   place-items: center;
+  flex: none;
   width: 24px;
   height: 24px;
   min-height: 0;
@@ -145,6 +146,17 @@
   color: var(--ink);
   background: var(--marigold);
   cursor: pointer;
+}
+
+/* In the bar along the top, as tall as the buttons beside it: still round. */
+.chat.top .chat-bar > button.sound-off {
+  width: 36px;
+  height: 36px;
+}
+
+.chat.top .chat-bar > button.sound-off svg {
+  width: 16px;
+  height: 16px;
 }
 
 .chat-bar button.sound-off svg {

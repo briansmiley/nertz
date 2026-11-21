@@ -650,6 +650,8 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
   if (shape === 'tall') {
     const [l, r] = [Math.max(8, keep.l), Math.max(8, keep.r)];
     const room = W - l - r - 8 - KNOB.size; // (8: between the chat's buttons and the menu's)
+    // In the bar the badge that says the sound is off is a disc as tall as the bar (chat.css), large or not.
+    const parts = (large: 0 | 1) => fit.chat.map((b) => (b === 'badge' ? CHAT.barH : CHAT_W[b][large]));
     const large: 0 | 1 = across(parts(1)) <= room ? 1 : 0;
     // (Narrower still: the chat's buttons are squeezed into what is left. No phone is.)
     const squeeze = Math.min(1, Math.max(0, room) / Math.max(1, across(parts(large))));

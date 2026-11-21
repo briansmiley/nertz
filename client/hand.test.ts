@@ -324,10 +324,30 @@ describe('a finger', () => {
     t.move(by(from, 0, -120));
     const d = t.hand;
     if (d?.phase !== 'carried' || half?.phase !== 'carried') throw new Error('not carried');
-    expect(d.at.y + lay.s * CARD_H).toBeCloseTo(from.y - 120 - 10);
-    expect(d.at.x).toBeCloseTo(lay.x);
+    expect(d.at.y + d.s * CARD_H).toBeCloseTo(from.y - 120 - 10);
+    expect(d.s * CARD_W).toBeCloseTo(48); // on a phone, one size once risen, whatever the hand's
     expect(half.at.y).toBeLessThan(lay.y - 22);
-    expect(half.at.y + lay.s * CARD_H).toBeGreaterThan(from.y - 22 - 10);
+    expect(half.at.y + half.s * CARD_H).toBeGreaterThan(from.y - 22 - 10);
+  });
+
+  it('on a phone the card in hand is one size, upright or on its side: smaller than the hand upright, bigger on its side; a mouse keeps it as it lay', () => {
+    for (const [size, grows] of [[phone, false], [{ W: 844, H: 390, touch: true }, true]] as const) {
+      const t = seatAt(game(), size);
+      const lay = t.card('0:H4');
+      const from = t.at('0:H4');
+      t.down(from);
+      t.move(by(from, 0, -120));
+      const d = t.hand;
+      if (d?.phase !== 'carried') throw new Error('not carried');
+      expect(d.s * CARD_W).toBeCloseTo(48);
+      expect(d.s > lay.s).toBe(grows);
+    }
+    const t = seatAt(game(), { ...phone, touch: false });
+    const lay = t.card('0:H4');
+    const from = t.at('0:H4');
+    t.down(from);
+    t.move(by(from, 0, -120));
+    expect(t.hand?.phase === 'carried' && t.hand.s).toBeCloseTo(lay.s);
   });
 
   it('the card is aimed by its own middle, not by the finger under it', () => {
@@ -346,7 +366,7 @@ describe('a finger', () => {
     const spot = { x: hit.x + hit.w / 2, y: hit.y + 5 }; // just inside the top of the column
     t.down(t.at('0:H4'));
     t.move(spot);
-    expect(centre(t).y).toBeLessThan(hit.y - 40);
+    expect(centre(t).y).toBeLessThan(hit.y - 30);
     t.up(spot);
     expect(t.sent).toEqual([hold('0:H4'), release]);
 
