@@ -183,11 +183,11 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
       </div>
       <Record />
       <div className="outs">
-        <button type="button" onClick={() => void signOut()}>
-          Sign out
-        </button>
         <button type="button" className="gone" onClick={() => setDeleting(true)}>
           Delete account
+        </button>
+        <button type="button" onClick={() => void signOut()}>
+          Sign out
         </button>
       </div>
       {deleting && <SureDelete onNo={() => setDeleting(false)} />}
