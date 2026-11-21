@@ -6,6 +6,13 @@
  * leaving puts it away, and a scroll puts away the pointer's. A touch has no hover, so a tap shows nothing: what a
  * control does is in its aria-label or its text, and the tip only says it again or adds a detail.
  *
+ * The pointer must come to rest: the wait starts again while it moves. By a big element the tip stands where the
+ * pointer stopped, and goes again once it moves on.
+ *
+ * What a tip says is also the element's accessible description (`aria-description`, kept in step with `data-tip` at
+ * all times, as `title` was), unless it only says the element's name again, so a screen reader hears it whether or not
+ * the tip is showing: on a disabled control, in browse mode, by touch.
+ *
  * An element with an empty `data-tip` has nothing to say, and keeps a tip of something around it from showing.
  */
 
@@ -20,6 +27,8 @@ const REST_MS = 450;
 const FRESH_MS = 400;
 /** Bigger than this, an element's tip stands by the pointer rather than under the whole element. */
 const BIG = { width: 320, height: 72 };
+/** How far the pointer may drift by a big element before its tip goes. */
+const DRIFT = 6;
 
 /** Where the tip goes (its top left corner, in the window): under the anchor, or over it when only that fits, and
  *  centred on it but never closer than MARGIN to the window's edge. */
@@ -42,6 +51,30 @@ function tipOf(target: EventTarget | null): HTMLElement | null {
   return el && el.dataset.tip ? el : null;
 }
 
+/** An element's description is what its tip says, unless that is only its name again or nothing. */
+export function describe(el: HTMLElement): void {
+  if (!el.hasAttribute('data-tip')) return el.removeAttribute('aria-description');
+  const tip = el.dataset.tip;
+  if (tip && tip !== el.getAttribute('aria-label')) {
+    if (el.getAttribute('aria-description') !== tip) el.setAttribute('aria-description', tip);
+  } else el.removeAttribute('aria-description');
+}
+
+/** Keep descriptions in step with what changed: tips and names set or changed, elements added. */
+function described(changes: MutationRecord[]): void {
+  for (const c of changes) {
+    if (c.type === 'attributes') {
+      if (c.target instanceof HTMLElement && (c.attributeName === 'data-tip' || c.target.hasAttribute('data-tip'))) describe(c.target);
+      continue;
+    }
+    for (const n of c.addedNodes) {
+      if (!(n instanceof HTMLElement)) continue;
+      if (n.hasAttribute('data-tip')) describe(n);
+      for (const el of n.querySelectorAll<HTMLElement>('[data-tip]')) describe(el);
+    }
+  }
+}
+
 /** The one tip on the page: which element it is for, and whether a pointer or the keyboard brought it. */
 type Shown = { el: HTMLElement; by: 'pointer' | 'focus'; at: { x: number; y: number } | null };
 
@@ -51,7 +84,8 @@ export function startTips(doc: Document = document): () => void {
   const bubble = doc.createElement('div');
   bubble.className = 'tooltip';
   bubble.id = 'tooltip';
-  bubble.setAttribute('role', 'tooltip');
+  // The tip only shows what each element's description already says.
+  bubble.setAttribute('aria-hidden', 'true');
   bubble.hidden = true;
   doc.body.append(bubble);
 
@@ -70,7 +104,6 @@ export function startTips(doc: Document = document): () => void {
   const hide = () => {
     cancel();
     if (!shown) return;
-    if (shown.el.getAttribute('aria-describedby') === bubble.id) shown.el.removeAttribute('aria-describedby');
     shown = null;
     bubble.hidden = true;
     win.cancelAnimationFrame(frame);
@@ -99,8 +132,6 @@ export function startTips(doc: Document = document): () => void {
     shown = { el, by, at: by === 'pointer' && pointer && (r.width > BIG.width || r.height > BIG.height) ? pointer : null };
     bubble.textContent = el.dataset.tip ?? '';
     bubble.hidden = false;
-    // Read out as the element's description, unless it only says the element's name again.
-    if (!el.hasAttribute('aria-describedby') && el.dataset.tip !== el.getAttribute('aria-label')) el.setAttribute('aria-describedby', bubble.id);
     follow();
   };
 
@@ -117,6 +148,21 @@ export function startTips(doc: Document = document): () => void {
     if (shown || win.performance.now() - goneAt < FRESH_MS) return show(el, 'pointer', at);
     cancel();
     waiting = { el, timer: win.setTimeout(() => show(el, 'pointer', at), REST_MS) };
+  };
+
+  /** The wait for a rest starts again where the pointer is now; by a big element, a tip it has left behind goes. */
+  const move = (e: PointerEvent) => {
+    if (!hoverable(e)) return;
+    const at = { x: e.clientX, y: e.clientY };
+    if (waiting) {
+      const el = waiting.el;
+      win.clearTimeout(waiting.timer);
+      waiting = { el, timer: win.setTimeout(() => show(el, 'pointer', at), REST_MS) };
+    } else if (shown?.by === 'pointer' && shown.at && Math.hypot(at.x - shown.at.x, at.y - shown.at.y) > DRIFT) {
+      const el = shown.el;
+      hide();
+      waiting = { el, timer: win.setTimeout(() => show(el, 'pointer', at), REST_MS) };
+    }
   };
 
   const out = (e: PointerEvent) => {
@@ -159,6 +205,7 @@ export function startTips(doc: Document = document): () => void {
 
   const listeners: [string, EventListener][] = [
     ['pointerover', over as EventListener],
+    ['pointermove', move as EventListener],
     ['pointerout', out as EventListener],
     ['pointerdown', down as EventListener],
     ['focusin', focus as EventListener],
@@ -169,7 +216,11 @@ export function startTips(doc: Document = document): () => void {
   ];
   for (const [type, fn] of listeners) doc.addEventListener(type, fn, true);
   win.addEventListener('blur', hide);
+  for (const el of doc.querySelectorAll<HTMLElement>('[data-tip]')) describe(el);
+  const watch = new win.MutationObserver(described);
+  watch.observe(doc.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-tip', 'aria-label'] });
   return () => {
+    watch.disconnect();
     hide();
     for (const [type, fn] of listeners) doc.removeEventListener(type, fn, true);
     win.removeEventListener('blur', hide);

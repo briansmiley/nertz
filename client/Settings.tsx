@@ -31,12 +31,14 @@ const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
- * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box.
+ * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box. Its empty
+ * `data-tip` keeps the tip of what it sits in (the locked table rules) from showing over its own.
  */
 function Info({ children }: { children: ReactNode }) {
   return (
     <span
       className="info"
+      data-tip=""
       role="button"
       tabIndex={0}
       aria-label="More about this"
