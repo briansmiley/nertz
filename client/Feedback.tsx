@@ -1,4 +1,4 @@
-// Feedback, from the corner's menu: a slip with a text box and an optional screenshot (a file, dropped, or pasted), sent
+// Feedback, from the corner's menu: a slip with a text box, Send, and beside it an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
 // On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: the words, and Send.
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
@@ -165,6 +165,16 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
         placeholder={kind === 'bug' ? "What's wrong?" : 'What do you want?'}
         aria-label="Your report"
       />
+      {state.k === 'error' && (
+        <p className="error" role="alert">
+          {state.message}
+        </p>
+      )}
+      {/* (Pressed while writing on a phone, it leaves the focus in the words: the keyboard stays up, and the slip where it is, until they are sent.) */}
+      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending' || state.k === 'sent'} onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
+        {state.k === 'sending' ? 'Sending…' : state.k === 'sent' ? 'Sent ✓' : kind === 'bug' ? 'Report bug' : 'Suggest'}
+      </button>
+      {/* (After Send, at its side: Tab from the words goes to Send. A screenshot can as well be dragged or pasted anywhere on the slip.) */}
       {image ? (
         <div className="shot">
           <img src={image} alt="The attached screenshot" />
@@ -175,25 +185,15 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
           </button>
         </div>
       ) : (
-        <label className="attach">
-          <input type="file" accept="image/*" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
+        <label className="attach" data-tip="Screenshot: click, drag, or paste">
+          <input type="file" accept="image/*" aria-label="Add a screenshot" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <rect x="3" y="5" width="18" height="14" rx="2" />
             <circle cx="8.5" cy="10" r="1.6" />
             <path d="M4 17.5l5-5 3.5 3.5 2.5-2.5 5 4.5" />
           </svg>
-          Screenshot <small>(click, drag, or paste)</small>
         </label>
       )}
-      {state.k === 'error' && (
-        <p className="error" role="alert">
-          {state.message}
-        </p>
-      )}
-      {/* (Pressed while writing on a phone, it leaves the focus in the words: the keyboard stays up, and the slip where it is, until they are sent.) */}
-      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending' || state.k === 'sent'} onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
-        {state.k === 'sending' ? 'Sending…' : state.k === 'sent' ? 'Sent ✓' : kind === 'bug' ? 'Report bug' : 'Suggest'}
-      </button>
     </form>
   );
 }
