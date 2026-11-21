@@ -16,6 +16,8 @@ const HALF = 0.22;
 const STAGGER = 90;
 /** Two presses of the ace this close together are a double press (ms): timed by hand, as a phone's double tap is not a dblclick. */
 const DOUBLE = 350;
+/** How long a wave runs, from the first card's start to the last one's landing (ms). */
+const WAVE = (CARDS - 1) * STAGGER + 2 * HALF * 1000;
 
 /** Once the picture of `back` is in (or has failed, or taken too long), so that a card turned over never lands blank. */
 function loaded(back: Back): Promise<unknown> {
@@ -70,12 +72,19 @@ function Card({ seat, wave }: { seat: number; wave: number }) {
 export function Spread() {
   const { deck, night } = usePrefs(); // a card shown for its own sake is one of yours
   const [wave, setWave] = useState(0);
-  const pressed = useRef(0);
+  const pressed = useRef(-Infinity);
+  const waved = useRef(-Infinity);
+  // A double press while a wave runs is let go, as a press on a turning card is: a second wave on top of the first would
+  // put off the cards not yet reached and pass over the ones still turning, and leave a gap in the middle of the wave.
   const press = (e: PointerEvent) => {
-    if (e.timeStamp - pressed.current < DOUBLE) {
-      pressed.current = 0;
-      setWave((n) => n + 1);
-    } else pressed.current = e.timeStamp;
+    if (e.timeStamp - pressed.current >= DOUBLE) {
+      pressed.current = e.timeStamp;
+      return;
+    }
+    pressed.current = -Infinity;
+    if (e.timeStamp - waved.current < (calm() ? 0 : WAVE)) return;
+    waved.current = e.timeStamp;
+    setWave((n) => n + 1);
   };
   return (
     <div className="spread" aria-hidden="true">
