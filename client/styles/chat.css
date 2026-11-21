@@ -1,0 +1,372 @@
+/* The chat and the voice. */
+
+/* Top-left on every screen of a table, above the score sheet and under the connection banner: where exactly, and how
+   wide each of its buttons is, is the layout's to say (client/layout.ts, `corners`). */
+.chat {
+  position: fixed;
+  z-index: 45000;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+/* With a card in hand the chat is out of the way: it takes no pointer and the card shows through. */
+.chat.aside {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+.chat button {
+  padding: 4px 10px 5px;
+  border: 1.5px solid var(--ink);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.chat button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.chat button.on {
+  background: var(--marigold);
+  border-color: var(--marigold);
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* What has just been said, while the chat is closed: words on the cloth under the button, no box, and nothing to press. */
+.passing {
+  position: absolute;
+  left: 2px;
+  top: 100%;
+  width: min(340px, 60vw);
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+  color: var(--chalk);
+  font-size: 15px;
+  line-height: 1.3;
+  text-shadow: 0 1px 2px rgba(4, 18, 22, 0.95), 0 0 6px rgba(4, 18, 22, 0.8);
+}
+
+.passing li {
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+  animation: passing 9s linear both;
+}
+
+.passing b {
+  filter: brightness(1.5) saturate(0.85); /* a seat's colour, light enough to read on the dark cloth */
+}
+
+@keyframes passing {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  3% {
+    opacity: 1;
+    transform: none;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.chat-bar button,
+.chat-bar .mic {
+  position: relative;
+  border-color: rgba(241, 234, 216, 0.4);
+  background: rgba(8, 28, 33, 0.6);
+  color: var(--chalk);
+}
+
+.chat-bar button.on {
+  color: var(--ink);
+}
+
+.chat-bar .mic svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* In the bar: the headset (opens the voice slip), the microphone (mutes you) and an eye with how many are watching. */
+.chat-bar .mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 9px 5px;
+  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  border-radius: 99px;
+  font-size: 13px;
+}
+
+.chat-bar .mic.speaking {
+  border-color: var(--marigold);
+}
+
+.chat-bar button.mic.mute {
+  padding: 4px 8px 5px;
+}
+
+.chat-bar button.mic.mute.on {
+  color: var(--ink);
+  background: var(--marigold);
+  border-color: var(--marigold);
+}
+
+/* The sound is off (the corner's menu): a small amber badge at the end of the bar. Pressed, the sound comes back on. */
+.chat-bar button.sound-off {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--marigold);
+  cursor: pointer;
+}
+
+.chat-bar button.sound-off svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Each button of the bar is as wide as the layout says (a width set on it), what is on it in the middle. */
+.chat-bar > button {
+  justify-content: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* Voice, one press away beside the chat button. While others are in it, it beckons. */
+.chat-bar button.mic.join {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chat-bar button.mic.join.calling {
+  color: var(--ink);
+  background: var(--marigold);
+  border-color: var(--marigold);
+  animation: calling 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes calling {
+  from {
+    box-shadow: 0 0 0 0 rgba(240, 180, 40, 0.75);
+  }
+  to {
+    box-shadow: 0 0 0 7px rgba(240, 180, 40, 0);
+  }
+}
+
+.calm .chat-bar button.mic.join.calling {
+  animation: none;
+}
+
+.chat-bar .mic-error {
+  color: var(--chalk);
+  font-size: 12px;
+}
+
+.chat .dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--marigold);
+  box-shadow: 0 0 0 2px var(--felt-dark);
+}
+
+.chat header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat h3 {
+  margin: 0;
+  font: 400 1.05rem/1.2 var(--display);
+}
+
+.chat.top .chat-bar > button {
+  min-height: 36px;
+}
+
+/* Under the chat's buttons, on the cloth: the line to type in and what is being said. No panel. */
+.chat-under {
+  position: absolute;
+  left: 2px;
+  top: 100%;
+  width: min(340px, 78vw);
+  margin-top: 8px;
+  pointer-events: none;
+}
+
+.chat-under form {
+  pointer-events: auto;
+}
+
+.chat-under input {
+  width: 100%;
+  padding: 6px 12px 7px;
+  border: 1.5px solid rgba(241, 234, 216, 0.55);
+  border-radius: 99px;
+  font: 500 15px/1.3 var(--ui);
+  color: var(--chalk);
+  background: rgba(8, 28, 33, 0.82);
+}
+
+.chat-under input::placeholder {
+  color: var(--chalk-dim);
+}
+
+.chat-under input:focus {
+  outline: none;
+  border-color: var(--marigold);
+}
+
+.chat-under .passing {
+  position: static;
+  width: auto;
+}
+
+/* While you type, the last lines stand still: they do not fade. */
+.passing.still li {
+  animation: none;
+}
+
+/* The voice slip: who is in it, mute yourself, leave. Its heading with Leave at the right; a microphone beside a name
+   (your own is a button). */
+.voice-slip {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  display: grid;
+  gap: 8px;
+  width: max-content;
+  max-width: min(300px, 90vw);
+  margin-top: 8px;
+  padding: 10px 12px 11px;
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.voice-slip header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.voice-slip h3 {
+  margin: 0;
+  font: 400 1rem/1.2 var(--display);
+}
+
+.voice-slip ul {
+  display: grid;
+  gap: 3px;
+  min-width: 11rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voice-slip li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+
+.voice-slip li.you {
+  font-weight: 700;
+}
+
+.voice-slip li i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 transparent;
+}
+
+.voice-slip li.speaking i {
+  box-shadow: 0 0 0 3px rgba(28, 148, 104, 0.55);
+}
+
+.voice-slip li small {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.voice-slip li small.bad {
+  color: #b3261e;
+}
+
+.voice-slip .mic-at {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 99px;
+  color: var(--ink-soft);
+}
+
+.voice-slip button.mic-at {
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.voice-slip button.mic-at.on {
+  background: var(--marigold);
+}
+
+.voice-slip .mic-at svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A notice from the table among the chat's lines (who sniped whom, a round dealt or over): slanted and a little fainter than what is said. */
+.passing .notice {
+  font-style: italic;
+  opacity: 0.85;
+}

@@ -1,0 +1,118 @@
+/* The page itself: colours, the felt, what every button and field starts from, and the connection banner over every screen. */
+
+:root {
+  --felt: #17464f;
+  --felt-light: #1f5a63;
+  --felt-dark: #0e2c33;
+  --chalk: #f1ead8;
+  --chalk-dim: rgba(241, 234, 216, 0.62);
+  --paper: #f6efdc;
+  --rule: #b9cbd6;
+  --ink: #1b2733;
+  --ink-soft: #55616c;
+  --marigold: #f2b320;
+  --red: #cf2233;
+  --card: #fffdf7;
+  --ui: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --num: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+  --display: 'Bowlby One', 'Arial Black', Impact, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* The page never scrolls, and its colour is the felt's. (With a colour of its own it leaves the body's felt to the
+   body, which paints it, rather than taking it over.) */
+html {
+  height: 100%;
+  overflow: hidden; /* (so the body's overflow is the body's own: what scrolls is the body) */
+  background-color: var(--felt);
+}
+
+/* The cloth: one sheet of felt, fixed to the window, under every screen; a screen longer than the window scrolls over
+   it. Being fixed, it is also where a phone finds the colour for the strip behind its status bar: an iPhone takes it
+   from a fixed element at the top of the window, and with none there frosts the strip over. */
+body {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  margin: 0;
+  font: 500 16px/1.45 var(--ui);
+  color: var(--chalk);
+  background-color: var(--felt);
+  /* Felt: a soft pool of light over a fine woven grain. */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 90% 80% at 50% 42%, var(--felt-light) 0%, var(--felt) 52%, var(--felt-dark) 100%);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--marigold);
+  outline-offset: 2px;
+}
+
+/* Touch screens: a double tap is two taps, never a zoom, and typing never zooms the page in (iOS does below 16px). */
+@media (pointer: coarse) {
+  html,
+  body {
+    touch-action: manipulation;
+    overscroll-behavior: none;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+.banner {
+  position: fixed;
+  z-index: 50000;
+  left: 50%;
+  top: 12px;
+  translate: -50% 0;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 99px;
+  background: var(--ink);
+  color: var(--chalk);
+  font-size: 14px;
+}
+
+.banner.low {
+  top: auto;
+  bottom: 12px;
+}
+
+/* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */
+.banner button {
+  margin-left: 10px;
+  padding: 2px 10px 3px;
+  border: 1.5px solid var(--chalk);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--chalk);
+  font: 600 0.8rem/1.3 var(--ui);
+  cursor: pointer;
+}
+
+.banner button:hover {
+  background: var(--chalk);
+  color: var(--ink);
+}

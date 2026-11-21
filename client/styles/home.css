@@ -1,0 +1,347 @@
+/* The first page: the fan and the name, the ways in, the open tables, who is signed in, your record. */
+
+/* Home: two ways in. The filled one is whichever the form is set up for. */
+.ways {
+  display: grid;
+  gap: 1rem;
+}
+
+.way {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.pair {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pair {
+  align-items: end;
+}
+
+/* Waiting (on a name, or a code): the same marigold, faded, not a grey box. */
+.ways .go:disabled {
+  font: 400 1.15rem/1.2 var(--display);
+  color: var(--ink);
+  background: var(--marigold);
+  box-shadow: none;
+  opacity: 0.35;
+}
+
+/* Join: always there, always the same size, beside the code it joins. */
+.pair .go,
+.pair .go:disabled {
+  width: 5rem;
+  padding: 0.4rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.pair .go:not(:disabled) {
+  box-shadow: 0 3px 0 #b47f0c;
+}
+
+/* Home: the tables someone is at, a line each, written on the pad's own rules. */
+.tables {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.tables ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tables li button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+}
+
+.tables li b {
+  letter-spacing: 0.06em;
+}
+
+.tables .names {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tables li span:not(.names) {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.tables li button:hover b,
+.tables li button:hover .names {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* On the first page: the field for your name, and the card beside it. */
+.named {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* the card keeps to the right, however long the name */
+  gap: 0.7rem;
+  margin-top: -0.3rem;
+}
+
+.named input {
+  /* As long as the name, from a short line up to the whole width. */
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 9rem;
+  max-width: 100%;
+  field-sizing: content;
+}
+
+.home {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 25rem);
+  align-items: center;
+  gap: clamp(2rem, 6vw, 6rem);
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 2rem clamp(1.25rem, 4vw, 3rem);
+}
+
+.hero {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hero h1 {
+  margin: 0;
+  font: 400 clamp(4.5rem, 10.5vw, 9rem) / 0.9 var(--display);
+  letter-spacing: -0.01em;
+  color: var(--chalk);
+  text-shadow: 0 0.045em 0 rgba(0, 0, 0, 0.3);
+  rotate: -3deg;
+  transform-origin: 0 100%;
+}
+
+.hero p {
+  max-width: 30rem;
+  margin: 1.6rem 0 0;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+
+/* Six decks, one per player, fanned with the ace of spades on top. */
+.spread {
+  display: flex;
+  height: 150px;
+  margin: 0 0 1.5rem 0.5rem;
+}
+
+.spread .mini {
+  margin-right: -38px;
+  transform-origin: 50% 130%;
+  rotate: calc((var(--i) - 3) * 7deg);
+  translate: 0 calc((var(--i) - 3) * (var(--i) - 3) * 2.4px);
+  animation: deal 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i) * 55ms);
+}
+
+/* A back of the fan, pressed, turns over about its own middle. */
+.spread .turn {
+  position: absolute;
+  inset: 0;
+}
+
+.spread .mini:has(.turn) {
+  perspective: 500px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent; /* a phone's own grey mark over whatever is tapped: the dark flash at a press */
+}
+
+@keyframes deal {
+  from {
+    rotate: 0deg;
+    translate: -40vw -30vh;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .home {
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+
+  .spread {
+    zoom: 0.7;
+  }
+}
+
+/* Above the field for your name its label says what goes in it: the field's own placeholder only stands in for it on
+   a phone on its side. */
+.named input::placeholder {
+  color: transparent;
+}
+
+/* A phone on its side: the wide screen's two columns, the name standing still at the left, and the pad pared down to
+   fit the height (a longer one, with your record under it, scrolls by). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .home {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 23rem);
+    align-items: safe center;
+    gap: 1.5rem;
+    padding: 1rem max(1.25rem, env(safe-area-inset-right)) 1rem max(1.25rem, env(safe-area-inset-left));
+  }
+
+  .hero {
+    position: sticky;
+    top: 0;
+    height: calc(100dvh - 2rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .spread {
+    zoom: 0.52;
+    margin: 0 0 1rem 2.5rem; /* (the fan's first card leans out past its box) */
+  }
+
+  .hero h1 {
+    font-size: clamp(3rem, 9vw, 4.5rem);
+  }
+
+  .home .pad {
+    padding-top: 1.7rem;
+    padding-bottom: 1.1rem;
+  }
+
+  .home .pad form,
+  .home .ways {
+    gap: 0.7rem;
+  }
+
+  .home .pad h2,
+  .home .pad label .label {
+    display: none;
+  }
+
+  .home .named {
+    margin-top: 0;
+  }
+
+  .home .named input::placeholder {
+    color: #9aa3a8;
+  }
+}
+
+/* Reduced motion. A class rather than a media query: the player's own setting (prefs.ts) overrules the system's either way. */
+.calm .spread .mini {
+  animation: none;
+}
+
+@media (max-width: 480px) {
+  .hero h1 {
+    font-size: 4rem;
+  }
+
+  .home {
+    gap: 1.25rem;
+    padding-top: 3.5rem;
+  }
+}
+
+/* Who is signed in, on the first page: a line of writing on the pad, not a button on it. */
+.who,
+.who button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 0.9rem/2rem var(--ui);
+  color: var(--ink-soft);
+}
+
+button.who,
+.who button {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+button.who:hover,
+.who button:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.who.in {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink);
+}
+
+.who img {
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+}
+
+.who.in {
+  min-width: 0;
+}
+
+.who.in span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.who.in button {
+  flex: none;
+}
+
+.whofoot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.4rem;
+}
+
+/* Your record, on the first page: figures written on the pad, each over what it counts. */
+.record {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.record div {
+  display: flex;
+  flex-direction: column-reverse; /* the figure over what it counts; in the page, what it counts comes first */
+  align-items: center;
+}
+
+.record dd {
+  margin: 0;
+  font: 700 1.5rem/2rem var(--num);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.record dt {
+  font: 400 0.8rem/1rem var(--ui);
+  color: var(--ink-soft);
+}

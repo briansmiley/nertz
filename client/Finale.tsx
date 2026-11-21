@@ -573,7 +573,7 @@ function pictureOf(src: string, loaded: () => void): HTMLImageElement | null {
   return null;
 }
 
-/** One card's back, drawn once per player and then stamped for every card of theirs: the plain cross-hatch, or the back its owner chose (`art`) once its picture has arrived. Matches `.back` in styles.css. */
+/** One card's back, drawn once per player and then stamped for every card of theirs: the plain cross-hatch, or the back its owner chose (`art`) once its picture has arrived. Matches `.back` in styles/cards.css. */
 function backSprite(colour: string, w: number, h: number, dpr: number, art?: { img: HTMLImageElement; zoom: number; edge: boolean }, bare = false): HTMLCanvasElement {
   const pad = Math.ceil(w * 0.08);
   const sprite = document.createElement('canvas');

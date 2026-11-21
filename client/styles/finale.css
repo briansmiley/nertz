@@ -1,0 +1,334 @@
+/* The end of a round: the wash, the sorted piles and their labels,
+   the table cleared for it on a phone, and the button to skip it. */
+
+.wash {
+  position: absolute;
+  z-index: 20000; /* over the sorted piles' blocks and labels: a card on its way to its pile passes over the words, never under them */
+  pointer-events: none;
+}
+
+/* The solid block behind a sorted pile and its label: pile, name, lines and score read as one unit. It is drawn as a
+   few rectangles (blockParts in Finale.tsx) in one opaque colour, with one shadow round the whole shape. */
+.heap-block {
+  position: absolute;
+  inset: 0;
+  z-index: 19998;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  filter: drop-shadow(0 0 1px rgba(241, 234, 216, 0.35)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+
+.heap-block.on {
+  opacity: 1;
+}
+
+.heap-block i {
+  position: absolute;
+  border-radius: 10px;
+  background: #0a2228;
+}
+
+/* The label beside a sorted pile. It is laid out in a box of a fixed size (LABEL in Finale.tsx), which the table
+   places clear of every hand, the tray, the wash and the other labels: nothing in it may spill out of that box.
+   It is under the wash's canvas, so a card on its way to its pile passes over the words.
+   Name on top; under it "+N played" and the nertz penalty, the same size; beside those the net score, largest. */
+.heap {
+  position: absolute;
+  z-index: 19999;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  grid-template-rows: 19px 21px 21px;
+  justify-content: start; /* everything is set against the pile's side of the box: the score stays next to its lines */
+  column-gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transform-origin: 0 0;
+}
+
+.heap.on {
+  opacity: 1;
+}
+
+.heap .who {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.heap .who span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.heap .who em {
+  flex: none;
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--marigold);
+}
+
+.heap .line {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--chalk-dim);
+}
+
+.heap .line b {
+  margin-right: 2px;
+  font: 700 17px/1 var(--num);
+  color: var(--chalk);
+  vertical-align: -1px;
+}
+
+.heap .fine {
+  opacity: 0;
+  translate: 0 -5px;
+  transition:
+    opacity 0.25s,
+    translate 0.25s;
+}
+
+.heap .fine:not(.none) b {
+  color: #ff8e7f;
+}
+
+.heap.sorted .fine {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* The score for the round is the biggest thing beside a pile, shown as soon as that pile is in; once every pile is,
+   the best of them is picked out. */
+.heap .net {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  justify-self: end;
+  padding: 3px 9px 4px;
+  border-radius: 99px;
+  background: #0a2228; /* solid: the score must read against cards and felt alike */
+  box-shadow: 0 0 0 1.5px rgba(241, 234, 216, 0.35), 0 3px 10px rgba(0, 0, 0, 0.45);
+  text-shadow: none;
+  font: 700 27px/1 var(--num);
+  color: var(--chalk);
+  opacity: 0;
+  transition:
+    opacity 0.35s,
+    scale 0.35s,
+    background 0.35s;
+}
+
+.heap.sorted .net {
+  opacity: 1;
+}
+
+/* A label whose pile is at its right-hand end is set against that end: mirrored. */
+.heap.end {
+  grid-template-columns: auto minmax(0, max-content);
+  justify-content: end;
+  text-align: right;
+}
+
+.heap.end .who {
+  justify-content: flex-end;
+}
+
+.heap.end .line {
+  grid-column: 2;
+}
+
+.heap.end .net {
+  grid-column: 1;
+  justify-self: start;
+}
+
+/* ...and one centred over or under its pile, in the middle. */
+.heap.mid {
+  justify-content: center;
+}
+
+.heap.best .who {
+  color: var(--marigold);
+  font-weight: 700;
+}
+
+.heap.best .net {
+  scale: 1.1;
+  background: var(--marigold);
+  color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(244, 180, 40, 0.25), 0 0 20px rgba(244, 180, 40, 0.55);
+  text-shadow: none;
+}
+
+.heap.all:not(.best) .line,
+.heap.all:not(.best) .who {
+  opacity: 0.8;
+}
+
+/* The same label on a cleared table (a phone), in fewer words and a narrower box (LABEL_SHORT in Finale.tsx). */
+.heap.short {
+  grid-template-columns: minmax(0, 1fr) auto; /* the score at the far end of the box: pile, lines, score fill it */
+  justify-content: stretch;
+  column-gap: 6px;
+  padding-right: 3px;
+}
+
+.heap.short.end {
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 0 0 0 3px;
+}
+
+.heap.short .net {
+  padding: 3px 7px 4px;
+  font-size: 24px;
+}
+
+/* On a cleared table nobody's hand is left to say who is where: every place is set out, with its name, as the table
+   clears, before any pile is gathered. The lines come as its cards do. */
+.heap.set,
+.heap-block.set {
+  opacity: 1;
+  animation: heap-set 0.5s 0.5s both; /* once the hands have gone */
+}
+
+@keyframes heap-set {
+  from {
+    opacity: 0;
+  }
+}
+
+.heap.set .got {
+  transition: opacity 0.25s;
+}
+
+.heap.set:not(.on) .got {
+  opacity: 0;
+}
+
+/* Held upright the label is under its pile (LABEL_TILE): the pile in a top corner of the box, the score beside it,
+   name and lines below. */
+.heap.short.tile,
+.heap.short.tile.end {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 60px 19px 20px 20px;
+  padding: 0 5px;
+}
+
+.heap.tile .who,
+.heap.tile .line,
+.heap.tile.end .line {
+  grid-column: 1;
+}
+
+.heap.tile .net {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.heap.tile.end .net {
+  justify-self: start;
+}
+
+/* On a cleared table the NERTZ! stamp has gone with the hands: it comes down again, smaller, across the top of the
+   caller's block (`stampAt` in Finale.tsx), once the places are set out. */
+.restamp {
+  position: absolute;
+  z-index: 20002;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.restamp span {
+  -webkit-text-stroke-width: 0.08em;
+  rotate: -8deg;
+  animation-delay: 0.9s;
+}
+
+/* The end of a round on a phone: the table is cleared for it. Hands, names and felt go; the cards of the middle and
+   the sorted piles have the window. */
+.table > .felt,
+.table > .slot,
+.table > div > .slot,
+.table > div > .tag,
+.table .count,
+.table > .mine,
+.table > .vacant,
+.table > .shout {
+  transition: opacity 0.45s;
+}
+
+.table.cleared > .felt,
+.table.cleared > .slot,
+.table.cleared > div > .slot,
+.table.cleared > div > .tag,
+.table.cleared .count,
+.table.cleared > .mine,
+.table.cleared > .vacant,
+.table.cleared > .shout,
+.table.cleared > .gotnertz {
+  opacity: 0;
+}
+
+.table.cleared > .card.hand {
+  opacity: 0;
+  transition: opacity 0.45s;
+}
+
+.skip {
+  position: absolute;
+  z-index: 20001;
+  left: 50%;
+  translate: -50% -50%; /* (its middle on the menu's button's: `top` is set where it is drawn) */
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  border: 0;
+  color: var(--chalk-dim);
+  background: rgba(8, 28, 33, 0.6);
+  white-space: nowrap;
+}
+
+.skip small {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+@media (pointer: coarse) {
+  .skip {
+    padding: 8px 14px;
+    font-size: 14px;
+    color: var(--chalk);
+  }
+
+  .skip small {
+    display: none;
+  }
+}
+
+/* Reduced motion. A class rather than a media query: the player's own setting (prefs.ts) overrules the system's either way. */
+.calm .restamp span {
+  animation: none;
+}
+
+.skip.aside {
+  translate: 0 -50%;
+}

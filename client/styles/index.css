@@ -1,0 +1,24 @@
+/* One file per screen or part, each with its own phone rules. The order is the cascade's: where two rules of the same
+   specificity meet, the later file wins. Where it matters now (so keep these in this order):
+     controls before home, settings, feedback   .go:disabled under .pair .go, .whole .go, .writing .go
+     cards before table                         .card.dealt's animation under .card.nod and .card.nudge
+     pad before lobby                           .pad.wide under .pad:has(> .seats)
+     backs before gallery                       .picker .stack, .picker .heading under .showroom's, at equal weight
+     settings before feedback                   .corner.top .slip under .slip.feedback.writing */
+@import './base.css';
+@import './controls.css';
+@import './cards.css';
+@import './table.css';
+@import './finale.css';
+@import './pad.css';
+@import './home.css';
+@import './backs.css';
+@import './lobby.css';
+@import './scores.css';
+@import './settings.css';
+@import './chat.css';
+@import './opening.css';
+@import './gallery.css';
+@import './feedback.css';
+@import './host.css';
+@import './menu.css';

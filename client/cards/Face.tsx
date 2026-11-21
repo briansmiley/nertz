@@ -20,7 +20,7 @@ export const BACKS = ['#c9303f', '#2b5fd9', '#e2a019', '#1c9468', '#7d4fc7', '#2
 export const backColour = (seat: number): string => BACKS[((seat % BACKS.length) + BACKS.length) % BACKS.length]!;
 /**
  * A seat's colour as its player's name is written on the cloth, before the brightening that the chat and the snipe
- * notice give it (styles.css): a colour too dark for that to lift (the near-black seat) is first made light enough to
+ * notice give it (styles/chat.css, styles/table.css): a colour too dark for that to lift (the near-black seat) is first made light enough to
  * come out slate. The rest are as they are.
  */
 export const nameColour = (seat: number): string => atLeastLight(backColour(seat), 0.5);

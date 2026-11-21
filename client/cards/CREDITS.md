@@ -4,7 +4,7 @@ The card faces and backs are original artwork for this project, drawn in code:
 
 - `Face.tsx` draws every face as inline SVG (suit shapes, pip layouts, court
   cards, and a large-print "mini" rendition for small cards).
-- The backs are plain CSS (`.back` in `../styles.css`), one colour per seat.
+- The backs are plain CSS (`.back` in `../styles/cards.css`), one colour per seat.
 
 That deck carries the same licence as the rest of the repository.
 
