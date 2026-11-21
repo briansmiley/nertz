@@ -113,7 +113,7 @@ export function Record() {
       {stats && (
         <dl className="record">
           {figures.map(([n, what, more, tint]) => (
-            <div key={what} title={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
+            <div key={what} data-tip={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
               <dt>{what}</dt>
               <dd>{n}</dd>
             </div>
