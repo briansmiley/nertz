@@ -764,9 +764,10 @@ would still need one of the options above, and serving both from one origin is s
 
 ## Accounts
 
-Nobody has to sign in: a guest plays exactly as before. Whoever wants to can sign in (the line at the foot of the first
-page), with Google or with a code sent to their email, and is then known across tables and visits. Pressing their name
-there turns the pad to their page: the name they go by (theirs to change), their record over the rounds they played
+Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
+guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
+is with Google or with a code sent to their email, and they are then known across tables and visits. Signed in, their
+picture (or initial) and name stand where the name was written, and pressing them turns the pad to their page: the name they go by (theirs to change), their record over the rounds they played
 signed in, signing out, and deleting their account.
 
 ### What is kept

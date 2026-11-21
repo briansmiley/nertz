@@ -1,5 +1,5 @@
 // Screens around the table: home, lobby, round results.
-import { rename, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
+import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
 import { SignIn } from './SignIn';
 import { Profile } from './Profile';
 import { Gallery } from './Gallery';
@@ -359,37 +359,17 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
-/**
- * Signed out, the way in (`onOpen`: the ways in, on the pad; or straight to Google, where it is the only way); signed
- * in, who you are, which opens all about you. Nothing at all where the server keeps no accounts, or has not said yet.
- */
-function Who({ onOpen }: { onOpen: () => void }) {
-  const signed = useAccount();
-  const ways = waysIn(signed);
-  if (ways) {
-    const googleOnly = ways.length === 1 && ways[0] === 'google';
-    return (
-      <button type="button" className="who" onClick={() => (googleOnly ? void signIn() : onOpen())}>
-        {googleOnly ? 'Sign in with Google' : 'Sign in'}
-      </button>
-    );
-  }
-  const account = signedInAs(signed);
-  if (!account) return null;
-  return (
-    <button type="button" className="who in" onClick={onOpen}>
-      {account.image && <img src={account.image} alt="" referrerPolicy="no-referrer" onError={(e) => (e.currentTarget.hidden = true)} />}
-      <span>{account.name ?? 'You'}</span>
-    </button>
-  );
-}
-
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(rememberedName);
   const account = useAccount();
   const signedIn = signedInAs(account);
   const ways = waysIn(account);
+  /** A guest: chose to sit down under a name of their own, or did so before (the browser remembers it). */
+  const [guest, setGuest] = useState(() => !!rememberedName());
+  const sits = sitterOf(account, guest);
+  /** Sign in: the ways in, on the pad; or straight to Google, where it is the only way. */
+  const signInNow = () => (ways?.length === 1 && ways[0] === 'google' ? void signIn() : setYours(true));
   // Signed in, the name you sit down under is the name you go by (client/Profile.tsx): it is filled in from there, and a
   // change made here goes there as you sit down. Only a guest's is remembered by the browser alone.
   const yourName = signedIn?.name ?? null;
@@ -444,22 +424,50 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
         ) : (
           <form onSubmit={submit}>
             <h2>Pull up a chair</h2>
-            <label>
-              <span className="label">Name</span>
-              {/* Beside your name, the backs of your cards: a card to press, to choose others. */}
-              <span className="named">
-                <input
-                  ref={nameField}
-                  autoFocus
-                  placeholder="Name" /* (shown only where the label isn't: a phone on its side) */
-                  value={name}
-                  maxLength={MAX_NAME_LENGTH}
-                  onChange={(e) => setName(e.target.value)}
-                  autoComplete="nickname"
-                />
+            {sits === 'you' && signedIn ? (
+              <div className="named">
+                <button type="button" className="you" onClick={() => setYours(true)}>
+                  {signedIn.image ? <img src={signedIn.image} alt="" referrerPolicy="no-referrer" /> : <i aria-hidden="true">{[...signedIn.name!][0]?.toUpperCase()}</i>}
+                  <span>{signedIn.name}</span>
+                </button>
                 <YourBacks colour={BACKS[0]} compact />
-              </span>
-            </label>
+              </div>
+            ) : sits === 'choose' ? (
+              <div className="named choose">
+                <span className="either">
+                  <button type="button" className="plain" onClick={signInNow}>
+                    Sign in
+                  </button>
+                  <button type="button" className="plain" onClick={() => setGuest(true)}>
+                    Guest
+                  </button>
+                </span>
+                <YourBacks colour={BACKS[0]} compact />
+              </div>
+            ) : sits === 'name' ? (
+              <div className="named">
+                <span className="guest">
+                  <input
+                    ref={nameField}
+                    autoFocus
+                    aria-label="Name"
+                    placeholder="Name"
+                    value={name}
+                    maxLength={MAX_NAME_LENGTH}
+                    onChange={(e) => setName(e.target.value)}
+                    autoComplete="nickname"
+                  />
+                  {ways && (
+                    <button type="button" className="who" onClick={signInNow}>
+                      Sign in
+                    </button>
+                  )}
+                </span>
+                <YourBacks colour={BACKS[0]} compact />
+              </div>
+            ) : (
+              <div className="named" />
+            )}
             {error && (
               <p className="error" role="alert">
                 {error}
@@ -491,11 +499,6 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
             </div>
             <Tables onPick={pick} />
           </form>
-        )}
-        {!yours && (
-          <div className="whofoot">
-            <Who onOpen={() => setYours(true)} />
-          </div>
         )}
       </Pad>
     </main>
