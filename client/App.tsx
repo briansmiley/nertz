@@ -4,7 +4,7 @@ import { SignIn } from './SignIn';
 import { Profile } from './Profile';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
+import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
 import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
@@ -529,6 +529,7 @@ function Lobby({ room }: { room: RoomView }) {
   const botHas = (picked && shownBack(picked.look.backs)) ?? 'plain';
   const host = room.players.find((p) => p.isHost);
   const ready = enoughToDeal(room);
+  const seated = room.players.filter(hasSeat);
 
   const [codeCopied, setCodeCopied] = useState(false);
   const copyCode = async () => {
@@ -571,10 +572,10 @@ function Lobby({ room }: { room: RoomView }) {
             {copied ? <Check /> : <CopyIcon />}
           </button>
         </div>
+        {/* As many places as a table can ever have, so the sheet is one size however many sit down (or seats there are): who
+            sits, then the table's empty seats, then bare lines. */}
         <ul className="seats">
-          {room.players
-            .filter(hasSeat)
-            .map((p) => (
+          {seated.map((p) => (
             <li key={p.id} className={`${p.connected ? '' : 'away'}${p.id === room.me ? ' you' : ''}`}>
               {/* The card beside a name is that player's back. Your own, and (if you deal) a bot's, opens the backs to choose another. */}
               {p.id === room.me || (me?.isHost && p.bot) ? (
@@ -605,7 +606,12 @@ function Lobby({ room }: { room: RoomView }) {
                 {me?.isHost && p.id !== room.me && <Unseat who={p} />}
               </span>
             </li>
-            ))}
+          ))}
+          {Array.from({ length: MAX_PLAYERS - seated.length }, (_, i) => (
+            <li key={`place-${i}`} className={i < room.seats.of - seated.length ? 'open' : 'bare'} aria-hidden="true">
+              <span className="mini" />
+            </li>
+          ))}
         </ul>
         <Watching room={room} />
         {picked &&
@@ -623,19 +629,22 @@ function Lobby({ room }: { room: RoomView }) {
               onClose={() => setPicking(null)}
             />
           ))}
-        {/* Your backs: the card, and a button to change it. */}
-        {me && hasSeat(me) && (
-          <div className="yourback">
-            {/* One button: the card, and tucked under its bottom edge a small yellow tag saying what pressing it does. */}
-            <button type="button" className="change" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
-              <Mini seat={me.seat} look={lookOf(prefs)} />
-              <span>Change</span>
-            </button>
-            {/* Your colour is your seat. Until the first deal it can be changed for any that nobody has: a dot of it, and behind the dot the ones still free. */}
-            {room.round === 0 && <Colour room={room} seat={me.seat} />}
-          </div>
-        )}
-        <TableRules room={room} />
+        {/* Your backs and the table's rules, side by side under the names. */}
+        <div className="under">
+          {/* Your backs: the card, and a button to change it. */}
+          {me && hasSeat(me) && (
+            <div className="yourback">
+              {/* One button: the card, and tucked under its bottom edge a small yellow tag saying what pressing it does. */}
+              <button type="button" className="change" aria-label="Change your card back" onClick={() => setPicking(me.seat)}>
+                <Mini seat={me.seat} look={lookOf(prefs)} />
+                <span>Change</span>
+              </button>
+              {/* Your colour is your seat. Until the first deal it can be changed for any that nobody has: a dot of it, and behind the dot the ones still free. */}
+              {room.round === 0 && <Colour room={room} seat={me.seat} />}
+            </div>
+          )}
+          <TableRules room={room} />
+        </div>
         {/* Whoever is watching (they stood up, or came in to a full table): a seat is theirs for the asking. */}
         {me && !hasSeat(me) && !me.queued && (
           <button className="go" onClick={() => sit(true)}>

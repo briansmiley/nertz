@@ -409,3 +409,30 @@ button.code.copy small {
 .seats .note + .standup {
   margin-left: 0.6rem;
 }
+
+/* A seat nobody has taken yet: the outline of a card, where one will be. Past the table's seats, a bare line. */
+.seats .open .mini {
+  box-sizing: border-box;
+  border: 5px dashed rgba(27, 39, 51, 0.22);
+  border-radius: 10px;
+}
+
+.seats .bare .mini {
+  visibility: hidden;
+}
+
+/* Under the names: your backs and colour, and beside them the table's rules. */
+.under {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+}
+
+.under .rules {
+  flex: 1;
+}
+
+/* The lobby's main button keeps one height, whether it can deal yet or is waiting for a second player. */
+.pad:has(> .seats) > .go {
+  line-height: 1.38rem;
+}

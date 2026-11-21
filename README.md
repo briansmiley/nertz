@@ -326,6 +326,11 @@ the table, and counts as a connected player everywhere: for the two-player minim
 stuck" vote and for scoring. A bot never deals, cannot be added or removed during a round, and does not keep a table alive:
 a lobby with only bots left is forgotten at once, and a table nobody is connected to expires as usual, bots or not.
 
+The lobby sheet is one size however many sit down: its list of names has a line for each of the ten seats a table can
+have (`MAX_PLAYERS`), filled in order of arrival. A seat the table has but nobody has taken is the dashed outline of a
+card; past the table's seats the lines are bare. Your card back and colour stand beside the table rules under the list.
+So adding bot after bot, or changing the number of seats, moves nothing under the pointer.
+
 **It plays fair.** The bot lives on the server but is a player like any other. All it ever sees is `viewFor(state, itsSeat)`,
 the same redacted snapshot a person in that seat is sent, and all it can do is submit ordinary intents through the same
 `Room` code path as a person's, in the same single order, with the same refusals. If a move is refused (somebody got there
