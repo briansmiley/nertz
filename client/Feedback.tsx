@@ -91,7 +91,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
   useEffect(() => {
     if (state.k !== 'sent' || !form.current) return;
     let here = true;
-    void foldAway(form.current).then(() => here && close());
+    void foldAway(form.current).catch(() => {}).then(() => here && close()); // (folded or not, it goes)
     return () => void (here = false);
   }, [state.k]);
   /** The words have the focus. */

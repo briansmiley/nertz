@@ -1,9 +1,9 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: sound on or off, the table's actions
 // (which are open to you, and what each does, is actions.ts), and the way to your settings and to
 // feedback, which open in the same place. One line each.
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { RoomView } from '../shared/types';
-import { perform, type ActionId, type TableAction } from './actions';
+import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
 import { Again, Bug, Door, Eye, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu, or one of the slips it leads to. */
@@ -25,7 +25,7 @@ export function useCorner(): Panel | null {
 }
 
 /** Each action's icon, before its name. */
-const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Eye, leave: Door };
+export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Eye, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {
@@ -39,14 +39,13 @@ export function Back({ onClick }: { onClick: () => void }) {
 }
 
 /**
- * An action that cannot be undone asks again in its own line, and forgets when another line is pressed. Muting and the
- * vote leave the slip up (what they did is on it); anything else puts it away (`onDone`) or opens another (`go`).
+ * Muting and the vote leave the slip up (what they did is on it); anything else puts it away (`onDone`) or opens
+ * another (`go`). One that cannot be undone puts it away and asks (`Sure`).
  */
 export function Menu({ room, actions, muted, onMute, go, onDone }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; go: (to: Panel) => void; onDone: () => void }) {
-  const [sure, setSure] = useState<ActionId | null>(null);
   return (
     <section className="slip acts" id="menu" aria-label="Menu">
-      <button type="button" aria-pressed={muted} onClick={(e) => (e.currentTarget.blur(), setSure(null), onMute())}>
+      <button type="button" aria-pressed={muted} onClick={(e) => (e.currentTarget.blur(), onMute())}>
         <Speaker off={muted} />
         {muted ? 'Unmute' : 'Mute'}
       </button>
@@ -57,18 +56,16 @@ export function Menu({ room, actions, muted, onMute, go, onDone }: { room: RoomV
             <button
               key={a.id}
               type="button"
-              className={`${a.on ? 'on' : ''}${sure === a.id ? ' sure' : ''}`}
+              className={a.on ? 'on' : undefined}
               aria-pressed={a.on}
               onClick={(e) => {
                 e.currentTarget.blur(); // keep Space for the cards
-                setSure(a.sure && sure !== a.id ? a.id : null);
-                if (a.sure && sure !== a.id) return;
-                perform(a.id, room);
+                press(a.id, room);
                 if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
               }}
             >
               <Icon />
-              {sure === a.id ? a.sure : a.label}
+              {a.label}
               {a.tally && <small>{a.tally}</small>}
             </button>
           );
@@ -82,5 +79,34 @@ export function Menu({ room, actions, muted, onMute, go, onDone }: { room: RoomV
         Feedback
       </button>
     </section>
+  );
+}
+
+/** The question an action that cannot be undone asks (actions.ts `press`), over everything; Esc or a press beside it is no. */
+export function Sure({ room }: { room: RoomView }) {
+  const a = useAsked(room);
+  useEffect(() => {
+    if (!a) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') answer(false, room);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [a, room]);
+  if (!a?.sure) return null;
+  const Icon = ICONS[a.id];
+  return (
+    <div className="asked" onPointerDown={(e) => e.target === e.currentTarget && answer(false, room)}>
+      <div className="paper-card" role="alertdialog" aria-label={a.sure}>
+        <h2>{a.sure}</h2>
+        <button type="button" className="go" onClick={() => answer(true, room)}>
+          <Icon />
+          {a.label}
+        </button>
+        <button type="button" className="quiet" autoFocus onClick={() => answer(false, room)}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

@@ -8,7 +8,7 @@ import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
 import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
 
-export { DEAL_MS, GRACE_MS, HEAR_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
+export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
 export const NERTZ_SIZE = 13;
 /** Cards in a group dealt off the stock: each is one action, and the group turns face-up when the last one lands. */
@@ -53,6 +53,9 @@ export const wentOut = (state: GameState): number[] => (state.status.at === 'gra
 export const inGrace = (state: GameState): number[] => (state.status.at === 'grace' ? state.players.filter((p) => p.holding !== null).map((p) => p.seat) : []);
 /** The seats whose windows Nertz has been called in but have not said yet that they have it (`heard`). None but in grace. */
 export const yetToHear = (state: GameState): number[] => (state.status.at === 'grace' ? state.status.unheard : []);
+/** The call has reached `seat`'s window: it is waited for no longer. */
+const hears = (state: GameState, seat: number): GameState =>
+  state.status.at === 'grace' ? { ...state, status: { ...state.status, unheard: state.status.unheard.filter((s) => s !== seat) } } : state;
 /** `seat` placed the King of a centre pile that is still on the table. */
 const finishedOn = (state: GameState, seat: number): boolean => state.slots.some((pile) => completedBy(pile) === seat);
 /**
@@ -275,7 +278,7 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
     }
     case 'heard': {
       if (state.status.at !== 'grace') return 'Nothing has been called';
-      next = { ...state, status: { ...state.status, unheard: state.status.unheard.filter((s) => s !== seat) } };
+      next = hears(state, seat);
       break;
     }
     case 'hold': {
@@ -387,7 +390,8 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  * (`heard`), it may still take a card up (`hold`), as it could just before, and
  * a card with somewhere to go puts it in grace. So a card someone was taking up
  * as the call went out is in hand at the call, as they saw it, wherever it was
- * on its way to the server.
+ * on its way to the server. Its one play is the seat's last: made, the seat has
+ * heard the call too.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
  * (`mustClear`) may only `clear` it; every other intent is refused until it has.
@@ -424,7 +428,9 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent): 
       if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   }
   const next = play(state, index, intent);
-  return typeof next === 'string' ? fail(next) : { ok: true, state: settleGrace(next) };
+  if (typeof next === 'string') return fail(next);
+  // A card in hand at the call has one play: once it is made, that window is not waited for either.
+  return { ok: true, state: settleGrace(intent.k === 'move' || intent.k === 'release' ? hears(next, seat) : next) };
 }
 
 /**

@@ -1,6 +1,8 @@
 // What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
 // unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. Each has one rule here for whether it is open to you now; the menu
-// (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here.
+// (Menu.tsx), the P key, the card over a paused table and the "End round" button at the table all ask it here. One that
+// cannot be undone is asked first (`press`), wherever it was pressed: the menu or the score sheet.
+import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
@@ -69,7 +71,7 @@ export interface TableAction {
   tally?: string;
   /** Yours is in (the vote): pressed again, it is taken back. */
   on?: boolean;
-  /** It cannot be undone, so it is asked twice: what the second press says. */
+  /** It cannot be undone, so it is asked first: the question. */
   sure?: string;
 }
 
@@ -81,11 +83,11 @@ export function tableActions(room: RoomView): TableAction[] {
     canPause(room) && { id: 'pause' as const, label: 'Pause' },
     canResume(room) && { id: 'resume' as const, label: 'Unpause' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
-    canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Really restart?' },
-    canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: 'Really reset?' },
+    canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: 'Restart the round?' },
+    canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: 'Reset the table?' },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
-    { id: 'leave' as const, label: 'Leave table', sure: 'Really leave?' },
+    { id: 'leave' as const, label: 'Leave table', sure: 'Leave the table?' },
   ].filter((a) => !!a);
 }
 
@@ -107,4 +109,37 @@ export function perform(id: ActionId, room: RoomView): void {
     case 'leave':
       return leave();
   }
+}
+
+/** The action waiting on its question (`press`), if one is. */
+let asked: ActionId | null = null;
+const askers = new Set<() => void>();
+function ask(id: ActionId | null): void {
+  if (id === asked) return;
+  asked = id;
+  for (const l of askers) l();
+}
+
+/** Pressed: done at once, or asked first if it cannot be undone. Not open to you now: nothing. */
+export function press(id: ActionId, room: RoomView): void {
+  const a = tableActions(room).find((t) => t.id === id);
+  if (!a) return;
+  if (a.sure) ask(id);
+  else perform(id, room);
+}
+
+/** The answer to the question: yes does it (if it is still open to you), either way the question goes. */
+export function answer(yes: boolean, room: RoomView): void {
+  const id = asked;
+  ask(null);
+  if (yes && id && tableActions(room).some((t) => t.id === id)) perform(id, room);
+}
+
+/** The action being asked about, while it is still open to you (once the table has moved on from it, the question goes too). */
+export function useAsked(room: RoomView): TableAction | null {
+  const id = useSyncExternalStore(
+    (l) => (askers.add(l), () => askers.delete(l)),
+    () => asked,
+  );
+  return (id && tableActions(room).find((t) => t.id === id)) || null;
 }

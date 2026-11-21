@@ -106,7 +106,7 @@ export interface GameState {
  *   each may still make exactly one move with it. Who they are is not kept here: exactly the seats holding a card (`inGrace`).
  *   The call reaches each window a moment after it is made: `unheard` are the seats whose windows have not said yet that
  *   they have it (`heard`). Until then a seat may still take a card up, as it could just before, and that card earns
- *   it grace too: it was in hand at the call, as that player saw it.
+ *   it grace too: it was in hand at the call, as that player saw it. Its one play with it hears the call as well.
  * - `over`: nothing can change any more; `end` says how it came to that.
  */
 export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | { at: 'grace'; calledBy: number; unheard: number[] } | { at: 'over'; end: RoundEnd };

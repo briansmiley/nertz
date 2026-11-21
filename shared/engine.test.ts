@@ -1486,10 +1486,16 @@ describe('held-card grace after a Nertz call', () => {
     rejected(applyIntent(heard, 3, hold('3:H2')));
     const over = ok(applyIntent(heard, 1, move('1:H2', slot(0))));
     expect(over).toEqual(run(s, [1, hold('1:H2')], [0, NERTZ], [1, move('1:H2', slot(0))])); // as if the hold had come first
-    // A card taken up and put down before the call reached that window: the move counts all the same.
-    const quick = run(called, [1, hold('1:H2')], [1, move('1:H2', slot(0))], [2, HEARD], [3, HEARD]);
-    expect([isOver(quick), ids(quick.slots[0]!.cards)]).toEqual([false, ['0:HA', '1:H2']]);
-    expect(isOver(ok(applyIntent(quick, 1, HEARD)))).toBe(true);
+    // A card taken up and put down before the call reached that window: the move counts all the same, and is the
+    // seat's last (it hears the call with it).
+    const played = run(called, [1, hold('1:H2')], [1, move('1:H2', slot(0))]);
+    expect([yetToHear(played), ids(played.slots[0]!.cards)]).toEqual([[2, 3], ['0:HA', '1:H2']]);
+    rejected(applyIntent(played, 1, hold('1:C5'))); // (its next nertz card: before the move it could have)
+    rejected(applyIntent(played, 1, HEARD));
+    expect(isOver(run(played, [2, HEARD], [3, HEARD]))).toBe(true);
+    // So is a card put back, and a drop refused (it ends the drag as a release does).
+    expect(yetToHear(run(called, [1, hold('1:H2')], [1, RELEASE]))).toEqual([2, 3]);
+    expect(yetToHear(refused(held, 1, move('1:H2', slot(5))))).toEqual([2, 3]);
   });
 
   it('...but not a card with nowhere to go; and the windows it has not reached may only take a card up, or say they heard', () => {
