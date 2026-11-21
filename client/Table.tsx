@@ -66,9 +66,6 @@ const SLOW = 0.002;
 const GLIDE_MS = 70;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
-/** How long a snipe you were in, and one between others, stays on the felt (the stylesheet's `sniped` animation, and the aside's). */
-const SNIPE_MS = 1125;
-const ASIDE_MS = 2400;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 /** "A", "A and B", "A, B and C". */
 const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
@@ -442,8 +439,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /** The finished pile in hand is over the tray. */
   const [hot, setHot] = useState(false);
   /** Snipes the server told of, as they stack on the felt while they last: those you were in, across the middle, and those between others, small along its lower edge (feed.ts). */
-  const [snipes, addSnipe] = useFeed<{ by: number; of: number }>(SNIPE_MS, room.round);
-  const [asides, addAside] = useFeed<{ by: number; of: number }>(ASIDE_MS, room.round);
+  const [snipes, addSnipe, snipeDone] = useFeed<{ by: number; of: number }>(room.round);
+  const [asides, addAside, asideDone] = useFeed<{ by: number; of: number }>(room.round);
   useEffect(
     () =>
       onSnipe(({ by, of }) => {
@@ -1067,7 +1064,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {snipes.length > 0 && !called && (
         <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
           {snipes.map((s) => (
-            <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }}>
+            <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && snipeDone(s.id)}>
               {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
             </motion.span>
           ))}
@@ -1077,7 +1074,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {asides.length > 0 && !called && (
         <div className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           {asides.map((a) => (
-            <motion.span layout="position" key={a.id}>
+            <motion.span layout="position" key={a.id} onAnimationEnd={(e) => e.target === e.currentTarget && asideDone(a.id)}>
               <b style={{ color: nameColour(a.by) }}>{name(a.by)}</b> sniped <b style={{ color: nameColour(a.of) }}>{name(a.of)}</b>
             </motion.span>
           ))}
@@ -1114,7 +1111,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       )}
     </div>
     {paused && (
-      <div className="paused-card" role="dialog" aria-label="Paused">
+      <div className="paper-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
         <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
         {canResume(room) && (

@@ -817,16 +817,18 @@ button {
   }
 }
 
-/* Snipes: one line each, stacked while more than one is up (Table.tsx, feed.ts). */
+/* Snipes: one line each, stacked while more than one is up (Table.tsx, feed.ts), as a feed: the newest at the foot
+   (the middle of the felt, or its lower edge), those still up above it, moving up. */
 .gotnertz.sniped {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.15em;
 }
 
 .gotnertz.sniped span {
-  animation: sniped 1.125s ease-out both; /* (a quarter longer than it was; Table.tsx SNIPE_MS) */
+  animation: sniped 1.125s ease-out both; /* (a quarter longer than it was; its end is the line's, feed.ts) */
   /* A white edge and a dark one round that: read over a card of any colour, face or back. */
   -webkit-text-stroke: 0.09em #fff;
   filter: drop-shadow(0 0 0.03em var(--ink)) drop-shadow(0 0.05em 0.02em var(--ink)) drop-shadow(0 0.1em 0.2em rgba(0, 0, 0, 0.6));
@@ -1285,7 +1287,7 @@ button {
   user-select: none;
 }
 
-.paused-card {
+.paper-card {
   position: fixed;
   z-index: 40000;
   left: 50%;
@@ -1304,20 +1306,43 @@ button {
   rotate: -0.6deg;
 }
 
-.paused-card h2 {
+.paper-card h2 {
   margin: 0;
   font: 400 1.8rem/1.1 var(--display);
 }
 
-.paused-card p {
+.paper-card p {
   margin: 0;
 }
 
-.paused-card .go {
+.paper-card .go {
   width: 100%;
 }
 
-.paused-card .go small {
+.paper-card .go svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0 0.45rem -0.2rem 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.paper-card .quiet {
+  justify-self: center;
+}
+
+/* An action that cannot be undone, asked first: the table dims behind its card, and a press there is no. */
+.asked {
+  position: fixed;
+  inset: 0;
+  z-index: 49000; /* over the menu and everything it opens, under the connection banner */
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.paper-card .go small {
   margin-left: 0.4rem;
   font: 600 0.8rem/1 var(--ui);
   opacity: 0.6;
@@ -4948,12 +4973,7 @@ button.code.copy small {
   color: var(--chalk);
   -webkit-text-stroke: 0;
   filter: drop-shadow(0 0.06em 0.05em rgba(4, 18, 22, 0.95));
-  animation-duration: 2.4s; /* (half as long again: it is smaller, and off to one side; Table.tsx ASIDE_MS) */
-}
-
-/* As a feed: the newest at the foot (the middle of the felt, or its lower edge), those still up above it, moving up. */
-.gotnertz.sniped {
-  justify-content: flex-end;
+  animation-duration: 2.4s; /* (half as long again: it is smaller, and off to one side) */
 }
 
 .gotnertz.sniped.aside b {
@@ -5260,11 +5280,6 @@ button.who:hover,
 /* Your vote is in. */
 .acts button.on {
   background: #fbe6ae;
-}
-
-/* Asked again. */
-.acts button.sure {
-  color: var(--red);
 }
 
 .acts button svg {

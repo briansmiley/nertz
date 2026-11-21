@@ -17,7 +17,7 @@ describe('Pending', () => {
     const a = audio();
     p.add(0, 150, a.shot(150));
     expect(a.given).toEqual([{ due: 150, at: 0, delay: 0.15 }]);
-    expect(p.size).toBe(0);
+    expect(p.next).toBeNull();
   });
 
   it('keeps one further ahead until just before its moment, then hands it over with the time that is left', () => {
@@ -56,7 +56,7 @@ describe('Pending', () => {
     expect(heard.filter((d) => d > 3000 + AHEAD_MS && d < 8000 - LATE_MS)).toEqual([]);
     expect(heard.filter((d) => d <= 3000 + AHEAD_MS)).toEqual(lands.filter((d) => d <= 3000 + AHEAD_MS));
     expect(heard.filter((d) => d >= 8000)).toEqual(lands.filter((d) => d >= 8000));
-    expect(p.size).toBe(0);
+    expect(p.next).toBeNull();
   });
 
   it('a shot stopped while it waits is never handed over; one stopped after is cut short', () => {

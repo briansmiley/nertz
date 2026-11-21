@@ -60,9 +60,4 @@ export class Pending {
     const first = this.shots[0];
     return first ? first.due - AHEAD_MS : null;
   }
-
-  /** How many shots are waiting. */
-  get size(): number {
-    return this.shots.length;
-  }
 }

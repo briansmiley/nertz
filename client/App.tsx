@@ -10,10 +10,11 @@ import { lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { openCorner, useCorner } from './Menu';
-import { addBot, botBack, create, join, kick, leave, nameBot, passHost, removeBot, resetTable, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
+import { ICONS, openCorner, Sure, useCorner } from './Menu';
+import { press, tableActions, type ActionId } from './actions';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, TableRules } from './Settings';
-import { Again, Check, CopyIcon, Door, Eye, Gear } from './icons';
+import { Check, CopyIcon, Eye, Gear } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -78,6 +79,7 @@ export function App() {
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} />
+      <Sure room={room} />
       <Ping />
       {net.status === 'reconnecting' ? (
         <p className="banner">Connection lost. Reconnecting…</p>
@@ -285,10 +287,14 @@ function Watching({ room }: { room: RoomView }) {
   );
 }
 
-function Leave() {
+/** One of the table's actions (actions.ts) as an icon among the sheet's tools, while it is open to you. */
+function Act({ id, room }: { id: ActionId; room: RoomView }) {
+  const a = tableActions(room).find((t) => t.id === id);
+  if (!a) return null;
+  const Icon = ICONS[id];
   return (
-    <button type="button" className="icon" aria-label="Leave table" title="Leave table" onClick={leave}>
-      <Door />
+    <button type="button" className="icon" aria-label={a.label} title={a.label} onClick={() => press(id, room)}>
+      <Icon />
     </button>
   );
 }
@@ -535,7 +541,7 @@ function Lobby({ room }: { room: RoomView }) {
       <Pad>
         <div className="tools top">
           {me?.isHost && <AddBot room={room} />}
-          <Leave />
+          <Act id="leave" room={room} />
         </div>
         <h2>
           Table{' '}
@@ -644,19 +650,6 @@ function SettingsGear() {
   );
 }
 
-/** For whoever deals, on the score sheet: start the table over (every score to nothing, back to before the first deal). Asked twice, since it cannot be undone. */
-function StartOver() {
-  return (
-    <Pop icon={<Again />} label="Reset table">
-      <h3>Reset table?</h3>
-      <p className="hint">Everyone's score goes back to 0 and the table to before round 1.</p>
-      <button type="button" className="plain" onClick={resetTable}>
-        Reset the scores
-      </button>
-    </Pop>
-  );
-}
-
 /** The round's snipes, kept small: one line for the top sniper, and behind a button who did it to whom, the most first. */
 function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView['lastRound']>['snipes']>; top: { by: number; n: number }; who: (seat: number) => string }) {
   const [all, setAll] = useState(false);
@@ -760,7 +753,7 @@ function Results({ room }: { room: RoomView }) {
                 </th>
                 <td>{signed(s.played)}</td>
                 {/* Whoever got Nertz has no cards left in that pile: where the 0 would be, the stamp that lay across their hand. */}
-                <td className="nz">
+                <td>
                   {out.includes(s.seat) ? (
                     <span className="called" title={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
                       Nertz!
@@ -813,8 +806,8 @@ function Results({ room }: { room: RoomView }) {
         <div className="tools">
           <SettingsGear />
           {me?.isHost && <AddBot room={room} />}
-          {me?.isHost && <StartOver />}
-          <Leave />
+          <Act id="reset" room={room} />
+          <Act id="leave" room={room} />
         </div>
       </Pad>
     </main>
