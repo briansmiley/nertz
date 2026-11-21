@@ -288,16 +288,7 @@ label.check {
   top: calc(100% + 4px);
   width: max-content;
   max-width: min(17rem, 100%);
-  padding: 0.5rem 0.65rem;
-  border-radius: 8px;
-  background: var(--ink);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-  color: var(--paper);
-  font: 400 0.85rem/1.35 var(--ui);
-  font-style: normal;
-  white-space: normal;
-  text-align: left;
-  cursor: default;
+  cursor: default; /* its look is the tooltip's (tip.css) */
 }
 
 .info:hover .tip,

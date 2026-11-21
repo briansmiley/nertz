@@ -18,9 +18,12 @@
   border-radius: 50%;
 }
 
+/* Your name: its line as long as the name (and grows as you write), never wider than the pad. */
 .yourname {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  field-sizing: content;
+  min-width: 9ch;
+  max-width: 100%;
   padding: 0.1rem 0 0.2rem;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -29,6 +32,11 @@
   color: var(--ink);
   background: none;
   outline: none;
+}
+
+/* (Over the pad's own rule for its fields, the whole width.) */
+.pad input.yourname {
+  width: auto;
 }
 
 .yourname:hover,
@@ -175,8 +183,52 @@
   font: 400 1.6rem/1.2 var(--display);
 }
 
-.signin > .go {
-  width: 100%;
+/* Google and email, two equal buttons. Google's is its own: white, a grey edge, its four-colour G (its sign-in
+   branding); email's is drawn the same, so neither leads. */
+.signin {
+  gap: 0.8rem;
+}
+
+.signin .you {
+  margin-bottom: 0.5rem;
+}
+
+/* The ways in: their marks, side by side. */
+.signin .bys {
+  display: flex;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+.signin .by {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  border: 1px solid #747775;
+  border-radius: 8px;
+  font: 600 1.02rem/1.2 var(--ui);
+  color: #1f1f1f;
+  background: #fff;
+}
+
+.signin .by:hover {
+  background: #f6f6f4;
+}
+
+/* Email, pressed: pushed in, with the ink's edge, while its address is open under it. */
+.signin .by[aria-pressed='true'] {
+  border-color: var(--ink);
+  background: #ecebe6;
+  box-shadow: inset 0 2px 3px rgba(27, 39, 51, 0.18);
+}
+
+.signin .by svg {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 /* An email and its button; then the code and its, and under them where it went. */

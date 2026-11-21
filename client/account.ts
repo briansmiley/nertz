@@ -138,9 +138,12 @@ export async function deleteAccount(): Promise<boolean> {
 export function readStats(status: number, body: unknown): Stats | null {
   const v = body as Partial<Record<keyof Stats, unknown>> | null;
   const whole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
-  const place = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 1);
-  if (status !== 200 || !v || !whole(v.rounds) || !whole(v.won) || !whole(v.nertz) || !whole(v.points) || !place(v.place) || !(v.best === null || whole(v.best)) || !whole(v.snipes) || !whole(v.sniped)) return null;
-  return { rounds: v.rounds, won: v.won, nertz: v.nertz, points: v.points, place: v.place, best: v.best, snipes: v.snipes, sniped: v.sniped };
+  const most = (n: unknown): n is number | null => n === null || whole(n);
+  const share = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && n <= 1);
+  if (status !== 200 || !v) return null;
+  const { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
+  if (!whole(rounds) || !whole(won) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
+  return { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
 }
 
 /** The record last heard, and whose it is: shown at once when it is wanted again, while it is asked for afresh. */
