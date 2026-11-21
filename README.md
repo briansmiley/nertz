@@ -779,11 +779,12 @@ would still need one of the options above, and serving both from one origin is s
 
 ## Accounts
 
-Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
-guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
+Nobody has to sign in. At the top of the first page's pad, someone signed out is a **Guest** (a grey figure, and the
+word), with a **Sign in** button beside it, and writes the name they play under on the line below (one the browser
+remembers goes straight to it). Signing in
 is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
 and Send code), and they are then known across tables and visits. Signed in, their
-picture (or initial) and name stand where the name was written, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
 to their page or the way in and back again (with reduced motion, the other side simply comes up).
 

@@ -25,15 +25,16 @@ const set = (next: Signed): void => {
 
 /**
  * Who sits down, at the top of the pad. Signed in (with a name): you, your picture and name, which open your page.
- * Otherwise, where the server keeps accounts and you have not yet chosen: Sign in, or Guest. A guest (or anyone, where
- * there are no accounts) writes a name. Nothing while the server has not said which.
+ * Signed out where the server keeps accounts: a guest, in that same place, with Sign in beside it and the name they
+ * play under written below. Where there are no accounts (or signed in with no name yet), only a name to write. While
+ * the server has not said which: a guest if this browser has sat down as one `before`, else nothing yet.
  */
-export type Sitter = 'you' | 'choose' | 'name' | 'wait';
-export const sitter = (signed: Signed, guest: boolean): Sitter => {
+export type Sitter = 'you' | 'guest' | 'name' | 'wait';
+export const sitter = (signed: Signed, before: boolean): Sitter => {
   const you = signedIn(signed);
   if (you) return you.name ? 'you' : 'name';
-  if (signed === 'unknown') return guest ? 'name' : 'wait';
-  return waysIn(signed) && !guest ? 'choose' : 'name';
+  if (signed === 'unknown') return before ? 'guest' : 'wait';
+  return waysIn(signed) ? 'guest' : 'name';
 };
 
 /** What an answer from `/profile` comes to: a 401 is nobody signed in, with the ways in; and anything but a profile (the 404 for no accounts kept, a proxy with no server behind it) is no signing in. */
