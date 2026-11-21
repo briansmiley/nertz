@@ -1,4 +1,4 @@
-/* The first page: the fan and the name, the ways in, the open tables, who is signed in, your record. */
+/* The first page: the fan, who sits down, the ways in, the open tables, your record. */
 
 /* Home: two ways in. The filled one is whichever the form is set up for. */
 .ways {
@@ -89,13 +89,75 @@
   text-underline-offset: 3px;
 }
 
-/* On the first page: the field for your name, and the card beside it. */
+/* On the first page, who sits down (your name, you, or the choice of the two) and the card beside it. */
 .named {
   display: flex;
   align-items: center;
   justify-content: space-between; /* the card keeps to the right, however long the name */
   gap: 0.7rem;
-  margin-top: -0.3rem;
+  min-height: 2.6rem;
+}
+
+/* Signed in: your picture and name, written on the pad; pressed, your page. */
+.named .you {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 1.15rem;
+  text-align: left;
+}
+
+.named .you img {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+}
+
+/* With no picture, the first letter of your name in its place. */
+.named .you i {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font: 400 1rem/1 var(--display);
+  font-style: normal;
+}
+
+.named .you span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.2em;
+}
+
+.named .you:hover span {
+  text-decoration-color: currentColor;
+}
+
+/* Not signed in, and no name yet: the two ways to sit down. */
+.named .either {
+  display: flex;
+  gap: 0.6rem;
+}
+
+/* A guest: the line for a name, and beside it the way to sign in after all. */
+.named .guest {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  min-width: 0;
 }
 
 .named input {
@@ -188,12 +250,6 @@
   }
 }
 
-/* Above the field for your name its label says what goes in it: the field's own placeholder only stands in for it on
-   a phone on its side. */
-.named input::placeholder {
-  color: transparent;
-}
-
 /* A phone on its side: the wide screen's two columns, the name standing still at the left, and the pad pared down to
    fit the height (a longer one, with your record under it, scrolls by). */
 @media (orientation: landscape) and (max-height: 500px) {
@@ -232,17 +288,8 @@
     gap: 0.7rem;
   }
 
-  .home .pad h2,
-  .home .pad label .label {
+  .home .pad h2 {
     display: none;
-  }
-
-  .home .named {
-    margin-top: 0;
-  }
-
-  .home .named input::placeholder {
-    color: #9aa3a8;
   }
 }
 
@@ -262,62 +309,22 @@
   }
 }
 
-/* Who is signed in, on the first page: a line of writing on the pad, not a button on it. */
-.who,
-.who button {
+/* A guest's way to sign in after all: a line of writing on the pad, not a button on it. */
+.home button.who {
+  flex: none;
   padding: 0;
   border: 0;
   background: none;
   font: 400 0.9rem/2rem var(--ui);
   color: var(--ink-soft);
-}
-
-button.who,
-.who button {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
   text-underline-offset: 0.2em;
 }
 
-button.who:hover,
-.who button:hover {
+.home button.who:hover {
   color: var(--ink);
   text-decoration-color: currentColor;
-}
-
-.who.in {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--ink);
-}
-
-.who img {
-  flex: none;
-  width: 1.4rem;
-  height: 1.4rem;
-  border-radius: 50%;
-}
-
-.who.in {
-  min-width: 0;
-}
-
-.who.in span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.who.in button {
-  flex: none;
-}
-
-.whofoot {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -0.4rem;
 }
 
 /* Your record, on the first page: figures written on the pad, each over what it counts. */

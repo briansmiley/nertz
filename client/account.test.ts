@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { read, readStats, signedIn, waysIn } from './account';
+import { read, readStats, signedIn, sitter, waysIn } from './account';
 
 describe('who the server says is signed in', () => {
   it('is no signing in at all where the server keeps no accounts, or there is no good answer', () => {
@@ -48,5 +48,23 @@ describe('the record the server says is theirs', () => {
     expect(readStats(200, { ...record, points: '261' })).toBeNull();
     expect(readStats(200, { ...record, best: undefined })).toBeNull();
     expect(readStats(200, { ...record, place: 0 })).toBeNull();
+  });
+});
+
+describe('who sits down, on the first page', () => {
+  const ways = { ways: ['google', 'email'] } as const;
+  const named = { id: 'u', name: 'Ada', image: null };
+  it('signed in with a name: you; signed in without one: a name to write', () => {
+    expect(sitter(named, false)).toBe('you');
+    expect(sitter({ ...named, name: null }, false)).toBe('name');
+  });
+  it('signed out where there are accounts: the choice, until you are a guest', () => {
+    expect(sitter({ ways: [...ways.ways] }, false)).toBe('choose');
+    expect(sitter({ ways: [...ways.ways] }, true)).toBe('name');
+  });
+  it('no accounts kept: a name to write; not known yet: a guest writes, anyone else waits', () => {
+    expect(sitter('off', false)).toBe('name');
+    expect(sitter('unknown', true)).toBe('name');
+    expect(sitter('unknown', false)).toBe('wait');
   });
 });

@@ -23,6 +23,19 @@ const set = (next: Signed): void => {
   for (const l of listeners) l();
 };
 
+/**
+ * Who sits down, at the top of the pad. Signed in (with a name): you, your picture and name, which open your page.
+ * Otherwise, where the server keeps accounts and you have not yet chosen: Sign in, or Guest. A guest (or anyone, where
+ * there are no accounts) writes a name. Nothing while the server has not said which.
+ */
+export type Sitter = 'you' | 'choose' | 'name' | 'wait';
+export const sitter = (signed: Signed, guest: boolean): Sitter => {
+  const you = signedIn(signed);
+  if (you) return you.name ? 'you' : 'name';
+  if (signed === 'unknown') return guest ? 'name' : 'wait';
+  return waysIn(signed) && !guest ? 'choose' : 'name';
+};
+
 /** What an answer from `/profile` comes to: a 401 is nobody signed in, with the ways in; and anything but a profile (the 404 for no accounts kept, a proxy with no server behind it) is no signing in. */
 export function read(status: number, body: unknown): Signed {
   if (status === 401) {
