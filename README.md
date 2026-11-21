@@ -677,10 +677,14 @@ is a few kilobytes and a busy table is a few messages a second.
 
 - Every pull request into `staging` from a branch of this repo (not a fork: those get no secrets) gets its own app,
   `nertz-pr-<number>`, at **https://nertz-pr-&lt;number&gt;.fly.dev**. `.github/workflows/preview.yml` runs the checks and
-  deploys the merge of the PR into staging on each push, and keeps one comment on the PR with the address. Closing the PR
-  destroys the app.
-- `fly.preview.toml` is `fly.toml` without the volume: one machine, suspended when idle, accounts on the machine's own disk.
-  Each push to the PR starts them afresh.
+  deploys the merge of the PR into staging on each push, and keeps one comment on the PR with the address.
+- Set up like the real apps (`fly.preview.toml`, as `fly.toml`): one machine, suspended when idle,
+  and a 1 GB `nertz_data` volume at `/data`, so accounts, pictures and anything else kept outlive pushes to the PR. The
+  workflow makes the volume once, before the first deploy, since a mount added to a machine with no volume destroys it.
+- Closing the PR destroys the app, and with it its volume ("When you destroy an app, you delete its volumes and volume
+  snapshots": [Fly, Delete an app](https://fly.io/docs/apps/delete/)). `.github/workflows/preview-sweep.yml` destroys,
+  daily, any `nertz-pr-<number>` whose PR is closed, in case a teardown failed. (Scheduled runs start once it is on
+  `main`; before then, run it by hand from the Actions tab.)
 - What does not work there: **Google sign-in** (Google only sends people back to redirect addresses registered in advance,
   and one cannot be registered per preview; sign in by emailed code instead, which needs `RESEND_API_KEY`), and
   **feedback**, which is sent nowhere: a preview has no `FEEDBACK_WEBHOOK`, `LINEAR_*` or `ANTHROPIC_API_KEY`.
