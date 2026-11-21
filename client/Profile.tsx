@@ -13,7 +13,7 @@ const written = (n: number, places = 0): string => {
 
 /** Which rounds the record counts, drawn (a bot; a person with a bot; two people), and said in a word or two under them. */
 const AMONG_DRAWN: Record<Among, { title: string; said: string; draw: React.JSX.Element }> = {
-  all: { title: 'Every round', said: 'Every round', draw: <Bot x={6} /> },
+  all: { title: 'Every round', said: 'All', draw: <Bot x={6} /> },
   people: {
     title: 'Rounds with someone else, bots or not',
     said: 'With people',
