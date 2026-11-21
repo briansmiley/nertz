@@ -871,18 +871,24 @@ it if they were signed in. The screenshot is a file beside the database, `report
 `DATA_DIR`: its name is made by the server from the report's id, never from anything sent, and
 nothing serves these files (read them with `fly ssh sftp get`). The screenshots kept may come to 200 MB in all: past
 that a report is kept without its picture, which is still passed on (anyone at all can send one, and the accounts live
-on the same volume). Once it has been passed on, the row also says what it was titled and the address of the issue
-filed for it. So a report that reaches nowhere else is not lost. To read them:
-`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue from report order by created_at desc;`
+on the same volume). Once it has been passed on, the row also says what it was titled, the address of the issue
+filed for it, the id of its Discord post (`post`) and whether the issue went to the auto-fanout (`auto`, counted by
+`sender`). So a report that reaches nowhere else is not lost. To read them:
+`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue, post, auto from report order by created_at desc;`
 
 From there it is passed on wherever the server was told, to both if both are set:
 
 - `FEEDBACK_WEBHOOK`: a Discord webhook URL (channel settings, Integrations, Webhooks: no bot needed). The report is
-  posted there with the screenshot attached. On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
+  posted there with the screenshot attached, and Discord is asked for the message it made (`?wait=true`): its id is
+  kept, on the report's row and as a `**Discord:**` line at the foot of the issue (added once the post is made, since
+  the post links the issue). On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
 
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
-  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
-  if the team has none of that name), with the screenshot in its description.
+  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature, and `auto` (each
+  label made if the team has none of that name), with the screenshot in its description. `auto` hands it to the
+  [auto-fanout](#auto-fanout), so one sender gets it on five issues at most, ever (`AUTO_PER_SENDER`): a sender is
+  their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count as one.
+  Past that, or for a report that could not be kept (and so counted), the issue is filed without `auto`.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
 - `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
   issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
@@ -891,3 +897,28 @@ From there it is passed on wherever the server was told, to both if both are set
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
 Ten reports per address per minute; a screenshot is scaled down in the browser first.
+
+### Auto-fanout
+
+Every hour the droplet looks for Nertz issues labelled **`auto`** that nobody has started (Backlog or Todo, team SMI,
+project Nertz), and Claude implements them: a branch off `staging` and a PR to it for each, titled `[SMI-N] ...`, and a
+second Claude's review of it, fixes pushed and the rest left as a PR comment. It never merges. Then BinaryBot opens a
+thread on the report's post in #nertz-feedback (or on a fresh message there, for an issue no report made), tags Brian
+and links the PR. An issue too vague to do gets a comment asking what it needs, and loses its `auto`.
+
+- **Opting in:** the server labels the issues it files `auto` (up to five per sender, see [Feedback](#feedback)); add
+  the label to any other issue to hand it over, and take it off to keep one back. The issue's description is all it is told.
+- **Limits:** one run at a time (a lock), at most three issues a run and two Claudes at once (the box has 2 GB), no dev
+  servers, at most $15 and three hours a run (`NERTZ_AUTO_BUDGET_USD`, `NERTZ_AUTO_HOURS`).
+- **The parts:** `scripts/auto-fanout.sh` is what cron runs: one call to Linear first, which costs nothing, and
+  `claude -p "/auto-fanout"` in `/root/projects/nertz` only if there is something to do. The flow itself is the skill
+  `.claude/skills/auto-fanout/SKILL.md`, read from that checkout as it stands. `scripts/feedback-thread.sh` opens the
+  thread (`--dry-run` to see where it would go).
+- **Needs:** a Linear personal API key alone in `~/.config/linear/api-key` (mode 600; `LINEAR_KEY_FILE` says
+  otherwise), for that first call; Claude's own `linear-personal` connection for the rest; BinaryBot's token in
+  `~/.config/discord/binarybot-bot-token`.
+- **Logs:** `~/.local/state/nertz-auto/runs.log`, each line with its time: when a run started, its session (`claude
+  --resume <id>` in the checkout shows everything it did), its summary and how it ended. A check that found nothing
+  writes nothing.
+- **Switching it on:** `crontab -e` and add `17 * * * * /root/projects/nertz/scripts/auto-fanout.sh`. **Off:** take
+  the line out again; a run under way stops with `pkill -f 'claude -p /auto-fanout'`.

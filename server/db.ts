@@ -87,6 +87,14 @@ const MIGRATIONS: string[] = [
   // The picture they put up of themselves, null for none: its id, the name of a file in the pictures directory beside the
   // database (server/pictures.ts). Without one they are shown by Google's, or by their initial.
   `alter table profile add column picture text;`,
+  // What a report's way to the auto-fanout needs (server/feedback.ts, .claude/skills/auto-fanout), each null for the
+  // reports from before it. `post`: the id of the Discord message it was posted as, null where it was not posted;
+  // BinaryBot opens a thread on it once a PR for the report is ready. `sender`: who sent it, as one key (`senderOf`,
+  // server/reports.ts: an account, a name, or nobody), and `auto` whether its issue was labelled `auto`: together they
+  // are how many issues each sender has handed over, which is capped.
+  `alter table report add column post text;
+   alter table report add column sender text;
+   alter table report add column auto integer check (auto in (0, 1));`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

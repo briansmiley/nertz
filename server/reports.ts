@@ -39,12 +39,37 @@ export function imageFile(dir: string, id: string): string {
   return join(dir, `${id}.jpg`);
 }
 
+/**
+ * Who sent a report, as the cap on what one sender hands to the auto-fanout counts them (server/feedback.ts): their
+ * account if they were signed in (whatever name they gave), else the name they gave, trimmed and in lower case (one
+ * name is one person), else nobody, all of whom are one sender.
+ */
+export const senderOf = (r: Pick<Report, 'name'>, account: string | null): string => (account ? `account:${account}` : r.name?.trim() ? `name:${r.name.trim().toLowerCase()}` : 'nobody');
+
+/** What became of a report once it was passed on (server/feedback.ts). */
+export interface Passed {
+  /** What it was titled, and how much it was judged to matter (if it was judged). */
+  heading: Heading;
+  /** The address of the issue filed for it, if one was. */
+  issue: string | null;
+  /** The id of the Discord message it was posted as, if it was: where BinaryBot opens a thread once a PR for it is ready. */
+  post: string | null;
+  /** Whether that issue was handed to the auto-fanout: labelled `auto`. */
+  auto: boolean;
+}
+
 export interface Reports {
   /** Keeps a report as it came, and who sent it if they were signed in. Throws if it cannot, and then keeps nothing. */
   add(id: string, at: number, report: Report, account: string | null): void;
-  /** What became of it once it was passed on: what it was titled, how much it was judged to matter (if it was judged), and the address of the issue filed for it (if one was). */
-  passedOn(id: string, heading: Heading, issue: string | null): void;
-  /** Keeps `account`'s reports, but as nobody's, with no name to them. */
+  /**
+   * Whether report `id`'s issue may be labelled `auto`: yes if its sender (`senderOf`) has had fewer than `max` so far,
+   * and then it is counted as one of them at once, so that two reports at a time cannot both slip under the cap.
+   * (`passedOn` says in the end whether it was: not, if no issue came of it.)
+   */
+  mayAuto(id: string, max: number): boolean;
+  /** What became of it once it was passed on. */
+  passedOn(id: string, passed: Passed): void;
+  /** Keeps `account`'s reports, but as nobody's, with no name to them (and no sender: counted for nobody). */
   forget(account: string): void;
 }
 
@@ -55,10 +80,12 @@ export interface ReportsOptions {
 }
 
 export function openReports(db: Db, { dir, maxImageBytes = MAX_KEPT_IMAGE_BYTES }: ReportsOptions): Reports {
-  const add = db.prepare('insert into report (id, created_at, kind, text, name, room, context, account, image_bytes) values (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const add = db.prepare('insert into report (id, created_at, kind, text, name, room, context, account, sender, image_bytes) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const pictures = db.prepare('select coalesce(sum(image_bytes), 0) as bytes from report');
-  const passedOn = db.prepare('update report set title = ?, priority = ?, issue = ? where id = ?');
-  const forget = db.prepare('update report set account = null, name = null where account = ?');
+  // (One statement: the count and the mark go together.)
+  const mayAuto = db.prepare('update report set auto = 1 where id = ? and sender is not null and (select count(*) from report as had where had.sender = report.sender and had.auto = 1) < ?');
+  const passedOn = db.prepare('update report set title = ?, priority = ?, issue = ?, post = ?, auto = ? where id = ?');
+  const forget = db.prepare('update report set account = null, name = null, sender = null where account = ?');
   return {
     add(id, at, r, account) {
       const fits = dir && r.image && (pictures.get() as { bytes: number }).bytes + r.image.length <= maxImageBytes;
@@ -67,13 +94,14 @@ export function openReports(db: Db, { dir, maxImageBytes = MAX_KEPT_IMAGE_BYTES 
       const file = fits ? imageFile(dir!, id) : null;
       const image = file && write(file, r.image!) ? r.image! : null;
       try {
-        add.run(id, at, r.kind, r.text, r.name ?? null, r.room ?? null, r.context ?? null, account, image?.length ?? null);
+        add.run(id, at, r.kind, r.text, r.name ?? null, r.room ?? null, r.context ?? null, account, senderOf(r, account), image?.length ?? null);
       } catch (err) {
         if (image) rmSync(file!, { force: true });
         throw err;
       }
     },
-    passedOn: (id, heading, issue) => void passedOn.run(heading.title, heading.priority ?? null, issue, id),
+    mayAuto: (id, max) => mayAuto.run(id, max).changes === 1,
+    passedOn: (id, { heading, issue, post, auto }) => void passedOn.run(heading.title, heading.priority ?? null, issue, post, auto ? 1 : 0, id),
     forget: (account) => void forget.run(account),
   };
 }

@@ -3,13 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseReport } from './feedback';
+import { AUTO_PER_SENDER, parseReport } from './feedback';
 import { startServer, type NertzServer } from './index';
 import { openDb } from './db';
 import { imageFile, openReports } from './reports';
 import { ACCOUNTS, ADA, Browser, fakeGoogle, rows } from './testkit';
 
 const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+const HOOK = 'https://discord.invalid/hook';
+/** What Discord answers a webhook asked to wait (`?wait=true`): the message it made. */
+const posted = (id = '1500000000000000001'): Response => Response.json({ id, channel_id: '1571055056319422515' });
 let server: NertzServer | undefined;
 /** Reports delivered so far, for a test to wait on: the sender is answered before delivery. */
 let delivered = 0;
@@ -45,7 +48,7 @@ describe('feedback', () => {
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
     const sent: FormData[] = [];
     const real = fetch;
-    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: 'https://discord.invalid/hook', anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body as FormData), new Response(null, { status: 204 }))) as typeof fetch } });
+    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: HOOK, anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body as FormData), posted())) as typeof fetch } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
     const res = await send({ kind: 'bug', text: 'the ace made a noise @everyone', name: 'Sam', room: 'ABCD', image: JPEG });
@@ -57,7 +60,7 @@ describe('feedback', () => {
     expect(readFileSync(join(dir, 'reports', `${id}.jpg`)).toString('base64')).toBe(JPEG.split(',')[1]);
     expect(image_bytes).toBe(Buffer.from(JPEG.split(',')[1]!, 'base64').length);
     await settled(1);
-    expect(kept()[0]).toMatchObject({ title: 'the ace made a noise @everyone', priority: null, issue: null });
+    expect(kept()[0]).toMatchObject({ title: 'the ace made a noise @everyone', priority: null, issue: null, post: '1500000000000000001' });
     const payload = JSON.parse(sent[0]!.get('payload_json') as string) as { allowed_mentions: unknown; embeds: { description: string }[] };
     expect(payload.embeds[0]!.description).toContain('the ace');
     expect(payload.allowed_mentions).toEqual({ parse: [] });
@@ -70,25 +73,25 @@ describe('feedback', () => {
     await settled(9); // (the eight that got through, delivered after they were answered)
   });
 
-  it('files a Linear issue too: [FEEDBACK] in the title, the Bug or Feature label (made if the team has none), the screenshot uploaded', async () => {
+  it('files a Linear issue too: [FEEDBACK] in the title, the Bug or Feature label and auto (each made if the team has none), the screenshot uploaded', async () => {
     const calls: { url: string; body: unknown; method?: string }[] = [];
     const fake = (async (url: unknown, init?: RequestInit) => {
       const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }) : init?.body;
       calls.push({ url: String(url), body, method: init?.method });
-        if (String(url) === 'https://discord.invalid/hook') return new Response(null, { status: 204 });
+      if (String(url).startsWith(HOOK)) return posted();
       if (String(url) !== 'https://api.linear.app/graphql') return new Response(null, { status: 200 }); // the upload
       const q = (body as { query: string }).query;
-      const data = q.includes('viewer') ? { viewer: { id: 'me1' } } : q.includes('workflowStates') ? { workflowStates: { nodes: [{ id: 'todo1' }] } } : q.includes('projects(') ? { projects: { nodes: [] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'bug', team: null }, { id: 'other', name: 'Feature', team: { id: 'team2' } }] } } : q.includes('issueLabelCreate') ? { issueLabelCreate: { issueLabel: { id: 'feat1' } } } : q.includes('fileUpload') ? { fileUpload: { uploadFile: { uploadUrl: 'https://upload.invalid/x', assetUrl: 'https://asset.invalid/x.png', headers: [{ key: 'x-h', value: '1' }] } } } : { issueCreate: { issue: { identifier: 'NRZ-7', url: 'https://linear.invalid/NRZ-7' } } };
+      const data = q.includes('viewer') ? { viewer: { id: 'me1' } } : q.includes('workflowStates') ? { workflowStates: { nodes: [{ id: 'todo1' }] } } : q.includes('projects(') ? { projects: { nodes: [] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'bug', team: null }, { id: 'other', name: 'Feature', team: { id: 'team2' } }] } } : q.includes('issueLabelCreate') ? { issueLabelCreate: { issueLabel: { id: (body as { variables: { input?: { name?: string } } }).variables.input?.name === 'auto' ? 'auto1' : 'feat1' } } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : q.includes('fileUpload') ? { fileUpload: { uploadFile: { uploadUrl: 'https://upload.invalid/x', assetUrl: 'https://asset.invalid/x.png', headers: [{ key: 'x-h', value: '1' }] } } } : { issueCreate: { issue: { id: 'issue7', identifier: 'NRZ-7', url: 'https://linear.invalid/NRZ-7' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, anthropic: '', onDelivered, fetch: fake } });
+    server = await startServer({ port: 0, data: ':memory:', feedback: { webhook: HOOK, linear: { key: 'lin_api_x', team: 'nrz', priority: 2, assignee: 'me', state: 'Todo', project: 'No such project' }, anthropic: '', onDelivered, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
 
     expect((await send({ kind: 'idea', text: 'a ready button\nwould be nice', name: 'Sam', image: JPEG })).status).toBe(200);
     await settled(1);
     const issue = calls.find((c) => (c.body as { query?: string })?.query?.includes('issueCreate'))!.body as { variables: { input: { title: string; description: string; labelIds: string[]; teamId: string } } };
-    expect(issue.variables.input).toMatchObject({ teamId: 'team1', title: '[FEEDBACK] a ready button', labelIds: ['feat1'] });
+    expect(issue.variables.input).toMatchObject({ teamId: 'team1', title: '[FEEDBACK] a ready button', labelIds: ['feat1', 'auto1'] });
     // Priority, assignee and status as the server was told; a project nobody has is left out, and the issue is filed all the same.
     expect(issue.variables.input).toMatchObject({ priority: 2, assigneeId: 'me1', stateId: 'todo1' });
     expect(issue.variables.input).not.toHaveProperty('projectId');
@@ -97,15 +100,15 @@ describe('feedback', () => {
     expect(calls.some((c) => c.url === 'https://upload.invalid/x' && c.method === 'PUT')).toBe(true);
 
     // Discord is told afterwards, and its message links the issue.
-    const told = JSON.parse((calls.find((c) => c.url === 'https://discord.invalid/hook')!.body as FormData).get('payload_json') as string) as { embeds: { title: string; url: string }[] };
+    const told = JSON.parse((calls.find((c) => c.url.startsWith(HOOK))!.body as FormData).get('payload_json') as string) as { embeds: { title: string; url: string }[] };
     expect(told.embeds[0]).toMatchObject({ title: '💡 a ready button · NRZ-7', url: 'https://linear.invalid/NRZ-7' });
 
-    // The team and its labels are looked up once: a second report (a bug) uses the workspace's label, and asks only to file and to tell.
+    // The team and its labels are looked up once: a second report (a bug) uses the workspace's label, and asks only to file, to tell, and to note the post on the issue.
     const before = calls.length;
     expect((await send({ kind: 'bug', text: 'it broke' })).status).toBe(200);
     await settled(2);
-    expect(calls.length).toBe(before + 2);
-    expect((calls.find((c, i) => i >= before && c.url.includes('linear.app'))!.body as typeof issue).variables.input.labelIds).toEqual(['bug1']);
+    expect(calls.length).toBe(before + 3);
+    expect((calls.find((c, i) => i >= before && c.url.includes('linear.app'))!.body as typeof issue).variables.input.labelIds).toEqual(['bug1', 'auto1']);
   });
 
   it('a lookup Linear did not answer is left out of that issue only, and asked again for the next; and no call out waits for ever', async () => {
@@ -117,7 +120,7 @@ describe('feedback', () => {
       const { query: q, variables } = JSON.parse(String(init!.body)) as { query: string; variables: { input: Record<string, unknown> } };
       if (q.includes('projects(') && asked++ === 0) throw new Error('no answer');
       if (q.includes('issueCreate')) inputs.push(variables.input);
-      const data = q.includes('projects(') ? { projects: { nodes: [{ id: 'proj1' }] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      const data = q.includes('projects(') ? { projects: { nodes: [{ id: 'proj1' }] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
@@ -137,7 +140,7 @@ describe('feedback', () => {
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
     const fake = (async (_url: unknown, init?: RequestInit) => {
       const q = (JSON.parse(String(init!.body)) as { query: string }).query;
-      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     server = await startServer({ port: 0, data: join(dir, 'nertz.db'), accounts: ACCOUNTS, feedback: { linear: { key: 'lin_api_x', team: 'nrz' }, anthropic: '', onDelivered, fetch: fake } });
@@ -152,6 +155,47 @@ describe('feedback', () => {
       { text: 'a ready button', account: user.id, title: 'a ready button', issue: 'https://linear.invalid/NRZ-9', image_bytes: null },
       { text: 'it broke', account: null },
     ]);
+  });
+
+  it('Discord is asked for the post it makes, and the post is noted: as the last line of the issue, and on the report; one Discord refused is noted nowhere', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    const calls: { url: string; query?: string; variables?: { id?: string; input: { description: string } } }[] = [];
+    let discord: 'posts' | 'refuses' = 'posts';
+    const fake = (async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      if (u.startsWith(HOOK)) return calls.push({ url: u }), discord === 'posts' ? posted('1500000000000000002') : new Response(null, { status: 500 });
+      const body = JSON.parse(String(init!.body)) as { query: string; variables: { id?: string; input: { description: string } } };
+      calls.push({ url: u, query: body.query, variables: body.variables });
+      const q = body.query;
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: { id: 'team1' } }] } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : { issueCreate: { issue: { id: 'issue9', identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as typeof fetch;
+    const said = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      // (A webhook may already say something of its own, like the thread it posts in: that is kept.)
+      server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: `${HOOK}?thread_id=9`, linear: { key: 'lin_api_x', team: 'nrz' }, anthropic: '', onDelivered, fetch: fake } });
+      const send = (body: unknown) => fetch(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
+
+      expect((await send({ kind: 'bug', text: 'it broke', name: 'Sam' })).status).toBe(200);
+      await settled(1);
+      // Filed, then posted (the post links the issue), then the issue is told where the post is.
+      expect(calls.map((c) => (c.url.startsWith(HOOK) ? 'post' : /issue(Create|Update)/.exec(c.query!)?.[0])).filter(Boolean)).toEqual(['issueCreate', 'post', 'issueUpdate']);
+      expect(calls.find((c) => c.url.startsWith(HOOK))!.url).toBe(`${HOOK}?thread_id=9&wait=true`);
+      const filed = calls.find((c) => c.query?.includes('issueCreate'))!.variables!.input;
+      expect((filed as unknown as { labelIds: string[] }).labelIds).toEqual(['bug1', 'auto1']);
+      const noted = calls.find((c) => c.query?.includes('issueUpdate'))!.variables!;
+      expect(noted).toEqual({ id: 'issue9', input: { description: `${filed.description}  \n**Discord:** 1500000000000000002` } });
+      expect(noted.input.description).toMatch(/\*\*From:\*\* Sam {2}\n\*\*Report:\*\* [0-9a-f]{12} {2}\n\*\*Discord:\*\* 1500000000000000002$/);
+      expect(kept()[0]).toMatchObject({ issue: 'https://linear.invalid/NRZ-9', post: '1500000000000000002' });
+
+      discord = 'refuses';
+      expect((await send({ kind: 'bug', text: 'it broke again' })).status).toBe(200);
+      await settled(2);
+      expect(calls.filter((c) => c.query?.includes('issueUpdate'))).toHaveLength(1);
+      expect(kept()[1]).toMatchObject({ issue: 'https://linear.invalid/NRZ-9', post: null });
+    } finally {
+      said.mockRestore();
+    }
   });
 
   it('with nowhere to keep a report and nowhere to pass it on, the sender is told so; with only somewhere to keep it, it is kept', async () => {
@@ -185,7 +229,7 @@ describe('feedback', () => {
 
       dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
       const sent: unknown[] = [];
-      server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: 'https://discord.invalid/hook', anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body), new Response(null, { status: 204 }))) as typeof fetch } });
+      server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: HOOK, anthropic: '', onDelivered, fetch: (async (_url: unknown, init?: RequestInit) => (sent.push(init!.body), posted())) as typeof fetch } });
       broken();
       expect((await fetch(`http://localhost:${server.port}/feedback`, { method: 'POST', body: JSON.stringify({ kind: 'bug', text: 'it broke' }) })).status).toBe(200);
       await settled(1);
@@ -209,9 +253,58 @@ describe('feedback', () => {
       { id: '00000000000c', bytes: 4 },
     ]);
     expect(readdirSync(dir).sort()).toEqual(['00000000000a.jpg', '00000000000c.jpg']);
-    reports.passedOn('00000000000b', { title: 'A title', priority: 3 }, 'https://linear.invalid/NRZ-1');
-    expect(db.prepare(`select title, priority, issue from report where id = '00000000000b'`).get()).toEqual({ title: 'A title', priority: 3, issue: 'https://linear.invalid/NRZ-1' });
+    reports.passedOn('00000000000b', { heading: { title: 'A title', priority: 3 }, issue: 'https://linear.invalid/NRZ-1', post: '1500000000000000001', auto: true });
+    expect(db.prepare(`select title, priority, issue, post, auto from report where id = '00000000000b'`).get()).toEqual({ title: 'A title', priority: 3, issue: 'https://linear.invalid/NRZ-1', post: '1500000000000000001', auto: 1 });
     db.close();
+  });
+
+  it('one sender hands so many issues to the auto-fanout and no more: an account by its account whatever the name, else a name in any case, else nobody', () => {
+    const db = openDb(':memory:');
+    const reports = openReports(db, { dir: null });
+    let n = 0;
+    /** A report from them, kept: whether its issue may be labelled auto (two each, here). */
+    const from = (name: string | undefined, account: string | null): boolean => {
+      const id = (++n).toString(16).padStart(12, '0');
+      reports.add(id, n, { kind: 'bug', text: 'x', ...(name ? { name } : {}) }, account);
+      return reports.mayAuto(id, 2);
+    };
+    // One name is one sender, trimmed and in any case.
+    expect([from('Sam', null), from(' sam ', null), from('SAM', null), from('Samuel', null)]).toEqual([true, true, false, true]);
+    // Signed in, the account is who sent it, and the name is not looked at: Ada as Sam is not Sam, and Ada as anyone is Ada.
+    expect([from('Sam', 'ada'), from('Ada', 'ada'), from('Sam', 'ada'), from('Sam', 'bob')]).toEqual([true, true, false, true]);
+    // With neither, everyone is nobody, one sender under the same cap.
+    expect([from(undefined, null), from(undefined, null), from(undefined, null)]).toEqual([true, true, false]);
+    // Only an issue that was labelled counts: one never filed (passed on with no issue) gives its place back.
+    reports.passedOn('000000000001', { heading: { title: 'x' }, issue: null, post: null, auto: false });
+    expect(from('sam', null)).toBe(true);
+    // Someone forgotten is nobody's, and counted for no one.
+    reports.forget('ada');
+    expect([from('Ada', 'ada'), from('Ada', 'ada'), from('Ada', 'ada')]).toEqual([true, true, false]);
+    expect(from(undefined, null)).toBe(false);
+    db.close();
+  });
+
+  it(`past ${AUTO_PER_SENDER} issues labelled auto, a sender's reports are filed and passed on all the same, without it`, async () => {
+    const labels: string[][] = [];
+    const fake = (async (url: unknown, init?: RequestInit) => {
+      if (String(url).startsWith(HOOK)) return posted();
+      const { query: q, variables } = JSON.parse(String(init!.body)) as { query: string; variables: { input: { labelIds: string[] } } };
+      if (q.includes('issueCreate')) labels.push(variables.input.labelIds);
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : { issueCreate: { issue: { id: 'issue9', identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as typeof fetch;
+    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
+    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: HOOK, linear: { key: 'lin_api_x', team: 'nrz' }, anthropic: '', onDelivered, fetch: fake } });
+    const send = (body: unknown) => fetch(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
+    // One past the cap as Sam, in whatever case; then someone else.
+    const names = [...Array.from({ length: AUTO_PER_SENDER + 1 }, (_, i) => ['Sam', 'sam', 'SAM'][i % 3]!), 'Ada'];
+    for (const [i, name] of names.entries()) {
+      expect((await send({ kind: 'bug', text: 'it broke', name })).status).toBe(200);
+      await settled(i + 1);
+    }
+    expect(labels).toEqual([...Array<string[]>(AUTO_PER_SENDER).fill(['bug1', 'auto1']), ['bug1'], ['bug1', 'auto1']]);
+    expect(kept().map((r) => r.auto)).toEqual([...Array<number>(AUTO_PER_SENDER).fill(1), 0, 1]);
+    expect(kept().every((r) => r.post)).toBe(true);
   });
 
   it('a screenshot that cannot be written is left out: the report is kept without it', () => {
@@ -265,16 +358,17 @@ describe('feedback', () => {
         if (claudeAnswers === 'broken') return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'no' } }), { status: 400, headers: { 'content-type': 'application/json' } });
         return new Response(JSON.stringify({ id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: 'text', text: JSON.stringify({ title: 'Ace  will not drop on a foundation', priority: 2 }) }] }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
-      if (u === 'https://discord.invalid/hook') return new Response(null, { status: 204 });
+      if (u.startsWith(HOOK)) return posted();
+      if ((body as { query: string }).query.includes('issueUpdate')) return Response.json({ data: { issueUpdate: { success: true } } });
       const q = (body as { query: string }).query;
-      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-8', url: 'https://linear.invalid/NRZ-8' } } };
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { id: 'issue8', identifier: 'NRZ-8', url: 'https://linear.invalid/NRZ-8' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
-    server = await startServer({ port: 0, feedback: { webhook: 'https://discord.invalid/hook', linear: { key: 'lin_api_x', team: 'nrz', priority: 3 }, anthropic: 'sk-ant-test', onDelivered, fetch: fake } });
+    server = await startServer({ port: 0, feedback: { webhook: HOOK, linear: { key: 'lin_api_x', team: 'nrz', priority: 3 }, anthropic: 'sk-ant-test', onDelivered, fetch: fake } });
     const send = (body: unknown) => real(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify(body) });
     const filed = () => (calls.filter((c) => (c.body as { query?: string })?.query?.includes('issueCreate')).at(-1)!.body as { variables: { input: { title: string; priority: number; description: string } } }).variables.input;
-    const told = () => (JSON.parse((calls.filter((c) => c.url === 'https://discord.invalid/hook').at(-1)!.body as FormData).get('payload_json') as string) as { embeds: { title: string; description: string }[] }).embeds[0]!;
+    const told = () => (JSON.parse((calls.filter((c) => c.url.startsWith(HOOK)).at(-1)!.body as FormData).get('payload_json') as string) as { embeds: { title: string; description: string }[] }).embeds[0]!;
 
     expect((await send({ kind: 'bug', text: 'so i was playing and then the ace i tried to put down just would not go anywhere??', context: 'table, 1280x800' })).status).toBe(200);
     await settled(1);
