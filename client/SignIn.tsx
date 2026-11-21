@@ -72,19 +72,23 @@ export function SignIn({ ways, head }: { ways: Way[]; head: ReactNode }) {
         {head}
         <h2>Sign in</h2>
       </div>
-      {ways.includes('google') && !sentTo && (
-        <button type="button" className="by" onClick={() => void signIn()}>
-          <GoogleG />
-          Sign in with Google
-        </button>
-      )}
-      {ways.includes('email') &&
-        (!byEmail ? (
-          <button type="button" className="by" onClick={() => setByEmail(true)}>
-            <Envelope />
-            Sign in with email
+      {/* The ways in, as their marks side by side (what each is, in its tip). The email one, pressed, stays pressed and
+          opens the address (then the code) on the line under them; pressed again, puts it away. */}
+      <div className="bys">
+        {ways.includes('google') && (
+          <button type="button" className="by" aria-label="Sign in with Google" data-tip="Sign in with Google" onClick={() => void signIn()}>
+            <GoogleG />
           </button>
-        ) : !sentTo ? (
+        )}
+        {ways.includes('email') && (
+          <button type="button" className="by" aria-label="Sign in with email" aria-pressed={byEmail} data-tip="Sign in with email" onClick={() => (setByEmail(!byEmail), setSentTo(null), setTrouble(null))}>
+            <Envelope />
+          </button>
+        )}
+      </div>
+      {ways.includes('email') &&
+        byEmail &&
+        (!sentTo ? (
           <form className="mail" onSubmit={submitEmail}>
             <input type="email" aria-label="Email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoCapitalize="off" spellCheck={false} autoFocus required />
             <button type="submit" className="go" disabled={busy || !email.trim()}>
