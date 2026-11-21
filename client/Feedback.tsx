@@ -185,7 +185,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
           </button>
         </div>
       ) : (
-        <label className="attach" title="Screenshot: click, drag, or paste">
+        <label className="attach" data-tip="Screenshot: click, drag, or paste">
           <input type="file" accept="image/*" aria-label="Add a screenshot" onChange={(e) => (void attach(e.target.files?.[0]), (e.target.value = ''))} />
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <rect x="3" y="5" width="18" height="14" rx="2" />
