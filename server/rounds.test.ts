@@ -13,7 +13,7 @@ import { openRounds, type RoundRecord } from './rounds';
 import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, rows, startOver, startRound } from './testkit';
 
 /** A hand of a round, said shortly: who (an account, a bot, or with neither a guest), and what they scored. */
-const hand = (seat: number, who: string | null, delta: number, bot: 'slow' | null = null): RoundRecord['hands'][number] => ({ seat, player: seat + 1, name: who ?? (bot ? 'Bot' : 'Guest'), account: who, bot, out: null, played: Math.max(delta, 0), nertzLeft: 0, delta });
+const hand = (seat: number, who: string | null, delta: number, bot: 'slow' | null = null): RoundRecord['hands'][number] => ({ seat, player: seat + 1, name: who ?? (bot ? 'Bot' : 'Guest'), account: who, bot, out: null, played: Math.max(delta, 0), nertzLeft: Math.max(-delta, 0) / 2, delta });
 const round = (hands: RoundRecord['hands'], end: RoundRecord['end'] = { by: 'vote' }, number = 1, snipes: RoundRecord['snipes'] = []): RoundRecord => ({ game: 'g1', code: 'TEST', number, end, ms: 60_000, hands, snipes });
 
 describe('rounds kept', () => {
@@ -24,16 +24,16 @@ describe('rounds kept', () => {
   afterEach(() => db.close());
 
   it('someone who has played nothing has a record of noughts', () => {
-    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, place: null, best: null, snipes: 0, sniped: 0 } satisfies Stats);
+    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
   });
 
-  it("adds up one person's rounds: how many, their points, their best, and the ones they got Nertz in", () => {
+  it("adds up one person's rounds: how many, their points, cards played and nertz left, the most of each, and the ones they got Nertz in", () => {
     const rounds = openRounds(db);
     rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)], { by: 'nertz', seat: 0, out: [0] }));
     rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4)], { by: 'nertz', seat: 0, out: [0, 1] }, 2)); // (ada went out too, without calling)
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], { by: 'jam' }, 3));
-    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 2, points: 15, place: 4 / 3, best: 12, snipes: 0, sniped: 0 });
-    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, nertz: 1, points: 25, place: 1.5, best: 20, snipes: 0, sniped: 0 });
+    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
+    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
   });
 
   it('a round is won by everyone with its best score, against a guest or a bot as against anyone; alone, by nobody', () => {
@@ -45,13 +45,25 @@ describe('rounds kept', () => {
     expect(rounds.stats('bob')).toMatchObject({ rounds: 1, won: 1 });
   });
 
-  it('places someone in each round with anyone else in it, ties sharing a place', () => {
+  it('says how far ahead someone finished, as the share of the others they beat, a tie counting half: the same at a table of any size', () => {
     const rounds = openRounds(db);
-    rounds.keep(round([hand(0, 'ada', 9), hand(1, 'bob', 9), hand(2, null, 12)]));
-    rounds.keep(round([hand(0, 'ada', 1), hand(1, null, 6), hand(2, null, 5)], undefined, 2));
-    rounds.keep(round([hand(0, 'ada', 30)], undefined, 3)); // (alone: no place)
-    expect(rounds.stats('ada')).toMatchObject({ rounds: 3, place: 2.5 });
-    expect(rounds.stats('bob')).toMatchObject({ place: 2 });
+    rounds.keep(round([hand(0, 'ada', 9), hand(1, 'bob', 9), hand(2, null, 12)])); // ada: 0 of 2 beaten, 1 tied
+    rounds.keep(round([hand(0, 'ada', 1), hand(1, null, 6), hand(2, null, 5)], undefined, 2)); // last of three
+    rounds.keep(round([hand(0, 'ada', 30)], undefined, 3)); // (alone: nobody to be ahead of)
+    expect(rounds.stats('ada')).toMatchObject({ rounds: 3, ahead: (0.25 + 0) / 2 });
+    expect(rounds.stats('bob')).toMatchObject({ ahead: 0.25 });
+    // The middle of a table is a half whatever its size; first is 1 and last 0 at two as at six.
+    const middle = openDb(':memory:');
+    try {
+      const kept = openRounds(middle);
+      kept.keep(round([hand(0, 'cy', 5), hand(1, null, 9), hand(2, null, 1)]));
+      kept.keep(round([hand(0, 'cy', 5), hand(1, null, 9), hand(2, null, 8), hand(3, null, 2), hand(4, null, 1)], undefined, 2));
+      kept.keep(round([hand(0, 'cy', 2), hand(1, null, 1)], undefined, 3));
+      kept.keep(round([hand(0, 'cy', 0), ...[1, 2, 3, 4, 5].map((s) => hand(s, null, s))], undefined, 4));
+      expect(kept.stats('cy').ahead).toBeCloseTo((0.5 + 0.5 + 1 + 0) / 4);
+    } finally {
+      middle.close();
+    }
   });
 
   it('counts every round, only those with someone else there who is no bot, or only those with no bot at all', () => {
@@ -61,7 +73,7 @@ describe('rounds kept', () => {
     rounds.keep(round([hand(0, 'ada', 4), hand(1, 'bob', 3)], undefined, 3)); // ada and bob
     expect(rounds.stats('ada', 'all')).toMatchObject({ rounds: 3, points: 7 });
     expect(rounds.stats('ada', 'people')).toMatchObject({ rounds: 2, points: 6 });
-    expect(rounds.stats('ada', 'no-bots')).toMatchObject({ rounds: 1, points: 4, won: 1, place: 1 });
+    expect(rounds.stats('ada', 'no-bots')).toMatchObject({ rounds: 1, points: 4, won: 1, ahead: 1 });
   });
 
   it('keeps the round and every hand of it, or none of it', () => {
@@ -225,7 +237,7 @@ describe('over the wire', () => {
     const [ada, bob, guest] = [new Browser(server.port), new Browser(server.port), new Browser(server.port)];
     await ada.signIn(ADA);
     await bob.signIn(BOB);
-    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, place: null, best: null, snipes: 0, sniped: 0 });
+    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
     expect(await (await ada.ask('/stats?among=no-bots')).json()).toMatchObject({ rounds: 0 });
     expect((await ada.ask('/stats?among=robots')).status).toBe(400);
     expect((await guest.ask('/stats')).status).toBe(401);
@@ -239,8 +251,8 @@ describe('over the wire', () => {
     await vi.waitFor(() => expect(room.phase).toBe('results'));
 
     const mine = (await (await ada.ask('/stats')).json()) as Stats;
-    const delta = room.lastRound!.scores.find((s) => s.id === a.last.room.me)!.delta;
-    expect(mine).toMatchObject({ rounds: 1, nertz: 0, points: delta, best: delta });
+    const line = room.lastRound!.scores.find((s) => s.id === a.last.room.me)!;
+    expect(mine).toMatchObject({ rounds: 1, nertz: 0, points: line.delta, bestPoints: line.delta, cards: line.played, bestCards: line.played, nertzLeft: line.nertzLeft });
     expect(await (await bob.ask('/stats')).json()).toMatchObject({ rounds: 0 });
     a.ws.terminate();
     g.ws.terminate();

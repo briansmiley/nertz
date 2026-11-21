@@ -309,12 +309,19 @@ export interface Stats {
   won: number;
   /** Rounds they ended by calling Nertz. */
   nertz: number;
-  /** Everything they scored, added up. */
+  /** Everything they scored, added up; and the most in one round (null with no round played). */
   points: number;
-  /** Where they finished, on average, in rounds with someone else in them: 1 for first (shared with whoever tied), null for no such round. */
-  place: number | null;
-  /** The most they scored in one round: null with no round played. */
-  best: number | null;
+  bestPoints: number | null;
+  /** Their own cards played to the middle, added up; and the most in one round (null with no round played). */
+  cards: number;
+  bestCards: number | null;
+  /** Cards left in their nertz pile at the end of each round, added up. */
+  nertzLeft: number;
+  /**
+   * How far ahead they finish, on average over the rounds with someone else in them: in each, the share of the others
+   * who scored less than they did, a tie counting half (1 first, 0 last, ½ the middle of any table). Null for no such round.
+   */
+  ahead: number | null;
   /** Times they sniped someone, and times someone sniped them. */
   snipes: number;
   sniped: number;

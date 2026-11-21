@@ -18,9 +18,12 @@
   border-radius: 50%;
 }
 
+/* Your name: its line as long as the name (and grows as you write), never wider than the pad. */
 .yourname {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  field-sizing: content;
+  min-width: 9ch;
+  max-width: 100%;
   padding: 0.1rem 0 0.2rem;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -29,6 +32,11 @@
   color: var(--ink);
   background: none;
   outline: none;
+}
+
+/* (Over the pad's own rule for its fields, the whole width.) */
+.pad input.yourname {
+  width: auto;
 }
 
 .yourname:hover,

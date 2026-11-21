@@ -34,11 +34,12 @@ describe('who the server says is signed in', () => {
 });
 
 describe('the record the server says is theirs', () => {
-  const record = { rounds: 42, won: 17, nertz: 9, points: 261, place: 1.8, best: 23, snipes: 31, sniped: 12 };
+  const record = { rounds: 42, won: 17, nertz: 9, points: 261, bestPoints: 23, cards: 1010, bestCards: 38, nertzLeft: 210, ahead: 0.62, snipes: 31, sniped: 12 };
+  const none = { rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 };
 
   it('is what it says, and nothing else it may have sent along', () => {
     expect(readStats(200, { ...record, extra: 'x' })).toEqual(record);
-    expect(readStats(200, { rounds: 0, won: 0, nertz: 0, points: 0, place: null, best: null, snipes: 0, sniped: 0 })).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, place: null, best: null, snipes: 0, sniped: 0 });
+    expect(readStats(200, none)).toEqual(none);
   });
 
   it('is none for nobody signed in, nothing kept, or an answer that is not a record', () => {
@@ -46,8 +47,10 @@ describe('the record the server says is theirs', () => {
     expect(readStats(404, null)).toBeNull();
     expect(readStats(200, null)).toBeNull();
     expect(readStats(200, { ...record, points: '261' })).toBeNull();
-    expect(readStats(200, { ...record, best: undefined })).toBeNull();
-    expect(readStats(200, { ...record, place: 0 })).toBeNull();
+    expect(readStats(200, { ...record, bestPoints: undefined })).toBeNull();
+    expect(readStats(200, { ...record, cards: 10.5 })).toBeNull();
+    expect(readStats(200, { ...record, ahead: 1.2 })).toBeNull();
+    expect(readStats(200, { ...record, place: 1.8, ahead: undefined })).toBeNull(); // (the record as it was)
   });
 });
 

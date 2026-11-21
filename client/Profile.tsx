@@ -70,6 +70,8 @@ const rememberedAmong = (): Among => {
 export function Record() {
   const [among, setAmong] = useState(rememberedAmong);
   const stats = useStats(among);
+  /** A sum over the rounds, as so much a round. */
+  const per = (sum: number): string => (stats?.rounds ? written(sum / stats.rounds, 1) : '–');
   const choose = (a: Among): void => {
     setAmong(a);
     try {
@@ -78,17 +80,21 @@ export function Record() {
       // storage unavailable: the choice lasts as long as the page
     }
   };
-  const figures: [string, string][] = !stats
+  /** Each figure, what it counts, (where the word alone may not say) a little more about it, and a tint for one that is good or bad for you. */
+  const figures: [string, string, string?, ('good' | 'bad')?][] = !stats
     ? []
     : [
         [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
         [written(stats.won), 'won'],
         [written(stats.nertz), 'Nertz'],
-        [written(stats.best ?? 0), 'best'],
-        [stats.rounds ? written(stats.points / stats.rounds, 1) : '–', 'avg pts'],
-        [stats.place === null ? '–' : written(stats.place, 1), 'avg place'],
-        [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes'],
-        [written(stats.sniped), 'sniped'],
+        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Average ending rank: 1st = 100%, last = 0%'],
+        [per(stats.points), 'avg score'],
+        [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best score'],
+        [per(stats.cards), 'avg cards'],
+        [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
+        [per(stats.nertzLeft), 'avg nertz left'],
+        [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes', undefined, 'good'],
+        [written(stats.sniped), 'sniped', undefined, 'bad'],
       ];
   return (
     <div className="yours-record">
@@ -106,8 +112,8 @@ export function Record() {
       </div>
       {stats && (
         <dl className="record">
-          {figures.map(([n, what]) => (
-            <div key={what}>
+          {figures.map(([n, what, more, tint]) => (
+            <div key={what} data-tip={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
               <dt>{what}</dt>
               <dd>{n}</dd>
             </div>
@@ -135,6 +141,7 @@ function YourName({ account }: { account: Account }) {
       placeholder="Name"
       value={name}
       maxLength={MAX_NAME_LENGTH}
+      size={Math.max(4, name.length)} /* (where field-sizing is not had: about as wide as the name) */
       autoComplete="nickname"
       spellCheck={false}
       onChange={(e) => setName(e.target.value)}
