@@ -822,7 +822,6 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 0.15em;
 }
 
@@ -4894,8 +4893,8 @@ button.code.copy small {
   animation-duration: 2.4s; /* (half as long again: it is smaller, and off to one side; Table.tsx ASIDE_MS) */
 }
 
-/* The newest along the edge, those still up above it. */
-.gotnertz.sniped.aside {
+/* As a feed: the newest at the foot (the middle of the felt, or its lower edge), those still up above it, moving up. */
+.gotnertz.sniped {
   justify-content: flex-end;
 }
 

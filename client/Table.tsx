@@ -1063,13 +1063,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
-      {/* Snipes you were in: who by, or whom, across the middle, each there and gone in under a second; more at once stack. */}
+      {/* Snipes you were in: who by, or whom, across the middle, each there and gone in under a second; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
       {snipes.length > 0 && !called && (
-        <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
+        <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
           {snipes.map((s) => (
-            <span key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }}>
+            <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }}>
               {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
-            </span>
+            </motion.span>
           ))}
         </div>
       )}
@@ -1077,9 +1077,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       {asides.length > 0 && !called && (
         <div className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           {asides.map((a) => (
-            <span key={a.id}>
+            <motion.span layout="position" key={a.id}>
               <b style={{ color: nameColour(a.by) }}>{name(a.by)}</b> sniped <b style={{ color: nameColour(a.of) }}>{name(a.of)}</b>
-            </span>
+            </motion.span>
           ))}
         </div>
       )}
