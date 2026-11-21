@@ -794,8 +794,12 @@ page it is a guest's. The same account in two windows is one seat at a table: th
 
 `GET /stats?among=all|people|no-bots` answers whoever asks, by their cookie, with their own record (`Stats`,
 shared/types.ts) over every round, those with someone else there who is no bot, or those with no bot at all: rounds
-played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points in
-all, average place, the best round, and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts.
+played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points and
+cards played to the middle in all and the most of each in one round, nertz cards left in all, how far ahead they finish,
+and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of
+the others in a round who scored less, a tie counting half, averaged over the rounds with someone else in them: 1 for
+first, 0 for last and ½ for the middle of a table of any size (an average place would mean something else at two than at
+six). Your page shows it as a percentage, and the sums as so much a round.
 
 `/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
 nobody signed in); `PUT {name}` a new name to go by; `DELETE` the account. Changes are taken only from `PUBLIC_URL`.

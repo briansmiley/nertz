@@ -70,6 +70,8 @@ const rememberedAmong = (): Among => {
 export function Record() {
   const [among, setAmong] = useState(rememberedAmong);
   const stats = useStats(among);
+  /** A sum over the rounds, as so much a round. */
+  const per = (sum: number): string => (stats?.rounds ? written(sum / stats.rounds, 1) : '–');
   const choose = (a: Among): void => {
     setAmong(a);
     try {
@@ -78,15 +80,19 @@ export function Record() {
       // storage unavailable: the choice lasts as long as the page
     }
   };
-  const figures: [string, string][] = !stats
+  /** Each figure, what it counts, and (where the word alone may not say) a little more about it. */
+  const figures: [string, string, string?][] = !stats
     ? []
     : [
         [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
         [written(stats.won), 'won'],
         [written(stats.nertz), 'Nertz'],
-        [written(stats.best ?? 0), 'best'],
-        [stats.rounds ? written(stats.points / stats.rounds, 1) : '–', 'avg pts'],
-        [stats.place === null ? '–' : written(stats.place, 1), 'avg place'],
+        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Of the others at the table, the share you finished ahead of, on average'],
+        [per(stats.points), 'avg pts'],
+        [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best pts'],
+        [per(stats.cards), 'avg cards'],
+        [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
+        [per(stats.nertzLeft), 'nertz left', 'Cards left in your nertz pile at the end of a round, on average'],
         [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes'],
         [written(stats.sniped), 'sniped'],
       ];
@@ -106,8 +112,8 @@ export function Record() {
       </div>
       {stats && (
         <dl className="record">
-          {figures.map(([n, what]) => (
-            <div key={what}>
+          {figures.map(([n, what, more]) => (
+            <div key={what} title={more}>
               <dt>{what}</dt>
               <dd>{n}</dd>
             </div>
