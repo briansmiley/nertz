@@ -23,7 +23,7 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PREVIEW }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200 # master as of 2026-11-21
       - name: Destroy the leftovers
         run: |
           # Only names of exactly this form, never nertz or nertz-staging; and only for a PR GitHub says is closed

@@ -54,7 +54,7 @@ jobs:
         run: |
           if [ -z "$FLY_API_TOKEN" ]; then echo "::error::No FLY_API_TOKEN_PREVIEW secret: see README \"Previews\"."; exit 1; fi
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200 # master as of 2026-11-21
       - name: Make the app, the first time
         run: |
           # Listed on its own line: a list that fails stops the step, rather than reading as "no such app".
@@ -118,7 +118,7 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PREVIEW }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200 # master as of 2026-11-21
       - name: Destroy the app
         run: |
           # Listed on its own line: a list that fails stops the step, rather than reading as "no such app".
