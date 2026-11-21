@@ -326,6 +326,11 @@ the table, and counts as a connected player everywhere: for the two-player minim
 stuck" vote and for scoring. A bot never deals, cannot be added or removed during a round, and does not keep a table alive:
 a lobby with only bots left is forgotten at once, and a table nobody is connected to expires as usual, bots or not.
 
+The lobby sheet is one size however many sit down: its list of names has a line for each of the ten seats a table can
+have (`MAX_PLAYERS`), filled in order of arrival. A seat the table has but nobody has taken is the dashed outline of a
+card; past the table's seats the lines are bare. Your card back and colour stand beside the table rules under the list.
+So adding bot after bot, or changing the number of seats, moves nothing under the pointer.
+
 **It plays fair.** The bot lives on the server but is a player like any other. All it ever sees is `viewFor(state, itsSeat)`,
 the same redacted snapshot a person in that seat is sent, and all it can do is submit ordinary intents through the same
 `Room` code path as a person's, in the same single order, with the same refusals. If a move is refused (somebody got there
@@ -767,8 +772,9 @@ would still need one of the options above, and serving both from one origin is s
 Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
 guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
 is with Google or with a code sent to their email, and they are then known across tables and visits. Signed in, their
-picture (or initial) and name stand where the name was written, and pressing them turns the pad to their page: the name they go by (theirs to change), their record over the rounds they played
-signed in, signing out, and deleting their account.
+picture (or initial) and name stand where the name was written, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
+to their page or the way in and back again (with reduced motion, the other side simply comes up).
 
 ### What is kept
 

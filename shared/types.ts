@@ -206,6 +206,8 @@ export interface PlayerView {
   id: number;
   /** Their seat at the table, which is their colour and whose cards are theirs; null for someone without one (watching). */
   seat: number | null;
+  /** With a seat: when they sat down (a count; lower is earlier). The lobby lists by it, so whoever sits down goes to the end, whatever colour they take. */
+  sat?: number;
   name: string;
   connected: boolean;
   /** Up from their cards in the round being played: they stood up (or whoever deals stood them up), left, or were sent away. Their cards lie there until it is over, and they play no more of it nor have a say in its votes. Then whoever stood up is watching; whoever left or was sent away is gone, and back by the same token is someone new. */

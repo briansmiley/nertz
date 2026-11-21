@@ -149,6 +149,7 @@
 }
 
 .watching .sit,
+.top .sit,
 .voice-slip li > button:not(.mic-at) {
   margin-left: 0.3rem;
   padding: 1px 9px 2px;
