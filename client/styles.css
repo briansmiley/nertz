@@ -2304,6 +2304,64 @@ button {
   }
 }
 
+/* Above the field for your name its label says what goes in it: the field's own placeholder only stands in for it on
+   a phone on its side. */
+.named input::placeholder {
+  color: transparent;
+}
+
+/* A phone on its side: the wide screen's two columns, the name standing still at the left, and the pad pared down to
+   fit the height (a longer one, with your record under it, scrolls by). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .home {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 23rem);
+    align-items: safe center;
+    gap: 1.5rem;
+    padding: 1rem max(1.25rem, env(safe-area-inset-right)) 1rem max(1.25rem, env(safe-area-inset-left));
+  }
+
+  .hero {
+    position: sticky;
+    top: 0;
+    height: calc(100dvh - 2rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .spread {
+    zoom: 0.52;
+    margin: 0 0 1rem 2.5rem; /* (the fan's first card leans out past its box) */
+  }
+
+  .hero h1 {
+    font-size: clamp(3rem, 9vw, 4.5rem);
+  }
+
+  .home .pad {
+    padding-top: 1.7rem;
+    padding-bottom: 1.1rem;
+  }
+
+  .home .pad form,
+  .home .ways {
+    gap: 0.7rem;
+  }
+
+  .home .pad h2,
+  .home .pad label .label {
+    display: none;
+  }
+
+  .home .named {
+    margin-top: 0;
+  }
+
+  .home .named input::placeholder {
+    color: #9aa3a8;
+  }
+}
+
 /* Reduced motion. A class rather than a media query: the player's own setting (prefs.ts) overrules the system's either way. */
 .calm .spread .mini,
 .calm .nertz,
