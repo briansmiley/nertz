@@ -787,6 +787,11 @@ export class Room {
    * The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or
    * else the lowest free one; null when the table is full (no seat of `seats` free). A bot, new, has no last round.
    */
+  /** `account` is gone (server/profile.ts): whoever here was signed in as it plays on as nobody's, and no hand of theirs is kept as its. */
+  forgetAccount(account: string): void {
+    for (const p of this.players) if (p.account === account) p.account = null;
+  }
+
   /** Someone other than `but` seated as `account` (and never anyone, for nobody's). */
   private seatedAs(account: string | null, but: Player): boolean {
     return account !== null && this.players.some((q) => q !== but && q.account === account && seated(q));

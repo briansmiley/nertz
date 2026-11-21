@@ -1,5 +1,5 @@
 // Screens around the table: home, lobby, round results.
-import { signIn, useAccount } from './account';
+import { rename, signIn, useAccount } from './account';
 import { Profile } from './Profile';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
@@ -381,16 +381,20 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(rememberedName);
   const account = useAccount();
-  // Signed in: the name they go by, to sit down under. Changed there, it changes here too, unless it was changed here first.
-  const given = typeof account === 'object' ? (account.name ?? '') : '';
-  const gave = useRef('');
+  const signedIn = typeof account === 'object' ? account : null;
+  // Signed in, the name you sit down under is the name you go by (client/Profile.tsx): it is filled in from there, and a
+  // change made here goes there as you sit down. Only a guest's is remembered by the browser alone.
+  const yourName = signedIn?.name ?? null;
   useEffect(() => {
-    if (given) setName((was) => (!was || was === gave.current ? given : was));
-    gave.current = given;
-  }, [given]);
+    if (yourName) setName(yourName);
+  }, [yourName, signedIn?.id]);
+  /** Sits down under the name in the field: for someone signed in, from now on the name they go by. */
+  const go = (room: string | null): void => {
+    if (signedIn && clean !== signedIn.name) void rename(clean);
+    enter(room, clean);
+  };
   /** Whether the pad is turned to your page. */
   const [yours, setYours] = useState(false);
-  const signedIn = typeof account === 'object' ? account : null;
   useEffect(() => {
     if (!signedIn) setYours(false);
   }, [signedIn]);
@@ -403,7 +407,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const pick = (room: string) => {
     if (busy) return;
     setCode(room);
-    if (ready) enter(room, clean);
+    if (ready) go(room);
     else nameField.current?.focus();
   };
 
@@ -411,8 +415,8 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!ready) return;
-    if (!typed) enter(null, clean);
-    else if (isRoomCode(typed)) enter(typed, clean);
+    if (!typed) go(null);
+    else if (isRoomCode(typed)) go(typed);
   };
 
   return (
@@ -450,7 +454,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
               </p>
             )}
             <div className="ways">
-              <button type="button" className="go" disabled={!ready} onClick={() => enter(null, clean)}>
+              <button type="button" className="go" disabled={!ready} onClick={() => go(null)}>
                 {busy && !typed ? 'Connecting…' : 'New Table'}
               </button>
               <div className="way">
@@ -467,7 +471,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                     autoComplete="off"
                     spellCheck={false}
                   />
-                  <button type="button" className="go" disabled={!ready || !isRoomCode(typed)} onClick={() => enter(typed, clean)}>
+                  <button type="button" className="go" disabled={!ready || !isRoomCode(typed)} onClick={() => go(typed)}>
                     {busy && typed ? '…' : 'Join'}
                   </button>
                 </div>

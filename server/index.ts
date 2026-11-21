@@ -136,7 +136,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const reportDir = options.data && options.data !== ':memory:' ? join(dirname(options.data), 'reports') : null;
   const reports = db && openReports(db, { dir: reportDir });
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
-  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, home }) : null;
+  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, home, gone: (account) => rooms.forEach((room) => room.forgetAccount(account)) }) : null;
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {

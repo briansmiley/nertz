@@ -10,7 +10,7 @@ import type { GameState, Stats } from '../shared/types';
 import { openDb, type Db } from './db';
 import { startServer, type NertzServer } from './index';
 import { openRounds, type RoundRecord } from './rounds';
-import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, startOver, startRound } from './testkit';
+import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, rows, startOver, startRound } from './testkit';
 
 /** A hand of a round, said shortly: who (an account, a bot, or with neither a guest), and what they scored. */
 const hand = (seat: number, who: string | null, delta: number, bot: 'slow' | null = null): RoundRecord['hands'][number] => ({ seat, player: seat + 1, name: who ?? (bot ? 'Bot' : 'Guest'), account: who, bot, out: null, played: Math.max(delta, 0), nertzLeft: 0, delta });
@@ -242,6 +242,25 @@ describe('over the wire', () => {
     const delta = room.lastRound!.scores.find((s) => s.id === a.last.room.me)!.delta;
     expect(mine).toMatchObject({ rounds: 1, nertz: 0, points: delta, best: delta });
     expect(await (await bob.ask('/stats')).json()).toMatchObject({ rounds: 0 });
+    a.ws.terminate();
+    g.ws.terminate();
+  });
+
+  it('an account deleted while it sits at a table plays on there as nobody: the round it finishes is kept as nobody\'s', async () => {
+    const ada = new Browser(server.port);
+    await ada.signIn(ADA);
+    const elsewhere = new Browser(server.port);
+    await elsewhere.signIn(ADA); // (the same person, on another device)
+    const a = await Client.open(server.port, null, 'Ada', undefined, true, ada.cookie);
+    const g = await Client.open(server.port, a.last.room.code, 'Guest');
+    const room = server.rooms.get(a.last.room.code)!;
+    await startOver(room, a, [a, g]);
+    expect((await elsewhere.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+    await a.did({ k: 'end', on: true });
+    await g.did({ k: 'end', on: true });
+    await vi.waitFor(() => expect(room.phase).toBe('results'));
+    await vi.waitFor(() => expect(rows(join(dir, 'nertz.db'), 'hand')).toHaveLength(2));
+    expect(rows(join(dir, 'nertz.db'), 'hand').map((h) => h.account)).toEqual([null, null]);
     a.ws.terminate();
     g.ws.terminate();
   });

@@ -18,9 +18,11 @@ export interface ProfileKeeping {
   reports: Reports | null;
   /** Where a page of ours is served from: a change is taken only from there (as Better Auth asks of its own). */
   home: string;
+  /** Tells every table that an account is gone: anyone at one signed in as it plays on as nobody's. */
+  gone: (account: string) => void;
 }
 
-export function profileHandler({ db, accounts, rounds, reports, home }: ProfileKeeping) {
+export function profileHandler({ db, accounts, rounds, reports, home, gone }: ProfileKeeping) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     const method = req.method ?? 'GET';
@@ -38,13 +40,15 @@ export function profileHandler({ db, accounts, rounds, reports, home }: ProfileK
       accounts.rename(me.id, name);
       return json(200, { ...me, name });
     }
-    // Signed out first, for the cookies that forget them in this browser; then all of it at once, or none.
-    const forgotten = await accounts.signOut(req.headers);
+    // All of it at once, or none; then the tables, and the cookies that forget them in this browser. (With the profile
+    // gone their cookie is nobody's already: signing out only tidies it away.)
     transaction(db, () => {
       rounds?.forget(me.id);
       reports?.forget(me.id);
       accounts.forget(me.id);
     });
+    gone(me.id);
+    const forgotten = await accounts.signOut(req.headers).catch((err: unknown) => (console.error('profile: signing out a deleted account', err), []));
     res.writeHead(204, { 'cache-control': 'no-store', 'set-cookie': forgotten }).end();
   };
 }

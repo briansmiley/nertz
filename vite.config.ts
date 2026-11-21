@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       '/api/auth': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/stats': `http://localhost:${Number(process.env.PORT) || 8787}`,
+      '/profile': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/feedback': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/tables': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/ws': { target: `ws://localhost:${Number(process.env.PORT) || 8787}`, ws: true },

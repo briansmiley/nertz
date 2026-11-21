@@ -66,7 +66,7 @@ const rememberedAmong = (): Among => {
   }
 };
 
-/** Your record: the figures, and under each what it counts; over the rounds you choose, by who else was at them. */
+/** Your record: the figures, and under each what it counts; over the rounds you choose, by who else was at them. (The choice stays up while the figures are being asked for, or could not be had.) */
 export function Record() {
   const [among, setAmong] = useState(rememberedAmong);
   const stats = useStats(among);
@@ -78,17 +78,18 @@ export function Record() {
       // storage unavailable: the choice lasts as long as the page
     }
   };
-  if (!stats) return null;
-  const figures: [string, string][] = [
-    [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
-    [written(stats.won), 'won'],
-    [written(stats.nertz), 'Nertz'],
-    [written(stats.best ?? 0), 'best'],
-    [stats.rounds ? written(stats.points / stats.rounds, 1) : '–', 'avg pts'],
-    [stats.place === null ? '–' : written(stats.place, 1), 'avg place'],
-    [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes'],
-    [written(stats.sniped), 'sniped'],
-  ];
+  const figures: [string, string][] = !stats
+    ? []
+    : [
+        [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
+        [written(stats.won), 'won'],
+        [written(stats.nertz), 'Nertz'],
+        [written(stats.best ?? 0), 'best'],
+        [stats.rounds ? written(stats.points / stats.rounds, 1) : '–', 'avg pts'],
+        [stats.place === null ? '–' : written(stats.place, 1), 'avg place'],
+        [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes'],
+        [written(stats.sniped), 'sniped'],
+      ];
   return (
     <div className="yours-record">
       <div className="among">
@@ -103,14 +104,16 @@ export function Record() {
         </div>
         <small aria-hidden="true">{AMONG_DRAWN[among].said}</small>
       </div>
-      <dl className="record">
-        {figures.map(([n, what]) => (
-          <div key={what}>
-            <dt>{what}</dt>
-            <dd>{n}</dd>
-          </div>
-        ))}
-      </dl>
+      {stats && (
+        <dl className="record">
+          {figures.map(([n, what]) => (
+            <div key={what}>
+              <dt>{what}</dt>
+              <dd>{n}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
 }

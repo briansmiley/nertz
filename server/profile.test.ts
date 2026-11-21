@@ -90,6 +90,7 @@ describe('profile', () => {
 
     const gone = await ada.ask('/profile', undefined, { method: 'DELETE' });
     expect(gone.status).toBe(204);
+    expect(ada.cookie).toBe(''); // (signed out in the browser too)
     expect((await ada.ask('/profile')).status).toBe(401);
     expect(rows('user').map((u) => u.id)).toEqual([b]);
     expect(rows('profile').map((p) => p.account)).toEqual([b]);
