@@ -1,12 +1,41 @@
-/* The corner's menu (Menu.tsx). */
+/* The corner's menu (Menu.tsx): your settings, then under a rule what there is to do. */
 
-/* A narrow slip off the same pad as your settings: a ruled line a thing to do, nothing else on it. */
-.slip.acts {
+/* One slip off the score pad: the settings written on it, the lines of what to do ruled across the foot. */
+.slip.menu {
+  display: flex;
+  flex-direction: column;
   gap: 0;
-  width: auto;
-  min-width: 11.5rem;
-  padding: 0.9rem 0 0.35rem;
-  rotate: -0.6deg;
+  padding: 0;
+  overflow: visible;
+}
+
+.menu .yours {
+  display: grid;
+  gap: 0.85rem;
+  min-height: 0;
+  padding: 1.5rem 1.2rem 1.1rem;
+}
+
+/* Their head: the gear, then the word. */
+.yours > h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.yours > h3 svg {
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+}
+
+.acts {
+  display: grid;
+  flex: none;
+  padding-bottom: 0.35rem;
+  border-top: 1px solid var(--rule);
 }
 
 /* Each line: its icon, its name, and at the far end the vote's tally. */
@@ -54,4 +83,16 @@
   padding-left: 1.2rem;
   font: 700 0.95em/1 var(--num);
   font-variant-numeric: tabular-nums;
+}
+
+/* Where the slip is held short of the screen (settings.css: hanging from the bar of a phone held upright, or on a
+   phone on its side), the settings scroll and the lines of what to do stay at the foot. */
+.corner.top .menu .yours {
+  overflow-y: auto;
+}
+
+@media (max-height: 499px) and (orientation: landscape) {
+  .menu .yours {
+    overflow-y: auto;
+  }
 }

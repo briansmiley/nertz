@@ -1,15 +1,15 @@
-// The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: sound on or off, the table's actions
-// (which are open to you, and what each does, is actions.ts), and the way to your settings and to
-// feedback, which open in the same place. One line each.
-import { useEffect, useSyncExternalStore } from 'react';
+// The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: your settings at the top, under their
+// own head, and at the bottom what there is to do, one line each: sound on or off, the table's actions (which are
+// open to you, and what each does, is actions.ts), and the way to feedback, which opens in the same place.
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
-import { Again, Bug, Door, Eye, Flag, Gear, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Again, Bug, Door, Eye, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
 
-/** What the corner has open: the menu, or one of the slips it leads to. */
-export type Panel = 'menu' | 'settings' | 'feedback';
+/** What the corner has open: the menu (your settings in it), or feedback, which it leads to. */
+export type Panel = 'menu' | 'feedback';
 
-/** The one slip the corner has open, or none: the ☰ opens the menu, and the score sheet's gear your settings directly. */
+/** The one slip the corner has open, or none: the ☰ opens the menu, and so does the score sheet's gear. */
 let panel: Panel | null = null;
 const listeners = new Set<() => void>();
 export function openCorner(to: Panel | null): void {
@@ -39,45 +39,45 @@ export function Back({ onClick }: { onClick: () => void }) {
 }
 
 /**
- * Muting and the vote leave the slip up (what they did is on it); anything else puts it away (`onDone`) or opens
- * another (`go`). One that cannot be undone puts it away and asks (`Sure`).
+ * Your settings (`children`) over the lines of what to do. Muting and the vote leave the slip up (what they did is on
+ * it); anything else puts it away (`onDone`) or opens feedback (`onFeedback`). One that cannot be undone puts it away
+ * and asks (`Sure`).
  */
-export function Menu({ room, actions, muted, onMute, go, onDone }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; go: (to: Panel) => void; onDone: () => void }) {
+export function Menu({ room, actions, muted, onMute, onFeedback, onDone, children }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; onFeedback: () => void; onDone: () => void; children: ReactNode }) {
   return (
-    <section className="slip acts" id="menu" aria-label="Menu">
-      <button type="button" aria-pressed={muted} onClick={(e) => (e.currentTarget.blur(), onMute())}>
-        <Speaker off={muted} />
-        {muted ? 'Unmute' : 'Mute'}
-      </button>
-      {room &&
-        actions.map((a) => {
-          const Icon = ICONS[a.id];
-          return (
-            <button
-              key={a.id}
-              type="button"
-              className={a.on ? 'on' : undefined}
-              aria-pressed={a.on}
-              onClick={(e) => {
-                e.currentTarget.blur(); // keep Space for the cards
-                press(a.id, room);
-                if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
-              }}
-            >
-              <Icon />
-              {a.label}
-              {a.tally && <small>{a.tally}</small>}
-            </button>
-          );
-        })}
-      <button type="button" onClick={() => go('settings')}>
-        <Gear />
-        Settings
-      </button>
-      <button type="button" onClick={() => go('feedback')}>
-        <Bug />
-        Feedback
-      </button>
+    <section className="slip menu" id="menu" aria-label="Menu">
+      {children}
+      <div className="acts">
+        <button type="button" aria-pressed={muted} onClick={(e) => (e.currentTarget.blur(), onMute())}>
+          <Speaker off={muted} />
+          {muted ? 'Unmute' : 'Mute'}
+        </button>
+        {room &&
+          actions.map((a) => {
+            const Icon = ICONS[a.id];
+            return (
+              <button
+                key={a.id}
+                type="button"
+                className={a.on ? 'on' : undefined}
+                aria-pressed={a.on}
+                onClick={(e) => {
+                  e.currentTarget.blur(); // keep Space for the cards
+                  press(a.id, room);
+                  if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
+                }}
+              >
+                <Icon />
+                {a.label}
+                {a.tally && <small>{a.tally}</small>}
+              </button>
+            );
+          })}
+        <button type="button" onClick={onFeedback}>
+          <Bug />
+          Feedback
+        </button>
+      </div>
     </section>
   );
 }

@@ -744,11 +744,11 @@ function Lobby({ room }: { room: RoomView }) {
   );
 }
 
-/** On the score sheet: your settings (the same as the corner's menu leads to, opened there), and if you host, the table's at the bottom of them. */
+/** On the score sheet: your settings, which is to say the corner's menu opened there (they head it), and if you host, the table's at the bottom of them. */
 function SettingsGear() {
-  const open = useCorner() === 'settings';
+  const open = useCorner() === 'menu';
   return (
-    <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-controls={open ? 'your-settings' : undefined} aria-label="Settings" data-tip="Settings" onClick={() => openCorner('settings')}>
+    <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-controls={open ? 'menu' : undefined} aria-label="Settings" data-tip="Settings" onClick={() => openCorner('menu')}>
       <Gear />
     </button>
   );
