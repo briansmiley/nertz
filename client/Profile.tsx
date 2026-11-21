@@ -80,21 +80,21 @@ export function Record() {
       // storage unavailable: the choice lasts as long as the page
     }
   };
-  /** Each figure, what it counts, and (where the word alone may not say) a little more about it. */
-  const figures: [string, string, string?][] = !stats
+  /** Each figure, what it counts, (where the word alone may not say) a little more about it, and a tint for one that is good or bad for you. */
+  const figures: [string, string, string?, ('good' | 'bad')?][] = !stats
     ? []
     : [
         [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
         [written(stats.won), 'won'],
         [written(stats.nertz), 'Nertz'],
-        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Of the others at the table, the share you finished ahead of, on average'],
-        [per(stats.points), 'avg pts'],
-        [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best pts'],
+        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Your average ending rank: 1st = 100%, last = 0%'],
+        [per(stats.points), 'avg score'],
+        [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best score'],
         [per(stats.cards), 'avg cards'],
         [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
         [per(stats.nertzLeft), 'nertz left', 'Cards left in your nertz pile at the end of a round, on average'],
-        [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes'],
-        [written(stats.sniped), 'sniped'],
+        [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes', undefined, 'good'],
+        [written(stats.sniped), 'sniped', undefined, 'bad'],
       ];
   return (
     <div className="yours-record">
@@ -112,8 +112,8 @@ export function Record() {
       </div>
       {stats && (
         <dl className="record">
-          {figures.map(([n, what, more]) => (
-            <div key={what} title={more}>
+          {figures.map(([n, what, more, tint]) => (
+            <div key={what} title={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
               <dt>{what}</dt>
               <dd>{n}</dd>
             </div>
