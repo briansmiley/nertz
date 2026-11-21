@@ -216,8 +216,13 @@ export class Client {
 
 // ---------------------------------------------------------------- signing in
 
-/** Accounts as a test sets them up: the app reached at `url`, and a Google client that `fakeGoogle` answers for. */
-export const ACCOUNTS: AccountsOptions = { url: 'https://nertz.example', secret: 'a-secret-long-enough-for-better-auth-0123456789', google: { id: 'client-id', secret: 'client-secret' } };
+/** Accounts as a test sets them up: the app reached at `url`, a Google client that `fakeGoogle` answers for, and a Resend key that `fakeResend` does. */
+export const ACCOUNTS: AccountsOptions = {
+  url: 'https://nertz.example',
+  secret: 'a-secret-long-enough-for-better-auth-0123456789',
+  google: { id: 'client-id', secret: 'client-secret' },
+  email: { resend: 're_test', from: 'Nertz <nertz@mail.example>' },
+};
 
 /** Who Google says someone is. */
 export interface Googler {
@@ -242,10 +247,38 @@ export function fakeGoogle(people: readonly Googler[] = [ADA, BOB]): void {
     if (!url.startsWith('https://oauth2.googleapis.com/token')) return real(input, init);
     const who = people.find((p) => p.sub === new URLSearchParams(String(init?.body)).get('code'));
     if (!who) return Response.json({ error: 'invalid_grant' }, { status: 400 });
-    const id_token = idToken({ iss: 'https://accounts.google.com', aud: ACCOUNTS.google.id, email_verified: true, exp: Math.floor(Date.now() / 1000) + 3600, ...who });
+    const id_token = idToken({ iss: 'https://accounts.google.com', aud: ACCOUNTS.google!.id, email_verified: true, exp: Math.floor(Date.now() / 1000) + 3600, ...who });
     return Response.json({ access_token: 'at', id_token, token_type: 'Bearer', expires_in: 3600, scope: 'openid email profile' });
   }) as typeof fetch);
 }
+
+/** An email Resend was asked to send. */
+export interface Sent {
+  from: string;
+  to: string[];
+  subject: string;
+  text: string;
+}
+
+/**
+ * Resend, played by a stub of the global `fetch` over whatever it is now (undo it with `vi.unstubAllGlobals()`): each
+ * email asked for lands in the list given back, and is taken, unless `refuse` says otherwise.
+ */
+export function fakeResend({ refuse = false } = {}): Sent[] {
+  const sent: Sent[] = [];
+  const before = globalThis.fetch;
+  vi.stubGlobal('fetch', (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url !== 'https://api.resend.com/emails') return before(input, init);
+    if (refuse) return Response.json({ message: 'no' }, { status: 422 });
+    sent.push(JSON.parse(String(init?.body)) as Sent);
+    return Response.json({ id: 'e1' });
+  }) as typeof fetch);
+  return sent;
+}
+
+/** The code in the last email sent to `to`. */
+export const codeIn = (sent: readonly Sent[], to: string): string => /\b(\d{6})\b/.exec([...sent].reverse().find((m) => m.to.includes(to))?.subject ?? '')![1]!;
 
 /** A browser's part, done by hand: cookies kept between requests, sent from the app's own pages, redirects not followed. */
 export class Browser {

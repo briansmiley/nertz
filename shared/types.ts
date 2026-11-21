@@ -283,6 +283,9 @@ export interface RoomView {
  * Someone signed in (server/accounts.ts): `id` is who they are, for good. Their name and picture are what Google had
  * for them when they last signed in.
  */
+/** A way to sign in: with Google, or with a code sent to one's email. */
+export type Way = 'google' | 'email';
+
 export interface Account {
   id: string;
   /** The name they go by, theirs to change (server/profile.ts): null for none chosen yet. */

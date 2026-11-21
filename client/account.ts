@@ -1,14 +1,19 @@
 // Who is signed in on this browser, and who they are at the table, as the server says (server/profile.ts). Signing in
-// is with Google; the server keeps the session in a cookie, so this file holds nothing of its own: it asks. The same
-// for their record (`/stats`).
+// is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
+// nothing of its own: it asks. The same for their record (`/stats`).
 import { useEffect, useSyncExternalStore } from 'react';
-import type { Account, Among, Stats } from '../shared/types';
+import type { Account, Among, Stats, Way } from '../shared/types';
 
 /**
  * `unknown` until the server has answered; `off` when there is no signing in (it keeps no accounts, or gave no good
- * answer), and nothing about signing in is shown; `out` for nobody signed in; else who is.
+ * answer), and nothing about signing in is shown; nobody signed in, and the ways in there are; else who is.
  */
-export type Signed = 'unknown' | 'off' | 'out' | Account;
+export type Signed = 'unknown' | 'off' | { ways: Way[] } | Account;
+
+/** Who is signed in, if anyone is. */
+export const signedIn = (s: Signed): Account | null => (typeof s === 'object' && 'id' in s ? s : null);
+/** The ways in, for nobody signed in; null for someone signed in, or no signing in at all. */
+export const waysIn = (s: Signed): Way[] | null => (typeof s === 'object' && 'ways' in s ? s.ways : null);
 
 const AUTH = '/api/auth';
 let signed: Signed = 'unknown';
@@ -18,9 +23,13 @@ const set = (next: Signed): void => {
   for (const l of listeners) l();
 };
 
-/** What an answer from `/profile` comes to: a 401 is nobody signed in, and anything but a profile (the 404 for no accounts kept, a proxy with no server behind it) is no signing in. */
+/** What an answer from `/profile` comes to: a 401 is nobody signed in, with the ways in; and anything but a profile (the 404 for no accounts kept, a proxy with no server behind it) is no signing in. */
 export function read(status: number, body: unknown): Signed {
-  if (status === 401) return 'out';
+  if (status === 401) {
+    const said = (body as { ways?: unknown } | null)?.ways;
+    const ways = (Array.isArray(said) ? said : []).filter((w): w is Way => w === 'google' || w === 'email');
+    return ways.length ? { ways } : 'off';
+  }
   const v = body as { id?: unknown; name?: unknown; image?: unknown } | null;
   if (status !== 200 || !v || typeof v.id !== 'string') return 'off';
   return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null };
@@ -64,6 +73,30 @@ export async function signIn(): Promise<void> {
   else await ask(); // no way to Google: see whether there is still any signing in, so the way in is not left there doing nothing
 }
 
+/** What came of asking for a code: sent; not, for an address that is none; not yet, for asking too often; or no answer. */
+export type Asked = 'sent' | 'bad' | 'busy' | 'failed';
+
+/** A code to sign in with, sent to `email`. */
+export async function sendCode(email: string): Promise<Asked> {
+  const res = await post('/email-otp/send-verification-otp', { email, type: 'sign-in' }).catch(() => null);
+  return !res ? 'failed' : res.ok ? 'sent' : res.status === 429 ? 'busy' : res.status === 400 ? 'bad' : 'failed';
+}
+
+/** What came of typing a code in: signed in; the wrong code (or one too old); one tried too often, so a new one is wanted; not yet, for trying too often; or no answer. */
+export type Entered = 'in' | 'wrong' | 'spent' | 'busy' | 'failed';
+
+/** Signs in with the code sent to `email`. */
+export async function enterCode(email: string, otp: string): Promise<Entered> {
+  const res = await post('/sign-in/email-otp', { email, otp }).catch(() => null);
+  if (res?.ok) {
+    await ask();
+    return 'in';
+  }
+  if (!res) return 'failed';
+  const code = ((await res.json().catch(() => null)) as { code?: unknown } | null)?.code;
+  return res.status === 429 ? 'busy' : res.status === 403 || code === 'OTP_EXPIRED' ? 'spent' : res.status === 400 ? 'wrong' : 'failed';
+}
+
 export async function signOut(): Promise<void> {
   await post('/sign-out', {}).catch(() => null);
   await ask();
@@ -104,8 +137,7 @@ const subscribeRecord = (l: () => void): (() => void) => (recordListeners.add(l)
  * comes up or asks for other rounds (the figures last heard staying up meanwhile): null until it is known, and if there is none.
  */
 export function useStats(among: Among = 'all'): Stats | null {
-  const account = useAccount();
-  const who = typeof account === 'object' ? account.id : null;
+  const who = signedIn(useAccount())?.id ?? null;
   const known = useSyncExternalStore(subscribeRecord, () => record);
   useEffect(() => {
     if (!who) return;

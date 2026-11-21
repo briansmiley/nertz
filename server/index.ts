@@ -359,7 +359,7 @@ function fromEnv(): Pick<ServerOptions, 'data' | 'accounts'> {
     return { data, accounts };
   }
   // Some of it set and some not: somebody meant to. (None of it: nobody did, and there is nothing to say.)
-  if (!['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'AUTH_SECRET'].every((name) => accounts.missing.includes(name))) console.warn(`accounts are off: ${accounts.missing.join(', ')} not set`);
+  if (accounts.asked) console.warn(`accounts are off: ${accounts.missing.join(', ')} not set`);
   return { data, accounts: null };
 }
 

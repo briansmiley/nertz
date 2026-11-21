@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { read, readStats } from './account';
+import { read, readStats, signedIn, waysIn } from './account';
 
 describe('who the server says is signed in', () => {
   it('is no signing in at all where the server keeps no accounts, or there is no good answer', () => {
@@ -10,8 +10,20 @@ describe('who the server says is signed in', () => {
     expect(read(200, {})).toBe('off');
   });
 
-  it('is nobody signed in for a 401', () => {
-    expect(read(401, null)).toBe('out');
+  it('is nobody signed in for a 401, with the ways in it names', () => {
+    expect(read(401, { ways: ['google', 'email'] })).toEqual({ ways: ['google', 'email'] });
+    expect(read(401, { ways: ['email', 'carrier pigeon'] })).toEqual({ ways: ['email'] });
+    expect(read(401, null)).toBe('off'); // (no way in named: nothing to offer)
+  });
+
+  it('tells who is signed in from the ways in', () => {
+    const ada = { id: 'u1', name: 'Ada', image: null };
+    expect(signedIn(ada)).toBe(ada);
+    expect(waysIn(ada)).toBeNull();
+    expect(signedIn({ ways: ['email'] })).toBeNull();
+    expect(waysIn({ ways: ['email'] })).toEqual(['email']);
+    expect(signedIn('off')).toBeNull();
+    expect(waysIn('unknown')).toBeNull();
   });
 
   it('is whoever the profile is', () => {

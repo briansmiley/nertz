@@ -1,26 +1,31 @@
-// Accounts: who someone is beyond one table. Signing in is with Google, and nothing else; nobody has to.
+// Accounts: who someone is beyond one table. Signing in is with Google, or with a code sent to one's email (by
+// Resend); nobody has to.
 //
-// Who signed in is Better Auth's `user`, as Google says, and nothing here writes to it. Who they are at the table is
+// Who signed in is Better Auth's `user`, as Google or their email says, and nothing here writes to it. One email is one
+// user, whichever way they come in by: Google's word for an address and a code sent to it are both proof of it. Who they are at the table is
 // their `profile` (server/db.ts), ours, theirs to change: made with the account, from Google's first name, and gone with it.
 //
 // The game runs without any of this. Accounts are on when there is a database to keep them in (server/db.ts) and the
-// environment names a Google OAuth client (see .env.example); otherwise /api/auth answers 404 and the client shows no
-// way to sign in.
+// environment gives a way in: a Google OAuth client, a Resend key, or both (see .env.example); otherwise /api/auth
+// answers 404 and the client shows no way to sign in.
 //
 // Better Auth does the work: the OAuth exchange, the session cookie, and its own tables (user, session, account,
 // verification) in the database, which it brings up to date on boot. This file is the only one that knows it.
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import { betterAuth } from 'better-auth';
+import { emailOTP } from 'better-auth/plugins/email-otp';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { cleanName } from '../shared/protocol';
-import type { Account } from '../shared/types';
+import type { Account, Way } from '../shared/types';
 import { transaction, type Db } from './db';
 
 /** Every route of Better Auth's is under this path. Google is told to come back to `${url}${AUTH_PATH}/callback/google`. */
 export const AUTH_PATH = '/api/auth';
 
 export interface Accounts {
+  /** The ways in there are, in the order they are offered. */
+  ways: Way[];
   /** Answers a request under `AUTH_PATH`. */
   handle(req: IncomingMessage, res: ServerResponse): Promise<void>;
   /**
@@ -41,21 +46,33 @@ export interface AccountsOptions {
   url: string;
   /** Signs the session cookies. */
   secret: string;
-  google: { id: string; secret: string };
+  /** Signing in with Google, if there is a client for it. */
+  google: { id: string; secret: string } | null;
+  /** Signing in with a code sent to one's email, if there is a Resend key to send it with, and who it is sent from. */
+  email: { resend: string; from: string } | null;
 }
 
+/** Who the codes come from, unless EMAIL_FROM says: an address of a domain Resend has verified. */
+export const EMAIL_FROM = 'Nertz <nertz@mail.binarysmile.com>';
+
 /**
- * What the environment asks for: the options, or the names of what it would still take. (With all three of the Google
- * client and the secret missing, nobody meant to set accounts up; with only some of it there, somebody did.)
+ * What the environment asks for: the options, or the names of what it would still take, and whether any of it was
+ * asked for at all (with none of it there, nobody meant to set accounts up; with only some, somebody did).
  */
-export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsOptions | { missing: string[] } {
+export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsOptions | { missing: string[]; asked: boolean } {
   const dev = env.NODE_ENV !== 'production';
   const url = env.PUBLIC_URL ?? (dev ? `http://localhost:${Number(env.VITE_PORT) || 5173}` : undefined);
-  const { AUTH_SECRET: secret, GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: googleSecret } = env;
-  if (!url || !secret || !id || !googleSecret) {
-    return { missing: [!id && 'GOOGLE_CLIENT_ID', !googleSecret && 'GOOGLE_CLIENT_SECRET', !secret && 'AUTH_SECRET', !url && 'PUBLIC_URL'].filter((name) => typeof name === 'string') };
-  }
-  return { url: url.replace(/\/+$/, ''), secret, google: { id, secret: googleSecret } };
+  const { AUTH_SECRET: secret, GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: googleSecret, RESEND_API_KEY: resend } = env;
+  const google = id && googleSecret ? { id, secret: googleSecret } : null;
+  const email = resend ? { resend, from: env.EMAIL_FROM || EMAIL_FROM } : null;
+  const missing = [
+    !!id !== !!googleSecret && (id ? 'GOOGLE_CLIENT_SECRET' : 'GOOGLE_CLIENT_ID'),
+    !google && !email && !id && !googleSecret && 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or RESEND_API_KEY',
+    !secret && 'AUTH_SECRET',
+    !url && 'PUBLIC_URL',
+  ].filter((name) => typeof name === 'string');
+  if (missing.length || !url || !secret) return { missing, asked: !!(id || googleSecret || resend || secret) };
+  return { url: url.replace(/\/+$/, ''), secret, google, email };
 }
 
 /** The name a profile starts from: the first of the names Google gives, null for none. */
@@ -77,8 +94,25 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     // Whose request it is, for the limit on how often anyone may try to sign in: Fly's word for it, which a client cannot forge.
     advanced: { disableOriginCheck: false, disableCSRFCheck: false, ipAddress: { ipAddressHeaders: ['fly-client-ip'] } },
     // Name and picture are Google's, taken afresh at each signing in: nobody sets their own.
-    socialProviders: { google: { clientId: options.google.id, clientSecret: options.google.secret, overrideUserInfoOnSignIn: true } },
-    disabledPaths: ['/update-user', '/change-email', '/delete-user', '/link-social', '/unlink-account', '/list-accounts'],
+    socialProviders: options.google ? { google: { clientId: options.google.id, clientSecret: options.google.secret, overrideUserInfoOnSignIn: true } } : {},
+    // By email, a code: asked for (three a minute from any one place, as Better Auth has it), sent, and typed back
+    // within ten minutes, three tries at most. Kept hashed. Only for signing in: there are no passwords here to reset.
+    plugins: options.email ? [emailOTP({ otpLength: 6, expiresIn: 10 * 60, allowedAttempts: 3, storeOTP: 'hashed', sendVerificationOTP: sendCode(options.email) })] : [],
+    disabledPaths: [
+      '/update-user',
+      '/change-email',
+      '/delete-user',
+      '/link-social',
+      '/unlink-account',
+      '/list-accounts',
+      '/email-otp/check-verification-otp',
+      '/email-otp/verify-email',
+      '/email-otp/request-password-reset',
+      '/forget-password/email-otp',
+      '/email-otp/reset-password',
+      '/email-otp/request-email-change',
+      '/email-otp/change-email',
+    ],
     // Kept: who someone is (name, email, picture). Not kept: where they signed in from and on what, nor Google's own
     // keys to their account, which nothing here has a use for. (public/privacy.html says as much.)
     databaseHooks: {
@@ -103,6 +137,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   const auth = betterAuth(config);
   const handler = toNodeHandler(auth);
   return {
+    ways: [...(options.google ? (['google'] as const) : []), ...(options.email ? (['email'] as const) : [])],
     handle: handler,
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
@@ -113,5 +148,25 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     rename: (account, name) => void rename.run(name, account),
     signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
     forget: (account) => forgets.forEach((f) => f.run(account)),
+  };
+}
+
+/** Sends a code to sign in with, by Resend; throws if it is not taken to be sent. Anything but a code to sign in with is not sent at all. */
+function sendCode({ resend, from }: NonNullable<AccountsOptions['email']>) {
+  return async ({ email, otp, type }: { email: string; otp: string; type: string }): Promise<void> => {
+    if (type !== 'sign-in') return;
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${resend}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject: `${otp} is your Nertz code`,
+        text: `${otp}\n\nType it in where you asked for it, within ten minutes. If you didn't ask, nothing happens unless it's used.`,
+        html: `<p style="font:700 32px/1.2 sans-serif;letter-spacing:4px;margin:0 0 16px">${otp}</p><p style="font:15px/1.4 sans-serif;color:#55616c;margin:0">Type it in where you asked for it, within ten minutes. If you didn't ask, nothing happens unless it's used.</p>`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Resend: ${res.status} ${await res.text().catch(() => '')}`);
   };
 }

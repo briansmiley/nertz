@@ -598,9 +598,10 @@ server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, the relay of card positions, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
-  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list), /api/auth, /stats
+  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list), /api/auth, /profile, /stats
   db.ts         what outlives the process: the one SQLite file, and the tables of ours in it
-  accounts.ts   signing in with Google (Better Auth): the only file that knows how
+  accounts.ts   signing in with Google or a code by email (Better Auth): the only file that knows how
+  profile.ts    /profile: one's own name to go by, and one's account deleted
   rounds.ts     every round played to its end, kept; and one person's record of them
   reports.ts    what players send with the bug button, kept
   guard.ts      what every message, timer, snapshot and socket close runs inside: a throw is logged, and every other table carries on
@@ -762,9 +763,10 @@ would still need one of the options above, and serving both from one origin is s
 
 ## Accounts
 
-Nobody has to sign in: a guest plays exactly as before. Whoever wants to can sign in with Google (the line at the foot of
-the first page), and is then known across tables and visits: the rounds they play signed in make up their record, shown
-over that line.
+Nobody has to sign in: a guest plays exactly as before. Whoever wants to can sign in (the line at the foot of the first
+page), with Google or with a code sent to their email, and is then known across tables and visits. Pressing their name
+there turns the pad to their page: the name they go by (theirs to change), their record over the rounds they played
+signed in, signing out, and deleting their account.
 
 ### What is kept
 
@@ -778,39 +780,43 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
   who played it within the sitting, the name it was played under and whether they had left before the end, and each snipe (who sniped whom, with which card). A hand played signed in also
   carries the account's id. A round left unfinished (everyone gone, or the server restarted) is not kept. Tables of ours are made by the list of migrations in `server/db.ts`: to change one, add an entry.
 - **Reports** (`server/reports.ts`): what players send with the bug button (see [Feedback](#feedback)).
-- **Accounts**: Better Auth's own tables (user, session, account, verification), which it brings up to date on boot.
+- **Accounts**: Better Auth's own tables (user, session, account, verification), which it brings up to date on boot:
+  who signed in, as Google or their email says. Nothing of ours writes to them.
+- **Profiles** (`profile`): who someone is at the table, theirs to change: for now the name they go by (null until a
+  new email account chooses one). Made with the account (from Google's first name), and gone with it.
 
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
 else. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
 page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
 (`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
 
-`GET /stats` answers whoever asks, by their cookie, with their own record (`Stats`, shared/types.ts): rounds played,
-rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points in all and
-the best round. 401 for nobody signed in; 404 where there are no accounts.
+`GET /stats?among=all|people|no-bots` answers whoever asks, by their cookie, with their own record (`Stats`,
+shared/types.ts) over every round, those with someone else there who is no bot, or those with no bot at all: rounds
+played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points in
+all, average place, the best round, and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts.
 
-To take an account away for good (someone asks, as `public/privacy.html` says they may), with the app's database open
-(`fly ssh console -a <app>`, then `sqlite3 /data/nertz.db`, if the image has it, or `node -e` with `node:sqlite`):
-`begin; update hand set name = 'Guest', account = null where account = '<id>'; update report set name = null, account =
-null where account = '<id>'; delete from report where id = '<the report that asked>'; delete from session where userId =
-'<id>'; delete from account where userId = '<id>'; delete from user where id = '<id>'; commit;` Run it in one go (the game
-writes to the same file, and waits only a quarter of a second for it). If they were at a table at the time, run the first
-`update` once more after: a hand played on a socket already open is still kept as theirs. Their scores stay, as a guest's,
-and their reports, with no name to them: what they wrote is not touched (only the report in which they asked, with their
-address in it, goes; its screenshot, if any, is `reports/<id>.jpg`).
+`/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
+nobody signed in); `PUT {name}` a new name to go by; `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
+Deleting takes the profile, the user, its sessions and its link to Google in one transaction, and leaves their hands and
+reports kept as nobody's, with no name to them; any table they are sitting at plays on with them as a guest. Someone who
+asks with the bug button instead (`public/privacy.html` says they may) is deleted by hand: with the database open, run
+the statements of the three `forget`s (`server/accounts.ts`, `rounds.ts`, `reports.ts`) for their id in one transaction.
 
 ### Signing in
 
 `server/accounts.ts` is the only file that knows how: it hands the work to [Better Auth](https://better-auth.com), which
-does the exchange with Google, keeps the session in a cookie, and keeps its tables in the database. Everything of
-Better Auth's is served under `/api/auth`.
+does the exchange with Google, sends and checks codes by email (its `emailOTP` plugin, sent through Resend), keeps the
+session in a cookie, and keeps its tables in the database. Everything of Better Auth's is served under `/api/auth`. One
+email address is one account whichever way someone comes in: Google's word for an address and a code sent to it are both
+proof of it. A code is six digits, good for ten minutes and three tries, kept hashed, and asked for at most three times a
+minute from one place.
 
 Accounts are **off unless set up**. With any of the settings below missing, `/api/auth` answers 404, and the client
 takes that to mean there is no signing in and shows nothing about it. The same with no database, or if accounts cannot
 be opened: the game runs without them, and the log says why (`accounts are off: ...`).
 
-Of someone signed in, the name, email address and picture Google has are kept, taken afresh each time they sign in, and
-nothing else: not the address or browser they signed in from, and not Google's tokens for their account
+Of someone signed in with Google, the name, email address and picture Google has are kept, taken afresh each time they
+sign in; of someone signed in by email, the address. Nothing else: not the address or browser they signed in from, and not Google's tokens for their account
 (`public/privacy.html` says so, to them).
 
 To turn them on (names as in `.env.example`; on Fly, `fly secrets set NAME=value -a <app>`, once per app):
@@ -822,7 +828,10 @@ To turn them on (names as in `.env.example`; on Fly, `fly secrets set NAME=value
 2. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from it, `AUTH_SECRET` to a long random string
    (`openssl rand -base64 32`), and `PUBLIC_URL` to where that app is reached (`https://nertz.binarysmile.com`).
    Signing in works only from that address: at the app's `fly.dev` one a guest can play, and nobody can sign in.
-3. On Fly the database lives on a volume mounted at `/data` (`fly.toml`, `[mounts]`). Each app needs one, made once,
+3. For codes by email, set `RESEND_API_KEY` (a Resend key for a domain verified there). They come from
+   `Nertz <nertz@mail.binarysmile.com>` unless `EMAIL_FROM` says. Either way in will do alone: with only this, nobody
+   is offered Google; with only Google, the line at the foot of the first page goes straight there.
+4. On Fly the database lives on a volume mounted at `/data` (`fly.toml`, `[mounts]`). Each app needs one, made once,
    **before** the first deploy that mounts it: `fly volumes create nertz_data --size 1 -r sjc -a <app>`.
 
 A volume belongs to one machine, which is what each app already runs. Fly keeps daily snapshots of it for five days.

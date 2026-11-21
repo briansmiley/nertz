@@ -167,3 +167,59 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* ------------------------------------------------------------ the way in, on the same page */
+
+.signin h2 {
+  margin: 0;
+  font: 400 1.6rem/1.2 var(--display);
+}
+
+.signin > .go {
+  width: 100%;
+}
+
+/* An email and its button; then the code and its, and under them where it went. */
+.signin .mail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.5rem 0.8rem;
+}
+
+.signin .mail input {
+  min-width: 0;
+}
+
+.signin .mail .code {
+  width: 100%;
+  max-width: none;
+  font-size: 1.7rem;
+  letter-spacing: 0.3em;
+}
+
+.signin .sent {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.9rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.signin .sent button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+.signin .sent button:hover {
+  color: var(--ink);
+}

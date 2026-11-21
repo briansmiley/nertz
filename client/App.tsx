@@ -1,5 +1,6 @@
 // Screens around the table: home, lobby, round results.
-import { rename, signIn, useAccount } from './account';
+import { rename, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
+import { SignIn } from './SignIn';
 import { Profile } from './Profile';
 import { Gallery } from './Gallery';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
@@ -358,17 +359,23 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
-/** Signed out, the way in; signed in, who you are, which opens all about you (`onOpen`). Nothing at all where the server keeps no accounts, or has not said yet. */
+/**
+ * Signed out, the way in (`onOpen`: the ways in, on the pad; or straight to Google, where it is the only way); signed
+ * in, who you are, which opens all about you. Nothing at all where the server keeps no accounts, or has not said yet.
+ */
 function Who({ onOpen }: { onOpen: () => void }) {
-  const account = useAccount();
-  if (account === 'unknown' || account === 'off') return null;
-  if (account === 'out') {
+  const signed = useAccount();
+  const ways = waysIn(signed);
+  if (ways) {
+    const googleOnly = ways.length === 1 && ways[0] === 'google';
     return (
-      <button type="button" className="who" onClick={() => void signIn()}>
-        Sign in with Google
+      <button type="button" className="who" onClick={() => (googleOnly ? void signIn() : onOpen())}>
+        {googleOnly ? 'Sign in with Google' : 'Sign in'}
       </button>
     );
   }
+  const account = signedInAs(signed);
+  if (!account) return null;
   return (
     <button type="button" className="who in" onClick={onOpen}>
       {account.image && <img src={account.image} alt="" referrerPolicy="no-referrer" onError={(e) => (e.currentTarget.hidden = true)} />}
@@ -381,7 +388,8 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const invited = roomInUrl();
   const [name, setName] = useState(rememberedName);
   const account = useAccount();
-  const signedIn = typeof account === 'object' ? account : null;
+  const signedIn = signedInAs(account);
+  const ways = waysIn(account);
   // Signed in, the name you sit down under is the name you go by (client/Profile.tsx): it is filled in from there, and a
   // change made here goes there as you sit down. Only a guest's is remembered by the browser alone.
   const yourName = signedIn?.name ?? null;
@@ -393,10 +401,12 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
     if (signedIn && clean !== signedIn.name) void rename(clean);
     enter(room, clean);
   };
-  /** Whether the pad is turned to your page. */
+  /** Whether the pad is turned to you: your page, or the way in. Signing in turns it from the way in to your page; signing out (or the account gone) turns it back. */
   const [yours, setYours] = useState(false);
+  const was = useRef<string | null>(null);
   useEffect(() => {
-    if (!signedIn) setYours(false);
+    if (was.current && !signedIn) setYours(false);
+    was.current = signedIn?.id ?? null;
   }, [signedIn]);
   const [code, setCode] = useState(invited);
   const nameField = useRef<HTMLInputElement>(null);
@@ -429,6 +439,8 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
       <Pad>
         {yours && signedIn ? (
           <Profile account={signedIn} head={<Back onClick={() => setYours(false)} />} />
+        ) : yours && ways ? (
+          <SignIn ways={ways} head={<Back onClick={() => setYours(false)} />} />
         ) : (
           <form onSubmit={submit}>
             <h2>Pull up a chair</h2>

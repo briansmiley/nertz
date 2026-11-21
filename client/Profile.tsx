@@ -130,6 +130,7 @@ function YourName({ account }: { account: Account }) {
   return (
     <input
       className="yourname"
+      autoFocus={!account.name} /* (new, and no name yet: the first thing to do) */
       aria-label="Your name"
       placeholder="Name"
       value={name}
