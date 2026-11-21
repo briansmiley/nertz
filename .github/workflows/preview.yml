@@ -57,7 +57,9 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Make the app, the first time
         run: |
-          if flyctl apps list --org "$FLY_ORG" --json | jq -e --arg app "$APP" 'any(.[]; .Name == $app)' > /dev/null; then
+          # Listed on its own line: a list that fails stops the step, rather than reading as "no such app".
+          apps=$(flyctl apps list --org "$FLY_ORG" --json)
+          if jq -e --arg app "$APP" 'any(.[]; .Name == $app)' <<< "$apps" > /dev/null; then
             echo "$APP is there."
           else
             flyctl apps create "$APP" --org "$FLY_ORG"
@@ -66,7 +68,9 @@ jobs:
         run: |
           # fly.preview.toml mounts nertz_data at /data, as fly.toml does: accounts and pictures outlive pushes. It has to
           # be made before the first deploy, since a mount added to a machine that has no volume destroys the machine.
-          if flyctl volumes list --app "$APP" --json | jq -e 'any(.[]?; .name == "nertz_data" and (.state | test("destroy") | not))' > /dev/null; then
+          # Listed on its own line: a list that fails stops the step, rather than making a second volume.
+          volumes=$(flyctl volumes list --app "$APP" --json)
+          if jq -e 'any(.[]?; .name == "nertz_data" and (.state | test("destroy") | not))' <<< "$volumes" > /dev/null; then
             echo "$APP has its volume."
           else
             flyctl volumes create nertz_data --app "$APP" --region sjc --size 1 --yes
@@ -79,7 +83,8 @@ jobs:
           # Sign-in by emailed code only (Google's redirect addresses cannot be registered per preview). Nothing for
           # feedback: a preview's reports go nowhere. AUTH_SECRET is made once per app, so later pushes keep sessions.
           set -- PUBLIC_URL="https://$APP.fly.dev"
-          if ! flyctl secrets list --app "$APP" --json | jq -e 'any(.[]; .name == "AUTH_SECRET")' > /dev/null; then
+          secrets=$(flyctl secrets list --app "$APP" --json)
+          if ! jq -e 'any(.[]?; .name == "AUTH_SECRET")' <<< "$secrets" > /dev/null; then
             set -- "$@" AUTH_SECRET="$(openssl rand -hex 32)"
           fi
           if [ -n "$RESEND_API_KEY" ]; then set -- "$@" RESEND_API_KEY="$RESEND_API_KEY"; fi
@@ -116,7 +121,9 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Destroy the app
         run: |
-          if flyctl apps list --org "$FLY_ORG" --json | jq -e --arg app "$APP" 'any(.[]; .Name == $app)' > /dev/null; then
+          # Listed on its own line: a list that fails stops the step, rather than reading as "no such app".
+          apps=$(flyctl apps list --org "$FLY_ORG" --json)
+          if jq -e --arg app "$APP" 'any(.[]; .Name == $app)' <<< "$apps" > /dev/null; then
             flyctl apps destroy "$APP" --yes
           else
             echo "No $APP to destroy."

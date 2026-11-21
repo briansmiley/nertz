@@ -28,8 +28,9 @@ jobs:
         run: |
           # Only names of exactly this form, never nertz or nertz-staging; and only for a PR GitHub says is closed
           # (an open one keeps its app, and one GitHub cannot find is left alone and reported).
-          apps=$(flyctl apps list --org personal --json | jq -r '.[].Name | select(test("^nertz-pr-[0-9]+$"))')
-          for app in $apps; do
+          # Listed on its own line: a list that fails fails the sweep, rather than reading as "nothing to sweep".
+          all=$(flyctl apps list --org personal --json)
+          for app in $(jq -r '.[].Name | select(test("^nertz-pr-[0-9]+$"))' <<< "$all"); do
             n=${app#nertz-pr-}
             state=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$n" --jq .state 2> /dev/null || echo unknown)
             case "$state" in
