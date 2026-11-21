@@ -217,6 +217,20 @@ describe('a room hands its rounds over', () => {
     room.handle(b, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
     expect(kept[0]!.hands.map((h) => h.account)).toEqual([null, 'bob']);
   });
+
+  it('shows everyone the picture an account put up, and none once it is nobody there', () => {
+    let flush = (): void => {};
+    const { room } = roomWith(0, { schedule: (f) => void (flush = f) });
+    const [a, b] = [new FakeConn(), new FakeConn()];
+    room.join(a, 'Ada', 'tok-000a', true, 'ada', '/pictures/0123456789abcdef.webp');
+    room.join(b, 'Guest', 'tok-000b', true);
+    flush();
+    expect(b.last.room.players.map((p) => p.picture)).toEqual(['/pictures/0123456789abcdef.webp', undefined]);
+    room.forgetAccount('ada');
+    room.join(b, 'Guest', 'tok-000b', true); // (a fresh snapshot)
+    flush();
+    expect(b.last.room.players.map((p) => p.picture)).toEqual([undefined, undefined]);
+  });
 });
 
 describe('over the wire', () => {

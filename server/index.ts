@@ -10,7 +10,8 @@ import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode,
 import type { OpenTables } from '../shared/types';
 import { AMONG, type Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
-import { PROFILE_PATH, profileHandler } from './profile';
+import { PICTURE_PATH, PROFILE_PATH, profileHandler } from './profile';
+import { openPictures, PICTURES_PATH } from './pictures';
 import { dataFromEnv, openDb } from './db';
 import { openReports } from './reports';
 import { openRounds } from './rounds';
@@ -135,8 +136,10 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   /** Screenshots sent with reports are files here, beside the database (nowhere, for a database in memory). */
   const reportDir = options.data && options.data !== ':memory:' ? join(dirname(options.data), 'reports') : null;
   const reports = db && openReports(db, { dir: reportDir });
+  /** Pictures people put up of themselves, likewise (server/pictures.ts). */
+  const pictures = reportDir ? openPictures(join(dirname(reportDir), 'pictures')) : null;
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
-  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, home, gone: (account) => rooms.forEach((room) => room.forgetAccount(account)) }) : null;
+  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone: (account) => rooms.forEach((room) => room.forgetAccount(account)) }) : null;
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {
@@ -174,9 +177,12 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
           .who(req.headers)
           .then((account) => (account ? json(200, rounds.stats(account.id, among)) : json(401, null)))
           .catch((err: unknown) => (console.error('stats', err), res.headersSent ? void res.end() : json(500, null))); // (the database gone wrong, or closed under us: an answer, not a crash)
-      } else if (path === PROFILE_PATH) {
+      } else if (path.startsWith(`${PICTURES_PATH}/`)) {
+        if (!pictures) return void res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found');
+        pictures.serve(path, req, res);
+      } else if (path === PROFILE_PATH || path === PICTURE_PATH) {
         if (!profile) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
-        profile(req, res).catch((err: unknown) => {
+        profile(req, res, path).catch((err: unknown) => {
           console.error('profile', err);
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
           res.end('null');
@@ -290,7 +296,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
             target = new Room(freshCode(), { flipMs, hearMs, deal: options.deal, record });
           }
-          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', account?.id ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
+          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', account?.id ?? null, account?.picture ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);
           rooms.set(target.code, target);
           idleSince.delete(target);

@@ -418,8 +418,8 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
 
 /** Your picture, or where there is none (or it will not load) the first letter of your name; a plain disc for no name yet. */
 function Avatar({ image, name }: { image: string | null; name: string | null }) {
-  const [broken, setBroken] = useState(false);
-  if (image && !broken) return <img src={image} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
+  const [broken, setBroken] = useState<string | null>(null);
+  if (image && broken !== image) return <img src={image} alt="" referrerPolicy="no-referrer" onError={() => setBroken(image)} />;
   return <i aria-hidden="true">{name ? [...name][0]!.toUpperCase() : ''}</i>;
 }
 
@@ -493,7 +493,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
             {sits === 'you' && signedIn ? (
               <div className="named">
                 <button type="button" className="you" onClick={() => setTurned('page')}>
-                  <Avatar image={signedIn.image} name={signedIn.name} />
+                  <Avatar image={signedIn.picture ?? signedIn.image} name={signedIn.name} />
                   <span>{signedIn.name}</span>
                 </button>
                 <YourBacks colour={BACKS[0]} compact />
@@ -515,7 +515,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                 <span className="guest">
                   {signedIn && (
                     <button type="button" className="you" aria-label="Your page" data-tip="Your page" onClick={() => setTurned('page')}>
-                      <Avatar image={signedIn.image} name={null} />
+                      <Avatar image={signedIn.picture ?? signedIn.image} name={null} />
                     </button>
                   )}
                   <input
@@ -604,6 +604,7 @@ function Lobby({ room }: { room: RoomView }) {
       )}
       {/* The name, with the dealer's button. On a phone the note and what you may do go on a small line under it. */}
       <span className="person" data-tip={p.name}>
+        {p.picture && <img className="face" src={p.picture} alt="" />}
         <Name host={p.isHost} className="name">
           {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
         </Name>

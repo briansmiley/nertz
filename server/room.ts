@@ -48,6 +48,8 @@ interface Player {
   token: string;
   /** Who they are signed in as (server/accounts.ts), if they are: what their connection said as it joined. Never sent to anyone. */
   account: string | null;
+  /** Where the picture their account put up is (server/pictures.ts), if it did: as it was when they joined. Only with `account`. */
+  picture: string | null;
   name: string;
   seat: number | null;
   /** When they last sat down (a count, not a clock: lower is earlier). Their seat is their colour, so the lobby lists by this instead: whoever sits down goes to the end. */
@@ -225,7 +227,7 @@ export class Room {
    * for one (`sit`); with `sit`, they ask at once whatever the table is doing (whoever opens it).
    * Returns an error message on refusal.
    */
-  join(conn: Conn, name: string, token: string, sit = false, account: string | null = null): string | null {
+  join(conn: Conn, name: string, token: string, sit = false, account: string | null = null, picture: string | null = null): string | null {
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
     // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
@@ -233,7 +235,7 @@ export class Room {
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
-      player = { id: this.ids++, token, account, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
+      player = { id: this.ids++, token, account: null, picture: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
     } else if (player.conn) {
       // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
@@ -243,7 +245,8 @@ export class Room {
       this.letGo(player); // whatever the old socket was dragging is not in this one's hand
     }
     // (Come back signed in as someone already seated at the table, in another window, they are nobody here: one hand to an account.)
-    Object.assign(player, { name, account: seated(player) && this.seatedAs(account, player) ? null : account, conn, ack: -1 });
+    const as = seated(player) && this.seatedAs(account, player) ? null : account;
+    Object.assign(player, { name, account: as, picture: as === null ? null : picture, conn, ack: -1 });
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
     if (fresh && (sit || (!this.roundOn && this.seatFor(player) !== null))) player.queued = ++this.queue;
@@ -793,7 +796,7 @@ export class Room {
    */
   /** `account` is gone (server/profile.ts): whoever here was signed in as it plays on as nobody's, and no hand of theirs is kept as its. */
   forgetAccount(account: string): void {
-    for (const p of this.players) if (p.account === account) p.account = null;
+    for (const p of this.players) if (p.account === account) Object.assign(p, { account: null, picture: null });
   }
 
   /** Someone other than `but` seated as `account` (and never anyone, for nobody's). */
@@ -917,7 +920,7 @@ export class Room {
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
-    const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
+    const bot: Player = { id, token: `bot:${id}`, account: null, picture: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
     this.players.push(bot);
     this.sitDown(bot, seat);
     this.changed();
@@ -1128,6 +1131,7 @@ export class Room {
         seat: p.seat,
         ...(seated(p) ? { sat: p.sat ?? 0 } : {}),
         name: p.name,
+        ...(p.picture ? { picture: p.picture } : {}),
         connected: p.conn !== null,
         ...(p.out ? { left: true as const } : {}),
         ...(p.standing ? { standing: true as const } : {}),

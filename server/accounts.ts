@@ -21,6 +21,7 @@ import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { cleanName } from '../shared/protocol';
 import type { Account, Way } from '../shared/types';
 import { transaction, type Db } from './db';
+import { pictureUrl } from './pictures';
 
 /** Every route of Better Auth's is under this path. Google is told to come back to `${url}${AUTH_PATH}/callback/google`. */
 export const AUTH_PATH = '/api/auth';
@@ -37,6 +38,8 @@ export interface Accounts {
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
   /** Gives `account` a name to go by, already clean and not empty. */
   rename(account: string, name: string): void;
+  /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
+  repicture(account: string, id: string | null): string | null;
   /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
   signOut(headers: IncomingHttpHeaders): Promise<string[]>;
   /** Everything accounts keep of `account`: its profile, its sessions, its link to Google, and it. (Run it in a transaction, with whatever else of theirs goes too.) */
@@ -189,8 +192,9 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   // not there until Better Auth has made it.)
   const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
   if (unmade.length) transaction(db, () => unmade.forEach((u) => made.run(u.id, firstName(u.name))));
-  const named = db.prepare('select name from profile where account = ?');
+  const named = db.prepare('select name, picture from profile where account = ?');
   const rename = db.prepare('update profile set name = ? where account = ?');
+  const setPicture = db.prepare('update profile set picture = ? where account = ?');
   const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
   const auth = betterAuth(config);
   const handler = toNodeHandler(auth);
@@ -200,10 +204,16 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
-      const profile = session && (named.get(session.user.id) as { name: string | null } | undefined);
-      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null } : null;
+      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null } | undefined);
+      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture) } : null;
     },
     rename: (account, name) => void rename.run(name, account),
+    // (Read and written with nothing between: the database is this process's alone, and node:sqlite is synchronous.)
+    repicture: (account, id) => {
+      const had = (named.get(account) as { picture: string | null } | undefined)?.picture ?? null;
+      setPicture.run(id, account);
+      return had;
+    },
     signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
     forget: (account) => forgets.forEach((f) => f.run(account)),
   };
