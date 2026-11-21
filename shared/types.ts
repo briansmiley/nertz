@@ -211,6 +211,11 @@ export interface PlayerView {
   name: string;
   /** Where the picture they put up of themselves is (server/pictures.ts), if they are signed in and did. */
   picture?: string;
+  /**
+   * Where their page is (`/u/<handle>`), for someone signed in, and told only to someone signed in: never who they are
+   * signed in as (server/room.ts).
+   */
+  handle?: string;
   connected: boolean;
   /** Up from their cards in the round being played: they stood up (or whoever deals stood them up), left, or were sent away. Their cards lie there until it is over, and they play no more of it nor have a say in its votes. Then whoever stood up is watching; whoever left or was sent away is gone, and back by the same token is someone new. */
   left?: true;
@@ -298,6 +303,8 @@ export interface Account {
   image: string | null;
   /** Where the picture they put up of themselves is (server/pictures.ts), if they did: shown before Google's, and the only one shown to anyone else. */
   picture: string | null;
+  /** Where their page is: `/u/<handle>`. Drawn at random, and what anyone else is shown of them, as `id` never is. */
+  handle: string;
 }
 
 /** Which of someone's rounds their record counts: every one; those with someone else there who is no bot; those with no bot there at all. */
@@ -311,6 +318,13 @@ export interface Stats {
   rounds: number;
   /** Rounds in which nobody scored more than they did (and somebody else played). */
   won: number;
+  /**
+   * Rounds won, against what chance would give: the rounds won (a tie at the top shared among those in it), over the
+   * 1 in n chance would give each at a table of n, both summed over the rounds with someone else in them. 1 is as
+   * chance would have it, 2 twice as often: a win at a table of ten counts five times one at a table of two. Null for
+   * no such round.
+   */
+  odds: number | null;
   /** Rounds they ended by calling Nertz. */
   nertz: number;
   /** Everything they scored, added up; and the most in one round (null with no round played). */
@@ -329,6 +343,24 @@ export interface Stats {
   /** Times they sniped someone, and times someone sniped them. */
   snipes: number;
   sniped: number;
+}
+
+/** How one person has done against another, over the rounds they both played signed in (of those `Among` says). */
+export interface Versus {
+  rounds: number;
+  /** Rounds they scored more than the other did, and rounds the other scored more (the rest were level). */
+  ahead: number;
+  behind: number;
+  /** Everything they scored in those rounds, and everything the other did. */
+  points: number;
+  theirs: number;
+}
+
+/** Someone's page, as someone signed in sees it (`GET /stats/<handle>`): the name they go by, their record, and yours against them (null on your own). */
+export interface Page {
+  name: string | null;
+  stats: Stats;
+  versus: Versus | null;
 }
 
 /**

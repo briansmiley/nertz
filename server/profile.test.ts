@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isHandle } from '../shared/protocol';
 import { firstName } from './accounts';
 import { startServer, type NertzServer } from './index';
 import { ACCOUNTS, ADA, BOB, Browser, fakeGoogle, rows as allRows } from './testkit';
@@ -45,8 +46,10 @@ describe('profile', () => {
   it('starts from the first name Google gives, with Google picture', async () => {
     const ada = await signedIn(ADA);
     const id = (rows('user')[0] as { id: string }).id;
-    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null });
-    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null }]);
+    const { handle } = (await profile(ada)) as { handle: string };
+    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null, handle });
+    expect(isHandle(handle) && handle !== id).toBe(true); // (where their page is: drawn at random, and nothing of who they are)
+    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null, handle }]);
     expect(firstName('  Grace  Brewster Hopper')).toBe('Grace');
     expect(firstName('   ')).toBeNull();
   });
@@ -187,7 +190,23 @@ describe('profile', () => {
     await server.close();
     write('delete from profile');
     await start();
-    expect(rows('profile')).toMatchObject([{ name: 'Ada' }]);
+    expect(rows('profile')).toMatchObject([{ name: 'Ada', handle: expect.stringMatching(/^[0-9a-f]{16}$/) }]);
+  });
+
+  it('is given a page of its own if it was made before there were pages: each its own, drawn at random', async () => {
+    await signedIn(ADA);
+    await signedIn(BOB);
+    await server.close();
+    // (The database as it was before the migration that draws them.)
+    write('drop index profile_handle');
+    write('alter table profile drop column handle');
+    write('pragma user_version = 4');
+    await start();
+    const handles = rows('profile').map((p) => p.handle as string);
+    expect(handles.every(isHandle)).toBe(true);
+    expect(new Set(handles).size).toBe(2);
+    const ada = await signedIn(ADA);
+    expect(handles).toContain(((await profile(ada)) as { handle: string }).handle);
   });
 
   it('is not there where no accounts are kept', async () => {

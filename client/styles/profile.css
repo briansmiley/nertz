@@ -473,3 +473,39 @@
 .signin .sent button:hover {
   color: var(--ink);
 }
+
+/* ------------------------------------------------------------ someone's page (/u/<handle>) */
+
+/* Their name, written as yours is on your page, but not yours to change. */
+.theirs .you h2 {
+  min-width: 0;
+  overflow: hidden;
+  font: 400 1.6rem/1.2 var(--display);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* You against them: a line of its own under their record. */
+.versus {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.versus h3 {
+  margin: 0;
+  overflow: hidden;
+  font: 600 0.95rem/1.3rem var(--ui);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Its figures share the line evenly. */
+.profile .versus .record {
+  flex-wrap: nowrap;
+}
+
+.profile .versus .record div {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}

@@ -341,6 +341,9 @@ const MAX_ID_LENGTH = 64;
 
 export const isRoomCode = (s: string): boolean => ROOM_RE.test(s);
 
+/** Whether `s` could be where someone's page is (`Account.handle`: server/db.ts draws them). */
+export const isHandle = (s: string): boolean => /^[0-9a-f]{16}$/.test(s);
+
 export function randomRoomCode(rng: () => number = Math.random): string {
   let code = '';
   for (let i = 0; i < ROOM_CODE_LENGTH; i++) {

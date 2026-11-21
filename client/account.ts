@@ -1,8 +1,9 @@
 // Who is signed in on this browser, and who they are at the table, as the server says (server/profile.ts). Signing in
 // is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
-// nothing of its own: it asks. The same for their record (`/stats`).
-import { useEffect, useSyncExternalStore } from 'react';
-import type { Account, Among, Stats, Way } from '../shared/types';
+// nothing of its own: it asks. The same for their record (`/stats`), and someone's page (`/stats/<handle>`).
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { isHandle } from '../shared/protocol';
+import type { Account, Among, Page, Stats, Versus, Way } from '../shared/types';
 
 /**
  * `unknown` until the server has answered; `off` when there is no signing in (it keeps no accounts, or gave no good
@@ -43,9 +44,9 @@ export function read(status: number, body: unknown): Signed {
     const ways = (Array.isArray(said) ? said : []).filter((w): w is Way => w === 'google' || w === 'email');
     return ways.length ? { ways } : 'off';
   }
-  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown } | null;
-  if (status !== 200 || !v || typeof v.id !== 'string') return 'off';
-  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture) };
+  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown; handle?: unknown } | null;
+  if (status !== 200 || !v || typeof v.id !== 'string' || typeof v.handle !== 'string') return 'off';
+  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture), handle: v.handle };
 }
 
 const PROFILE = '/profile';
@@ -167,16 +168,41 @@ export async function deleteAccount(): Promise<boolean> {
   return !!res?.ok;
 }
 
+const whole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
+
 /** What an answer to "what is my record?" comes to: null for none to show (nobody signed in, nothing kept, no good answer). */
 export function readStats(status: number, body: unknown): Stats | null {
   const v = body as Partial<Record<keyof Stats, unknown>> | null;
-  const whole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
   const most = (n: unknown): n is number | null => n === null || whole(n);
   const share = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && n <= 1);
+  const times = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && Number.isFinite(n));
   if (status !== 200 || !v) return null;
-  const { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
-  if (!whole(rounds) || !whole(won) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
-  return { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
+  const { rounds, won, odds, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
+  if (!whole(rounds) || !whole(won) || !times(odds) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
+  return { rounds, won, odds, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
+}
+
+/** How you have done against someone, as the server says it: null for an answer that is not that. */
+function readVersus(body: unknown): Versus | null {
+  const v = body as Partial<Record<keyof Versus, unknown>> | null;
+  if (!v) return null;
+  const { rounds, ahead, behind, points, theirs } = v;
+  if (!whole(rounds) || !whole(ahead) || !whole(behind) || !whole(points) || !whole(theirs)) return null;
+  return { rounds, ahead, behind, points, theirs };
+}
+
+/**
+ * What an answer to "whose page is this?" comes to: theirs; `nobody` for nobody signed in to see it (401); `none` for
+ * no such page, or no good answer.
+ */
+export function readPage(status: number, body: unknown): Page | 'nobody' | 'none' {
+  if (status === 401) return 'nobody';
+  const v = body as { name?: unknown; stats?: unknown; versus?: unknown } | null;
+  if (status !== 200 || !v) return 'none';
+  const stats = readStats(200, v.stats);
+  const versus = v.versus === null ? null : readVersus(v.versus);
+  if (!stats || (v.versus !== null && !versus) || (v.name !== null && typeof v.name !== 'string')) return 'none';
+  return { name: typeof v.name === 'string' && v.name ? v.name : null, stats, versus };
 }
 
 /** The record last heard, and whose it is: shown at once when it is wanted again, while it is asked for afresh. */
@@ -205,4 +231,28 @@ export function useStats(among: Among = 'all'): Stats | null {
     return () => void (stale = true);
   }, [who, among]);
   return known?.of === who ? known.stats : null;
+}
+
+/** Whose page the address is (`/u/<handle>`), if it is one. */
+export function pageInUrl(): string | null {
+  const [, handle] = /^\/u\/([^/]+)\/?$/.exec(location.pathname) ?? [];
+  return handle && isHandle(handle) ? handle : null;
+}
+
+/**
+ * The page of whoever `handle` is, over the rounds `among` says, as whoever is signed in here sees it: asked for afresh
+ * as either changes, or someone else signs in (what was last heard staying up meanwhile). Undefined until it is known.
+ */
+export function usePage(handle: string, among: Among): Page | 'nobody' | 'none' | undefined {
+  const who = signedIn(useAccount())?.id ?? null;
+  const [page, setPage] = useState<{ of: string; page: Page | 'nobody' | 'none' }>();
+  useEffect(() => {
+    let stale = false;
+    fetch(`/stats/${handle}?among=${among}`, { credentials: 'same-origin', cache: 'no-store' })
+      .then(async (res) => readPage(res.status, await res.json().catch(() => null)))
+      .catch(() => 'none' as const)
+      .then((page) => stale || setPage({ of: handle, page }));
+    return () => void (stale = true);
+  }, [handle, among, who]);
+  return page?.of === handle ? page.page : undefined;
 }

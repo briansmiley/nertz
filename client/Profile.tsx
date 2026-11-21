@@ -1,9 +1,10 @@
 // You, signed in: the name you go by (yours to change), your record, and the ways out: signing out, and your account
-// gone for good. Opened by pressing your name at the foot of the home page's pad.
+// gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
+// opened by pressing their name at a table: their record, and yours against them.
 import { useEffect, useRef, useState } from 'react';
 import { cleanName, MAX_NAME_LENGTH } from '../shared/protocol';
-import { AMONG, type Account, type Among } from '../shared/types';
-import { deleteAccount, rename, repicture, signOut, useStats, type Crop } from './account';
+import { AMONG, type Account, type Among, type Stats, type Versus } from '../shared/types';
+import { deleteAccount, rename, repicture, signOut, usePage, useStats, type Crop } from './account';
 import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
@@ -67,12 +68,9 @@ const rememberedAmong = (): Among => {
   }
 };
 
-/** Your record: the figures, and under each what it counts; over the rounds you choose, by who else was at them. (The choice stays up while the figures are being asked for, or could not be had.) */
-export function Record() {
+/** Which rounds a record counts, as last chosen in this browser (one choice, for anyone's record). */
+function useAmong(): [Among, (a: Among) => void] {
   const [among, setAmong] = useState(rememberedAmong);
-  const stats = useStats(among);
-  /** A sum over the rounds, as so much a round. */
-  const per = (sum: number): string => (stats?.rounds ? written(sum / stats.rounds, 1) : '–');
   const choose = (a: Among): void => {
     setAmong(a);
     try {
@@ -81,45 +79,112 @@ export function Record() {
       // storage unavailable: the choice lasts as long as the page
     }
   };
-  /** Each figure, what it counts, (where the word alone may not say) a little more about it, and a tint for one that is good or bad for you. */
-  const figures: [string, string, string?, ('good' | 'bad')?][] = !stats
-    ? []
-    : [
-        [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
-        [written(stats.won), 'won'],
-        [written(stats.nertz), 'Nertz'],
-        [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Average ending rank: 1st = 100%, last = 0%'],
-        [per(stats.points), 'avg score'],
-        [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best score'],
-        [per(stats.cards), 'avg cards'],
-        [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
-        [per(stats.nertzLeft), 'avg nertz left'],
-        [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes', undefined, 'good'],
-        [written(stats.sniped), 'sniped', undefined, 'bad'],
-      ];
+  return [among, choose];
+}
+
+/** The rounds to count, by who else was at them. */
+function Which({ among, choose }: { among: Among; choose: (a: Among) => void }) {
+  return (
+    <div className="among">
+      <div role="radiogroup" aria-label="Which rounds">
+        {AMONG.map((a) => (
+          <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} data-tip={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              {AMONG_DRAWN[a].draw}
+            </svg>
+          </button>
+        ))}
+      </div>
+      <small aria-hidden="true">{AMONG_DRAWN[among].said}</small>
+    </div>
+  );
+}
+
+/** A figure, what it counts, (where the word alone may not say) a little more about it, and a tint for one that is good or bad for whoever's it is. */
+type Figure = [string, string, string?, ('good' | 'bad')?];
+
+function Figures({ figures }: { figures: Figure[] }) {
+  return (
+    <dl className="record">
+      {figures.map(([n, what, more, tint]) => (
+        <div key={what} data-tip={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
+          <dt>{what}</dt>
+          <dd>{n}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Someone's record, as figures. */
+function recordOf(stats: Stats): Figure[] {
+  /** A sum over the rounds, as so much a round. */
+  const per = (sum: number): string => (stats.rounds ? written(sum / stats.rounds, 1) : '–');
+  return [
+    [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
+    [written(stats.won), 'won'],
+    [stats.odds === null ? '–' : `${written(stats.odds, 1)}×`, 'vs chance', 'Rounds won, against 1 in n at a table of n: 1× is chance'],
+    [written(stats.nertz), 'Nertz'],
+    [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Average ending rank: 1st = 100%, last = 0%'],
+    [per(stats.points), 'avg score'],
+    [stats.bestPoints === null ? '–' : written(stats.bestPoints), 'best score'],
+    [per(stats.cards), 'avg cards'],
+    [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
+    [per(stats.nertzLeft), 'avg nertz left'],
+    [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes', undefined, 'good'],
+    [written(stats.sniped), 'sniped', undefined, 'bad'],
+  ];
+}
+
+/** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, and each one's points over them. */
+function versusOf(v: Versus): Figure[] {
+  const level = v.rounds - v.ahead - v.behind;
+  return [
+    [written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'],
+    [written(v.ahead), 'ahead', level ? `${level} level` : undefined, 'good'],
+    [written(v.behind), 'behind', undefined, 'bad'],
+    [written(v.points), 'yours', 'Your points in them'],
+    [written(v.theirs), 'theirs', 'Their points in them'],
+  ];
+}
+
+/** Your record: the figures, and under each what it counts; over the rounds you choose, by who else was at them. (The choice stays up while the figures are being asked for, or could not be had.) */
+export function Record() {
+  const [among, choose] = useAmong();
+  const stats = useStats(among);
   return (
     <div className="yours-record">
-      <div className="among">
-        <div role="radiogroup" aria-label="Which rounds">
-          {AMONG.map((a) => (
-            <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} data-tip={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                {AMONG_DRAWN[a].draw}
-              </svg>
-            </button>
-          ))}
-        </div>
-        <small aria-hidden="true">{AMONG_DRAWN[among].said}</small>
+      <Which among={among} choose={choose} />
+      {stats && <Figures figures={recordOf(stats)} />}
+    </div>
+  );
+}
+
+/**
+ * Someone's page, for you signed in: the name they go by and their record, and under it yours against them (on your
+ * own page, nobody to be against); both over the rounds you choose. A page that is nobody's (gone, or never was) says so.
+ */
+export function Theirs({ handle, head }: { handle: string; head?: React.ReactNode }) {
+  const [among, choose] = useAmong();
+  const page = usePage(handle, among);
+  const known = typeof page === 'object' ? page : null;
+  return (
+    <div className="profile theirs">
+      <div className="you">
+        {head}
+        <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
       </div>
-      {stats && (
-        <dl className="record">
-          {figures.map(([n, what, more, tint]) => (
-            <div key={what} data-tip={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
-              <dt>{what}</dt>
-              <dd>{n}</dd>
-            </div>
-          ))}
-        </dl>
+      {page !== 'none' && (
+        <div className="yours-record">
+          <Which among={among} choose={choose} />
+          {known && <Figures figures={recordOf(known.stats)} />}
+        </div>
+      )}
+      {known?.versus && (
+        <div className="versus">
+          <h3>You vs {known.name ?? 'them'}</h3>
+          <Figures figures={versusOf(known.versus)} />
+        </div>
       )}
     </div>
   );

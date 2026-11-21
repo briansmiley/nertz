@@ -1,7 +1,7 @@
 // Screens around the table: home, lobby, round results.
-import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
+import { pageInUrl, rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
 import { SignIn } from './SignIn';
-import { Profile } from './Profile';
+import { Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
@@ -47,6 +47,8 @@ export function App() {
   const room = net.room;
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
+  const page = pageInUrl();
+  if (!room && page) return <Someone handle={page} />;
   if (!room) {
     return (
       <>
@@ -100,6 +102,34 @@ export function App() {
         )
       )}
     </>
+  );
+}
+
+/**
+ * Someone's page (`/u/<handle>`), on a pad of its own: for you signed in, theirs; otherwise the way in, which comes back
+ * here. Back is the home page.
+ */
+function Someone({ handle }: { handle: string }) {
+  const account = useAccount();
+  const ways = waysIn(account);
+  const home = <Back onClick={() => location.assign('/')} />;
+  return (
+    <main className="solo">
+      <Pad>{signedInAs(account) ? <Theirs handle={handle} head={home} /> : ways ? <SignIn ways={ways} head={home} /> : null}</Pad>
+    </main>
+  );
+}
+
+/**
+ * A name at the table, as a link to their page where you are told it (they and you are signed in: `PlayerView.handle`).
+ * It opens in a tab of its own, so this one stays at the table.
+ */
+function Named({ who, children }: { who: PlayerView | undefined; children: ReactNode }) {
+  if (!who?.handle) return children;
+  return (
+    <a className="page" href={`/u/${who.handle}`} target="_blank" rel="noopener">
+      {children}
+    </a>
   );
 }
 
@@ -606,7 +636,7 @@ function Lobby({ room }: { room: RoomView }) {
       <span className="person" data-tip={p.name}>
         {p.picture && <img className="face" src={p.picture} alt="" />}
         <Name host={p.isHost} className="name">
-          {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : p.name}
+          {me?.isHost && p.bot ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{p.name}</Named>}
         </Name>
       </span>
       <span className="note">
@@ -850,7 +880,7 @@ function Results({ room }: { room: RoomView }) {
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
                   <Name host={p?.isHost} className="nm">
-                    {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : s.name}
+                    {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={s.id === room.me ? undefined : p}>{s.name}</Named>}
                   </Name>
                   {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
@@ -886,7 +916,9 @@ function Results({ room }: { room: RoomView }) {
                   <th scope="row">
                     <span className="who">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
-                    <Name host={p.isHost} className="nm">{p.name}</Name>
+                    <Name host={p.isHost} className="nm">
+                      <Named who={p.id === room.me ? undefined : p}>{p.name}</Named>
+                    </Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                     </span>

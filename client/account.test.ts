@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { read, readStats, signedIn, sitter, waysIn } from './account';
+import { read, readPage, readStats, signedIn, sitter, waysIn } from './account';
 
 describe('who the server says is signed in', () => {
   it('is no signing in at all where the server keeps no accounts, or there is no good answer', () => {
@@ -17,7 +17,7 @@ describe('who the server says is signed in', () => {
   });
 
   it('tells who is signed in from the ways in', () => {
-    const ada = { id: 'u1', name: 'Ada', image: null, picture: null };
+    const ada = { id: 'u1', name: 'Ada', image: null, picture: null, handle: '0123456789abcdef' };
     expect(signedIn(ada)).toBe(ada);
     expect(waysIn(ada)).toBeNull();
     expect(signedIn({ ways: ['email'] })).toBeNull();
@@ -27,17 +27,19 @@ describe('who the server says is signed in', () => {
   });
 
   it('is whoever the profile is', () => {
-    expect(read(200, { id: 'u1', name: 'Ada', image: 'https://example.com/a.png', extra: 'x' })).toEqual({ id: 'u1', name: 'Ada', image: 'https://example.com/a.png', picture: null });
-    expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: '/pictures/0123456789abcdef.webp' })).toMatchObject({ picture: '/pictures/0123456789abcdef.webp' });
-    expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: 'https://evil.example/me.webp' })).toMatchObject({ picture: null }); // (only ever one of ours)
-    expect(read(200, { id: 'u1', name: 'Ada' })).toEqual({ id: 'u1', name: 'Ada', image: null, picture: null });
-    expect(read(200, { id: 'u1', name: null, image: null })).toEqual({ id: 'u1', name: null, image: null, picture: null });
+    const handle = '0123456789abcdef';
+    expect(read(200, { id: 'u1', name: 'Ada', image: 'https://example.com/a.png', handle, extra: 'x' })).toEqual({ id: 'u1', name: 'Ada', image: 'https://example.com/a.png', picture: null, handle });
+    expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: '/pictures/0123456789abcdef.webp', handle })).toMatchObject({ picture: '/pictures/0123456789abcdef.webp' });
+    expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: 'https://evil.example/me.webp', handle })).toMatchObject({ picture: null }); // (only ever one of ours)
+    expect(read(200, { id: 'u1', name: 'Ada', handle })).toEqual({ id: 'u1', name: 'Ada', image: null, picture: null, handle });
+    expect(read(200, { id: 'u1', name: null, image: null, handle })).toEqual({ id: 'u1', name: null, image: null, picture: null, handle });
+    expect(read(200, { id: 'u1', name: 'Ada', image: null })).toBe('off'); // (no page: not a profile)
   });
 });
 
 describe('the record the server says is theirs', () => {
-  const record = { rounds: 42, won: 17, nertz: 9, points: 261, bestPoints: 23, cards: 1010, bestCards: 38, nertzLeft: 210, ahead: 0.62, snipes: 31, sniped: 12 };
-  const none = { rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 };
+  const record = { rounds: 42, won: 17, odds: 1.84, nertz: 9, points: 261, bestPoints: 23, cards: 1010, bestCards: 38, nertzLeft: 210, ahead: 0.62, snipes: 31, sniped: 12 };
+  const none = { rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 };
 
   it('is what it says, and nothing else it may have sent along', () => {
     expect(readStats(200, { ...record, extra: 'x' })).toEqual(record);
@@ -52,13 +54,36 @@ describe('the record the server says is theirs', () => {
     expect(readStats(200, { ...record, bestPoints: undefined })).toBeNull();
     expect(readStats(200, { ...record, cards: 10.5 })).toBeNull();
     expect(readStats(200, { ...record, ahead: 1.2 })).toBeNull();
+    expect(readStats(200, { ...record, odds: -1 })).toBeNull();
+    expect(readStats(200, { ...record, odds: undefined })).toBeNull();
     expect(readStats(200, { ...record, place: 1.8, ahead: undefined })).toBeNull(); // (the record as it was)
+  });
+});
+
+describe("someone's page, as the server says it", () => {
+  const stats = { rounds: 3, won: 1, odds: 1.2, nertz: 0, points: 12, bestPoints: 9, cards: 30, bestCards: 14, nertzLeft: 6, ahead: 0.5, snipes: 1, sniped: 2 };
+  const versus = { rounds: 2, ahead: 1, behind: 0, points: 10, theirs: 4 };
+
+  it('is their name, their record and yours against them; on your own, nobody to be against', () => {
+    expect(readPage(200, { name: 'Bob', stats, versus, extra: 'x' })).toEqual({ name: 'Bob', stats, versus });
+    expect(readPage(200, { name: 'Ada', stats, versus: null })).toEqual({ name: 'Ada', stats, versus: null });
+    expect(readPage(200, { name: null, stats, versus })).toEqual({ name: null, stats, versus });
+  });
+
+  it('is nobody to show it to for a 401, and no page for anything else that is not one', () => {
+    expect(readPage(401, null)).toBe('nobody');
+    expect(readPage(404, null)).toBe('none');
+    expect(readPage(200, null)).toBe('none');
+    expect(readPage(200, { name: 'Bob', stats: { ...stats, won: '1' }, versus })).toBe('none');
+    expect(readPage(200, { name: 'Bob', stats, versus: { ...versus, ahead: 0.5 } })).toBe('none');
+    expect(readPage(200, { name: 'Bob', stats })).toBe('none');
+    expect(readPage(200, { name: 7, stats, versus })).toBe('none');
   });
 });
 
 describe('who sits down, on the first page', () => {
   const ways = { ways: ['google', 'email'] } as const;
-  const named = { id: 'u', name: 'Ada', image: null, picture: null };
+  const named = { id: 'u', name: 'Ada', image: null, picture: null, handle: '0123456789abcdef' };
   it('signed in with a name: you; signed in without one: a name to write', () => {
     expect(sitter(named, false)).toBe('you');
     expect(sitter({ ...named, name: null }, false)).toBe('name');

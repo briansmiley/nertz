@@ -4,6 +4,7 @@
 // Who signed in is Better Auth's `user`, as Google or their email says, and nothing here writes to it. One email is one
 // user, whichever way they come in by: Google's word for an address and a code sent to it are both proof of it. Who they are at the table is
 // their `profile` (server/db.ts), ours, theirs to change: made with the account, from Google's first name, and gone with it.
+// Where their page is, its `handle`, is drawn at random with it: what anyone else is shown of them, never the account's id.
 //
 // The game runs without any of this. Accounts are on when there is a database to keep them in (server/db.ts) and the
 // environment gives a way in: a Google OAuth client, a Resend key, or both (see .env.example); otherwise /api/auth
@@ -36,6 +37,8 @@ export interface Accounts {
    * for a few minutes). Never rejects: asking gone wrong is said in the log, and is nobody.
    */
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
+  /** Whose page `handle` is, and the name they go by: null for nobody's. */
+  whose(handle: string): { id: string; name: string | null } | null;
   /** Gives `account` a name to go by, already clean and not empty. */
   rename(account: string, name: string): void;
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
@@ -122,7 +125,7 @@ export const firstName = (name: string): string | null => cleanName(name.trim().
 const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
 
 export async function openAccounts(db: Db, options: AccountsOptions): Promise<Accounts> {
-  const made = db.prepare('insert into profile (account, name) values (?, ?) on conflict do nothing');
+  const made = db.prepare('insert into profile (account, name, handle) values (?, ?, lower(hex(randomblob(8)))) on conflict do nothing');
   const allowance = codeAllowance();
   const config = {
     appName: 'Nertz',
@@ -192,7 +195,8 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   // not there until Better Auth has made it.)
   const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
   if (unmade.length) transaction(db, () => unmade.forEach((u) => made.run(u.id, firstName(u.name))));
-  const named = db.prepare('select name, picture from profile where account = ?');
+  const named = db.prepare('select name, picture, handle from profile where account = ?');
+  const whose = db.prepare('select account as id, name from profile where handle = ?');
   const rename = db.prepare('update profile set name = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
   const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
@@ -204,9 +208,10 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
-      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null } | undefined);
-      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture) } : null;
+      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null; handle: string } | undefined);
+      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle } : null;
     },
+    whose: (handle) => (whose.get(handle) as { id: string; name: string | null } | undefined) ?? null,
     rename: (account, name) => void rename.run(name, account),
     // (Read and written with nothing between: the database is this process's alone, and node:sqlite is synchronous.)
     repicture: (account, id) => {

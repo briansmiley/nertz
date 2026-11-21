@@ -87,6 +87,12 @@ const MIGRATIONS: string[] = [
   // The picture they put up of themselves, null for none: its id, the name of a file in the pictures directory beside the
   // database (server/pictures.ts). Without one they are shown by Google's, or by their initial.
   `alter table profile add column picture text;`,
+  // Where someone's page is (/u/<handle>, server/stats.ts): drawn at random with the profile (server/accounts.ts),
+  // sixteen hex digits, and nothing to do with who they are. It is what the others at a table are shown, as the
+  // account's id never is; and it goes with the profile.
+  `alter table profile add column handle text;
+   update profile set handle = lower(hex(randomblob(8)));
+   create unique index profile_handle on profile (handle);`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

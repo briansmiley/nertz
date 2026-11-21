@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
-import type { BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
+import type { Account, BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -19,6 +19,9 @@ import type { Named } from '../shared/chat';
 import { roundOver, Social } from './chat';
 import { guard } from './guard';
 import type { RoundRecord } from './rounds';
+
+/** Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is, and the picture they put up (as it was when they joined). */
+export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture'>;
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -46,10 +49,11 @@ interface Player {
   id: number;
   /** Secret chosen by the client; maps a reconnect back to who they are. Never sent to anyone. */
   token: string;
-  /** Who they are signed in as (server/accounts.ts), if they are: what their connection said as it joined. Never sent to anyone. */
-  account: string | null;
-  /** Where the picture their account put up is (server/pictures.ts), if it did: as it was when they joined. Only with `account`. */
-  picture: string | null;
+  /**
+   * Who they are signed in as (server/accounts.ts), if they are: what their connection said as it joined. Its id is
+   * never sent to anyone; where their page is, only to someone signed in; the picture it put up, to everyone.
+   */
+  account: SignedAs | null;
   name: string;
   seat: number | null;
   /** When they last sat down (a count, not a clock: lower is earlier). Their seat is their colour, so the lobby lists by this instead: whoever sits down goes to the end. */
@@ -227,7 +231,8 @@ export class Room {
    * for one (`sit`); with `sit`, they ask at once whatever the table is doing (whoever opens it).
    * Returns an error message on refusal.
    */
-  join(conn: Conn, name: string, token: string, sit = false, account: string | null = null, picture: string | null = null): string | null {
+  join(conn: Conn, name: string, token: string, sit = false, signedAs: SignedAs | null = null): string | null {
+    const account = signedAs && { id: signedAs.id, handle: signedAs.handle, picture: signedAs.picture }; // (only that, of whatever it is handed)
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
     // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
@@ -235,7 +240,7 @@ export class Room {
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
-      player = { id: this.ids++, token, account: null, picture: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
+      player = { id: this.ids++, token, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
     } else if (player.conn) {
       // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
@@ -246,7 +251,7 @@ export class Room {
     }
     // (Come back signed in as someone already seated at the table, in another window, they are nobody here: one hand to an account.)
     const as = seated(player) && this.seatedAs(account, player) ? null : account;
-    Object.assign(player, { name, account: as, picture: as === null ? null : picture, conn, ack: -1 });
+    Object.assign(player, { name, account: as, conn, ack: -1 });
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
     if (fresh && (sit || (!this.roundOn && this.seatFor(player) !== null))) player.queued = ++this.queue;
@@ -662,7 +667,7 @@ export class Room {
       number: this.round,
       end: status.end,
       ms: this.played ?? 0,
-      hands: scored.flatMap(({ s, p }) => (p ? [{ ...s, player: p.id, name: p.name, account: p.account, bot: p.bot?.level ?? null, out: p.out ?? null }] : [])), // (a hand is always someone's: the player stays listed, `out`, until the round is over)
+      hands: scored.flatMap(({ s, p }) => (p ? [{ ...s, player: p.id, name: p.name, account: p.account?.id ?? null, bot: p.bot?.level ?? null, out: p.out ?? null }] : [])), // (a hand is always someone's: the player stays listed, `out`, until the round is over)
       snipes: [...this.snipes],
     });
     this.sendOff();
@@ -794,14 +799,16 @@ export class Room {
    * The seat for `p` to take: the one they had in the last round if nobody has it (their colour, and their place), or
    * else the lowest free one; null when the table is full (no seat of `seats` free). A bot, new, has no last round.
    */
-  /** `account` is gone (server/profile.ts): whoever here was signed in as it plays on as nobody's, and no hand of theirs is kept as its. */
+  /** `account` is gone (server/profile.ts): whoever here was signed in as it plays on as nobody's, no hand of theirs is kept as its, and nobody is told where its page was. */
   forgetAccount(account: string): void {
-    for (const p of this.players) if (p.account === account) Object.assign(p, { account: null, picture: null });
+    const theirs = this.players.filter((p) => p.account?.id === account);
+    for (const p of theirs) p.account = null;
+    if (theirs.length) this.changed();
   }
 
   /** Someone other than `but` seated as `account` (and never anyone, for nobody's). */
-  private seatedAs(account: string | null, but: Player): boolean {
-    return account !== null && this.players.some((q) => q !== but && q.account === account && seated(q));
+  private seatedAs(account: SignedAs | null, but: Player): boolean {
+    return account !== null && this.players.some((q) => q !== but && q.account?.id === account.id && seated(q));
   }
 
   /** Where anyone, person or bot, sits down: at `seat` (from `seatFor`), and at the end of the order they sat in. */
@@ -920,7 +927,7 @@ export class Room {
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
-    const bot: Player = { id, token: `bot:${id}`, account: null, picture: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
+    const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
     this.players.push(bot);
     this.sitDown(bot, seat);
     this.changed();
@@ -1131,7 +1138,8 @@ export class Room {
         seat: p.seat,
         ...(seated(p) ? { sat: p.sat ?? 0 } : {}),
         name: p.name,
-        ...(p.picture ? { picture: p.picture } : {}),
+        ...(p.account?.picture ? { picture: p.account.picture } : {}),
+        ...(you.account && p.account ? { handle: p.account.handle } : {}),
         connected: p.conn !== null,
         ...(p.out ? { left: true as const } : {}),
         ...(p.standing ? { standing: true as const } : {}),
