@@ -1,0 +1,411 @@
+/* The lobby: the link, the seats, the bots, your backs and colour, who is watching. */
+
+/* The lobby's link: written out, with a copy icon after it. */
+.invite {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.invite .link {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.95rem;
+  user-select: all;
+}
+
+.invite button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.invite button:hover {
+  color: var(--ink);
+}
+
+.invite svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.seats {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seats li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 2.6rem;
+}
+
+.seats .mini {
+  zoom: 0.3;
+}
+
+.seats .name {
+  font-weight: 400;
+  font-size: 1.05rem;
+}
+
+/* Which of them is you: the one name in bold. */
+.seats .you .name {
+  font-weight: 700;
+}
+
+.seats .note {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+/* The card beside your own name (and, for whoever deals, beside a bot's) is a button: it opens the backs to choose from. */
+.seats .swatch {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.12s ease-out;
+}
+
+.seats .swatch:hover,
+.seats .swatch:focus-visible {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+/* Seating a bot: level and Add. */
+.bots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+}
+
+/* The bot's speed: the browser's own arrow sits against the edge, so the field draws its own, with room round it. */
+.bots select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.55rem 2.1rem 0.55rem 0.75rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  font: inherit;
+  color: var(--ink);
+  background: #fffdf6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231c2433' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0.65rem center / 0.95rem;
+}
+
+.seats .away .name {
+  opacity: 0.5;
+}
+
+/* On a wide sheet the name, the note and what you may do stand in the row's line, as they are; on a phone (below) the row is a grid. */
+.seats .person,
+.seats .deeds {
+  display: contents;
+}
+
+@media (min-width: 640px) {
+  .seats {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 1.4rem;
+  }
+}
+
+/* On a phone, two columns too. A row is the card, the name beside it and a small line under the name: the note, and
+   what you may do to them. A name too long for its column ends in an ellipsis (the whole of it is its tooltip). */
+@media (max-width: 639px) {
+  .seats {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 0.9rem;
+    row-gap: 0.25rem;
+  }
+
+  .seats li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'card person person'
+      'card note deeds';
+    align-content: center;
+    align-items: center;
+    column-gap: 0.45rem;
+    row-gap: 0;
+  }
+
+  .seats li > :first-child {
+    grid-area: card;
+  }
+
+  .seats .person {
+    grid-area: person;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .seats .name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.98rem;
+    line-height: 1.3;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .seats .person > .name + svg.host {
+    margin-left: 0.3em;
+  }
+
+  .seats .note {
+    grid-area: note;
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+
+  .seats .deeds {
+    grid-area: deeds;
+    display: flex;
+    align-items: center;
+  }
+
+  .pad .seats input.botname {
+    max-width: 100%;
+  }
+
+  .seats .standup,
+  .seats .unseat {
+    margin-left: 0;
+  }
+
+  .seats .standup svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .seats .unseat {
+    padding: 0 0.2rem;
+    font-size: 1.2rem;
+  }
+}
+
+@media (min-width: 640px) {
+  /* (The lobby's sheet is wider for the two columns.) */
+  .pad:has(> .seats) {
+    width: min(100%, 35rem);
+  }
+}
+
+/* A bot's name where whoever deals may write another over it: it looks like the name, with a line under it to say so. */
+.pad input.botname {
+  width: auto;
+  min-width: 3ch;
+  max-width: 9rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1.5px dashed rgba(35, 48, 52, 0.3);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  field-sizing: content;
+}
+
+.pad input.botname:hover,
+.pad input.botname:focus {
+  border-bottom-color: currentColor;
+  outline: none;
+  box-shadow: none;
+}
+
+/* The lobby: your backs, between the names and the rules. The card and a button: no box. */
+.yourback {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.yourback .change {
+  display: grid;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  background: none;
+  cursor: pointer;
+  transition: transform 0.12s ease-out;
+}
+
+.yourback .change:hover,
+.yourback .change:focus-visible {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+.yourback .change:active {
+  transform: translateY(1px);
+}
+
+.yourback .change .mini {
+  zoom: 0.58;
+}
+
+/* The tag overlaps the card's bottom edge, so it reads as stuck on the card rather than as a line of its own. */
+.yourback .change > span:not(.mini) {
+  position: relative;
+  margin-top: -7px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--marigold);
+  font: 700 0.7rem/1.35 var(--ui);
+  letter-spacing: 0.02em;
+  transform: rotate(-5deg);
+}
+
+/* The table's code in the lobby's heading is a button: pressed, it is copied. */
+button.code.copy {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+button.code.copy:hover {
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 0.15em;
+}
+
+button.code.copy small {
+  position: absolute;
+  left: calc(100% + 0.6rem);
+  top: 50%;
+  translate: 0 -50%;
+  font: 600 0.8rem/1 var(--ui);
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+/* In the lobby, beside a bot's name: a robot's head and its speed. */
+.botnote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.botnote svg {
+  width: 1.05em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Those watching a full table, under the names (and under the scores): a quiet line. */
+.watching {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.8rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.watching small {
+  font: 600 0.72rem/1.2 var(--ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.watching .you {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.watching .unseat {
+  margin-left: 0.1rem;
+  font-size: 1.2rem;
+}
+
+/* The lobby: a dot of your colour beside the card back; behind it, the colours still free. */
+.colour {
+  position: relative;
+  display: inline-flex;
+}
+
+.colour .dot,
+.colour .free button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid #fffdf6;
+  border-radius: 99px;
+  box-shadow: 0 0 0 1.5px var(--ink);
+  cursor: pointer;
+}
+
+.colour .dot:disabled {
+  cursor: default;
+}
+
+.colour .free {
+  position: absolute;
+  z-index: 30;
+  left: -8px;
+  top: calc(100% + 8px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 196px; /* up to nine of them: five to a row */
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--paper);
+  box-shadow:
+    0 0 0 1.5px var(--ink),
+    0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+.colour .free button {
+  flex: none;
+  position: relative;
+}
+
+/* Your own colour among the free ones: ticked. */
+.colour .free button.mine::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 800 15px/1 var(--ui);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+}
+
+.seats .note + .standup {
+  margin-left: 0.6rem;
+}

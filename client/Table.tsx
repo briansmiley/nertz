@@ -160,7 +160,7 @@ const CardView = memo(function CardView(p: CardProps) {
     const g = goal.current;
     const n = ++flight.current;
     if (veiled) o.set(ALOFT);
-    // Somebody else's card crossing the table is not in the pointer's way either (styles.css `.card[data-passing]`).
+    // Somebody else's card crossing the table is not in the pointer's way either (styles/cards.css `.card[data-passing]`).
     if (passing) el.current?.setAttribute('data-passing', '');
     else el.current?.removeAttribute('data-passing');
     animate(x, g.x, move);

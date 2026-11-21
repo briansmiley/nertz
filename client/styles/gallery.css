@@ -1,0 +1,637 @@
+/* Your cards, to look at and choose (/?decks). */
+
+.showroom {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 20px 90px;
+}
+
+.showroom header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.showroom h1 {
+  margin: 0;
+  font: 400 clamp(2rem, 6vw, 3.1rem)/1 var(--display);
+  letter-spacing: 0.01em;
+  color: var(--chalk);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* (The switch for a back by lot stands at the far end of the page's title.) */
+.showroom header .edge {
+  margin-left: auto;
+}
+
+.showroom .back-to {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid rgba(241, 234, 216, 0.4);
+  border-radius: 99px;
+  background: rgba(8, 28, 33, 0.6);
+}
+
+.showroom .back-to:hover {
+  border-color: var(--chalk);
+}
+
+.showroom .back-to svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--chalk);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A heading is chalked on the cloth, with a line running off to the right of it. */
+.showroom .heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 44px 0 26px;
+}
+
+.showroom .heading::after {
+  content: '';
+  flex: 1;
+  order: 1;
+  height: 0;
+  border-top: 2px dashed rgba(241, 234, 216, 0.22);
+}
+
+.showroom h2 {
+  margin: 0;
+  font: 400 1.5rem/1 var(--display);
+  color: var(--marigold);
+  letter-spacing: 0.02em;
+}
+
+/* Backs with or without their white edge: a small switch beside the counters. */
+.showroom .edge {
+  order: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 99px;
+  background: none;
+  color: var(--chalk);
+  font: 600 13px/1 var(--ui);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.showroom .edge .lever {
+  flex: none;
+  width: 26px;
+  height: 16px;
+  border-radius: 99px;
+  background: rgba(241, 234, 216, 0.25);
+  box-shadow: inset 0 0 0 5px rgba(8, 28, 33, 0.01);
+  position: relative;
+  transition: background 0.15s;
+}
+
+.showroom .edge .lever::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 99px;
+  background: var(--chalk);
+  transition: transform 0.15s;
+}
+
+.showroom .edge.on .lever {
+  background: var(--marigold);
+}
+
+.showroom .edge.on .lever::after {
+  transform: translateX(10px);
+}
+
+/* The colour the backs are shown in: a counter of each. (And one of all of them, which a phone shows in their place.) */
+.showroom .inks {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  order: 2;
+}
+
+.showroom .inks .counters {
+  display: contents;
+}
+
+.showroom .inks button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 99px;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+.showroom .inks button.on {
+  border-color: #fff;
+  box-shadow:
+    0 0 0 3px var(--marigold),
+    0 2px 3px rgba(0, 0, 0, 0.35);
+}
+
+.showroom .inks .pie {
+  display: none;
+}
+
+/* The kinds of back: a row of piles, each a few of its cards put down without squaring them, its name under it. */
+.showroom .shelf {
+  display: grid;
+  grid-template-columns: repeat(var(--piles), minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.showroom .pile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 18px 4px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--chalk);
+  cursor: pointer;
+}
+
+/* A pile's cards, on the dotted outline that is left when they are picked up. */
+.showroom .stack {
+  position: relative;
+  width: 90px;
+  height: 126px;
+  margin-bottom: 14px;
+  border: 2px dashed rgba(241, 234, 216, 0.28);
+  border-radius: 8px;
+  zoom: 0.8;
+  translate: -24px 0; /* the fan runs to the right of its first card: this brings the whole of it over its name */
+}
+
+/* A kind of back is a fan of its first few cards, not a deck: three in full, the next two fading away to the right, as many more would. */
+.showroom .stack .mini {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  transform-origin: 50% 100%;
+  transform: translate(calc(var(--k) * 13px), calc(var(--k) * var(--k) * 0.5px)) rotate(calc(var(--k) * 3.5deg));
+  opacity: calc(1 - max(0, var(--k) - 2) * 0.42);
+  transition:
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 0.18s ease-out;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
+}
+
+/* Under the pointer a pile opens a little, like a hand: enough to see what kind of thing is in it. */
+.showroom .pile:not(.open):hover .stack .mini,
+.showroom .pile:not(.open):focus-visible .stack .mini {
+  transform: translate(calc(var(--k) * 16px - 6px), calc(var(--k) * var(--k) * 0.6px - 6px)) rotate(calc(var(--k) * 4.5deg - 2deg));
+  opacity: calc(1 - max(0, var(--k) - 3) * 0.5);
+}
+
+/* Picked up: its cards go down towards where they are dealt out, and only the outline of the first is left. */
+.showroom .pile.open .stack {
+  translate: 0 0;
+  border-color: var(--marigold);
+}
+
+.showroom .pile.open .stack .mini {
+  transform: translate(0, 46px) rotate(0deg) scale(0.8);
+  opacity: 0;
+}
+
+.showroom .pile b {
+  font: 400 1.15rem/1.1 var(--display);
+  letter-spacing: 0.02em;
+}
+
+.showroom .pile.open b {
+  color: var(--marigold);
+}
+
+/* How many there are in it; and a gold counter by the pile yours is in. */
+.showroom .pile i {
+  font: 600 12px/1 var(--ui);
+  font-style: normal;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+}
+
+.showroom .pile.holds i::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 99px;
+  background: var(--marigold);
+  vertical-align: -0.5px;
+}
+
+.showroom .pile.holds i {
+  opacity: 0.9;
+}
+
+/* The pile that is picked up, dealt out on a darker patch of the cloth, with a notch up to where it came from. */
+.showroom .dealt {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 4px;
+  margin-top: 4px;
+  padding: 16px 14px 14px;
+  border-radius: 14px;
+  background: rgba(6, 24, 29, 0.42);
+  box-shadow: inset 0 1px 0 rgba(241, 234, 216, 0.06);
+}
+
+.showroom .dealt::before {
+  content: '';
+  position: absolute;
+  top: -9px;
+  left: calc((var(--at) + 0.5) * (100% / var(--piles)));
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 3px 0 0 0;
+  background: rgba(6, 24, 29, 0.42);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  transform: rotate(45deg);
+}
+
+/* Each card comes down from the row of piles, one after another. */
+.showroom .dealt .lay {
+  animation: laid 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+  animation-delay: calc(var(--n) * 24ms);
+}
+
+@keyframes laid {
+  from {
+    opacity: 0;
+    transform: translateY(-34px) rotate(-6deg) scale(0.8);
+  }
+}
+
+.calm .showroom .dealt .lay {
+  animation: none;
+}
+
+.calm .showroom .stack .mini {
+  transition: none;
+}
+
+.showroom .lay {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 120px; /* every card takes the same room, whatever the length of its name: a long name goes onto two lines */
+  padding: 12px 6px 9px;
+  border: 3px solid transparent; /* yours: a gold square round it */
+  border-radius: 6px;
+  background: none;
+  color: var(--chalk);
+  cursor: pointer;
+}
+
+.showroom .lay > .mini:first-child {
+  transform: rotate(var(--lie));
+  transition: transform 0.16s ease-out;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+}
+
+.showroom .lay:hover > .mini:first-child,
+.showroom .lay.on > .mini:first-child {
+  transform: rotate(0deg);
+}
+
+/* Its small rendition, tucked against the corner. */
+.showroom .lay .mini.small {
+  position: absolute;
+  right: 0;
+  top: 108px;
+  zoom: 0.34;
+  transform: rotate(8deg);
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.5));
+}
+
+.showroom .lay em {
+  text-align: center;
+  font: 600 13px/1.1 var(--ui);
+  font-style: normal;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+
+.showroom .lay.on {
+  border-color: var(--marigold);
+}
+
+.showroom .lay.on em {
+  opacity: 1;
+  color: var(--marigold);
+}
+
+/* The decks of faces, two or three across: each a hand fanned out on the cloth, its name and small cards under it. */
+.showroom .decks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  grid-auto-flow: dense; /* a deck's 52 cards take a row of their own, and the decks after it close up over them */
+  gap: 46px 24px;
+}
+
+.showroom article {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.showroom .pick {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 10px 16px 12px;
+  border: 3px solid transparent; /* yours: a gold square round its name and small cards */
+  border-radius: 6px;
+}
+
+.showroom article.on .pick {
+  border-color: var(--marigold);
+}
+
+.showroom .fan {
+  position: relative;
+  width: 330px;
+  max-width: 100%;
+  height: 152px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* Each card is a little further along, a little more turned and a little lower than the middle one: the last lies on top, all of it showing. */
+.showroom .fan .leaf {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  margin-left: -45px;
+  transform: translate(calc(var(--i) * 38px), calc(var(--i) * var(--i) * 1.6px)) rotate(calc(var(--i) * 3.5deg));
+  transition: transform 0.18s ease-out;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+/* Under the pointer the hand opens right out, over its neighbours, so that most of every face shows. */
+.showroom .fan:hover {
+  z-index: 5;
+}
+
+.showroom .fan:hover .leaf {
+  transform: translate(calc(var(--i) * 68px), calc(var(--i) * var(--i) * 1.2px - 6px)) rotate(calc(var(--i) * 2.5deg));
+}
+
+.showroom .about {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.showroom h3 {
+  margin: 0;
+  font: 400 1.7rem/1.1 var(--display);
+  color: var(--chalk);
+  text-align: center;
+}
+
+.showroom .smalls {
+  display: flex;
+  gap: 5px;
+}
+
+.showroom .smalls .mini {
+  zoom: 0.36;
+}
+
+.showroom .more {
+  padding: 4px 12px;
+  border: 1.5px solid rgba(241, 234, 216, 0.3);
+  border-radius: 99px;
+  font: 600 13px/1.2 var(--ui);
+  color: var(--chalk-dim);
+  background: none;
+  cursor: pointer;
+}
+
+.showroom .more:hover,
+.showroom .more[aria-expanded='true'] {
+  color: var(--chalk);
+  border-color: var(--chalk);
+}
+
+/* All 52: four rows of thirteen, a suit to a row, as wide as the page and no wider than the cards are in play. */
+.showroom .all {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 74px));
+  justify-content: center;
+  gap: 6px;
+  margin-top: -18px;
+}
+
+.showroom .all .mini {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 90 / 126;
+}
+
+@media (max-width: 720px) {
+  /* On a phone the spread is four across, close together: the cards smaller than they are in your own hand there, their small renditions about the size of another player's. */
+  .showroom .dealt {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 4px 0;
+    padding: 10px 4px 8px;
+  }
+
+  .showroom .lay {
+    width: auto;
+    gap: 6px;
+    padding: 8px 2px 6px;
+  }
+
+  /* (Placed from the middle of its card, not from the edge of a column whose width depends on the phone.) */
+  .showroom .lay .mini.small {
+    left: 50%;
+    right: auto;
+    top: 0;
+    zoom: 1;
+    transform-origin: 0 0;
+    transform: translate(12px, 40px) rotate(8deg) scale(0.26);
+  }
+
+  .showroom .lay em {
+    font-size: 12px;
+  }
+
+  /* The page's title on one line, and the backs close under it. */
+  .showroom h1 {
+    font-size: clamp(1rem, 8vw - 8px, 1.6rem);
+    white-space: nowrap;
+  }
+
+  .showroom header {
+    gap: 10px;
+    margin-bottom: 0;
+  }
+
+  .showroom .back-to {
+    width: 34px;
+    height: 34px;
+  }
+
+  .showroom header .edge {
+    white-space: nowrap;
+  }
+
+  .showroom header + section .heading {
+    margin: 20px 0 4px;
+  }
+
+  .showroom .heading {
+    gap: 12px;
+  }
+
+  /* The sheet's heading has more after it than a line of a phone holds: its switches go onto lines of their own. */
+  .picker .heading {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .picker .heading:has(.edge)::after {
+    flex-basis: 40%;
+  }
+
+  .picker .heading .edge {
+    margin-left: auto;
+  }
+
+  /* The colours, behind one counter that is a slice of each (in its middle, the one shown now): pressed, they come out under it. */
+  .showroom .inks .pie {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+  }
+
+  .showroom .inks .pie::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 99px;
+    background: currentColor;
+    box-shadow: 0 0 0 2px #fff;
+  }
+
+  .showroom .inks .counters {
+    display: none;
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 10px);
+    right: -4px;
+    grid-template-columns: repeat(5, 26px);
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: #0a2228;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  }
+
+  .showroom .inks.open .counters {
+    display: grid;
+  }
+
+  .showroom .inks .counters button {
+    width: 26px;
+    height: 26px;
+  }
+
+  /* The piles, small enough for all of them to stand in one row of a phone. */
+  .showroom .shelf {
+    grid-template-columns: repeat(4, minmax(0, 1fr)); /* four to a row: more than that and their names run together */
+    gap: 0;
+  }
+
+  /* (With the piles in two rows there is no one pile over the spread for its notch to point up to.) */
+  .showroom .dealt::before {
+    display: none;
+  }
+
+  .showroom .pile {
+    padding: 12px 0 12px;
+  }
+
+  .showroom .stack {
+    zoom: 0.6;
+    margin-bottom: 16px;
+  }
+
+  .showroom .pile b {
+    font: 700 12px/1.1 var(--ui);
+  }
+
+  .showroom .pile i {
+    font-size: 11px;
+  }
+
+  .showroom .lay > .mini:first-child {
+    zoom: 0.6;
+  }
+
+  .showroom .fan {
+    zoom: 0.9;
+  }
+
+  /* Thirteen across is too small to read on a phone: seven and six, each suit starting a row of its own. */
+  .showroom .all {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .showroom .all .mini:nth-child(13n + 1) {
+    grid-column-start: 1;
+  }
+}
+
+/* While one deck's 52 cards are laid out, the other decks are faint: it is plain whose cards those are. */
+.showroom .decks.one article:not(.open) {
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.showroom .decks.one article:not(.open):hover {
+  opacity: 0.7;
+}

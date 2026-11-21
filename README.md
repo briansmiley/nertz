@@ -625,6 +625,7 @@ client/   Vite + React
   social.ts     chat lines, switches and voice presence as the server reports them
   voice.ts      microphone, WebRTC mesh, speaking meter
   cards/        card faces drawn as SVG in code (original art, see cards/CREDITS.md)
+  styles/       the stylesheet, one file per screen or part (index.css imports them in cascade order)
 ```
 
 Dependencies at runtime: `ws`, `react`, `react-dom`, `motion` (card animation) and `tsx` (runs the TypeScript server

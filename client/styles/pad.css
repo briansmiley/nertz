@@ -1,0 +1,211 @@
+/* The score pad: the sheet the home page, the lobby and the results are written on, its fields, and the page it stands on alone (.solo). */
+
+.pad {
+  position: relative;
+  width: min(100%, 25rem);
+  padding: 2.4rem 1.75rem 1.6rem 3.1rem;
+  color: var(--ink);
+  background-color: var(--paper);
+  /* Ruled lines and a margin, like the pad the scores get kept on. */
+  background-image:
+    linear-gradient(90deg, transparent 2.2rem, rgba(207, 34, 51, 0.45) 2.2rem, rgba(207, 34, 51, 0.45) calc(2.2rem + 1.5px), transparent calc(2.2rem + 1.5px)),
+    repeating-linear-gradient(transparent 0 calc(2rem - 1px), var(--rule) calc(2rem - 1px) 2rem);
+  background-position:
+    0 0,
+    0 0.9rem;
+  border-radius: 3px;
+  box-shadow:
+    0 1px 0 #e3d9bf,
+    0 2px 0 #cfc4a6,
+    0 14px 30px rgba(0, 0, 0, 0.4);
+  rotate: -0.6deg;
+}
+
+.pad::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0.9rem;
+  border-radius: 3px 3px 0 0;
+  background: var(--red);
+}
+
+.pad.wide {
+  width: min(100%, 37rem);
+}
+
+.pad h2 {
+  margin: 0;
+  font: 400 1.65rem/2rem var(--display);
+  letter-spacing: 0.01em;
+}
+
+.pad .code {
+  font-family: var(--num);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.pad h2 .code {
+  font-size: 1.25em;
+  color: var(--red);
+}
+
+.pad form,
+.pad {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.pad .lead {
+  margin: -0.6rem 0 0;
+  color: var(--ink-soft);
+}
+
+.pad label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pad label small {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+/* Fields are written on the pad: a line to write on, no box. */
+.pad input {
+  width: 100%;
+  padding: 0.2rem 0.1rem 0.15rem;
+  border: 0;
+  border-bottom: 1.5px solid rgba(27, 39, 51, 0.45);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 1.15rem;
+}
+
+.pad input:hover {
+  border-bottom-color: var(--ink);
+}
+
+.pad input:focus-visible {
+  outline: none;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: -0.5px;
+}
+
+.pad input.code {
+  width: 6.5rem;
+  font-size: 1.35rem;
+  text-transform: uppercase;
+}
+
+.pad input::placeholder {
+  color: #9aa3a8;
+  letter-spacing: inherit;
+}
+
+/* Under a sheet's main button: small round icon buttons (table rules, add a bot, reset the table, leave). */
+.tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* A bot's remove button, a quiet × after its name. */
+.unseat {
+  margin-left: 0.4rem;
+  padding: 0 0.3rem;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-soft);
+  font: 500 1.6rem/1 var(--ui);
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.unseat:hover,
+.unseat:focus-visible {
+  opacity: 1;
+  color: var(--red);
+}
+
+@media (max-width: 480px) {
+  .pad {
+    padding: 2.3rem 1rem 1.3rem 2.2rem;
+    background-image:
+      linear-gradient(90deg, transparent 1.5rem, rgba(207, 34, 51, 0.45) 1.5rem, rgba(207, 34, 51, 0.45) calc(1.5rem + 1.5px), transparent calc(1.5rem + 1.5px)),
+      repeating-linear-gradient(transparent 0 calc(2rem - 1px), var(--rule) calc(2rem - 1px) 2rem);
+    rotate: none;
+  }
+}
+
+/* Add a bot and leave, in the top corner of the sheet: they stay put as the list of players grows. */
+.tools.top {
+  position: absolute;
+  top: 1.6rem;
+  right: 1.2rem;
+}
+
+.pad:has(> .tools.top) {
+  position: relative;
+}
+
+.tools.top .pop {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+/* Beside a name: stand up to watch (an eye). Among those watching: sit down again. */
+.standup {
+  display: inline-grid;
+  place-items: center;
+  margin-left: 0.4rem;
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.standup:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.standup svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.solo {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.solo.over {
+  position: fixed;
+  inset: 0;
+  z-index: 40000;
+  overflow: auto;
+  background: rgba(8, 26, 31, 0.6);
+}
+
+@media (max-width: 480px) {
+  /* The score pad on a narrow screen: less margin, and the sheet's sums in short. */
+  .solo {
+    padding: 3.6rem 0.6rem 1rem;
+  }
+}
