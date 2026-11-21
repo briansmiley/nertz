@@ -16,6 +16,8 @@ const DRAG_SLOP = 6; // px of travel before a press becomes a carry
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
 const TOUCH_RISE_PX = 44;
 const TOUCH_CLEAR_PX = 10;
+/** On a phone a card under a finger is drawn this wide (px) once it has risen, whatever its size in the hand: big enough to see past the fingertip, small enough to see where it is going. */
+const TOUCH_CARD_PX = 48;
 /** An Ace on its way to start a pile shrinks to the size of a pile in the middle over the last few px before the felt. */
 const SHRINK_PX = 14;
 /** A card taken up by a tap stands this much of its height above where it lay. */
@@ -41,6 +43,8 @@ interface Grip {
   sx: number;
   sy: number;
   base: Pt[];
+  /** The scale the grabbed card lay at: what is in hand is drawn about it at `s / home` of how it lay. */
+  home: number;
   /** A finger, not a mouse: the card is carried above it, where it can be seen, and is aimed by its own middle. */
   touch: boolean;
   /** The card on top of every pile in the middle when this one was picked up (its id; none for an empty place): what has been played since is what there was a race for. */
@@ -121,25 +125,32 @@ export interface Step extends Grasp {
 
 // ---------------------------------------------------------------- where it is, and what it is over
 
-const gripOf = ({ held, ids, lead, sx, sy, base, touch, tops }: Grip): Grip => ({ held, ids, lead, sx, sy, base, touch, tops });
+const gripOf = ({ held, ids, lead, sx, sy, base, home, touch, tops }: Grip): Grip => ({ held, ids, lead, sx, sy, base, home, touch, tops });
 const leadBase = (d: Grip): Pt => d.base[d.ids.indexOf(d.lead)]!;
 /** The middle of the grabbed card, where it is drawn. */
 const centreOf = (d: InHand): Pt => ({ x: d.at.x + (d.s * CARD_W) / 2, y: d.at.y + (d.s * CARD_H) / 2 });
-/** Where card `i` of what is in hand is drawn (its corner): the grabbed one where the hand has it, the others as they lay about it. */
-export const drawnAt = (d: InHand, i: number): Pt => ({ x: d.at.x + d.base[i]!.x - leadBase(d).x, y: d.at.y + d.base[i]!.y - leadBase(d).y });
+/** Where card `i` of what is in hand is drawn (its corner): the grabbed one where the hand has it, the others as they lay about it, at its scale. */
+export const drawnAt = (d: InHand, i: number): Pt => {
+  const k = d.s / d.home;
+  return { x: d.at.x + (d.base[i]!.x - leadBase(d).x) * k, y: d.at.y + (d.base[i]!.y - leadBase(d).y) * k };
+};
 
 /** The hand with the pointer at `p`: the card goes with it. */
-function carry(d: Pressed | Carried, p: Pt, { L, game, byId }: Scene): Carried {
-  const home = byId.get(d.lead)?.s ?? 1;
+function carry(d: Pressed | Carried, p: Pt, { L, game }: Scene): Carried {
+  const { home } = d;
   // Under a finger the card comes up as it is carried off, until its lower edge is just above the fingertip: you
-  // see the whole of it and what it is over. (Not a pile on its way to the tray: that is not a precision job.)
+  // see the whole of it and what it is over. (Not a pile on its way to the tray: that is not a precision job.) On a
+  // phone it comes to one size as it rises, TOUCH_CARD_PX, whatever size the hand's cards are in that orientation.
   const grip = d.sy - d.base[0]!.y; // how far down the grabbed card it was taken
-  const rise = d.touch && d.held.k !== 'pile' ? clamp(Math.hypot(p.x - d.sx, p.y - d.sy) / TOUCH_RISE_PX, 0, 1) * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX - grip) : 0;
+  const up = d.touch && d.held.k === 'card' ? clamp(Math.hypot(p.x - d.sx, p.y - d.sy) / TOUCH_RISE_PX, 0, 1) : 0;
+  const top = L.phone ? TOUCH_CARD_PX / CARD_W / home : 1; // its scale once risen, against the hand's
+  const rise = up * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX / top - grip);
+  const lifted = 1 + (top - 1) * up;
   // An Ace that may start a pile comes down to the size of a pile in the middle as it reaches the felt, about the
   // point it is held by: what you carry over the felt is exactly what would lie there.
   const ace = d.held.k === 'card' && d.held.ace;
-  const near = ace ? clamp(1 - (offFelt(toTable(L.felt, p.x, p.y - rise - (d.touch ? (home * CARD_H) / 2 : 0)), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
-  const k = 1 + (L.fs / home - 1) * near;
+  const near = ace ? clamp(1 - (offFelt(toTable(L.felt, p.x, p.y - rise * lifted - (d.touch ? (home * lifted * CARD_H) / 2 : 0)), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
+  const k = lifted + (L.fs / home - lifted) * near;
   const b = leadBase(d);
   return { ...gripOf(d), phase: 'carried', pointer: d.pointer, px: p.x, py: p.y, at: { x: p.x - (d.sx - b.x) * k, y: p.y - rise * k - (d.sy - b.y) * k }, s: home * k };
 }
@@ -285,7 +296,7 @@ function gripAt(g: Extract<Gesture, { k: 'down' }>, id: string, { game, you, L, 
     const got = grab(game, you, id);
     if (got) pick = { held: { k: 'card', id, ace: got.cards.length === 1 && got.cards[0]!.rank === 1 }, ids: got.cards.map((c) => c.id), lead: id };
   }
-  return pick && { ...pick, sx: g.x, sy: g.y, base: pick.ids.map((i) => ({ x: byId.get(i)!.x, y: byId.get(i)!.y })), touch: g.touch, tops: game.slots.map((pile) => pile?.cards.at(-1)?.id) };
+  return pick && { ...pick, sx: g.x, sy: g.y, base: pick.ids.map((i) => ({ x: byId.get(i)!.x, y: byId.get(i)!.y })), home: byId.get(pick.lead)!.s, touch: g.touch, tops: game.slots.map((pile) => pile?.cards.at(-1)?.id) };
 }
 
 // ---------------------------------------------------------------- the decisions

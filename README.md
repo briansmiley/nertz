@@ -49,7 +49,8 @@ Controls:
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
 Nothing shows where a card in hand may go: no pile is outlined for it. (A finger that lets go a little off a pile still
-lands on it.) What counts is
+lands on it. Under a finger the card rises clear of the fingertip as it is carried off, and on a phone comes to one size
+on the way, upright or on its side, whatever size the hand's cards are.) What counts is
 where the pointer is when you let go; only if the pointer is over no pile at all does the centre of the card you grabbed
 decide. Each pile's drop area is the pile plus a small margin (a whole column, for a work pile), neighbouring areas never
 touch, and a card let go between two piles goes back where it came from.

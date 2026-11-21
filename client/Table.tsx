@@ -739,7 +739,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         h?.x.set(at.x);
         h?.y.set(at.y);
         h?.take('held', i);
-        if (d.held.k === 'card' && d.held.ace) h?.s.set(d.s);
+        if (d.held.k === 'card') h?.s.set(d.s);
       });
       if (d.phase === 'carried') aim(d);
     } else if (was && was.phase !== 'pressed') letGo(was);

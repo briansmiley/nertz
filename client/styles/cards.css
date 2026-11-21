@@ -157,8 +157,6 @@
 
 /* "Any of this kind, by lot": a card with a question mark on it, in a dashed line, where the others have their pattern. */
 .back.any {
-  display: grid;
-  place-items: center;
   box-sizing: border-box;
   border: 4.5px solid var(--card);
   background-image: none;
@@ -172,6 +170,12 @@
   font: 400 52px/1 var(--display);
 }
 
+/* The mark fills the card and is centred in itself: centred as the card's own grid item, Safari puts it at the left
+   edge of a card that is zoomed down (the small ones in your settings and on the first page). */
 .back.any::after {
   content: '?';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
 }
