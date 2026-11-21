@@ -30,7 +30,7 @@ export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIc
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" className="back" aria-label="Back" title="Back" onClick={onClick}>
+    <button type="button" className="back" aria-label="Back" data-tip="Back" onClick={onClick}>
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M14.5 5.5 8 12l6.5 6.5" />
       </svg>

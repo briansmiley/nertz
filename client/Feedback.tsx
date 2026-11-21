@@ -178,7 +178,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
       {image ? (
         <div className="shot">
           <img src={image} alt="The attached screenshot" />
-          <button type="button" className="trash" aria-label="Remove the screenshot" title="Remove the screenshot" onClick={() => setImage(null)}>
+          <button type="button" className="trash" aria-label="Remove the screenshot" data-tip="Remove the screenshot" onClick={() => setImage(null)}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 7h14M10 7V4.8h4V7M7 7l.8 12.2h8.4L17 7M10.3 10.5v5.5M13.7 10.5v5.5" />
             </svg>

@@ -50,6 +50,8 @@ interface Player {
   account: string | null;
   name: string;
   seat: number | null;
+  /** When they last sat down (a count, not a clock: lower is earlier). Their seat is their colour, so the lobby lists by this instead: whoever sits down goes to the end. */
+  sat?: number;
   /** Their number in the queue for a seat (a count, not a clock: lower is earlier); null when they are not in it. Never set together with `seat`. */
   queued: number | null;
   /**
@@ -162,6 +164,8 @@ export class Room {
   private sitting: string = randomUUID();
   /** The last number given out to someone who began to wait for a seat (`Player.queued`), and the last `Player.id`. */
   private queue = 0;
+  /** The count `sat` goes by. */
+  private sittings = 0;
   private ids = 0;
   private state: GameState | null = null;
 
@@ -797,6 +801,13 @@ export class Room {
     return account !== null && this.players.some((q) => q !== but && q.account === account && seated(q));
   }
 
+  /** Where anyone, person or bot, sits down: at `seat` (from `seatFor`), and at the end of the order they sat in. */
+  private sitDown(p: Player, seat: number): void {
+    p.seat = seat;
+    p.sat = this.sittings++;
+    p.queued = null;
+  }
+
   private seatFor(p?: Player): number | null {
     if (freeSeats(this.seats) === 0) return null;
     const free = (seat: number) => !this.players.some((q) => q.seat === seat);
@@ -824,8 +835,7 @@ export class Room {
       if (this.seatedAs(p.account, p)) continue; // one seat to an account: a second window of it waits until the first stands up
       const seat = this.seatFor(p);
       if (seat === null) break;
-      p.seat = seat;
-      p.queued = null;
+      this.sitDown(p, seat);
       this.host ??= p;
     }
   }
@@ -907,7 +917,9 @@ export class Room {
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
-    this.players.push({ id, token: `bot:${id}`, account: null, name, seat, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } });
+    const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
+    this.players.push(bot);
+    this.sitDown(bot, seat);
     this.changed();
   }
 
@@ -1114,6 +1126,7 @@ export class Room {
       players: [...this.table, ...this.players.filter((p) => p.queued !== null).sort((a, b) => a.queued! - b.queued!), ...this.players.filter((p) => !seated(p) && p.queued === null)].map((p) => ({
         id: p.id,
         seat: p.seat,
+        ...(seated(p) ? { sat: p.sat ?? 0 } : {}),
         name: p.name,
         connected: p.conn !== null,
         ...(p.out ? { left: true as const } : {}),

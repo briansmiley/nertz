@@ -348,6 +348,25 @@
   color: var(--ink);
 }
 
+/* A figure that is good for you (snipes) a little green, one that is bad (sniped) a little red. */
+.record .good dd {
+  color: #2f7a4a;
+}
+
+.record .bad dd {
+  color: #b0303c;
+}
+
+/* A word with more to say: a dashed line under it, and the more on hover. */
+.record .explained {
+  cursor: help;
+}
+
+.record .explained dt {
+  text-decoration: underline dashed 1px;
+  text-underline-offset: 0.2em;
+}
+
 .record dt {
   font: 400 0.8rem/1rem var(--ui);
   color: var(--ink-soft);

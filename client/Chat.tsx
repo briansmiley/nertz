@@ -168,7 +168,7 @@ export function Chat({ room }: { room: RoomView }) {
 
   /** Mute yourself: in the bar, a microphone (yellow, with a line through it, while muted). */
   const mute = inVoice && (
-    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} style={wide(voiceAt + 1)} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} title={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
+    <button type="button" className={`mic mute${voice.muted ? ' on' : ''}`} style={wide(voiceAt + 1)} aria-pressed={voice.muted} aria-label={voice.muted ? 'Unmute yourself' : 'Mute yourself'} data-tip={`${voice.muted ? 'You are muted: unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
       {mic(voice.muted)}
       <SaidWord said={said} />
     </button>
@@ -202,7 +202,7 @@ export function Chat({ room }: { room: RoomView }) {
             style={wide(voiceAt)}
             disabled={voice.status === 'asking'}
             aria-label={social.inVoice.length ? `Join voice: ${social.inVoice.length} in it` : 'Join voice'}
-            title={social.inVoice.length ? `Join voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}` : 'Join voice'}
+            data-tip={social.inVoice.length ? `Join voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}` : 'Join voice'}
             onClick={() => void joinVoice()}
           >
             {headset}
@@ -217,7 +217,7 @@ export function Chat({ room }: { room: RoomView }) {
             style={wide(voiceAt)}
             aria-expanded={open === 'voice'}
             aria-label={`In voice: ${social.inVoice.length}. Who is there, mute yourself, leave`}
-            title={`In voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}`}
+            data-tip={`In voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}`}
             onClick={() => toggle('voice')}
           >
             {headset}
@@ -227,13 +227,13 @@ export function Chat({ room }: { room: RoomView }) {
         {mute}
         {/* The game's sound is off (from the corner's menu, or the key): a small badge that turns it back on. */}
         {prefs.muted && (
-          <button type="button" className="sound-off" aria-label="Sound is off. Unmute" title={soundKey ? `Sound is off: unmute (${soundKey})` : 'Sound is off: unmute'} onClick={() => setPrefs({ muted: false })}>
+          <button type="button" className="sound-off" aria-label="Sound is off. Unmute" data-tip={soundKey ? `Sound is off: unmute (${soundKey})` : 'Sound is off: unmute'} onClick={() => setPrefs({ muted: false })}>
             <Speaker off />
           </button>
         )}
         {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
         {watchers.length > 0 && (
-          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} style={wide(at.chatParts.length - 1)} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} title={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
+          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} style={wide(at.chatParts.length - 1)} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} data-tip={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
               <circle cx="12" cy="12" r="2.8" />
@@ -267,7 +267,7 @@ export function Chat({ room }: { room: RoomView }) {
                   </button>
                 )}
                 {hosting && p.id !== room.me && (
-                  <button type="button" className="mic-at" aria-label={`Remove ${p.name}`} title={`Remove ${p.name} from the table`} onClick={() => kick(p.id)}>
+                  <button type="button" className="mic-at" aria-label={`Remove ${p.name}`} data-tip={`Remove ${p.name} from the table`} onClick={() => kick(p.id)}>
                     ×
                   </button>
                 )}
@@ -296,17 +296,17 @@ export function Chat({ room }: { room: RoomView }) {
                   {name(m.id)}
                   {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
                   {me ? (
-                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} title={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
+                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} data-tip={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
                       {mic(off)}
                     </button>
                   ) : (
                     off && (
-                      <span className="mic-at" role="img" aria-label="muted" title="Muted">
+                      <span className="mic-at" role="img" aria-label="muted" data-tip="Muted">
                         {mic(true)}
                       </span>
                     )
                   )}
-                  {!me && voice.links[m.id] === 'failed' && <small className="bad" title="Your two networks cannot reach each other directly">can't connect</small>}
+                  {!me && voice.links[m.id] === 'failed' && <small className="bad" data-tip="Your two networks cannot reach each other directly">can't connect</small>}
                   {!me && voice.links[m.id] === 'connecting' && <small>connecting…</small>}
                 </li>
               );

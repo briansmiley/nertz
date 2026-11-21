@@ -31,12 +31,14 @@ const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
- * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box.
+ * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box. Its empty
+ * `data-tip` keeps the tip of what it sits in (the locked table rules) from showing over its own.
  */
 function Info({ children }: { children: ReactNode }) {
   return (
     <span
       className="info"
+      data-tip=""
       role="button"
       tabIndex={0}
       aria-label="More about this"
@@ -77,7 +79,7 @@ export function Pop({ icon, label, children }: { icon: ReactNode; label: string;
   useDismiss(root, open, () => setOpen(false));
   return (
     <span className="pop-at" ref={root}>
-      <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen(!open)}>
+      <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} data-tip={label} onClick={() => setOpen(!open)}>
         {icon}
       </button>
       {open && (
@@ -104,7 +106,7 @@ function Glasses() {
 function Specs({ on, disabled, what, onChange }: { on: boolean; disabled: boolean; what: string; onChange: (on: boolean) => void }) {
   const says = on ? `Spectators can ${what} too. Press to keep them out` : `Spectators cannot ${what}. Press to let them`;
   return (
-    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={says} title={says} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
+    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={says} data-tip={says} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
       <Glasses />
     </button>
   );
@@ -140,7 +142,7 @@ function Volume({ prefs }: { prefs: Prefs }) {
             className={`${open === ch ? 'on' : ''}${quiet(ch) ? ' quiet' : ''}`}
             aria-expanded={open === ch}
             aria-controls={open === ch ? 'mix-level' : undefined}
-            title={CHANNEL_NAMES[ch][1]}
+            data-tip={CHANNEL_NAMES[ch][1]}
             onClick={() => setOpen(open === ch ? null : ch)}
           >
             {CHANNEL_NAMES[ch][0]}
@@ -213,7 +215,7 @@ export function Clock({ clock, at }: { clock: NonNullable<RoomView['clock']>; at
   const s = Math.floor(ms / 1000);
   const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   return (
-    <time className={`clock${at.small ? ' small' : ''}${clock.running ? '' : ' stopped'}`} style={{ left: at.x, top: at.y }} role="timer" aria-label={`Round time ${text}`} title="This round">
+    <time className={`clock${at.small ? ' small' : ''}${clock.running ? '' : ' stopped'}`} style={{ left: at.x, top: at.y }} role="timer" aria-label={`Round time ${text}`}>
       {text}
     </time>
   );
@@ -283,7 +285,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         aria-expanded={!!open}
         aria-controls="menu"
         aria-label="Menu"
-        title="Menu"
+        data-tip="Menu"
         onClick={(e) => {
           openCorner(open ? null : 'menu');
           e.currentTarget.blur(); // keep Space for flipping
@@ -331,7 +333,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
                 return (
                   <p key={k}>
                     {HOTKEY_LABELS[k]}
-                    <button type="button" className={keying === k ? 'on' : ''} title="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(keying === k ? null : k), e.currentTarget.blur())}>
+                    <button type="button" className={keying === k ? 'on' : ''} data-tip="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(keying === k ? null : k), e.currentTarget.blur())}>
                       {keying === k ? 'Press a key…' : code ? keyName(code) : 'none'}
                     </button>
                   </p>
@@ -414,7 +416,7 @@ function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
 export function TableRules({ room }: { room: RoomView }) {
   const mine = room.players.find((p) => p.isHost)?.id === room.me;
   return (
-    <fieldset className={`rules${mine ? '' : ' locked'}`} title={mine ? undefined : 'Only the room host can set these.'}>
+    <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'}>
       <legend>Table rules</legend>
       <Rules room={room} mine={mine} />
     </fieldset>

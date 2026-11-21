@@ -326,6 +326,11 @@ the table, and counts as a connected player everywhere: for the two-player minim
 stuck" vote and for scoring. A bot never deals, cannot be added or removed during a round, and does not keep a table alive:
 a lobby with only bots left is forgotten at once, and a table nobody is connected to expires as usual, bots or not.
 
+The lobby sheet is one size however many sit down: its list of names has a line for each of the ten seats a table can
+have (`MAX_PLAYERS`), filled in order of arrival. A seat the table has but nobody has taken is the dashed outline of a
+card; past the table's seats the lines are bare. Your card back and colour stand beside the table rules under the list.
+So adding bot after bot, or changing the number of seats, moves nothing under the pointer.
+
 **It plays fair.** The bot lives on the server but is a player like any other. All it ever sees is `viewFor(state, itsSeat)`,
 the same redacted snapshot a person in that seat is sent, and all it can do is submit ordinary intents through the same
 `Room` code path as a person's, in the same single order, with the same refusals. If a move is refused (somebody got there
@@ -620,6 +625,7 @@ client/   Vite + React
   actions.ts    what can be done to the table during a round (pause, the vote to end it, deal again, leave): the one rule for each of whether it is open to you
   Menu.tsx      the menu: mute, those actions, and the way to settings and feedback
   prefs.ts      your settings: sound levels, reduced motion; localStorage
+  tip.ts        the game's own tooltip, in place of the browser's `title`: one for the page, beside any element with a `data-tip`, on mouse hover or keyboard focus (never on touch), kept on screen and out of the way of clicks
   sound.ts      Web Audio: one function per cue, and the hook that plays them
   soundEvents.ts  pure: which cues a change of the rendered table calls for
   sounds/       13 short card recordings (CC0, see sounds/CREDITS.md)
@@ -767,8 +773,9 @@ would still need one of the options above, and serving both from one origin is s
 Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
 guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
 is with Google or with a code sent to their email, and they are then known across tables and visits. Signed in, their
-picture (or initial) and name stand where the name was written, and pressing them turns the pad to their page: the name they go by (theirs to change), their record over the rounds they played
-signed in, signing out, and deleting their account.
+picture (or initial) and name stand where the name was written, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
+to their page or the way in and back again (with reduced motion, the other side simply comes up).
 
 ### What is kept
 
@@ -794,8 +801,12 @@ page it is a guest's. The same account in two windows is one seat at a table: th
 
 `GET /stats?among=all|people|no-bots` answers whoever asks, by their cookie, with their own record (`Stats`,
 shared/types.ts) over every round, those with someone else there who is no bot, or those with no bot at all: rounds
-played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points in
-all, average place, the best round, and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts.
+played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points and
+cards played to the middle in all and the most of each in one round, nertz cards left in all, how far ahead they finish,
+and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of
+the others in a round who scored less, a tie counting half, averaged over the rounds with someone else in them: 1 for
+first, 0 for last and ½ for the middle of a table of any size (an average place would mean something else at two than at
+six). Your page shows it as a percentage, and the sums as so much a round.
 
 `/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
 nobody signed in); `PUT {name}` a new name to go by; `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
