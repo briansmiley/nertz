@@ -3,12 +3,13 @@ import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount,
 import { SignIn } from './SignIn';
 import { Profile } from './Profile';
 import { Gallery } from './Gallery';
+import { useAnimate } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
 import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
-import { lookOf, usePrefs } from './prefs';
+import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
@@ -105,8 +106,58 @@ export function App() {
 /** The server deals only to players who are connected, and needs two of them. */
 const enoughToDeal = (room: RoomView): boolean => room.players.filter((p) => p.connected && hasSeat(p)).length >= MIN_PLAYERS;
 
-function Pad({ children, wide }: { children: ReactNode; wide?: boolean }) {
-  return <section className={`pad${wide ? ' wide' : ''}`}>{children}</section>;
+/** Each half of the pad's turn over: edge-on, then down again on its other side. */
+const PAD_HALF = 0.2;
+/** Held through the turn (from nothing it would swell the pad toward the viewer). */
+const PAD_PERSPECTIVE = [1400, 1400];
+
+/**
+ * The score pad. Given a `side`, it is a slip with sides: a new side comes up by the pad turning over like a card,
+ * showing what it had until it is edge-on and the new side from there, away from the side it was first shown on and
+ * back the other way. Reduced motion (`calm`): the new side, without the turn.
+ */
+function Pad({ children, wide, side }: { children: ReactNode; wide?: boolean; side?: string }) {
+  const [scope, animate] = useAnimate<HTMLElement>();
+  /** The side up now: behind `side` while the pad turns away from it. */
+  const [up, setUp] = useState(side);
+  const first = useRef(side);
+  /** What the side up showed last, kept on it while it turns away. */
+  const shown = useRef(children);
+  if (up === side) shown.current = children;
+  const turned = useRef(false);
+  useEffect(() => {
+    const pad = scope.current;
+    if (up === side) {
+      // Settled (or turned back before edge-on): down flat, from wherever the turn had got to. Flat, it drops its
+      // transform: the held perspective would leave the pad a containing block, trapping a fixed overlay (the delete
+      // confirm) inside it on phones.
+      if (!turned.current) return;
+      let off = false;
+      void animate(pad, { rotateY: 0, transformPerspective: PAD_PERSPECTIVE }, { duration: calm() ? 0 : PAD_HALF, ease: 'easeOut' }).then(() => {
+        if (!off) pad.style.transform = '';
+      });
+      return () => {
+        off = true;
+      };
+    }
+    if (calm()) return setUp(side);
+    turned.current = true;
+    const way = side === first.current ? -90 : 90;
+    let off = false;
+    void animate(pad, { rotateY: way, transformPerspective: PAD_PERSPECTIVE }, { duration: PAD_HALF, ease: 'easeIn' }).then(() => {
+      if (off) return;
+      void animate(pad, { rotateY: -way }, { duration: 0 });
+      setUp(side);
+    });
+    return () => {
+      off = true;
+    };
+  }, [up, side, animate, scope]);
+  return (
+    <section ref={scope} className={`pad${wide ? ' wide' : ''}`}>
+      {up === side ? children : shown.current}
+    </section>
+  );
 }
 
 /** A small card, used as decoration and as each player's colour swatch. */
@@ -393,6 +444,8 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
     if (signedIn) setTurned((t) => (t === 'in' ? 'page' : t));
     else setTurned((t) => (t === 'page' ? null : t));
   }, [signedIn]);
+  /** The side of the pad up: the form, your page, or the way in. */
+  const side = turned && signedIn ? 'page' : turned === 'in' && ways ? 'in' : 'form';
   /** Sign in: the ways in, on the pad; or straight to Google, where it is the only way. */
   const signInNow = () => (ways?.length === 1 && ways[0] === 'google' ? void signIn() : setTurned('in'));
   const [code, setCode] = useState(invited);
@@ -423,10 +476,10 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
         <h1>Nertz!</h1>
       </div>
 
-      <Pad>
-        {turned && signedIn ? (
+      <Pad side={side}>
+        {side === 'page' && signedIn ? (
           <Profile account={signedIn} head={<Back onClick={() => setTurned(null)} />} />
-        ) : turned === 'in' && ways ? (
+        ) : side === 'in' && ways ? (
           <SignIn ways={ways} head={<Back onClick={() => setTurned(null)} />} />
         ) : (
           <form onSubmit={submit}>

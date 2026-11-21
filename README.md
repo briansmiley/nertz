@@ -767,8 +767,9 @@ would still need one of the options above, and serving both from one origin is s
 Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
 guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
 is with Google or with a code sent to their email, and they are then known across tables and visits. Signed in, their
-picture (or initial) and name stand where the name was written, and pressing them turns the pad to their page: the name they go by (theirs to change), their record over the rounds they played
-signed in, signing out, and deleting their account.
+picture (or initial) and name stand where the name was written, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
+to their page or the way in and back again (with reduced motion, the other side simply comes up).
 
 ### What is kept
 
