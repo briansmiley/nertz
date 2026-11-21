@@ -101,7 +101,7 @@ export function Record() {
       <div className="among">
         <div role="radiogroup" aria-label="Which rounds">
           {AMONG.map((a) => (
-            <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} title={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
+            <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} data-tip={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 {AMONG_DRAWN[a].draw}
               </svg>

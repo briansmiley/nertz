@@ -338,10 +338,10 @@ function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
       </button>
       {open && (
         <>
-          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} title={`Stand ${who.name} up`} onClick={() => (sit(false, who.id), shut())}>
+          <button type="button" className="standup" aria-label={`Stand ${who.name} up`} data-tip={`Stand ${who.name} up`} onClick={() => (sit(false, who.id), shut())}>
             <Eye />
           </button>
-          <button type="button" className={`unseat${sure ? ' sure' : ''}`} aria-label={`Send ${who.name} away${sure ? '?' : ''}`} title={`Send ${who.name} away${sure ? '?' : ''}`} onClick={() => (sure ? (kick(who.id), shut()) : setSure(true))}>
+          <button type="button" className={`unseat${sure ? ' sure' : ''}`} aria-label={`Send ${who.name} away${sure ? '?' : ''}`} data-tip={`Send ${who.name} away${sure ? '?' : ''}`} onClick={() => (sure ? (kick(who.id), shut()) : setSure(true))}>
             ×
           </button>
         </>

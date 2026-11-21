@@ -625,6 +625,7 @@ client/   Vite + React
   actions.ts    what can be done to the table during a round (pause, the vote to end it, deal again, leave): the one rule for each of whether it is open to you
   Menu.tsx      the menu: mute, those actions, and the way to settings and feedback
   prefs.ts      your settings: sound levels, reduced motion; localStorage
+  tip.ts        the game's own tooltip, in place of the browser's `title`: one for the page, beside any element with a `data-tip`, on mouse hover or keyboard focus (never on touch), kept on screen and out of the way of clicks
   sound.ts      Web Audio: one function per cue, and the hook that plays them
   soundEvents.ts  pure: which cues a change of the rendered table calls for
   sounds/       13 short card recordings (CC0, see sounds/CREDITS.md)
