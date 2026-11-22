@@ -342,7 +342,7 @@ function onTheFelt(L: Layout, game: GameState): Ground {
     return { seat, v, x: d.cx + v.x * d.rx * k - pw / 2, y: d.cy + v.y * d.ry * k - ph / 2, w: pw, h: ph };
   };
   const round = game.players.map((p, i) => spotAt(p.seat, seatDir((i - view + n) % n, n)));
-  // Where the others sit in a column at each side (a full table, or a phone on its side), the chairs are not round
+  // Where the others sit in a U (more than six at the table: `Layout.cols`), the chairs are not round
   // the felt, and a pile sent "towards its chair" by the seat's place in the ring lands in front of someone else. There
   // each pile goes to the edge of the felt nearest its player's hand instead: towards where the hand really is.
   // (Kept only if no two piles then touch; else the ring, which never does.)
@@ -425,10 +425,10 @@ function onTheFelt(L: Layout, game: GameState): Ground {
     search(0, 0);
     return { spots, labels, least };
   };
-  // The ring first: it never fails. Then, in columns, as far towards the hands as leaves the piles apart and the
-  // labels no worse off than the ring has them (in a small window the labels of five piles down one side collide).
+  // The ring first: it never fails. Then, in a U, as far towards the hands as leaves the piles apart and the
+  // labels no worse off than the ring has them (in a small window the labels of the piles down one side collide).
   let best = label(round);
-  if (L.low) {
+  if (L.cols) {
     for (const w of [1, 0.75, 0.5, 0.25]) {
       const set = towardsHands(w);
       if (!clear(set)) continue;

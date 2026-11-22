@@ -95,10 +95,14 @@ What you see around a round:
 - **A long work pile** of yours may start a little higher up, into what room there is between your hand and the felt
   (and short of anyone's hand above it). Past that the oldest cards of the pile narrow to slivers and the newest keep
   their rank readable.
-- **More than six at the table**, or a phone on its side: everyone else sits in a column at each side of the felt. The
-  left one runs down beside your hand only where your hand leaves it the room (a phone's); otherwise it stops above
-  your hand, as the right one does. Too many for a column even at the smallest cards, they lie a little over each
-  other; never over your hand.
+- **More than six at the table**: everyone else sits in a U, a column of upright hands at each side of the felt and
+  a row across the top between the two, clockwise from your left: up the left side, across the top, down the right.
+  A third of them are at each side, as near as it comes (of nine others three, three and three; `seating` in
+  `client/layout.ts` is the one place that says), and both columns end above your hand.
+- **A phone on its side** is too low for a row above the felt: everyone else sits in a column at each side of it,
+  however many they are. The left one runs down beside your hand only where your hand leaves it the room; otherwise
+  it stops above your hand, as the right one does. Too many for a column even at the smallest cards, they lie a
+  little over each other; never over your hand.
 - **A pile you finished** (you placed its King) glows and gives a small nod; other people's finished piles are dimmed and
   ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
   NERTZ! first, or try to deal from the stock or to start a pile on the felt, nothing moves, the pile shakes, the tray
@@ -267,7 +271,9 @@ be free, all four piles per player fit at least 99 times in 100 (`shared/table.t
 it, in seat order clockwise from your left: along the top edge for seats across from you, at the left or right edge (turned to face the felt)
 for your neighbours (turned a quarter turn to face the felt, running down the edge), lower down the nearer they sit to you. A hand across the table is drawn the other way round
 (its owner's left is your right, as at a real table), a neighbour's the same way round as yours. The top corners are
-kept free for the chat button and the grace countdown, the bottom corners for the settings and the tray.
+kept free for the chat button and the grace countdown, the bottom corners for the settings and the tray. More than
+six at the table do not fit round the felt that way: they are in a U, nobody turned, a column at each side and a row
+across the top between the two.
 
 **Card sizes** (width in pixels of a centre card, and of an opponent's card):
 

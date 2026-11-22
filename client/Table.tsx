@@ -926,7 +926,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
                 </Name>
               )}
               <span className="pts">{points(total(o.seat))}</span>
-              {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
+              {p?.bot && !((L.tall || L.cols) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false || p?.standing ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (

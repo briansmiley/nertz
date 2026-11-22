@@ -4,7 +4,7 @@ import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABL
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** `game` with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
@@ -123,6 +123,109 @@ describe('table layout', () => {
       }
     }
     expect(CARD_RATIO).toBeCloseTo(CARD_H / CARD_W); // the table's idea of a card is the one that is drawn
+  });
+
+  it('says how many of the others sit at your left, across the top and at your right: by their chairs up to six at the table, in a U beyond, in columns on a phone on its side and in rows on one held upright', () => {
+    const at = (others: number, W: number, H: number) => Object.values(seating(others, W, H)).join(' ');
+    // Up to six at the table: one at each side from four on, the rest across the top.
+    expect([1, 2, 3, 4, 5].map((others) => at(others, 1280, 800))).toEqual(['0 1 0', '0 2 0', '1 1 1', '1 2 1', '1 3 1']);
+    // Seven to ten: a third of the others at each side, as near as it comes. Never more than three in a column or in the row.
+    expect([6, 7, 8, 9].map((others) => at(others, 1280, 800))).toEqual(['2 2 2', '2 3 2', '3 2 3', '3 3 3']);
+    for (const [W, H] of [[800, 600], [1024, 768], [1366, 625], [1920, 1080]] as const) expect(at(9, W, H)).toBe('3 3 3');
+    // A phone on its side has nobody above the felt, and a phone held upright nobody beside it.
+    expect([1, 5, 6, 9].map((others) => at(others, 844, 390))).toEqual(['1 0 0', '3 0 2', '3 0 3', '5 0 4']);
+    expect([1, 5, 9].map((others) => at(others, 390, 844))).toEqual(['0 1 0', '0 5 0', '0 9 0']);
+  });
+
+  it('seats seven to ten in a U in a window that is no phone\'s: a column of upright hands at each side that ends above your own, a row across the top between the two, and nothing on anything', () => {
+    for (const [W, H] of [[1024, 768], [1280, 800], [1366, 625], [1920, 1080], [800, 600]] as const) {
+      for (let n = 7; n <= 10; n++) {
+        const game = aced(inPlay(seats(n), lcg(n)));
+        const { left, top, right } = seating(n - 1, W, H);
+        for (const you of [0, n - 1]) {
+          const at = `${n} players, seat ${you}, ${W}x${H}`;
+          const L = computeLayout(W, H, game, you);
+          expect([L.tall, L.low, L.cols], at).toEqual([false, false, true]);
+          // Everyone else in seat order, clockwise from your left: up the left side, across the top, down the right side.
+          expect(L.opponents.map((o) => o.seat), at).toEqual(seats(n - 1).map((k) => (you + 1 + k) % n));
+          const [lefts, tops, rights] = [L.opponents.slice(0, left), L.opponents.slice(left, left + top), L.opponents.slice(left + top)];
+          expect([lefts.length, tops.length, rights.length], at).toEqual([left, top, right]);
+          const me = L.me!.box;
+          const felt = L.middle;
+          // Someone is across the top (not everyone in two columns, as on a phone on its side): above the felt, from left
+          // to right, each hand the other way round as one seen from across the table is.
+          expect(top, at).toBeGreaterThan(0);
+          tops.forEach((o, i) => {
+            expect(o.box.y + o.box.h, at).toBeLessThan(felt.y);
+            expect([o.flip, o.turn], at).toEqual([true, 0]);
+            if (i > 0) expect(o.box.x, at).toBeGreaterThan(tops[i - 1]!.box.x + tops[i - 1]!.box.w);
+          });
+          // The columns: upright hands beside the felt, the left one from the bottom up and the right one from the top
+          // down. Both end above your hand: none runs down beside it.
+          for (const [side, column] of [['left', lefts], ['right', rights]] as const) {
+            column.forEach((o, i) => {
+              expect(o.turn, at).toBe(0);
+              if (side === 'left') expect(o.box.x + o.box.w, at).toBeLessThan(felt.x);
+              else expect(o.box.x, at).toBeGreaterThan(felt.x + felt.w);
+              expect(o.box.y + o.box.h, at).toBeLessThan(me.y);
+              if (i > 0) expect(o.box.y > column[i - 1]!.box.y, at).toBe(side === 'right');
+            });
+          }
+          // The row is between the two columns, not over them.
+          expect(tops[0]!.box.x, at).toBeGreaterThan(lefts[0]!.box.x + lefts[0]!.box.w);
+          expect(tops.at(-1)!.box.x + tops.at(-1)!.box.w, at).toBeLessThan(rights[0]!.box.x);
+          // Nothing overlaps anything: no hand another, yours, the tray, or a corner that belongs to something else (the
+          // chat button, the menu's, the grace countdown, which keeps its corner). And the felt is clear of them all.
+          const chat: Rect = { x: 0, y: 0, w: 96, h: 46 };
+          const knobs: Rect = { x: 0, y: H - 56, w: 104, h: 56 };
+          const pill: Rect = { x: W - COUNTDOWN.right - COUNTDOWN.w, y: countdownTop(L, W), w: COUNTDOWN.w, h: COUNTDOWN.h };
+          expect(pill.y, at).toBe(12);
+          const hands = L.opponents.map(tagged);
+          const things = [...hands, me, { ...L.tray, w: W - L.tray.x }, chat, pill, ...(W >= 1280 ? [knobs] : [])];
+          for (const [i, a] of things.entries()) for (const [j, b] of things.slice(i + 1).entries()) expect(overlap(a, b), `${at}: thing ${i} and thing ${i + 1 + j}`).toBe(false);
+          for (const r of hands) expect(r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H, at).toBe(true);
+          for (const r of things) expect(onFelt(L, r), at).toBe(false);
+          expect(felt.y + felt.h, at).toBeLessThan(me.y);
+          expect(slotsOf(L), at).toHaveLength(4 * n);
+        }
+      }
+    }
+  });
+
+  it('keeps a phone on its side in two columns and a phone held upright in rows, however many are at the table', () => {
+    for (const n of [4, 7, 10]) {
+      const game = inPlay(seats(n), lcg(n));
+      const side = computeLayout(844, 390, game, 0);
+      expect([side.tall, side.low, side.cols], `${n} players`).toEqual([false, true, true]);
+      // Nobody above the felt: everyone beside it, upright.
+      for (const o of side.opponents) expect(o.turn === 0 && (o.box.x + o.box.w <= side.middle.x || o.box.x >= side.middle.x + side.middle.w), `${n} players`).toBe(true);
+      const upright = computeLayout(390, 844, game, 0);
+      expect([upright.tall, upright.low, upright.cols], `${n} players`).toEqual([true, false, false]);
+      for (const o of upright.opponents) expect(o.box.y + o.box.h, `${n} players`).toBeLessThanOrEqual(upright.middle.y);
+    }
+  });
+
+  it('whoever watches a table of more than six without a seat has the first player\'s hand at the bottom and the rest in the U', () => {
+    for (const n of [7, 10]) {
+      const L = computeLayout(1280, 800, aced(inPlay(seats(n), lcg(n))), 99);
+      const { left, top } = seating(n - 1, 1280, 800);
+      expect(L.me).toBeNull();
+      expect(L.opponents.map((o) => o.seat)).toEqual(seats(n));
+      const [first, ...rest] = L.opponents;
+      expect(first!.box.y).toBeGreaterThan(L.middle.y + L.middle.h);
+      expect(first!.box.x + first!.box.w / 2).toBeCloseTo(640);
+      rest.forEach((o, i) => {
+        if (i < left) expect(o.box.x + o.box.w).toBeLessThan(L.middle.x);
+        else if (i < left + top) expect(o.box.y + o.box.h).toBeLessThan(L.middle.y);
+        else expect(o.box.x).toBeGreaterThan(L.middle.x + L.middle.w);
+      });
+      const hands = L.opponents.map(tagged);
+      for (const [i, a] of hands.entries()) {
+        expect(onFelt(L, a)).toBe(false);
+        expect(a.y >= 0 && a.y + a.h <= 800).toBe(true);
+        for (const b of hands.slice(i + 1)) expect(overlap(a, b)).toBe(false);
+      }
+    }
   });
 
   it('cards in the middle are a good size at desktop sizes: 50px and up at 1280x720', () => {
