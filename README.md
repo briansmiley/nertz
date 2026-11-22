@@ -427,8 +427,8 @@ Reduce motion follows the system setting until you touch it, then overrules it e
 chose for your own, light or dark as yours are, in place of the ones their owners chose: for when somebody's deck is
 hard to read. It is yours alone: the table is not told, nobody else sees a thing of it, and the backs stay their
 owners' (a back says whose a card is). It can be turned on or off at any time, in the middle of a round too.
-`seenLook` (`client/prefs.ts`) is the one place a player's `Look` becomes what you see of it. Kept in `localStorage`;
-without storage they last until the page closes.
+`seenLook` (`client/prefs.ts`) is the one place a player's `Look` becomes what you see of it.
+Your settings are kept in `localStorage`; without storage they last until the page closes.
 
 **Table rules** (on the lobby sheet for everyone, read-only but for the host; and at the bottom of the host's settings between rounds): set by the host, stored in the room and sent in
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
