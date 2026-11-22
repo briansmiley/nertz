@@ -30,11 +30,11 @@ import { setSocial, useSocial } from './social';
 /** Each hotkey as the settings list it. */
 const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic', pauseKey: 'Pause' };
 
-/** Each choice of whose faces you see on every card, as the settings list it. */
+/** Each choice of whose faces you see on every card, as the settings list it, and as its (i) says it. */
 const FACES_SAID: Record<Faces, [string, string]> = {
-  owner: ["Owner's", "Each card in its owner's style"],
-  mine: ['Mine', 'Every card in your style'],
-  big: [DECKS.big, `Every card in ${DECKS.big}, for legibility`],
+  owner: ["Owner's", "the style its owner chose"],
+  mine: ['Mine', 'every card in your style (consistent)'],
+  big: [DECKS.big, `every card in ${DECKS.big} (legible)`],
 };
 
 /**
@@ -330,10 +330,21 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
       </label>
       {/* (Any time, a round or not: it changes the cards for nobody but you.) */}
       <div className="faces">
-        <span id="faces-label">Card faces</span>
+        <span id="faces-label">
+          Card faces{' '}
+          <Info>
+            How card faces display:
+            {FACES.map((f) => (
+              <span key={f} className="line">
+                {FACES_SAID[f][0]}: {FACES_SAID[f][1]}
+              </span>
+            ))}
+            <span className="line">Card backs don't change.</span>
+          </Info>
+        </span>
         <span role="radiogroup" aria-labelledby="faces-label">
           {FACES.map((f) => (
-            <button key={f} type="button" role="radio" aria-checked={prefs.faces === f} className={prefs.faces === f ? 'on' : ''} data-tip={FACES_SAID[f][1]} onClick={(e) => (setPrefs({ faces: f }), e.currentTarget.blur())}>
+            <button key={f} type="button" role="radio" aria-checked={prefs.faces === f} className={prefs.faces === f ? 'on' : ''} onClick={(e) => (setPrefs({ faces: f }), e.currentTarget.blur())}>
               {FACES_SAID[f][0]}
             </button>
           ))}

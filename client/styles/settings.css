@@ -616,3 +616,8 @@ label.check {
   max-width: none;
   margin-left: 0;
 }
+
+/* The (i) beside Card faces: a line for each choice. */
+.info .tip .line {
+  display: block;
+}
