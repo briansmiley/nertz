@@ -31,7 +31,7 @@ import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { calm, hotkeyName, lookOf, usePrefs } from './prefs';
+import { calm, hotkeyName, lookOf, seenLook, usePrefs } from './prefs';
 import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -373,9 +373,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const results = room.phase === 'results';
   const { W, H, pad } = useWindow();
   const prefs = usePrefs();
-  // Whatever decks are at the table are fetched before their cards are turned up.
-  const decks = room.players.map((p) => p.look.deck).join();
-  useEffect(() => room.players.forEach((p) => warm(p.look.deck)), [decks]);
+  // Whatever decks are at the table, as you see them, are fetched before their cards are turned up.
+  const decks = room.players.map((p) => seenLook(prefs, p.look).deck);
+  useEffect(() => decks.forEach((d) => warm(d)), [decks.join()]);
   /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
   const clears = isTall(W, H) || isLow(W, H);
   const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
@@ -654,13 +654,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /**
    * Whose faces and backs the cards from `seat` have: yours, if it is yours; the player's who sits there, as they have them now; but on the
    * finished table, if whoever played the round has left (the seat is empty, or someone else's by now), as they were
-   * when the round ended.
+   * when the round ended. All as you see them: with your faces or Big print, if you have every card so (`Prefs.faces`).
    */
-  const dress = (seat: number): Look | undefined => {
-    if (seat === you) return myLook;
+  const dress = (seat: number): Look => {
     const l = line(seat);
     const p = info(seat);
-    return p && (!l || p.id === l.id) ? p.look : l?.look;
+    return seenLook(prefs, seat === you ? myLook : (p && (!l || p.id === l.id) ? p.look : l?.look) ?? PLAIN_LOOK);
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
@@ -1066,7 +1065,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             face={replaying ? 'down' : c.face}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
-            {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}
+            {...drawn(dress(c.card.owner))}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             pile={`${c.pile} ${c.at}`}
             cls={cardClass(c)}

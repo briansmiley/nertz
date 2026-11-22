@@ -1,11 +1,16 @@
-// Personal settings: sound, reduced motion, your cards' faces and backs, hotkeys
-// and how the chat is shown. They belong to this browser, not to the table, and
-// are remembered in localStorage when there is one (without it they last as
-// long as the page).
+// Personal settings: sound, reduced motion, your cards' faces and backs (and
+// which faces every card has on your screen), hotkeys and how the
+// chat is shown. They belong to this browser, not to the table, and are
+// remembered in localStorage when there is one (without it they last as long
+// as the page).
 import { useSyncExternalStore } from 'react';
 import { isBack, isDeck, isLot, type Back, type Deck, type Look } from '../shared/protocol';
 
 export { backGroups, CARD_BACKS, DECKS, type Back, type Deck } from '../shared/protocol';
+
+/** Whose faces you see on every card: its owner's, your own deck's, or Big print. */
+export const FACES = ['owner', 'mine', 'big'] as const;
+export type Faces = (typeof FACES)[number];
 
 export interface Prefs {
   /** The game's sounds off. Voice chat is not muted by it: only by its own level, or by `levels.master`. */
@@ -13,12 +18,14 @@ export interface Prefs {
   levels: Levels;
   /** Reduced motion: true or false overrides the system setting; null follows it. */
   calm: boolean | null;
-  /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so. */
+  /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so (but as `faces` says). */
   deck: Deck;
   /** The backs of your cards, likewise. */
   back: Back;
   /** Your cards dark: light on a dark card. */
   night: boolean;
+  /** The faces every card has on your screen (`seenLook`): its owner's, yours (`deck`, `night`), or Big print (light or dark as yours are). Nobody else is told, or sees anything of it. */
+  faces: Faces;
   /** A bot that goes out says "Nertz" aloud, in a machine's voice (the browser's own speech, where it has any). */
   botVoice: boolean;
   /** What is said in the chat is shown over the table as it comes, while the chat is closed. */
@@ -65,6 +72,13 @@ export const lookOf = (p: Pick<Prefs, 'deck' | 'night' | 'back' | 'bare' | 'rand
   bare: p.bare,
 });
 
+/**
+ * A player's cards (`look`, as they chose them, yours included) as they are drawn on your screen: with your own faces
+ * or Big print in place of theirs, if `faces` says so (light or dark as yours are). Their backs are theirs either way: a
+ * back says whose the card is.
+ */
+export const seenLook = (p: Pick<Prefs, 'deck' | 'night' | 'faces'>, look: Look): Look => (p.faces === 'owner' ? look : { ...look, deck: p.faces === 'big' ? 'big' : p.deck, night: p.night });
+
 const unit = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback);
 
 /**
@@ -76,7 +90,7 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
@@ -130,6 +144,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     calm: typeof v.calm === 'boolean' ? v.calm : null,
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
     night: typeof v.night === 'boolean' ? v.night : v.deck === 'night', // ("night" was once a deck of its own)
+    faces: FACES.find((f) => f === v.faces) ?? (v.myFaces === true ? 'mine' : 'owner'), // (`myFaces`, a box, was ticked or not)
     back: isBack(v.back) ? v.back : DEFAULT_PREFS.back,
     bare: v.bare === true,
     botVoice: v.botVoice !== false,
