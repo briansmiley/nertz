@@ -175,9 +175,9 @@
   font-size: 0.9rem;
 }
 
-/* The name a guest plays under, on the line below, in line with "Guest". */
+/* The name a guest plays under, just below, from the same left edge. */
 .home .plays {
-  padding-left: 2.55rem;
+  margin-top: -0.6rem;
 }
 
 /* Signed in with no name yet: the line for one, with your disc (your page) beside it. */
