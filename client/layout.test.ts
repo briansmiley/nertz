@@ -262,7 +262,7 @@ describe('table layout', () => {
     }
   });
 
-  it('whoever watches without a seat has the foot of the window for the line that says so: the felt is above it, and round the felt every hand and the count on its nertz pile', () => {
+  it('whoever watches without a seat has the foot of the window for the line that says so: the felt is above it, and so is every hand round the felt or in the right-hand column, and the count on its nertz pile', () => {
     for (const [W, H] of [[1374, 701], [1024, 600], [1280, 720], [1920, 1080], [800, 520], [844, 390], [390, 844]] as const) {
       for (let n = 2; n <= 8; n++) {
         const L = computeLayout(W, H, aced(inPlay(seats(n), lcg(n))), -1);
@@ -270,8 +270,10 @@ describe('table layout', () => {
         const line = H - 12 - WATCH.h;
         expect(L.me, at).toBeNull();
         expect(L.middle.y + L.middle.h, at).toBeLessThanOrEqual(line);
-        if (L.tall || L.low) continue; // (in rows above the felt, or in columns at its sides: nowhere near the line)
-        for (const o of L.opponents) {
+        // (In rows above the felt, nobody is near the line. In columns, the right-hand one stops above it; the left-hand
+        // one comes down beside it as it does beside a hand, as far as the menu's button.)
+        const over = L.tall ? [] : L.low ? L.opponents.filter((o) => o.box.x > W / 2) : L.opponents;
+        for (const o of over) {
           expect(o.box.y + o.box.h, at).toBeLessThanOrEqual(line + 0.01);
           const count = countBox(o.count, W, H);
           expect(count.y + count.h, at).toBeLessThanOrEqual(line + 0.01);

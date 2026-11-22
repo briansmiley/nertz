@@ -567,8 +567,10 @@ export const isLow = (W: number, H: number): boolean => !isTall(W, H) && H < LOW
 
 /**
  * Whoever watches without a seat has no hand of their own along the bottom edge: the line that says they are watching
- * stands there instead (App.tsx, `.banner.low` in base.css: one line 40 high, in the middle, 12 above the bottom). `h` above
- * the foot of the window is kept for it, and the table is laid out over that: the hand they watch from behind, the felt.
+ * stands there instead (App.tsx, `.banner.low` in base.css: one line 40 high, in the middle, 12 above the bottom). `h` is
+ * kept for it over those 12 (the line, and 10 clear above it), and the table is laid out over that: the hand they watch
+ * from behind, the felt, the right-hand column of a crowded table. (The left-hand column comes down beside the line as
+ * it does beside a hand, as far as the menu's button: LOW.)
  */
 export const WATCH = { h: 50 } as const;
 
