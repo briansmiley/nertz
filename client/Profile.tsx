@@ -235,43 +235,62 @@ function YourName({ account }: { account: Account }) {
 const typedHandle = (s: string): string => s.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, MAX_HANDLE_LENGTH);
 
 /**
- * Where your page is, `/u/<handle>`, changed where it is written: kept on Enter or on leaving it. One that cannot be a
- * handle (too short, a hyphen at an end or doubled) is tidied, else put back; one someone else has, or the site's, is
- * left as typed, marked taken, until it is changed or Escape puts yours back.
+ * Where your page is, `/u/<handle>`, changed where it is written. Typing a different one brings up Set (or Enter), which
+ * asks for it: had, the button goes; someone else's, or the site's, the button says so until the handle is changed.
+ * Leaving the field without one set puts yours back, so what it shows is always yours unless you are at it.
  */
 function YourHandle({ account }: { account: Account }) {
   const [handle, setHandle] = useState(account.handle);
   const [taken, setTaken] = useState(false);
+  const [asking, setAsking] = useState(false);
   useEffect(() => (setHandle(account.handle), setTaken(false)), [account.handle]);
-  const keep = async (): Promise<void> => {
-    const asked = handleOf(handle.replace(/-+/g, '-').replace(/^-|-$/g, ''));
-    if (!asked || asked === account.handle) return setHandle(account.handle);
+  const back = (): void => (setHandle(account.handle), setTaken(false));
+  const asked = handleOf(handle.replace(/-+/g, '-').replace(/^-|-$/g, ''));
+  const changed = asked !== null && asked !== account.handle;
+  const set = async (): Promise<void> => {
+    if (!changed || taken || asking) return;
     setHandle(asked);
+    setAsking(true);
     const claimed = await rehandle(asked);
+    setAsking(false);
     if (claimed === 'taken') setTaken(true);
-    if (claimed === 'failed') setHandle(account.handle);
+    if (claimed === 'failed') back();
   };
   return (
-    <label className={`yourhandle${taken ? ' taken' : ''}`}>
-      <span aria-hidden="true">/u/</span>
-      <input
-        aria-label="Your page's address"
-        aria-invalid={taken || undefined}
-        value={handle}
-        maxLength={MAX_HANDLE_LENGTH}
-        size={Math.max(3, handle.length)} /* (where field-sizing is not had: about as wide as the handle) */
-        autoCapitalize="none"
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(e) => (setHandle(typedHandle(e.target.value)), setTaken(false))}
-        onBlur={() => void keep()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur();
-          if (e.key === 'Escape') (setHandle(account.handle), setTaken(false), e.stopPropagation());
-        }}
-      />
-      {taken && <small role="alert">taken</small>}
-    </label>
+    <span
+      className={`yourhandle${taken ? ' taken' : ''}`}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && back()}
+    >
+      <label>
+        <span aria-hidden="true">/u/</span>
+        <input
+          aria-label="Your page's address"
+          aria-invalid={taken || undefined}
+          value={handle}
+          maxLength={MAX_HANDLE_LENGTH}
+          size={Math.max(3, handle.length)} /* (where field-sizing is not had: about as wide as the handle) */
+          autoCapitalize="none"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(e) => (setHandle(typedHandle(e.target.value)), setTaken(false))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void set();
+            if (e.key === 'Escape') (back(), e.currentTarget.blur(), e.stopPropagation());
+          }}
+        />
+      </label>
+      {changed && (
+        <button
+          type="button"
+          className="set"
+          disabled={taken || asking}
+          onPointerDown={(e) => e.preventDefault()} /* (the field keeps the focus: Safari would not give it to the button, and leaving the field puts yours back) */
+          onClick={() => void set()}
+        >
+          {taken ? 'Taken' : 'Set'}
+        </button>
+      )}
+    </span>
   );
 }
 

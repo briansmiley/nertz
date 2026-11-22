@@ -255,11 +255,17 @@
 /* Where your page is, `/u/<handle>`: small and soft under the name, and written in place like it. Taken, in red. */
 .profile .yourhandle {
   display: inline-flex;
-  gap: 0;
+  gap: 0.5rem;
   align-items: baseline;
   max-width: 100%;
   font: 400 0.9rem/1.3 var(--ui);
   color: var(--ink-soft);
+}
+
+.profile .yourhandle label {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
   cursor: text;
 }
 
@@ -279,7 +285,6 @@
   outline: none;
 }
 
-
 .profile .yourhandle:hover,
 .profile .yourhandle:focus-within {
   color: var(--ink);
@@ -295,9 +300,23 @@
   border-bottom-color: var(--red);
 }
 
-.profile .yourhandle small {
-  margin-left: 0.4rem;
-  font-size: 0.8rem;
+/* Set: a small word of ink beside the handle; Taken, the same word in red, till the handle changes. */
+.profile .yourhandle .set {
+  flex: none;
+  padding: 0.05rem 0.5rem 0.1rem;
+  border: 1.5px solid currentColor;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font: 600 0.8rem/1.2 var(--ui);
+  cursor: pointer;
+}
+
+.profile .yourhandle .set:disabled {
+  cursor: default;
+}
+
+.profile .yourhandle.taken .set {
   color: var(--red);
 }
 
