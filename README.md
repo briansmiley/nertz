@@ -899,18 +899,25 @@ it if they were signed in. The screenshot is a file beside the database, `report
 `DATA_DIR`: its name is made by the server from the report's id, never from anything sent, and
 nothing serves these files (read them with `fly ssh sftp get`). The screenshots kept may come to 200 MB in all: past
 that a report is kept without its picture, which is still passed on (anyone at all can send one, and the accounts live
-on the same volume). Once it has been passed on, the row also says what it was titled and the address of the issue
-filed for it. So a report that reaches nowhere else is not lost. To read them:
-`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue from report order by created_at desc;`
+on the same volume). Once it has been passed on, the row also says what it was titled, the address of the issue
+filed for it and the id of its Discord post (`post`). So a report that reaches nowhere else is not lost. To read them:
+`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue, post from report order by created_at desc;`
 
 From there it is passed on wherever the server was told, to both if both are set:
 
 - `FEEDBACK_WEBHOOK`: a Discord webhook URL (channel settings, Integrations, Webhooks: no bot needed). The report is
-  posted there with the screenshot attached. On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
+  posted there with the screenshot attached, and Discord is asked for the message it made (`?wait=true`): its id is
+  kept, on the report's row and as a `**Discord:**` line at the foot of the issue (added once the post is made, since
+  the post links the issue). On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
 
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
-  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
-  if the team has none of that name), with the screenshot in its description.
+  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature, and `auto` (each
+  label made if the team has none of that name), with the screenshot in its description. `auto` hands it to the
+  [auto-fanout](#auto-fanout), so only so many of those issues may be open at once (not Done or Canceled, as Linear
+  says when the next is filed): five of one sender's (`AUTO_PER_SENDER`) and twenty of every report's (`AUTO_OPEN`). A
+  sender is their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count
+  as one; the issue says who, hashed, on a `**Sender:**` line. Past a cap the issue is filed without `auto`, and a
+  merged or closed one frees its place.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
 - `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
   issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
@@ -919,3 +926,11 @@ From there it is passed on wherever the server was told, to both if both are set
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
 Ten reports per address per minute; a screenshot is scaled down in the browser first.
+
+### Auto-fanout
+
+The `auto` label hands an issue to the auto-fanout, which runs outside this repo (`~/projects/auto-fanout` on the
+droplet): every hour it implements the waiting `auto` issues, a reviewed PR to `staging` for each, and opens a thread
+on the report's Discord post (the `**Discord:**` line) to say the PR is ready. It never merges. Add the label to any
+issue to hand it over; take it off to keep one back. It reads the issue's last lines, `**Report:**`, `**Sender:**` and
+`**Discord:**`, as the server's own, and everything else in a `[FEEDBACK]` issue as the player's report.

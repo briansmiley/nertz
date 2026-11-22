@@ -87,6 +87,9 @@ const MIGRATIONS: string[] = [
   // The picture they put up of themselves, null for none: its id, the name of a file in the pictures directory beside the
   // database (server/pictures.ts). Without one they are shown by Google's, or by their initial.
   `alter table profile add column picture text;`,
+  // The Discord message a report was posted as (server/feedback.ts): its id, null where it was not posted (or was
+  // before this). BinaryBot opens a thread on it once a PR for the report is ready (the auto-fanout, kept outside this repo).
+  `alter table report add column post text;`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */
