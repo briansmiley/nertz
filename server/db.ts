@@ -96,6 +96,9 @@ const MIGRATIONS: string[] = [
   `alter table profile add column handle text;
    update profile set handle = lower(hex(randomblob(8)));
    create unique index profile_handle on profile (handle);`,
+  // Whether their page is theirs alone (server/stats.ts): to anyone else it is not there, and nobody at a table is told
+  // where it is (server/room.ts). Off unless they say.
+  `alter table profile add column private integer not null default 0 check (private in (0, 1));`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

@@ -520,3 +520,64 @@
   min-width: 0;
   text-align: center;
 }
+
+/* Your page yours alone, or anyone's signed in: a small lever by the word, inked when it is, at the far end of your
+   name's line (on a line of its own under a name too long to leave it room). */
+.profile .you:has(> .private) {
+  flex-wrap: wrap;
+}
+
+.profile .private {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 0.9rem/2rem var(--ui);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.profile .private:hover,
+.profile .private[aria-checked='true'] {
+  color: var(--ink);
+}
+
+.profile .private .lever {
+  position: relative;
+  flex: none;
+  width: 1.6rem;
+  height: 1rem;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  transition: background 0.15s;
+}
+
+.profile .private .lever::after {
+  content: '';
+  position: absolute;
+  left: 0.15rem;
+  top: 0.15rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 0.15s;
+}
+
+.profile .private[aria-checked='true'] .lever {
+  background: var(--ink);
+}
+
+.profile .private[aria-checked='true'] .lever::after {
+  transform: translateX(0.6rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile .private .lever,
+  .profile .private .lever::after {
+    transition: none;
+  }
+}

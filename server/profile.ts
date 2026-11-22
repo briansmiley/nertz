@@ -1,8 +1,10 @@
-// One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by, DELETE the account; and at
+// One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by or whether one's page is
+// private (either, or both), DELETE the account; and at
 // PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it. With the account goes everything
 // kept as theirs, their picture too; the rounds they played and the reports they sent stay, as nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanName } from '../shared/protocol';
+import type { Account } from '../shared/types';
 import type { Accounts } from './accounts';
 import { MAX_SENT_BYTES, type Pictures } from './pictures';
 import { transaction, type Db } from './db';
@@ -25,9 +27,11 @@ export interface ProfileKeeping {
   home: string;
   /** Tells every table that an account is gone: anyone at one signed in as it plays on as nobody's. */
   gone: (account: string) => void;
+  /** Tells every table what an account now is: its page made private or not, its picture put up or taken down. */
+  changed: (account: Account) => void;
 }
 
-export function profileHandler({ db, accounts, rounds, reports, pictures, home, gone }: ProfileKeeping) {
+export function profileHandler({ db, accounts, rounds, reports, pictures, home, gone, changed }: ProfileKeeping) {
   return async (req: IncomingMessage, res: ServerResponse, path: string): Promise<void> => {
     const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     const method = req.method ?? 'GET';
@@ -40,11 +44,15 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     if (!me) return json(401, { ways: accounts.ways }); // (nobody: and the ways in there are)
     if (method === 'GET') return json(200, me);
     if (method === 'PUT') {
-      const raw = (said as { name?: unknown } | null)?.name;
-      const name = typeof raw === 'string' ? cleanName(raw) : '';
-      if (!name) return json(400, null);
-      accounts.rename(me.id, name);
-      return json(200, { ...me, name });
+      // What is said is changed, and nothing else: a name, cleaned and not empty; whether the page is private, yes or no.
+      const { name: raw, private: hidden } = (said ?? {}) as { name?: unknown; private?: unknown };
+      const name = raw === undefined ? undefined : typeof raw === 'string' ? cleanName(raw) : '';
+      if (name === '' || (hidden !== undefined && typeof hidden !== 'boolean') || (name === undefined && hidden === undefined)) return json(400, null);
+      if (name !== undefined) accounts.rename(me.id, name);
+      if (hidden !== undefined) accounts.setPrivate(me.id, hidden);
+      const now: Account = { ...me, ...(name !== undefined && { name }), ...(hidden !== undefined && { private: hidden }) };
+      changed(now);
+      return json(200, now);
     }
     // All of it at once, or none; then the tables, and the cookies that forget them in this browser. (With the profile
     // gone their cookie is nobody's already: signing out only tidies it away.)
@@ -76,7 +84,9 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     // (Asked again: the account may have gone while the picture was drawn. Then it is not kept.)
     if (!(await accounts.who(req.headers))) return (pictures.remove(id), json(401, { ways: accounts.ways }));
     pictures.remove(accounts.repicture(me.id, id));
-    json(200, await accounts.who(req.headers));
+    const now = await accounts.who(req.headers);
+    if (now) changed(now);
+    json(200, now);
   }
 }
 

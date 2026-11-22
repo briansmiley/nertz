@@ -1,5 +1,6 @@
 // Screens around the table: home, lobby, round results.
-import { pageInUrl, rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
+import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
+import { goHome, showPage, useAddressed } from './address';
 import { SignIn } from './SignIn';
 import { Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
@@ -45,14 +46,17 @@ function Ping() {
 export function App() {
   const net = useNet();
   const room = net.room;
+  const account = useAccount();
+  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. */
+  const page = useAddressed();
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
-  const page = pageInUrl();
-  if (!room && page) return <Someone handle={page} />;
+  // (Whose it is, yours or not, is not known until the server says who is signed in.)
+  if (!room && page && page !== signedInAs(account)?.handle) return account === 'unknown' ? null : <Someone handle={page} />;
   if (!room) {
     return (
       <>
-        <Home error={net.error} busy={net.status !== 'idle'} />
+        <Home error={net.error} busy={net.status !== 'idle'} yours={page !== null} />
         <Corner />
       </>
     );
@@ -112,7 +116,7 @@ export function App() {
 function Someone({ handle }: { handle: string }) {
   const account = useAccount();
   const ways = waysIn(account);
-  const home = <Back onClick={() => location.assign('/')} />;
+  const home = <Back onClick={goHome} />;
   return (
     <main className="solo">
       <Pad>{signedInAs(account) ? <Theirs handle={handle} head={home} /> : ways ? <SignIn ways={ways} head={home} /> : null}</Pad>
@@ -462,7 +466,8 @@ function Avatar({ image, name }: { image: string | null; name: string | null }) 
   return <i aria-hidden="true">{[...name][0]!.toUpperCase()}</i>;
 }
 
-function Home({ error, busy }: { error: string | null; busy: boolean }) {
+/** The home page; `yours`, with the pad turned over to your page (the address is yours: `useAddressed`). */
+function Home({ error, busy, yours }: { error: string | null; busy: boolean; yours: boolean }) {
   const invited = roomInUrl();
   /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. */
   const [name, setName] = useState(rememberedName);
@@ -481,18 +486,17 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
     enter(room, sitAs, !signedIn);
   };
   /**
-   * Which way the pad is turned, if not to the form: to your page, or to the way in. Signing in from the way in turns
-   * it to your page; signing out of your page turns it back to the form, never through the way in.
+   * The pad turned over to the way in. Signing in from it turns it to your page; signing out of your page turns it
+   * back to the form (client/account.ts), never through the way in.
    */
-  const [turned, setTurned] = useState<'page' | 'in' | null>(null);
+  const [wayIn, setWayIn] = useState(false);
   useEffect(() => {
-    if (signedIn) setTurned((t) => (t === 'in' ? 'page' : t));
-    else setTurned((t) => (t === 'page' ? null : t));
-  }, [signedIn]);
+    if (signedIn && wayIn) (setWayIn(false), showPage(signedIn.handle));
+  }, [signedIn, wayIn]);
   /** The side of the pad up: the form, your page, or the way in. */
-  const side = turned && signedIn ? 'page' : turned === 'in' && ways ? 'in' : 'form';
+  const side = yours && signedIn ? 'page' : wayIn && ways ? 'in' : 'form';
   /** Sign in: the ways in, on the pad; or straight to Google, where it is the only way. */
-  const signInNow = () => (ways?.length === 1 && ways[0] === 'google' ? void signIn() : setTurned('in'));
+  const signInNow = () => (ways?.length === 1 && ways[0] === 'google' ? void signIn() : setWayIn(true));
   const [code, setCode] = useState(invited);
   const nameField = useRef<HTMLInputElement>(null);
   const typed = code.trim().toUpperCase();
@@ -534,15 +538,15 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
 
       <Pad side={side}>
         {side === 'page' && signedIn ? (
-          <Profile account={signedIn} head={<Back onClick={() => setTurned(null)} />} />
+          <Profile account={signedIn} head={<Back onClick={goHome} />} />
         ) : side === 'in' && ways ? (
-          <SignIn ways={ways} head={<Back onClick={() => setTurned(null)} />} />
+          <SignIn ways={ways} head={<Back onClick={() => setWayIn(false)} />} />
         ) : (
           <form onSubmit={submit}>
             <h2>Pull up a chair</h2>
             {sits === 'you' && signedIn ? (
               <div className="named">
-                <button type="button" className="you" onClick={() => setTurned('page')}>
+                <button type="button" className="you" onClick={() => showPage(signedIn.handle)}>
                   <Avatar image={signedIn.picture ?? signedIn.image} name={signedIn.name} />
                   <span>{signedIn.name}</span>
                 </button>
@@ -570,7 +574,7 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
               <div className="named">
                 <span className="own">
                   {signedIn && (
-                    <button type="button" className="you" aria-label="Your page" data-tip="Your page" onClick={() => setTurned('page')}>
+                    <button type="button" className="you" aria-label="Your page" data-tip="Your page" onClick={() => showPage(signedIn.handle)}>
                       <Avatar image={signedIn.picture ?? signedIn.image} name={null} />
                     </button>
                   )}

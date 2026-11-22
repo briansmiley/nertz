@@ -37,10 +37,12 @@ export interface Accounts {
    * for a few minutes). Never rejects: asking gone wrong is said in the log, and is nobody.
    */
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
-  /** Whose page `handle` is, the name they go by and the picture they put up: null for nobody's. */
-  whose(handle: string): { id: string; name: string | null; picture: string | null } | null;
+  /** Whose page `handle` is, the name they go by, the picture they put up, and whether it is theirs alone: null for nobody's. */
+  whose(handle: string): { id: string; name: string | null; picture: string | null; private: boolean } | null;
   /** Gives `account` a name to go by, already clean and not empty. */
   rename(account: string, name: string): void;
+  /** Makes `account`'s page its own alone, or anyone's signed in again. */
+  setPrivate(account: string, on: boolean): void;
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
   repicture(account: string, id: string | null): string | null;
   /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
@@ -195,9 +197,10 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   // not there until Better Auth has made it.)
   const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
   if (unmade.length) transaction(db, () => unmade.forEach((u) => made.run(u.id, firstName(u.name))));
-  const named = db.prepare('select name, picture, handle from profile where account = ?');
-  const whose = db.prepare('select account as id, name, picture from profile where handle = ?');
+  const named = db.prepare('select name, picture, handle, private from profile where account = ?');
+  const whose = db.prepare('select account as id, name, picture, private from profile where handle = ?');
   const rename = db.prepare('update profile set name = ? where account = ?');
+  const setPrivate = db.prepare('update profile set private = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
   const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
   const auth = betterAuth(config);
@@ -208,14 +211,15 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
-      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null; handle: string } | undefined);
-      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle } : null;
+      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null; handle: string; private: number } | undefined);
+      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle, private: profile.private === 1 } : null;
     },
     whose: (handle) => {
-      const them = whose.get(handle) as { id: string; name: string | null; picture: string | null } | undefined;
-      return them ? { ...them, picture: them.picture && pictureUrl(them.picture) } : null;
+      const them = whose.get(handle) as { id: string; name: string | null; picture: string | null; private: number } | undefined;
+      return them ? { ...them, picture: them.picture && pictureUrl(them.picture), private: them.private === 1 } : null;
     },
     rename: (account, name) => void rename.run(name, account),
+    setPrivate: (account, on) => void setPrivate.run(on ? 1 : 0, account),
     // (Read and written with nothing between: the database is this process's alone, and node:sqlite is synchronous.)
     repicture: (account, id) => {
       const had = (named.get(account) as { picture: string | null } | undefined)?.picture ?? null;

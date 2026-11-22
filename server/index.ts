@@ -148,7 +148,12 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     for (const [ws, as] of signed) if (as.id === account) signed.delete(ws);
     rooms.forEach((room) => room.forgetAccount(account));
   };
-  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone }) : null;
+  /** An account has changed (its page made private, its picture): its sockets are it as it now is, and so is whoever sits at a table as it. */
+  const changed = (account: Account): void => {
+    for (const [ws, as] of signed) if (as.id === account.id) signed.set(ws, account);
+    rooms.forEach((room) => room.reaccount(account));
+  };
+  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone, changed }) : null;
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {

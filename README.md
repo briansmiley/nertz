@@ -631,6 +631,7 @@ client/   Vite + React
   clearFirst.tsx  what your finished pile does while it waits for the tray: a nod, a shake when you try something else, and then its words
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
+  address.ts    whose page the address is (`/u/<handle>`): going to one and back again, and the browser's own back
   Settings.tsx  the corner (the menu button, and your settings it leads to, the host's table settings at their foot), the table rules on the lobby sheet, and the small icon buttons the sheets share
   actions.ts    what can be done to the table during a round (pause, the vote to end it, deal again, leave): the one rule for each of whether it is open to you
   Menu.tsx      the menu: mute, those actions, and the way to settings and feedback
@@ -812,14 +813,20 @@ word), with a **Sign in** button beside it, and writes the name they play under 
 remembers goes straight to it). Signing in
 is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
 and Send code), and they are then known across tables and visits. Signed in, their
-picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by (theirs to change), a **Private** switch at the end of its line,
+their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
-to their page or the way in and back again (with reduced motion, the other side simply comes up).
+to their page or the way in and back again (with reduced motion, the other side simply comes up). Turned to their page,
+the address is their page's (`/u/<handle>`): the browser's back turns it over again, and that address, opened by them
+signed in, is the home page with the pad turned to it. The address is the only thing that says the pad is turned to
+their page (`client/address.ts`); signing out of it, or deleting the account, goes back to `/`.
 
 Everyone signed in also has a page for others to see, at `/u/<handle>`: their name and the picture they put up (never Google's; their initial without one), their record, and under it the
 record of whoever is looking against them. Only someone signed in can see it (anyone else is shown the way in, which
 comes back to it). At a table, someone signed in sees the names of the others signed in there as links to their pages,
-in the lobby and on the score sheet; each opens in a tab of its own, so the table stays where it is.
+in the lobby and on the score sheet; each opens in a tab of its own, so the table stays where it is. A page made
+**Private** is its owner's alone: to anyone else it is not there (the same 404 as a handle that is nobody's), and their
+name at a table is no link, from the moment it is switched on (tables they are at are told at once).
 
 ### What is kept
 
@@ -837,11 +844,12 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
   who signed in, as Google or their email says. Nothing of ours writes to them.
 - **Profiles** (`profile`): who someone is at the table, theirs to change: for now the name they go by (null until a
   new email account chooses one). Made with the account (from Google's first name), and gone with it. With it, at
-  random, its `handle`: sixteen hex digits naming their page (`/u/<handle>`), and nothing of who they are.
+  random, its `handle`: sixteen hex digits naming their page (`/u/<handle>`), and nothing of who they are; and whether
+  that page is `private` (off unless they switch it on).
 
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
-else: the room tells someone signed in only where the others signed in have their pages (`PlayerView.handle`), and a
-guest not even that. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
+else: the room tells someone signed in only where the others signed in have their pages (`PlayerView.handle`), unless
+a page is private, and a guest not even that. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
 page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
 (`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
 
@@ -860,10 +868,12 @@ times one at a table of two.
 `GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
 them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null
 on one's own page). 401 for nobody signed in, before anything is looked up, so nobody else can tell whether a handle is
-anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it).
+anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it), and for a private page asked
+for by anyone but its owner, so that it cannot be told from one that is nobody's.
 
 `/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
-nobody signed in); `PUT {name}` a new name to go by; `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
+nobody signed in); `PUT {name?, private?}` a new name to go by, whether their page is private, or both (anything
+else, or neither, is a 400); `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
 Deleting takes the profile, the user, its sessions and its link to Google in one transaction, and leaves their hands and
 reports kept as nobody's, with no name to them; any table they are sitting at plays on with them as a guest. Someone who
 asks with the bug button instead (`public/privacy.html` says they may) is deleted by hand: with the database open, run

@@ -58,7 +58,7 @@ export class FakeConn implements Conn {
 }
 
 /** Someone signed in as `id`, as a room is told it: their page is named after them (a real one is drawn at random). */
-export const signedAs = (id: string, picture: string | null = null): SignedAs => ({ id, handle: `${id}-page`, picture });
+export const signedAs = (id: string, picture: string | null = null): SignedAs => ({ id, handle: `${id}-page`, picture, private: false });
 
 /** A room that only flushes when the test says so, with `n` players joined and seated (P0, P1, ...; tokens tok-0000, tok-0001, ...). */
 export function roomWith(n: number, { code = 'TEST', ...options }: RoomOptions & { code?: string } = {}): { room: Room; conns: FakeConn[] } {

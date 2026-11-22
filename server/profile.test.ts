@@ -47,9 +47,9 @@ describe('profile', () => {
     const ada = await signedIn(ADA);
     const id = (rows('user')[0] as { id: string }).id;
     const { handle } = (await profile(ada)) as { handle: string };
-    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null, handle });
+    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null, handle, private: false });
     expect(isHandle(handle) && handle !== id).toBe(true); // (where their page is: drawn at random, and nothing of who they are)
-    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null, handle }]);
+    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null, handle, private: 0 }]);
     expect(firstName('  Grace  Brewster Hopper')).toBe('Grace');
     expect(firstName('   ')).toBeNull();
   });
@@ -68,6 +68,24 @@ describe('profile', () => {
     // Google says who signed in, not who they are at the table.
     expect(await profile(await signedIn(ADA))).toMatchObject({ name: 'Countess of Lovelace' });
     expect(rows('user')).toMatchObject([{ name: 'Ada Lovelace' }]);
+  });
+
+  it('makes your page private, and anyone\'s signed in again; kept through signing in again, the name left as it was', async () => {
+    const ada = await signedIn(ADA);
+    const on = await ada.ask('/profile', { private: true }, { method: 'PUT' });
+    expect(on.status).toBe(200);
+    expect(await on.json()).toMatchObject({ name: 'Ada', private: true });
+    expect(await profile(await signedIn(ADA))).toMatchObject({ name: 'Ada', private: true });
+    expect(rows('profile')).toMatchObject([{ private: 1 }]);
+    // Both at once, or either alone.
+    expect(await (await ada.ask('/profile', { name: 'Countess', private: false }, { method: 'PUT' })).json()).toMatchObject({ name: 'Countess', private: false });
+    expect(await profile(ada)).toMatchObject({ name: 'Countess', private: false });
+    // Nothing that is not a yes or a no, nothing at all, and nothing from another site; and a bad half spoils the whole.
+    for (const said of [{ private: 'yes' }, { private: 1 }, { private: null }, {}, { name: 'Ada', private: 'no' }, { name: '', private: true }])
+      expect((await ada.ask('/profile', said, { method: 'PUT' })).status).toBe(400);
+    expect((await ada.ask('/profile', { private: true }, { method: 'PUT', origin: 'https://evil.example' })).status).toBe(403);
+    expect((await new Browser(server.port).ask('/profile', { private: true }, { method: 'PUT' })).status).toBe(401);
+    expect(await profile(ada)).toMatchObject({ name: 'Countess', private: false });
   });
 
   it('takes no empty name, nor one from another site', async () => {
@@ -198,6 +216,7 @@ describe('profile', () => {
     await signedIn(BOB);
     await server.close();
     // (The database as it was before the migration that draws them.)
+    write('alter table profile drop column private');
     write('drop index profile_handle');
     write('alter table profile drop column handle');
     write('pragma user_version = 5');
@@ -207,6 +226,19 @@ describe('profile', () => {
     expect(new Set(handles).size).toBe(2);
     const ada = await signedIn(ADA);
     expect(handles).toContain(((await profile(ada)) as { handle: string }).handle);
+  });
+
+  it('is anyone\'s page, not private, if it was made before pages could be', async () => {
+    const ada = await signedIn(ADA);
+    await ada.ask('/profile', { private: true }, { method: 'PUT' });
+    await server.close();
+    // (The database as it was before the migration that adds the switch.)
+    write('alter table profile drop column private');
+    write('pragma user_version = 6');
+    await start();
+    expect(rows('profile')).toMatchObject([{ name: 'Ada', private: 0 }]);
+    expect(await profile(await signedIn(ADA))).toMatchObject({ private: false });
+    expect(() => write('update profile set private = 2')).toThrow(); // (a yes or a no, and nothing else)
   });
 
   it('is not there where no accounts are kept', async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { read, readPage, readStats, signedIn, sitter, waysIn } from './account';
+import { pageIn } from './address';
 
 describe('who the server says is signed in', () => {
   it('is no signing in at all where the server keeps no accounts, or there is no good answer', () => {
@@ -17,7 +18,7 @@ describe('who the server says is signed in', () => {
   });
 
   it('tells who is signed in from the ways in', () => {
-    const ada = { id: 'u1', name: 'Ada', image: null, picture: null, handle: '0123456789abcdef' };
+    const ada = { id: 'u1', name: 'Ada', image: null, picture: null, handle: '0123456789abcdef', private: false };
     expect(signedIn(ada)).toBe(ada);
     expect(waysIn(ada)).toBeNull();
     expect(signedIn({ ways: ['email'] })).toBeNull();
@@ -28,11 +29,13 @@ describe('who the server says is signed in', () => {
 
   it('is whoever the profile is', () => {
     const handle = '0123456789abcdef';
-    expect(read(200, { id: 'u1', name: 'Ada', image: 'https://example.com/a.png', handle, extra: 'x' })).toEqual({ id: 'u1', name: 'Ada', image: 'https://example.com/a.png', picture: null, handle });
+    expect(read(200, { id: 'u1', name: 'Ada', image: 'https://example.com/a.png', handle, private: false, extra: 'x' })).toEqual({ id: 'u1', name: 'Ada', image: 'https://example.com/a.png', picture: null, handle, private: false });
+    expect(read(200, { id: 'u1', name: 'Ada', handle, private: true })).toMatchObject({ private: true });
+    expect(read(200, { id: 'u1', name: 'Ada', handle, private: 'yes' })).toMatchObject({ private: false }); // (only a yes that is one)
     expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: '/pictures/0123456789abcdef.webp', handle })).toMatchObject({ picture: '/pictures/0123456789abcdef.webp' });
     expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: 'https://evil.example/me.webp', handle })).toMatchObject({ picture: null }); // (only ever one of ours)
-    expect(read(200, { id: 'u1', name: 'Ada', handle })).toEqual({ id: 'u1', name: 'Ada', image: null, picture: null, handle });
-    expect(read(200, { id: 'u1', name: null, image: null, handle })).toEqual({ id: 'u1', name: null, image: null, picture: null, handle });
+    expect(read(200, { id: 'u1', name: 'Ada', handle })).toEqual({ id: 'u1', name: 'Ada', image: null, picture: null, handle, private: false });
+    expect(read(200, { id: 'u1', name: null, image: null, handle })).toEqual({ id: 'u1', name: null, image: null, picture: null, handle, private: false });
     expect(read(200, { id: 'u1', name: 'Ada', image: null })).toBe('off'); // (no page: not a profile)
   });
 });
@@ -85,7 +88,7 @@ describe("someone's page, as the server says it", () => {
 
 describe('who sits down, on the first page', () => {
   const ways = { ways: ['google', 'email'] } as const;
-  const named = { id: 'u', name: 'Ada', image: null, picture: null, handle: '0123456789abcdef' };
+  const named = { id: 'u', name: 'Ada', image: null, picture: null, handle: '0123456789abcdef', private: false };
   it('signed in with a name: you; signed in without one: a name to write', () => {
     expect(sitter(named, false)).toBe('you');
     expect(sitter({ ...named, name: null }, false)).toBe('name');
@@ -99,5 +102,17 @@ describe('who sits down, on the first page', () => {
     expect(sitter('off', true)).toBe('name');
     expect(sitter('unknown', true)).toBe('guest');
     expect(sitter('unknown', false)).toBe('wait');
+  });
+});
+
+describe('whose page the address is', () => {
+  it('is the handle in /u/<handle>, and nobody\'s for anything else', () => {
+    expect(pageIn('/u/0123456789abcdef')).toBe('0123456789abcdef');
+    expect(pageIn('/u/0123456789abcdef/')).toBe('0123456789abcdef');
+    expect(pageIn('/')).toBeNull();
+    expect(pageIn('/u/')).toBeNull();
+    expect(pageIn('/u/0123456789ABCDEF')).toBeNull();
+    expect(pageIn('/u/0123456789abcdef/more')).toBeNull();
+    expect(pageIn('/x/0123456789abcdef')).toBeNull();
   });
 });

@@ -305,6 +305,8 @@ export interface Account {
   picture: string | null;
   /** Where their page is: `/u/<handle>`. Drawn at random, and what anyone else is shown of them, as `id` never is. */
   handle: string;
+  /** Their page is theirs alone: to anyone else it is not there, and nobody at a table is told where it is. */
+  private: boolean;
 }
 
 /** Which of someone's rounds their record counts: every one; those with someone else there who is no bot; those with no bot there at all. */

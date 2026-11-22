@@ -2,7 +2,7 @@
 // is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
 // nothing of its own: it asks. The same for their record (`/stats`), and someone's page (`/stats/<handle>`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { isHandle } from '../shared/protocol';
+import { goHome, pageIn } from './address';
 import type { Account, Among, Page, Stats, Versus, Way } from '../shared/types';
 
 /**
@@ -45,9 +45,9 @@ export function read(status: number, body: unknown): Signed {
     const ways = (Array.isArray(said) ? said : []).filter((w): w is Way => w === 'google' || w === 'email');
     return ways.length ? { ways } : 'off';
   }
-  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown; handle?: unknown } | null;
+  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown; handle?: unknown; private?: unknown } | null;
   if (status !== 200 || !v || typeof v.id !== 'string' || typeof v.handle !== 'string') return 'off';
-  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture), handle: v.handle };
+  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture), handle: v.handle, private: v.private === true };
 }
 
 const PROFILE = '/profile';
@@ -118,19 +118,32 @@ export async function enterCode(email: string, otp: string): Promise<Entered> {
   return res.status === 429 ? 'busy' : res.status === 403 || code === 'OTP_EXPIRED' ? 'spent' : res.status === 400 ? 'wrong' : 'failed';
 }
 
+/** Off your own page, if it is up: signed out, it is nobody's you can see. */
+function leaveYourPage(): void {
+  const you = signedIn(signed);
+  if (you && pageIn(location.pathname) === you.handle) goHome();
+}
+
 export async function signOut(): Promise<void> {
   await post('/sign-out', {}).catch(() => null);
+  leaveYourPage();
   await ask();
 }
 
-/** A new name to go by (cleaned by the server): whether it was taken. */
-export async function rename(name: string): Promise<boolean> {
-  const res = await fetch(PROFILE, { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => null);
+/** Some of your profile changed: whether it was taken. */
+async function change(fields: { name?: string; private?: boolean }): Promise<boolean> {
+  const res = await fetch(PROFILE, { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) }).catch(() => null);
   if (!res?.ok) return false;
   const next = read(res.status, await res.json().catch(() => null));
   if (typeof next === 'object') set(next);
   return typeof next === 'object';
 }
+
+/** A new name to go by (cleaned by the server): whether it was taken. */
+export const rename = (name: string): Promise<boolean> => change({ name });
+
+/** Your page made yours alone, or anyone's signed in again: whether it was taken. */
+export const setPrivate = (on: boolean): Promise<boolean> => change({ private: on });
 
 /** The side of a picture as it is sent: the server draws it afresh at its own size (server/pictures.ts); this only keeps what is sent small. */
 const SENT_SIDE = 256;
@@ -165,6 +178,7 @@ export async function repicture(file: Blob | null, crop?: Crop): Promise<boolean
 /** The account gone for good, and with it the signing in: whether it went. */
 export async function deleteAccount(): Promise<boolean> {
   const res = await fetch(PROFILE, { method: 'DELETE', credentials: 'same-origin' }).catch(() => null);
+  if (res?.ok) leaveYourPage();
   await ask();
   return !!res?.ok;
 }
@@ -232,12 +246,6 @@ export function useStats(among: Among = 'all'): Stats | null {
     return () => void (stale = true);
   }, [who, among]);
   return known?.of === who ? known.stats : null;
-}
-
-/** Whose page the address is (`/u/<handle>`), if it is one. */
-export function pageInUrl(): string | null {
-  const [, handle] = /^\/u\/([^/]+)\/?$/.exec(location.pathname) ?? [];
-  return handle && isHandle(handle) ? handle : null;
 }
 
 /**

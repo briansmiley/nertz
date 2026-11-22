@@ -359,6 +359,42 @@ describe('over the wire', () => {
     for (const c of [a, b, g]) c.ws.terminate();
   });
 
+  it('a private page is its own alone: to anyone else it is not there, and nobody at a table is told where it is', async () => {
+    const [ada, bob] = [new Browser(server.port), new Browser(server.port)];
+    await ada.signIn(ADA);
+    await bob.signIn(BOB);
+    const handleOf = async (b: Browser): Promise<string> => ((await (await b.ask('/profile')).json()) as Account).handle;
+    const [adas, bobs] = [await handleOf(ada), await handleOf(bob)];
+    const a = await Client.open(server.port, null, 'Ada', undefined, true, ada.cookie);
+    const b = await Client.open(server.port, a.last.room.code, 'Bob', undefined, true, bob.cookie);
+    const handles = (c: Client) => c.last.room.players.map((p) => [p.name, p.handle]);
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Bob', bobs]]));
+
+    // Made private while sitting at the table: at once, the others there are no longer told where it is.
+    expect((await bob.ask('/profile', { private: true }, { method: 'PUT' })).status).toBe(200);
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Bob', undefined]]));
+    expect(handles(b)).toEqual([['Ada', adas], ['Bob', undefined]]); // (theirs is still where it was to them)
+    // Nor when they join again on the same socket, or sit down at a table anew.
+    b.send({ t: 'join', room: a.last.room.code, name: 'Bob', token: b.token });
+    const b2 = await Client.open(server.port, null, 'Bob', undefined, true, bob.cookie);
+    const a2 = await Client.open(server.port, b2.last.room.code, 'Ada', undefined, true, ada.cookie);
+    await vi.waitFor(() => expect(handles(a2)).toEqual([['Bob', undefined], ['Ada', undefined]]));
+    expect(a2.raw.some((m) => m.includes(bobs))).toBe(false);
+    expect(handles(a)).toEqual([['Ada', undefined], ['Bob', undefined]]);
+
+    // To anyone else, the page is as if it were nobody's; to them, theirs as ever.
+    expect((await ada.ask(`/stats/${bobs}`)).status).toBe(404);
+    expect((await new Browser(server.port).ask(`/stats/${bobs}`)).status).toBe(401); // (nobody signed in is still told nothing)
+    expect(await (await bob.ask(`/stats/${bobs}`)).json()).toMatchObject({ name: 'Bob', versus: null });
+    expect((await bob.ask(`/stats/${adas}`)).status).toBe(200); // (and they still see everyone else's)
+
+    // Made anyone's again: the page is there, and the table says where it is.
+    expect((await bob.ask('/profile', { private: false }, { method: 'PUT' })).status).toBe(200);
+    expect((await ada.ask(`/stats/${bobs}`)).status).toBe(200);
+    await vi.waitFor(() => expect(handles(a2)).toEqual([['Bob', bobs], ['Ada', undefined]]));
+    for (const c of [a, b, a2, b2]) c.ws.terminate();
+  });
+
   it('an account deleted while it sits at a table plays on there as nobody: the round it finishes is kept as nobody\'s', async () => {
     const ada = new Browser(server.port);
     await ada.signIn(ADA);

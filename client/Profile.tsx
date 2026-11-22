@@ -1,10 +1,10 @@
-// You, signed in: the name you go by (yours to change), your record, and the ways out: signing out, and your account
-// gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
+// You, signed in: the name you go by (yours to change), your record, whether your page is yours alone, and the ways
+// out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
 // opened by pressing their name at a table: their record, and yours against them.
 import { useEffect, useRef, useState } from 'react';
 import { cleanName, MAX_NAME_LENGTH } from '../shared/protocol';
 import { AMONG, type Account, type Among, type Stats, type Versus } from '../shared/types';
-import { deleteAccount, rename, repicture, signOut, usePage, useStats, type Crop } from './account';
+import { deleteAccount, rename, repicture, setPrivate, signOut, usePage, useStats, type Crop } from './account';
 import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
@@ -271,6 +271,22 @@ function YourPicture({ account }: { account: Account }) {
   );
 }
 
+/** Whether your page is yours alone: a switch, turned at once, and back if the server did not take it. */
+function Private({ account }: { account: Account }) {
+  const [asked, setAsked] = useState<boolean | null>(null);
+  const on = asked ?? account.private;
+  const turn = (): void => {
+    setAsked(!on);
+    void setPrivate(!on).then(() => setAsked(null));
+  };
+  return (
+    <button type="button" role="switch" aria-checked={on} className="private" data-tip="Only you see your page" onClick={turn}>
+      <span className="lever" aria-hidden="true" />
+      Private
+    </button>
+  );
+}
+
 /** Asked once more, over everything: Esc or a press beside it is no. */
 function SureDelete({ onNo }: { onNo: () => void }) {
   const [going, setGoing] = useState(false);
@@ -304,6 +320,7 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
         {head}
         <YourPicture account={account} />
         <YourName account={account} />
+        <Private account={account} />
       </div>
       <Record />
       <div className="outs">

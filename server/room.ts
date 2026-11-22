@@ -20,8 +20,13 @@ import { roundOver, Social } from './chat';
 import { guard } from './guard';
 import type { RoundRecord } from './rounds';
 
-/** Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is, and the picture they put up (as it was when they joined). */
-export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture'>;
+/**
+ * Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is and
+ * whether it is theirs alone, and the picture they put up. As it was when they joined, or since changed (`reaccount`).
+ */
+export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture' | 'private'>;
+/** Only what a room keeps, of whatever it is handed. */
+const kept = ({ id, handle, picture, private: hidden }: SignedAs): SignedAs => ({ id, handle, picture, private: hidden });
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -51,7 +56,8 @@ interface Player {
   token: string;
   /**
    * Who they are signed in as (server/accounts.ts), if they are: what their connection said as it joined. Its id is
-   * never sent to anyone; where their page is, only to someone else signed in; the picture it put up, to everyone.
+   * never sent to anyone; where their page is, only to someone else signed in, and not if it is private; the picture
+   * it put up, to everyone.
    */
   account: SignedAs | null;
   name: string;
@@ -231,8 +237,8 @@ export class Room {
    * for one (`sit`); with `sit`, they ask at once whatever the table is doing (whoever opens it).
    * Returns an error message on refusal.
    */
-  join(conn: Conn, name: string, token: string, sit = false, signedAs: SignedAs | null = null): string | null {
-    const account = signedAs && { id: signedAs.id, handle: signedAs.handle, picture: signedAs.picture }; // (only that, of whatever it is handed)
+  join(conn: Conn, name: string, token: string, sit = false, signed: SignedAs | null = null): string | null {
+    const account = signed && kept(signed);
     if (this.conns.has(conn)) this.drop(conn, false);
     // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
     // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
@@ -806,6 +812,13 @@ export class Room {
     if (theirs.length) this.changed();
   }
 
+  /** `account` has changed (server/profile.ts): whoever here is signed in as it is it as it now is. */
+  reaccount(account: SignedAs): void {
+    const theirs = this.players.filter((p) => p.account?.id === account.id);
+    for (const p of theirs) p.account = kept(account);
+    if (theirs.length) this.changed();
+  }
+
   /** Someone other than `but` seated as `account` (and never anyone, for nobody's). */
   private seatedAs(account: SignedAs | null, but: Player): boolean {
     return account !== null && this.players.some((q) => q !== but && q.account?.id === account.id && seated(q));
@@ -1139,7 +1152,7 @@ export class Room {
         ...(seated(p) ? { sat: p.sat ?? 0 } : {}),
         name: p.name,
         ...(p.account?.picture ? { picture: p.account.picture } : {}),
-        ...(you.account && p.account && p !== you ? { handle: p.account.handle } : {}),
+        ...(you.account && p.account && !p.account.private && p !== you ? { handle: p.account.handle } : {}),
         connected: p.conn !== null,
         ...(p.out ? { left: true as const } : {}),
         ...(p.standing ? { standing: true as const } : {}),
