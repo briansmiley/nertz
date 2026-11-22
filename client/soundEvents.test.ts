@@ -2,7 +2,7 @@
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them (net.ts).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, startCountdown } from '../shared/engine';
+import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, resolveStuck, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, upWork, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
@@ -56,6 +56,12 @@ function session(start: GameState) {
     /** The other player does something and the snapshot arrives (my sent intents still in flight). */
     them(intent: Intent): Cue[] {
       apply(1, intent);
+      snapshot();
+      return render();
+    },
+    /** The server does something of its own accord (a table that is stuck has its stocks turned over) and the snapshot arrives. */
+    server(step: (g: GameState) => GameState): Cue[] {
+      game = step(game);
       snapshot();
       return render();
     },
@@ -151,6 +157,33 @@ describe('sound cues from rendered state', () => {
     for (let i = 0; i < 60 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) cues = s.me({ k: 'flip' });
     expect(cues).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.me({ k: 'flip' })).toEqual([{ k: 'recycle', who: 'me' }]);
+  });
+
+  it('a table that is stuck has its stocks turned over to one sound, the table\'s own: not a slide for each waste that goes back', () => {
+    const s = session(rigged());
+    const everyone = (g: GameState) => resolveStuck(g, [0, 1]);
+    // Saying so is silent, and so is the server while it still waits for someone.
+    expect(s.me({ k: 'stuck', on: true })).toEqual([]);
+    expect(s.confirm()).toEqual([]);
+    expect(s.server(everyone)).toEqual([]);
+    expect(s.them({ k: 'stuck', on: true })).toEqual([]);
+    // Both wastes (a card each) go back under their stocks in the one snapshot.
+    expect(s.game.players.map((p) => p.waste.length)).toEqual([1, 1]);
+    expect(s.server(everyone)).toEqual([{ k: 'reshuffle' }]);
+    expect(s.game.players.map((p) => p.waste.length)).toEqual([0, 0]);
+    expect(s.game.reshuffles).toBe(1);
+    // Once: nothing more of it afterwards, and the stock deals as ever.
+    expect(s.server(everyone)).toEqual([]);
+    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
+  });
+
+  it('a reshuffle sounds though nobody had a card on the waste to go back', () => {
+    const s = session(rig(inPlay([0, 1], lcg(7)), { work: ['S1', 'S2', 'H1', 'C5'] }));
+    s.me({ k: 'stuck', on: true });
+    s.confirm();
+    s.act(1, { k: 'stuck', on: true });
+    expect(s.server((g) => resolveStuck(g, [0, 1]))).toEqual([{ k: 'reshuffle' }]);
+    expect(s.game.reshuffles).toBe(1);
   });
 
   it('a King gets the chime instead of a ding, and clearing the pile the slide', () => {

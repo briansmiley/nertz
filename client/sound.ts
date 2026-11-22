@@ -336,6 +336,15 @@ export function recycle(who: Who = 'me'): void {
   hit('slide-2', { gain: 0.3, rate: 1.1, who });
 }
 
+/**
+ * The whole table was stuck and every stock is turned over: a riffle, quicker and a little louder than the one that
+ * washes the piles at the end of a round, so that it is heard by whoever was looking at their own cards. The table's
+ * sound: the same for everyone, on your own channel.
+ */
+export function reshuffle(): void {
+  hit('shuffle', { gain: 0.62, rate: 1.15 });
+}
+
 /** A card to the middle: the same firm card sound whatever its rank. */
 export function centre(who: Who = 'me'): void {
   hit('place-2', { gain: 0.58, rate: rand(0.97, 1.03), who });
@@ -495,6 +504,8 @@ function play(cue: Cue): void {
       return stockCard(cue.who);
     case 'recycle':
       return recycle(cue.who);
+    case 'reshuffle':
+      return reshuffle();
     case 'centre':
       return centre(cue.who);
     case 'king':

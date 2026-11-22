@@ -9,7 +9,7 @@
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, wentOut } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reshuffledSince, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
@@ -313,6 +313,9 @@ interface Flight {
   dwell: number;
 }
 
+/** What is said across the middle of the felt while a round is played: a snipe you were in, or the table's stocks turned over because everyone was stuck. */
+type Said = { k: 'snipe'; by: number; of: number } | { k: 'reshuffle' };
+
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
 /** How wide the name line of a neighbour whose hand runs down the side may be. */
@@ -447,8 +450,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [held, setHeld] = useState<Held | null>(null);
   /** The finished pile in hand is over the tray. */
   const [hot, setHot] = useState(false);
-  /** Snipes the server told of, as they stack on the felt while they last: those you were in, across the middle, and those between others, small along its lower edge (feed.ts). */
-  const [snipes, addSnipe, snipeDone] = useFeed<{ by: number; of: number }>(room.round);
+  /** What the table says, as it stacks on the felt while it lasts (feed.ts). Across the middle: the snipes you were in, and the reshuffle. Small along its lower edge: the snipes between others. */
+  const [said, tell, saidDone] = useFeed<Said>(room.round);
   const [asides, addAside, asideDone] = useFeed<{ by: number; of: number }>(room.round);
   useEffect(
     () =>
@@ -456,10 +459,18 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         if (by === you) snipeSound('me');
         else if (of === you) beaten();
         else snipeSound('other');
-        (by === you || of === you ? addSnipe : addAside)({ by, of });
+        if (by === you || of === you) tell({ k: 'snipe', by, of });
+        else addAside({ by, of });
       }),
-    [you, addSnipe, addAside],
+    [you, tell, addAside],
   );
+  // Everyone was stuck and the stocks were turned over, in this round and while this window was looking: the table says so.
+  const seen = useRef({ round: room.round, game });
+  useEffect(() => {
+    const was = seen.current;
+    seen.current = { round: room.round, game };
+    if (was.round === room.round && reshuffledSince(was.game, game)) tell({ k: 'reshuffle' });
+  }, [room.round, game, tell]);
   /** The outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
@@ -1071,14 +1082,20 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
-      {/* Snipes you were in: who by, or whom, across the middle, each there and gone in under a second; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
-      {snipes.length > 0 && !called && (
+      {/* Snipes you were in (who by, or whom) and the reshuffle of a table that was stuck: across the middle, each there and gone in a second or so; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
+      {said.length > 0 && !called && (
         <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          {snipes.map((s) => (
-            <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && snipeDone(s.id)}>
-              {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
-            </motion.span>
-          ))}
+          {said.map((s) =>
+            s.k === 'reshuffle' ? (
+              <motion.span layout="position" key={s.id} className="reshuffle" onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
+                Reshuffle!
+              </motion.span>
+            ) : (
+              <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
+                {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
+              </motion.span>
+            ),
+          )}
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies; more at once stack upward. */}

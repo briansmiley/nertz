@@ -187,7 +187,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   way only: a hand that can get somewhere is never taken for dead. If nobody can, **the table is jammed** and the round ends there,
   scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
-  flags clear, and the round counts one more reshuffle. Making any move clears your own flag.
+  flags clear, and the round counts one more reshuffle. The table says so as it happens: **Reshuffle!** across the
+  middle for a moment, to the riffle of a shuffle. Making any move clears your own flag.
 - **Voting to end a round**: in the menu (☰), while a round is on, anyone can vote to end it where it stands. When
   every connected person who plays the round has voted (bots go along), it ends and is scored as usual. A vote can be
   taken back. Once a round has been reshuffled three times, or once anyone has voted, the same vote stands on the
@@ -403,8 +404,9 @@ soft flick for each card dealt off the stock (the group turning up makes no soun
 for every card played to the middle whatever its rank, a two-note chime for a King, a slide for a pile going to the
 tray, a dull tap when a card goes back (put down nowhere, or beaten to its pile, or tried while a finished pile of
 yours is waiting for the tray), a knock for each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud
-hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, and a
-riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
+hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, a quick
+riffle when a table that was stuck has its stocks turned over (the one sound for it, in place of a slide for each waste
+that goes back), and a riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
 else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 
 - The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
@@ -420,7 +422,7 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 slip): sound on or off, the levels, reduce motion. Whoever hosts has the table's own settings at the bottom of theirs:
 text and voice chat, and between rounds the table rules. Nobody else sees them there.
 Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
-bot's spoken "Nertz"), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
+bot's spoken "Nertz", the reshuffle), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
 opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
 Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
 storage they last until the page closes.
@@ -605,7 +607,7 @@ by ear), and not in Safari or Firefox or across real networks.
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
   table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, yetToHear, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, yetToHear, resolveStuck, reshuffledSince, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
