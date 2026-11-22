@@ -1,8 +1,8 @@
 // How much the game is played, for an admin (server/stats.ts `GET /usage`), from the corner's menu: all told; the
 // last days, a bar of games each (what else was played that day its tooltip) over a notch and its date; and the latest
-// sittings, who was at them. With the bots, or just the humans.
+// sittings, who was at them. Of every game, or of one kind (`GameKind`).
 import { useState } from 'react';
-import type { Played, Usage } from '../shared/types';
+import { GAME_KINDS, type GameKind, type Played, type Usage } from '../shared/types';
 import { useUsage } from './account';
 import { Back } from './Menu';
 
@@ -14,40 +14,44 @@ const COUNTS: { key: keyof Played; one: string; many: string }[] = [
   { key: 'guests', one: 'guest hand', many: 'guest hands' },
   { key: 'bots', one: 'bot hand', many: 'bot hands' },
 ];
+/** Each kind of game as the slip's head says it, and its tooltip. */
+const KIND_SAID: Record<GameKind, [string, string]> = {
+  humans: ['humans', 'No bots'],
+  mixed: ['mixed', 'Two people or more, and bots'],
+  bots: ['bots', 'One person or none, and bots'],
+};
 const said = (n: number, { one, many }: { one: string; many: string }): string => `${n} ${n === 1 ? one : many}`;
 
 /** A day (`2026-11-21`, a date here) as it is written: `Sat 21 Nov`. */
 const dayWritten = (day: string): string => new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 export function UsageSlip({ back }: { back: () => void }) {
-  const [humans, setHumans] = useState(false);
-  const usage = useUsage(humans);
+  const [kind, setKind] = useState<GameKind | null>(null);
+  const usage = useUsage(kind);
   return (
     <section className="slip usage" aria-label="Played">
       <header className="slip-head">
         <Back onClick={back} />
         <h3>Played</h3>
-        <p className="humans" role="radiogroup" aria-label="Who">
-          {[false, true].map((h) => (
-            <button key={String(h)} type="button" role="radio" aria-checked={h === humans} onClick={() => setHumans(h)}>
-              {h ? 'just humans' : 'bots and humans'}
+        <p className="kinds" role="radiogroup" aria-label="Which games">
+          {[null, ...GAME_KINDS].map((k) => (
+            <button key={k ?? 'all'} type="button" role="radio" aria-checked={k === kind} data-tip={k ? KIND_SAID[k][1] : undefined} onClick={() => setKind(k)}>
+              {k ? KIND_SAID[k][0] : 'all'}
             </button>
           ))}
         </p>
       </header>
-      {usage === null ? <p className="none">—</p> : usage && <Figures usage={usage} humans={humans} />}
+      {usage === null ? <p className="none">—</p> : usage && <Figures usage={usage} />}
     </section>
   );
 }
 
-function Figures({ usage, humans }: { usage: Usage; humans: boolean }) {
+function Figures({ usage }: { usage: Usage }) {
   const most = Math.max(1, ...usage.days.map((d) => d.games));
-  /** (Just the humans, there are no bot hands to count.) */
-  const counts = humans ? COUNTS.filter((c) => c.key !== 'bots') : COUNTS;
   return (
     <>
       <dl className="totals">
-        {counts.map((c) => (
+        {COUNTS.map((c) => (
           <div key={c.key}>
             <dd>{usage.total[c.key].toLocaleString()}</dd>
             <dt>{usage.total[c.key] === 1 ? c.one : c.many}</dt>
@@ -56,7 +60,7 @@ function Figures({ usage, humans }: { usage: Usage; humans: boolean }) {
       </dl>
       <ol className="days" aria-label="Games a day">
         {usage.days.map((d) => (
-          <li key={d.day} data-tip={`${dayWritten(d.day)}: ${counts.map((c) => said(d[c.key], c)).join(', ')}`}>
+          <li key={d.day} data-tip={`${dayWritten(d.day)}: ${COUNTS.map((c) => said(d[c.key], c)).join(', ')}`}>
             <span style={{ height: `${(d.games / most) * 100}%` }}>{d.games > 0 && <b>{d.games}</b>}</span>
           </li>
         ))}

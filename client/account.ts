@@ -4,7 +4,7 @@
 // admin how much the game is played (`/usage`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { goHome, moved, pageIn } from './address';
-import type { Account, Among, Page, Stats, Usage, Versus, Way } from '../shared/types';
+import type { Account, Among, GameKind, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
 /**
  * `unknown` until the server has answered; `off` when there is no signing in (it keeps no accounts, or gave no good
@@ -281,19 +281,19 @@ export function usePage(handle: string, among: Among): Page | 'nobody' | 'none' 
 }
 
 /**
- * How much the game is played, for an admin (`GET /usage`), its days as dates here, with the bots or (`humans`)
- * without: asked for each time something that shows it comes up, or changes which. Undefined until it is known; null
- * for no good answer.
+ * How much the game is played, for an admin (`GET /usage`), its days as dates here, every game or those of one `kind`:
+ * asked for each time something that shows it comes up, or changes which. Undefined until it is known; null for no
+ * good answer.
  */
-export function useUsage(humans: boolean): Usage | null | undefined {
+export function useUsage(kind: GameKind | null): Usage | null | undefined {
   const [usage, setUsage] = useState<Usage | null>();
   useEffect(() => {
     let stale = false;
-    fetch(`/usage?tz=${new Date().getTimezoneOffset()}${humans ? '&humans' : ''}`, { credentials: 'same-origin', cache: 'no-store' })
+    fetch(`/usage?tz=${new Date().getTimezoneOffset()}${kind ? `&kind=${kind}` : ''}`, { credentials: 'same-origin', cache: 'no-store' })
       .then(async (res) => (res.ok ? ((await res.json()) as Usage) : null))
       .catch(() => null)
       .then((u) => stale || setUsage(u && Array.isArray(u.days) && Array.isArray(u.games) && u.total ? u : null));
     return () => void (stale = true);
-  }, [humans]);
+  }, [kind]);
   return usage;
 }

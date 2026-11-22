@@ -4,10 +4,10 @@
 // A page made private is its own alone: to anyone else it is as if it were nobody's.
 // `GET /usage` is how much the game is played (`Usage`), for an admin alone (server/accounts.ts): to anyone else signed
 // in it is not there. `?tz=` is the asker's offset from UTC, in minutes behind it, as their browser says (0 unless said);
-// `?humans` leaves the bots out.
+// `?kind=` counts only the games of that kind (`GameKind`).
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { handleOf } from '../shared/protocol';
-import { AMONG, type Page } from '../shared/types';
+import { AMONG, GAME_KINDS, type Page } from '../shared/types';
 import type { Accounts } from './accounts';
 import type { Rounds } from './rounds';
 
@@ -40,10 +40,11 @@ export function usageHandler({ accounts, rounds }: { accounts: Accounts; rounds:
     if (req.method !== 'GET') return json(405, null);
     const asked = new URL(req.url ?? '/', 'http://localhost').searchParams;
     const tz = Number(asked.get('tz') ?? 0);
+    const kind = GAME_KINDS.find((k) => k === asked.get('kind'));
     const me = await accounts.who(req.headers);
     if (!me) return json(401, null);
     if (!me.admin) return json(404, null);
-    if (!Number.isInteger(tz) || Math.abs(tz) > 14 * 60) return json(400, null);
-    json(200, rounds.usage(tz, asked.has('humans')));
+    if (!Number.isInteger(tz) || Math.abs(tz) > 14 * 60 || (asked.has('kind') && !kind)) return json(400, null);
+    json(200, rounds.usage(tz, kind));
   };
 }

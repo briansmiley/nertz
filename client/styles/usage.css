@@ -16,8 +16,8 @@
   color: var(--ink-soft);
 }
 
-/* With the bots or just the humans: two words at the head's end, the one chosen in ink and underlined. */
-.usage .humans {
+/* Every game or one kind of them: words at the head's end, the one chosen in ink and underlined. */
+.usage .kinds {
   display: flex;
   gap: 0.6rem;
   flex: none;
@@ -25,7 +25,7 @@
   white-space: nowrap;
 }
 
-.usage .humans button {
+.usage .kinds button {
   padding: 0;
   border: 0;
   background: none;
@@ -35,7 +35,7 @@
   cursor: pointer;
 }
 
-.usage .humans [aria-checked='true'] {
+.usage .kinds [aria-checked='true'] {
   color: var(--ink);
   text-decoration: underline 1.5px;
   text-underline-offset: 3px;

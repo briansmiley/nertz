@@ -369,6 +369,13 @@ export interface Page {
   versus: Versus | null;
 }
 
+/**
+ * What kind of game a round was, by who held hands in it: every hand a person's; two people or more, and bots; or one
+ * person or none, and the rest bots.
+ */
+export const GAME_KINDS = ['humans', 'mixed', 'bots'] as const;
+export type GameKind = (typeof GAME_KINDS)[number];
+
 /** How much was played (server/rounds.ts): sittings, rounds, the accounts that played, and hands played as a guest or by a bot. */
 export interface Played {
   games: number;
