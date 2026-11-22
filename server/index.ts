@@ -141,7 +141,14 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const pictures = reportDir ? openPictures(join(dirname(reportDir), 'pictures')) : null;
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
   const stats = accounts && rounds && statsHandler({ accounts, rounds });
-  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone: (account) => rooms.forEach((room) => room.forgetAccount(account)) }) : null;
+  /** Who each open socket is signed in as: what its cookie said as it opened, for as long as it is open and the account is there. */
+  const signed = new Map<WebSocket, Account>();
+  /** An account is gone: its sockets are nobody's from now on, and so is whoever sits at a table as it. */
+  const gone = (account: string): void => {
+    for (const [ws, as] of signed) if (as.id === account) signed.delete(ws);
+    rooms.forEach((room) => room.forgetAccount(account));
+  };
+  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone }) : null;
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {
@@ -218,7 +225,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   http.on('upgrade', (req, socket, head) => {
     if (req.url?.split('?')[0] !== '/ws') return socket.destroy();
     const open = (account: Account | null): void => wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, account));
-    // Who a socket is signed in as is what its cookie says as it opens, and stays so for as long as it is open.
+    // Who a socket is signed in as is what its cookie says as it opens, and stays so for as long as it is open (`signed`).
     if (!accounts || !req.headers.cookie || req.headers.origin !== home) return open(null);
     const gone = (): void => void socket.destroy(); // (a socket that fails while we ask must not be an error nobody listens for)
     socket.on('error', gone);
@@ -230,6 +237,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
   wss.on('connection', (ws: WebSocket, account: Account | null) => {
     alive.add(ws);
+    if (account) signed.set(ws, account);
     let room: Room | null = null;
     // Token bucket: a few seconds of burst, then `rate` messages per second.
     let allowance = rate * RATE_BURST_SECONDS;
@@ -271,7 +279,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
     ws.on('pong', () => alive.add(ws));
     ws.on('error', () => {}); // e.g. an oversized frame; 'close' follows and does the cleanup
-    ws.on('close', () => guard("a socket's close", detach));
+    ws.on('close', () => (signed.delete(ws), guard("a socket's close", detach)));
     ws.on('message', (data, isBinary) => {
       const now = Date.now();
       allowance = Math.min(rate * RATE_BURST_SECONDS, allowance + ((now - refilled) / 1000) * rate) - 1;
@@ -292,7 +300,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
             target = new Room(freshCode(), { flipMs, hearMs, deal: options.deal, record });
           }
-          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', account); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
+          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', signed.get(ws) ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);
           rooms.set(target.code, target);
           idleSince.delete(target);

@@ -322,8 +322,8 @@ describe('over the wire', () => {
 
     // At the table, whoever is signed in is told where the page of everyone else signed in is, and a guest is told nobody's.
     const handles = (c: Client) => c.last.room.players.map((p) => [p.name, p.handle]);
-    expect(handles(a)).toEqual([['Ada', adas], ['Bob', bobs], ['Guest', undefined]]);
-    expect(handles(b)).toEqual(handles(a));
+    expect(handles(a)).toEqual([['Ada', undefined], ['Bob', bobs], ['Guest', undefined]]);
+    expect(handles(b)).toEqual([['Ada', adas], ['Bob', undefined], ['Guest', undefined]]);
     expect(handles(g)).toEqual([['Ada', undefined], ['Bob', undefined], ['Guest', undefined]]);
     // Who they are signed in as goes to nobody.
     const ids = rows(join(dir, 'nertz.db'), 'user').map((u) => u.id as string);
@@ -352,7 +352,10 @@ describe('over the wire', () => {
     // An account gone takes its page with it.
     expect((await bob.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
     expect((await ada.ask(`/stats/${bobs}`)).status).toBe(404);
-    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', adas], ['Bob', undefined], ['Guest', undefined]]));
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Bob', undefined], ['Guest', undefined]]));
+    // Their socket, still open, is nobody's from then on: joining again on it brings nothing of the account back.
+    b.send({ t: 'join', room: a.last.room.code, name: 'Rob', token: b.token });
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Rob', undefined], ['Guest', undefined]]));
     for (const c of [a, b, g]) c.ws.terminate();
   });
 
@@ -366,6 +369,7 @@ describe('over the wire', () => {
     const room = server.rooms.get(a.last.room.code)!;
     await startOver(room, a, [a, g]);
     expect((await elsewhere.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+    a.send({ t: 'join', room: a.last.room.code, name: 'Ada', token: a.token }); // (their socket, opened signed in, joining again: still nobody)
     await a.did({ k: 'end', on: true });
     await g.did({ k: 'end', on: true });
     await vi.waitFor(() => expect(room.phase).toBe('results'));

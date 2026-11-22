@@ -51,7 +51,7 @@ interface Player {
   token: string;
   /**
    * Who they are signed in as (server/accounts.ts), if they are: what their connection said as it joined. Its id is
-   * never sent to anyone; where their page is, only to someone signed in; the picture it put up, to everyone.
+   * never sent to anyone; where their page is, only to someone else signed in; the picture it put up, to everyone.
    */
   account: SignedAs | null;
   name: string;
@@ -1139,7 +1139,7 @@ export class Room {
         ...(seated(p) ? { sat: p.sat ?? 0 } : {}),
         name: p.name,
         ...(p.account?.picture ? { picture: p.account.picture } : {}),
-        ...(you.account && p.account ? { handle: p.account.handle } : {}),
+        ...(you.account && p.account && p !== you ? { handle: p.account.handle } : {}),
         connected: p.conn !== null,
         ...(p.out ? { left: true as const } : {}),
         ...(p.standing ? { standing: true as const } : {}),

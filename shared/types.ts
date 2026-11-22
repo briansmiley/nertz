@@ -212,8 +212,8 @@ export interface PlayerView {
   /** Where the picture they put up of themselves is (server/pictures.ts), if they are signed in and did. */
   picture?: string;
   /**
-   * Where their page is (`/u/<handle>`), for someone signed in, and told only to someone signed in: never who they are
-   * signed in as (server/room.ts).
+   * Where their page is (`/u/<handle>`), for someone else signed in, and told only to someone signed in: never who
+   * they are signed in as (server/room.ts). Never one's own: that is in one's `Account`.
    */
   handle?: string;
   connected: boolean;

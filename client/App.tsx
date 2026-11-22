@@ -121,7 +121,7 @@ function Someone({ handle }: { handle: string }) {
 }
 
 /**
- * A name at the table, as a link to their page where you are told it (they and you are signed in: `PlayerView.handle`).
+ * A name at the table, as a link to their page where you are told it (someone else's, they and you signed in: `PlayerView.handle`).
  * It opens in a tab of its own, so this one stays at the table.
  */
 function Named({ who, children }: { who: PlayerView | undefined; children: ReactNode }) {
@@ -880,7 +880,7 @@ function Results({ room }: { room: RoomView }) {
                   <span className="who">
                   <i className="chip" style={{ background: backColour(s.seat) }} />
                   <Name host={p?.isHost} className="nm">
-                    {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={s.id === room.me ? undefined : p}>{s.name}</Named>}
+                    {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{s.name}</Named>}
                   </Name>
                   {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
@@ -917,7 +917,7 @@ function Results({ room }: { room: RoomView }) {
                     <span className="who">
                     <i className="chip" style={{ background: backColour(p.seat) }} />
                     <Name host={p.isHost} className="nm">
-                      <Named who={p.id === room.me ? undefined : p}>{p.name}</Named>
+                      <Named who={p}>{p.name}</Named>
                     </Name>
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
