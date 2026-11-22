@@ -120,7 +120,7 @@ What you see around a round:
   largest the net score for the round; when the last pile is in, the round's best is picked out in gold ("★ ... wins the
   round") and the others dim. The labels are placed so that they cover no hand, no name, not the tray, not the NERTZ!
   stamp and not each other. Then the score sheet. The sequence takes about four seconds, a second and a half per
-  player, and a pause of six and a half seconds to read it; a click skips it, and with "reduce motion" switched on it
+  player, and a pause of three and a quarter seconds to read it; a click skips it, and with "reduce motion" switched on it
   is skipped altogether. The totals beside the names do not change until the sheet is up.
 
 Other scripts:
