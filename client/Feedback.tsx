@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';
+import { thisDevice } from './device';
 import { Bug as BugIcon } from './icons';
 import { rememberedName } from './name';
 import { touchOnly } from './prefs';
@@ -124,8 +125,8 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
     setState({ k: 'sending' });
     const me = room?.players.find((p) => p.id === room.me);
     const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.status.at ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
-    const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${navigator.userAgent}`;
     try {
+      const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${await thisDevice()}`;
       const [res] = await Promise.all([fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: room?.code, context, image }) }), wait(SENDING_MS)]);
       const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
       if (!res.ok || !body?.ok) return setState({ k: 'error', message: body?.message ?? 'That did not go through. Try again in a moment.' });

@@ -927,6 +927,12 @@ A volume belongs to one machine, which is what each app already runs. Fly keeps 
 
 The bug button posts to `/feedback` (server/feedback.ts).
 
+With the words goes where they were sent from (the report's `Where`): the screen, how many at the table, the window's
+size, and the browser, its system and its chip (client/device.ts). Those last are what the browser says when asked, in
+Chrome and its kin (`navigator.userAgentData`): "Google Chrome 157.0.7432.12, macOS 26.1.0, arm 64-bit". The user agent
+does not say: every Mac's reads "Intel Mac OS X 10_15_7". Safari and Firefox are not to be asked, so of theirs the user
+agent is given with that part left out: the browser and its version, but not which Mac or what it runs.
+
 A report is **kept** first, where there is a database (see [What is kept](#what-is-kept); `server/reports.ts`): a row of
 the `report` table, written before the sender is answered, with the report as it came and the account of whoever sent
 it if they were signed in. The screenshot is a file beside the database, `reports/<id>.jpg` under
