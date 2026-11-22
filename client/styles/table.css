@@ -253,10 +253,6 @@
   white-space: nowrap;
 }
 
-.tag.end {
-  justify-content: flex-end;
-}
-
 .tag .name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -268,6 +264,7 @@
   color: var(--marigold);
 }
 
+/* At the far corner of the hand. (Down the side the line is no longer than what is on it: the flag follows the name.) */
 .tag .flag {
   margin-left: auto;
   padding: 2px 7px 3px;
@@ -276,11 +273,6 @@
   font-size: 12px;
   background: rgba(8, 28, 33, 0.55);
   color: var(--chalk-dim);
-}
-
-/* Down the side the name line is wider than the hand under it, so its far end is nobody's: the flag stays by the name. */
-.tag.side .flag {
-  margin-left: 0;
 }
 
 .tag .bot {
