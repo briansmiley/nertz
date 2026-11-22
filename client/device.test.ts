@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { device, type Hints } from './device';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { device, thisDevice, type Hints } from './device';
 
 /** Chrome's user agent on any Mac at all. */
 const CHROME_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36';
@@ -60,5 +60,47 @@ describe('what a report was sent from', () => {
   it('is the user agent too where the browser answered with nothing to go on', () => {
     expect(device(CHROME_MAC, {})).toBe(device(CHROME_MAC));
     expect(device(CHROME_MAC, { platform: 'macOS', fullVersionList: [{ brand: 'Not;A=Brand', version: '99.0.0.0' }] })).toBe(device(CHROME_MAC));
+  });
+});
+
+describe('asking this browser what it is', () => {
+  /** A browser whose user agent is Chrome's on a Mac, with this to ask (or nothing). */
+  const browser = (userAgentData?: unknown) => vi.stubGlobal('navigator', { userAgent: CHROME_MAC, userAgentData });
+
+  // (The clock is stopped: whatever answers below does so without the half second passing.)
+  beforeEach(() => void vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('gives what it answers', async () => {
+    browser({ getHighEntropyValues: async () => chrome({ platform: 'macOS', platformVersion: '26.1.0', architecture: 'arm', bitness: '64', model: '' }) });
+    expect(await thisDevice()).toBe('Google Chrome 157.0.7432.12, macOS 26.1.0, arm 64-bit');
+  });
+
+  it('gives the user agent at once where there is nothing to ask', async () => {
+    browser();
+    expect(await thisDevice()).toBe(device(CHROME_MAC));
+  });
+
+  it('gives the user agent where the asking is refused, or breaks', async () => {
+    browser({ getHighEntropyValues: () => Promise.reject(new Error('refused')) });
+    expect(await thisDevice()).toBe(device(CHROME_MAC));
+    browser({
+      getHighEntropyValues: () => {
+        throw new Error('broken');
+      },
+    });
+    expect(await thisDevice()).toBe(device(CHROME_MAC));
+    browser({});
+    expect(await thisDevice()).toBe(device(CHROME_MAC));
+  });
+
+  it('waits half a second for an answer, and no longer', async () => {
+    browser({ getHighEntropyValues: () => new Promise(() => {}) });
+    const from = thisDevice();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await from).toBe(device(CHROME_MAC));
   });
 });

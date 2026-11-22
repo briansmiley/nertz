@@ -52,10 +52,13 @@ export function device(userAgent: string, hints?: Hints): string {
   return [`${b.brand} ${b.version}`, system(hints.platform, hints.platformVersion), chip, hints.model].filter(Boolean).join(', ');
 }
 
-/** The same of this browser, asked first. */
+/** The same of this browser, asked first. However the asking goes (refused, broken, never answered), the user agent is still given. */
 export async function thisDevice(): Promise<string> {
   const data = (navigator as Navigator & { userAgentData?: { getHighEntropyValues(hints: string[]): Promise<Hints> } }).userAgentData;
-  const asked = data?.getHighEntropyValues(['platformVersion', 'architecture', 'bitness', 'model', 'fullVersionList']).catch(() => undefined);
+  // (Asked inside a promise: an extension's stand-in for `userAgentData` may throw where Chrome's own would reject.)
+  const asked = Promise.resolve()
+    .then(() => data?.getHighEntropyValues(['platformVersion', 'architecture', 'bitness', 'model', 'fullVersionList']))
+    .catch(() => undefined);
   const late = new Promise<undefined>((r) => setTimeout(() => r(undefined), ASK_MS));
   return device(navigator.userAgent, await Promise.race([asked, late]));
 }
