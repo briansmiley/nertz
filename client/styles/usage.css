@@ -124,6 +124,7 @@
 }
 
 .usage .games .who {
+  display: block; /* (lobby.css's `.top .who` is a grid, and on a phone held upright the corner is `.top` too) */
   flex-basis: 100%;
 }
 
