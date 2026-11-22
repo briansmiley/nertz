@@ -681,6 +681,11 @@ is a few kilobytes and a busy table is a few messages a second.
 - Set up like the real apps (`fly.preview.toml`, as `fly.toml`): one machine, suspended when idle,
   and a 1 GB `nertz_data` volume at `/data`, so accounts, pictures and anything else kept outlive pushes to the PR. The
   workflow makes the volume once, before the first deploy, since a mount added to a machine with no volume destroys it.
+- A new preview starts from a copy of **staging's database**, taken when its volume is made and never again: read-only
+  from `nertz-staging` (never `nertz`), scrubbed on the runner of every session, sign-in code and account token, then
+  put in place and the machine restarted. Accounts, profiles, rounds, hands and reports come over; the files beside the
+  database (report screenshots, `pictures/`) do not, so those are missing there. If staging cannot be reached, the
+  preview starts empty, with a warning on the run.
 - Closing the PR destroys the app, and with it its volume ("When you destroy an app, you delete its volumes and volume
   snapshots": [Fly, Delete an app](https://fly.io/docs/apps/delete/)). `.github/workflows/preview-sweep.yml` destroys,
   daily, any `nertz-pr-<number>` whose PR is closed, in case a teardown failed. (Scheduled runs start once it is on

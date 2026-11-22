@@ -65,6 +65,7 @@ jobs:
             flyctl apps create "$APP" --org "$FLY_ORG"
           fi
       - name: Its volume, before any deploy mounts it
+        id: volume
         run: |
           # fly.preview.toml mounts nertz_data at /data, as fly.toml does: accounts and pictures outlive pushes. It has to
           # be made before the first deploy, since a mount added to a machine that has no volume destroys the machine.
@@ -74,7 +75,44 @@ jobs:
             echo "$APP has its volume."
           else
             flyctl volumes create nertz_data --app "$APP" --region sjc --size 1 --yes
+            echo "made=true" >> "$GITHUB_OUTPUT"
           fi
+      # A new preview starts from staging's database, scrubbed; never on a later push (the volume has its own by then),
+      # never from nertz itself, and never failing the preview: without it, the preview starts empty.
+      - uses: actions/setup-node@v4
+        if: steps.volume.outputs.made == 'true'
+        with:
+          node-version: 24
+      - name: A copy of staging's database, scrubbed
+        id: seed
+        if: steps.volume.outputs.made == 'true'
+        continue-on-error: true
+        env:
+          FROM: nertz-staging
+          COPY: /tmp/nertz-seed-${{ github.run_id }}-${{ github.run_attempt }}.db
+        run: |
+          # A suspended machine takes no ssh: a request wakes it.
+          curl -fsS --max-time 30 "https://$FROM.fly.dev/healthz" > /dev/null
+          # Taken read-only (VACUUM INTO, consistent while the server writes), into /tmp, which is cleared after.
+          trap 'flyctl ssh console --app "$FROM" -C "rm -f $COPY" || true' EXIT
+          flyctl ssh console --app "$FROM" -C "node -e 'const { DatabaseSync } = require(\"node:sqlite\"); new DatabaseSync(\"/data/nertz.db\", { readOnly: true }).prepare(\"VACUUM INTO ?\").run(process.argv[1])' $COPY"
+          flyctl ssh sftp get --app "$FROM" "$COPY" seed.db
+          # Nobody's sign-ins or keys: no sessions, no codes, no tokens. Accounts, profiles, rounds and reports stay.
+          # (VACUUM, so that what was deleted is not left in the file's free pages.)
+          node - seed.db <<'JS'
+          const { DatabaseSync } = require('node:sqlite');
+          const db = new DatabaseSync(process.argv[2]);
+          const has = (t) => !!db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(t);
+          for (const t of ['session', 'verification']) if (has(t)) db.exec(`delete from "${t}"`);
+          if (has('account')) {
+            const cols = db.prepare("select name from pragma_table_info('account')").all().map((c) => c.name);
+            const keys = ['accessToken', 'refreshToken', 'idToken', 'password'].filter((c) => cols.includes(c));
+            if (keys.length) db.exec(`update account set ${keys.map((c) => `"${c}" = null`).join(', ')}`);
+          }
+          db.exec('VACUUM');
+          const count = (t) => (has(t) ? db.prepare(`select count(*) as n from "${t}"`).get().n : '-');
+          console.log(['user', 'profile', 'round', 'hand', 'report', 'session', 'verification'].map((t) => `${t} ${count(t)}`).join(', '));
+          JS
       - name: Its secrets
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -93,6 +131,20 @@ jobs:
           flyctl secrets set --app "$APP" --stage "$@"
       - name: Deploy
         run: flyctl deploy --app "$APP" --config fly.preview.toml --remote-only --ha=false
+      - name: The copy in place
+        id: place
+        if: steps.seed.outcome == 'success'
+        continue-on-error: true
+        run: |
+          # Put beside the new, empty database, moved over it (the server, still on the old file, writes nowhere that
+          # stays), and the machine restarted onto it. Owned by node, as the server runs.
+          curl -fsS --max-time 30 "https://$APP.fly.dev/healthz" > /dev/null
+          flyctl ssh sftp put --app "$APP" seed.db /data/seed.db
+          flyctl ssh console --app "$APP" -C 'sh -c "chown node:node /data/seed.db && mv -f /data/seed.db /data/nertz.db && rm -f /data/nertz.db-wal /data/nertz.db-shm"'
+          flyctl apps restart "$APP"
+      - name: Empty, if not
+        if: steps.seed.outcome == 'failure' || steps.place.outcome == 'failure'
+        run: echo "::warning::$APP starts with an empty database; staging's could not be copied in (see the steps above)."
       - name: Say where, on the PR
         env:
           SHA: ${{ github.event.pull_request.head.sha }}
