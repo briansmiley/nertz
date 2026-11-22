@@ -103,11 +103,10 @@ function Glasses() {
   );
 }
 
-/** The switch for those only watching: a pair of glasses, lit (yellow) while they are let in, faint while not. */
+/** The switch for those only watching: a pair of glasses, lit (yellow) while they are let in, faint while not. (`what`: the thing switched, for a screen reader, which is told on or off by `aria-pressed`.) */
 function Specs({ on, disabled, what, onChange }: { on: boolean; disabled: boolean; what: string; onChange: (on: boolean) => void }) {
-  const says = on ? `Spectators can ${what} too. Press to keep them out` : `Spectators cannot ${what}. Press to let them`;
   return (
-    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={says} data-tip={says} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
+    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={`${what} for spectators`} data-tip={`${on ? 'Enabled' : 'Disabled'} for spectators`} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
       <Glasses />
     </button>
   );
@@ -353,14 +352,14 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
               <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
               <span>Allow text chat</span>
             </label>
-            <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+            <Specs on={social.text && social.watchText} disabled={!social.text} what="Text chat" onChange={(watchText) => setSocial({ watchText })} />
           </div>
           <div className="allow">
             <label className="check">
               <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
               <span>Allow voice chat</span>
             </label>
-            <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+            <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
           </div>
           {room.phase !== 'playing' && (
             <div className="rules">
