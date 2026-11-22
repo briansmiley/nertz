@@ -318,7 +318,10 @@ type Said = { k: 'snipe'; by: number; of: number } | { k: 'reshuffle' };
 
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
-/** How wide the name line of a neighbour whose hand runs down the side may be. */
+/**
+ * How wide the name line of a neighbour whose hand runs down the side may be. It is wider than the turned hand under
+ * it, so the line is only as long as what is on it, from the hand's outer edge: nothing on it stands off by itself.
+ */
 const TAG_SIDE_W = 210;
 /** A plain place: just where and how large. */
 const box0 = (r: Rect): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h });
@@ -921,8 +924,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         return (
           <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
-              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
-              style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
+              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}`}
+              style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, maxWidth: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <PictureBy picture={p?.picture} seat={o.seat} />
               {hosting && p && !p.bot && !p.left && !results ? (

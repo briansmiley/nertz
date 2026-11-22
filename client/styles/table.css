@@ -253,10 +253,6 @@
   white-space: nowrap;
 }
 
-.tag.end {
-  justify-content: flex-end;
-}
-
 .tag .name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -268,6 +264,7 @@
   color: var(--marigold);
 }
 
+/* At the far corner of the hand. (Down the side the line is no longer than what is on it: the flag follows the name.) */
 .tag .flag {
   margin-left: auto;
   padding: 2px 7px 3px;
