@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, takeKey, type Levels, type Prefs } from './prefs';
+import { PLAIN_LOOK, type Look } from '../shared/protocol';
+import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, seenLook, takeKey, type Levels, type Prefs } from './prefs';
 
 describe('cleanPrefs: hotkeys', () => {
   it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
@@ -131,5 +132,25 @@ describe('hotkeyPressed', () => {
   });
   it('is not the key with a modifier, or held down', () => {
     for (const over of [{ shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { repeat: true }]) expect(hotkeyPressed(press(over), 'KeyM')).toBe(false);
+  });
+});
+
+describe("seenLook: someone's cards on your screen", () => {
+  const theirs: Look = { deck: 'pixel', night: true, backs: { k: 'own', back: 'hilbert' }, bare: true };
+
+  it('is as they chose them, unless you have your faces on every card', () => {
+    expect(seenLook({ deck: 'big', night: false, myFaces: false }, theirs)).toBe(theirs);
+    expect(seenLook(DEFAULT_PREFS, theirs)).toBe(theirs);
+  });
+
+  it('has your faces, light or dark as yours are, and still their backs', () => {
+    expect(seenLook({ deck: 'big', night: false, myFaces: true }, theirs)).toEqual({ deck: 'big', night: false, backs: theirs.backs, bare: true });
+    expect(seenLook({ deck: 'cute', night: true, myFaces: true }, PLAIN_LOOK)).toEqual({ ...PLAIN_LOOK, deck: 'cute', night: true });
+  });
+
+  it('is off until it is turned on, and kept once it is', () => {
+    expect(cleanPrefs(null).myFaces).toBe(false);
+    expect(cleanPrefs({ myFaces: 'yes' }).myFaces).toBe(false);
+    expect(cleanPrefs({ myFaces: true }).myFaces).toBe(true);
   });
 });

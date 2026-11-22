@@ -417,13 +417,18 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
 
 **Your settings** (from the menu, bottom left on every screen, and the gear on the score sheet, which opens the same
-slip): sound on or off, the levels, reduce motion. Whoever hosts has the table's own settings at the bottom of theirs:
+slip): sound on or off, the levels, reduce motion, your faces on every card. Whoever hosts has the table's own settings at the bottom of theirs:
 text and voice chat, and between rounds the table rules. Nobody else sees them there.
 Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
 bot's spoken "Nertz"), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
 opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
-Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
-storage they last until the page closes.
+Reduce motion follows the system setting until you touch it, then overrules it either way.
+**My faces on every card** (`Prefs.myFaces`, off by default) draws everyone's cards on your screen with the faces you
+chose for your own, light or dark as yours are, in place of the ones their owners chose: for when somebody's deck is
+hard to read. It is yours alone: the table is not told, nobody else sees a thing of it, and the backs stay their
+owners' (a back says whose a card is). It can be turned on or off at any time, in the middle of a round too.
+`seenLook` (`client/prefs.ts`) is the one place a player's `Look` becomes what you see of it. Kept in `localStorage`;
+without storage they last until the page closes.
 
 **Table rules** (on the lobby sheet for everyone, read-only but for the host; and at the bottom of the host's settings between rounds): set by the host, stored in the room and sent in
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from

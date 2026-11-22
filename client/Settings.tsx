@@ -321,6 +321,11 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
         <span>Reduce motion</span>
       </label>
+      {/* (Any time, a round or not: it changes the cards for nobody but you.) */}
+      <label className="check">
+        <input type="checkbox" checked={prefs.myFaces} onChange={(e) => setPrefs({ myFaces: e.target.checked })} />
+        <span>My faces on every card</span>
+      </label>
       {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
       <div className={`level${styling ? '' : ' locked'}`}>
         <span>Card back</span>
