@@ -27,11 +27,23 @@ export function chatButtons(room: RoomView, social: Pick<SocialState, 'text' | '
   ];
 }
 
+/**
+ * Who sits where round the cards: your place (a seat nobody has, -1, if you watch), and the seats of everyone with a
+ * place (in the round or not). Between rounds the board is the round that ended, so these are its seats, whoever has
+ * sat down or stood up since: the score sheet and the lobby show that.
+ */
+export function places(room: RoomView): { you: number; seats: number[] } {
+  const round = room.game?.players.map((p) => p.seat) ?? [];
+  if (room.phase === 'results') return { you: room.lastRound?.scores.find((l) => l.id === room.me)?.seat ?? -1, seats: round };
+  const seated = room.players.flatMap((p) => (p.seat === null ? [] : [p.seat]));
+  return { you: room.seat ?? -1, seats: [...new Set([...round, ...seated])].sort((a, b) => a - b) };
+}
+
 export function fittingsOf(room: RoomView | null | undefined, social: Parameters<typeof chatButtons>[1], inVoice: boolean, muted = false): Fittings {
   if (!room) return NO_FITTINGS;
   const me = room.players.find((p) => p.id === room.me);
-  // (Everyone at the table has a place round it, in the round or not: more than six, and the others stand in columns.)
-  const table = room.game && room.phase !== 'lobby' ? new Set([...room.game.players.map((p) => p.seat), ...room.players.flatMap((p) => (p.seat === null ? [] : [p.seat]))]).size : 0;
+  // (Everyone at the table has a place round it: more than six, and the others stand in columns.)
+  const table = room.game && room.phase !== 'lobby' ? places(room).seats.length : 0;
   return {
     chat: chatButtons(room, social, inVoice, muted),
     clock: !!room.clock && room.phase !== 'lobby',
@@ -46,7 +58,7 @@ export function fittingsOf(room: RoomView | null | undefined, social: Parameters
  * end of a round that is the total before the round's points, then after them: the line is as wide as the wider.
  */
 function lineWidth(room: RoomView, me: PlayerView): number {
-  const l = room.phase === 'results' ? room.lastRound?.scores.find((s) => s.seat === me.seat) : undefined;
+  const l = room.phase === 'results' ? room.lastRound?.scores.find((s) => s.id === me.id) : undefined;
   return l ? Math.max(nameWidth(l.name, String(l.total - l.delta)), nameWidth(l.name, String(l.total))) : nameWidth(me.name, String(me.score));
 }
 

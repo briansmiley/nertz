@@ -16,7 +16,7 @@ import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
 import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
-import { useFittings } from './fittings';
+import { places, useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
@@ -365,8 +365,8 @@ function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
 /** `sheet` (the scores) is laid over the table when the end-of-round sequence has played out. */
 export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const game = room.game!;
-  /** Your seat; or, watching without one, a seat that nobody has. */
-  const you = room.seat ?? -1;
+  /** Your place at the table (between rounds, the one you had in the round); or, watching, a seat that nobody has. */
+  const { you, seats } = places(room);
   const results = room.phase === 'results';
   const { W, H, pad } = useWindow();
   const prefs = usePrefs();
@@ -437,7 +437,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     return () => clearTimeout(t);
   }, [groupHeld, turning]);
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
-  const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
+  const seated = seats.join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
   // What stands round the cards (the buttons in the corners, the clock, your name, "I'm stuck" and the vote) is placed
   // by the layout too, and the cards round it: nothing here is measured off the page or put down by hand.
