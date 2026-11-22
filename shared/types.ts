@@ -359,6 +359,8 @@ export interface Versus {
 /** Someone's page, as someone signed in sees it (`GET /stats/<handle>`): the name they go by, their record, and yours against them (null on your own). */
 export interface Page {
   name: string | null;
+  /** The picture they put up (server/pictures.ts), if they did: never Google's, as at a table. */
+  picture: string | null;
   stats: Stats;
   versus: Versus | null;
 }

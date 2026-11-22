@@ -788,7 +788,7 @@ picture (or initial) and name stand where the name was written, and pressing the
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
 to their page or the way in and back again (with reduced motion, the other side simply comes up).
 
-Everyone signed in also has a page for others to see, at `/u/<handle>`: their name, their record, and under it the
+Everyone signed in also has a page for others to see, at `/u/<handle>`: their name and the picture they put up (never Google's; their initial without one), their record, and under it the
 record of whoever is looking against them. Only someone signed in can see it (anyone else is shown the way in, which
 comes back to it). At a table, someone signed in sees the names of the others signed in there as links to their pages,
 in the lobby and on the score sheet; each opens in a tab of its own, so the table stays where it is.
@@ -829,7 +829,7 @@ each win by the table: the rounds won (a tie at the top shared among those in it
 table of n, both summed over the rounds with someone else in them; 1× is chance, and a win at a table of ten counts five
 times one at a table of two.
 
-`GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, their record, and the asker's against
+`GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
 them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null
 on one's own page). 401 for nobody signed in, before anything is looked up, so nobody else can tell whether a handle is
 anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it).

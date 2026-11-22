@@ -24,7 +24,7 @@ export function statsHandler({ accounts, rounds }: { accounts: Accounts; rounds:
     if (handle === null) return json(200, rounds.stats(me.id, among));
     const them = accounts.whose(handle);
     if (!them) return json(404, null);
-    const page: Page = { name: them.name, stats: rounds.stats(them.id, among), versus: them.id === me.id ? null : rounds.versus(me.id, them.id, among) };
+    const page: Page = { name: them.name, picture: them.picture, stats: rounds.stats(them.id, among), versus: them.id === me.id ? null : rounds.versus(me.id, them.id, among) };
     json(200, page);
   };
 }

@@ -197,12 +197,12 @@ function readVersus(body: unknown): Versus | null {
  */
 export function readPage(status: number, body: unknown): Page | 'nobody' | 'none' {
   if (status === 401) return 'nobody';
-  const v = body as { name?: unknown; stats?: unknown; versus?: unknown } | null;
+  const v = body as { name?: unknown; picture?: unknown; stats?: unknown; versus?: unknown } | null;
   if (status !== 200 || !v) return 'none';
   const stats = readStats(200, v.stats);
   const versus = v.versus === null ? null : readVersus(v.versus);
   if (!stats || (v.versus !== null && !versus) || (v.name !== null && typeof v.name !== 'string')) return 'none';
-  return { name: typeof v.name === 'string' && v.name ? v.name : null, stats, versus };
+  return { name: typeof v.name === 'string' && v.name ? v.name : null, picture: ownPicture(v.picture), stats, versus };
 }
 
 /** The record last heard, and whose it is: shown at once when it is wanted again, while it is asked for afresh. */

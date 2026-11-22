@@ -42,7 +42,9 @@
 }
 
 .yourpicture img,
-.yourpicture i {
+.yourpicture i,
+.theirpicture img,
+.theirpicture i {
   display: grid;
   place-items: center;
   width: 100%;
@@ -475,6 +477,15 @@
 }
 
 /* ------------------------------------------------------------ someone's page (/u/<handle>) */
+
+/* Their picture (or initial), as yours is on your page, but not yours to change. */
+.theirpicture {
+  flex: none;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  overflow: hidden;
+}
 
 /* Their name, written as yours is on your page, but not yours to change. */
 .theirs .you h2 {

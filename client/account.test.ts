@@ -65,9 +65,11 @@ describe("someone's page, as the server says it", () => {
   const versus = { rounds: 2, ahead: 1, behind: 0, points: 10, theirs: 4 };
 
   it('is their name, their record and yours against them; on your own, nobody to be against', () => {
-    expect(readPage(200, { name: 'Bob', stats, versus, extra: 'x' })).toEqual({ name: 'Bob', stats, versus });
-    expect(readPage(200, { name: 'Ada', stats, versus: null })).toEqual({ name: 'Ada', stats, versus: null });
-    expect(readPage(200, { name: null, stats, versus })).toEqual({ name: null, stats, versus });
+    const picture = '/pictures/0123456789abcdef.webp';
+    expect(readPage(200, { name: 'Bob', picture, stats, versus, extra: 'x' })).toEqual({ name: 'Bob', picture, stats, versus });
+    expect(readPage(200, { name: 'Ada', picture: null, stats, versus: null })).toEqual({ name: 'Ada', picture: null, stats, versus: null });
+    expect(readPage(200, { name: null, stats, versus })).toEqual({ name: null, picture: null, stats, versus });
+    expect(readPage(200, { name: 'Bob', picture: 'https://evil.example/me.webp', stats, versus })).toMatchObject({ picture: null }); // (only ever one of ours)
   });
 
   it('is nobody to show it to for a 401, and no page for anything else that is not one', () => {

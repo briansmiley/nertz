@@ -37,8 +37,8 @@ export interface Accounts {
    * for a few minutes). Never rejects: asking gone wrong is said in the log, and is nobody.
    */
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
-  /** Whose page `handle` is, and the name they go by: null for nobody's. */
-  whose(handle: string): { id: string; name: string | null } | null;
+  /** Whose page `handle` is, the name they go by and the picture they put up: null for nobody's. */
+  whose(handle: string): { id: string; name: string | null; picture: string | null } | null;
   /** Gives `account` a name to go by, already clean and not empty. */
   rename(account: string, name: string): void;
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
@@ -196,7 +196,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
   if (unmade.length) transaction(db, () => unmade.forEach((u) => made.run(u.id, firstName(u.name))));
   const named = db.prepare('select name, picture, handle from profile where account = ?');
-  const whose = db.prepare('select account as id, name from profile where handle = ?');
+  const whose = db.prepare('select account as id, name, picture from profile where handle = ?');
   const rename = db.prepare('update profile set name = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
   const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
@@ -211,7 +211,10 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null; handle: string } | undefined);
       return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle } : null;
     },
-    whose: (handle) => (whose.get(handle) as { id: string; name: string | null } | undefined) ?? null,
+    whose: (handle) => {
+      const them = whose.get(handle) as { id: string; name: string | null; picture: string | null } | undefined;
+      return them ? { ...them, picture: them.picture && pictureUrl(them.picture) } : null;
+    },
     rename: (account, name) => void rename.run(name, account),
     // (Read and written with nothing between: the database is this process's alone, and node:sqlite is synchronous.)
     repicture: (account, id) => {

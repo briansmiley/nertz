@@ -333,12 +333,13 @@ describe('over the wire', () => {
     const page = (await (await ada.ask(`/stats/${bobs}`)).json()) as Page;
     expect(page).toEqual({
       name: 'Bob',
+      picture: null, // (none put up: Google's is never shown to anyone else)
       stats: await (await bob.ask('/stats')).json(),
       versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), points: line(a), theirs: line(b) },
     });
     expect(((await (await bob.ask(`/stats/${adas}?among=no-bots`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a) });
     // One's own: one's record, and nobody to be against.
-    expect(await (await ada.ask(`/stats/${adas}`)).json()).toEqual({ name: 'Ada', stats: await (await ada.ask('/stats')).json(), versus: null });
+    expect(await (await ada.ask(`/stats/${adas}`)).json()).toEqual({ name: 'Ada', picture: null, stats: await (await ada.ask('/stats')).json(), versus: null });
 
     // Nobody signed in is told nothing, not even whether there is such a page; a page that is nobody's is not there.
     expect((await guest.ask(`/stats/${bobs}`)).status).toBe(401);

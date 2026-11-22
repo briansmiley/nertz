@@ -172,6 +172,7 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
     <div className="profile theirs">
       <div className="you">
         {head}
+        {known && <TheirPicture picture={known.picture} name={known.name} />}
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
       </div>
       {page !== 'none' && (
@@ -187,6 +188,16 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         </div>
       )}
     </div>
+  );
+}
+
+/** Their picture: the one they put up, else their initial (never Google's: only they see that one). */
+function TheirPicture({ picture, name }: { picture: string | null; name: string | null }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  return (
+    <span className="theirpicture" aria-hidden="true">
+      {picture && broken !== picture ? <img src={picture} alt="" onError={() => setBroken(picture)} /> : <i>{name ? [...name][0]!.toUpperCase() : ''}</i>}
+    </span>
   );
 }
 
