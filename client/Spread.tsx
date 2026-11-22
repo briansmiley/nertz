@@ -12,6 +12,8 @@ import { deal } from './sound';
 const CARDS = 6;
 /** Each half of the turn: edge-on, then down again. */
 const HALF = 0.22;
+/** How far ahead of edge-on the flick sounds (s): the sound's onset leads the eye a touch. */
+const SNAP = 0.03;
 /** How long after one card of the wave starts turning the next one does (ms). */
 const STAGGER = 90;
 /** Two presses of the ace this close together are a double press (ms): timed by hand, as a phone's double tap is not a dblclick. */
@@ -38,9 +40,9 @@ function Card({ seat, wave }: { seat: number; wave: number }) {
   const turn = async () => {
     if (turning.current) return;
     const next = anotherBack(back);
-    deal();
     turning.current = true;
     const still = calm(); // reduced motion: the new back, without the turn
+    deal(still ? 0 : HALF - SNAP); // on the audio clock, so the flick lands just as the card comes edge-on
     try {
       await Promise.all([loaded(next), still || animate(scope.current, { rotateY: 90 }, { duration: HALF, ease: 'easeIn' })]);
       setBack(next);
