@@ -7,8 +7,8 @@
 // - LINEAR_API_KEY and LINEAR_TEAM (a team's key, like NRZ): an issue is filed in that team, titled "[FEEDBACK] ...",
 //   labelled Bug or Feature and `auto` (each label made if the team has none of that name), the screenshot in its
 //   description. `auto` is what puts it in the way of the auto-fanout (scripts/auto-fanout.sh), which implements it:
-//   so one sender's issues get it only so many times (`AUTO_PER_SENDER`), and only for a report that was kept, where
-//   they can be counted. Past that, and without a database, the issue is filed all the same, without it.
+//   so only so many of the issues it is on may be open at once, of one sender's (`AUTO_PER_SENDER`) and of everyone's
+//   (`AUTO_OPEN`), as Linear says when the issue is filed. Past that the issue is filed all the same, without it.
 //   Optional, each left alone if unset: LINEAR_PRIORITY (1 urgent, 2 high, 3 medium, 4 low), LINEAR_ASSIGNEE (an
 //   email address, or `me` for whoever the key belongs to), LINEAR_STATE (a status of the team by name, like Todo)
 //   and LINEAR_PROJECT (a project by name).
@@ -18,24 +18,43 @@
 // With no database and none of them, the sender is told that feedback is not set up.
 import Anthropic from '@anthropic-ai/sdk';
 import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
+import { createHash } from 'node:crypto';
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import type { Account } from '../shared/types';
 import { newReportId, type Reports } from './reports';
 
 /**
- * How many issues one sender's reports may hand to the auto-fanout (labelled `auto`), ever: anyone at all can send a
- * report, and each one the auto-fanout takes up costs a Claude run. A sender is an account, else a name, else nobody
- * (`senderOf`, server/reports.ts).
+ * How many issues handed to the auto-fanout (labelled `auto`) may be open at once, not yet Done or Canceled: of one
+ * sender's, and of every report's together (which a sender giving a new name each time cannot get round). Anyone at all
+ * can send a report, and each one the auto-fanout takes up costs a Claude run. Merging or closing one frees its place.
  */
 export const AUTO_PER_SENDER = 5;
+export const AUTO_OPEN = 10;
 
-/** An issue filed for a report: Linear's id for it, its number and address, the description it was filed with, and whether it was labelled `auto`. */
+/**
+ * Who sent a report, as the caps count them: their account if they were signed in (whatever name they gave), else the
+ * name they gave, trimmed and in any case (one name is one person), else nobody, all of whom are one sender. Hashed:
+ * it is written on the issue (`**Sender:**`), where an account's id must not be.
+ */
+export const senderKey = (r: Pick<Report, 'name'>, account: string | null): string =>
+  createHash('sha256')
+    .update(account ? `account:${account}` : r.name?.trim() ? `name:${r.name.trim().toLowerCase()}` : 'nobody')
+    .digest('hex')
+    .slice(0, 16);
+
+/** An issue filed for a report: Linear's id for it, its number and address, and the description it was filed with. */
 interface Filed {
   id: string;
   identifier: string;
   url: string;
   description: string;
-  auto: boolean;
+}
+
+/** A Linear team, as the issues are filed in it: its id, the labels they are given, and what else (`extra`) each is filed with. */
+interface Team {
+  id: string;
+  labels: Record<Report['kind'] | 'auto', string>;
+  extra: Record<string, unknown>;
 }
 
 /** A Discord message's id: a snowflake, digits only. */
@@ -104,6 +123,8 @@ export interface FeedbackOptions {
   linear?: { key: string; team: string; priority?: number; assignee?: string; state?: string; project?: string };
   /** An Anthropic API key: Claude names each report and judges its priority. */
   anthropic?: string;
+  /** For tests: `AUTO_PER_SENDER` and `AUTO_OPEN`, otherwise. */
+  caps?: { perSender: number; open: number };
   /** For tests. */
   fetch?: typeof fetch;
   /** For tests: told when a report has been delivered (or failed to be), after the sender was answered. */
@@ -150,6 +171,14 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   const anthropicKey = options.anthropic ?? process.env.ANTHROPIC_API_KEY;
   const claude = anthropicKey ? new Anthropic({ apiKey: anthropicKey, fetch: outward, timeout: PATIENCE_MS, maxRetries: 0 }) : null;
   const recent = new Map<string, number[]>();
+  const caps = options.caps ?? { perSender: AUTO_PER_SENDER, open: AUTO_OPEN };
+  /** The filing now going on, if any: each waits for the one before (`inTurn`). */
+  let filing: Promise<unknown> = Promise.resolve();
+  const inTurn = <T>(does: () => Promise<T>): Promise<T> => {
+    const done = filing.then(does, does);
+    filing = done.catch(() => undefined);
+    return done;
+  };
   const env = process.env;
   const linear =
     options.linear ??
@@ -166,12 +195,12 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   };
 
   /**
-   * The team's id and its labels, looked up once: Bug and Feature (one by the report's kind) and `auto` (on every
-   * issue). A label of that name is used if the team has one, or the workspace has one for every team; otherwise it is
+   * The team's id and its labels, looked up once: Bug and Feature (one by the report's kind) and `auto` (on those the
+   * caps let through, `mayAuto`). A label of that name is used if the team has one, or the workspace has one for every team; otherwise it is
    * made for the team. (Asked in two small queries: one that reads every label of a team inside the team is refused by
    * Linear as too complex.)
    */
-  let team: Promise<{ id: string; labels: Record<Report['kind'] | 'auto', string>; extra: Record<string, unknown> }> | null = null;
+  let team: Promise<Team> | null = null;
   const findTeam = (): NonNullable<typeof team> =>
     (team ??= (async () => {
       const found = await gql<{ teams: { nodes: { id: string }[] } }>('query($key: String!) { teams(filter: { key: { eq: $key } }, first: 1) { nodes { id } } }', { key: linear!.team.toUpperCase() });
@@ -235,7 +264,7 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   };
 
   /** Files the issue; answers with it: its number and address, for the other places to point at. */
-  const toLinear = async (id: string, r: Report, heading: Promise<Heading>, kept: Reports | null): Promise<Filed> => {
+  const toLinear = async (id: string, r: Report, heading: Promise<Heading>, account: string | null): Promise<Filed> => {
     const t = await findTeam();
     // The screenshot goes up to Linear's own storage first; without it the issue is still filed.
     let picture = '';
@@ -252,13 +281,27 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
       }
     }
     const { title, priority } = await heading; // (asked for while the team was looked up and the screenshot went up)
-    const about = [r.name && `**From:** ${r.name}`, r.room && `**Table:** ${r.room}`, r.context && `**Where:** ${r.context}`, `**Report:** ${id}`].filter(Boolean).join('  \n');
+    const sender = senderKey(r, account);
+    const about = [r.name && `**From:** ${r.name}`, r.room && `**Table:** ${r.room}`, r.context && `**Where:** ${r.context}`, `**Report:** ${id}`, `**Sender:** ${sender}`].filter(Boolean).join('  \n');
     // (What a stranger typed is quoted, so that it cannot pass for the issue's own text.)
     const description = `${r.text.split('\n').map((l) => `> ${l}`).join('\n')}${picture}\n\n${about}`;
-    // (Asked last, as it is filed: a report that fails before then has taken none of its sender's.)
-    const auto = !!kept && attempt(id, 'counting its sender', () => kept.mayAuto(id, AUTO_PER_SENDER)) === true;
-    const made = await gql<{ issueCreate: { issue: Pick<Filed, 'id' | 'identifier' | 'url'> } }>('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier url } } }', { input: { teamId: t.id, title: `[FEEDBACK] ${title}`, description, labelIds: [t.labels[r.kind], ...(auto ? [t.labels.auto] : [])], ...t.extra, ...(priority ? { priority } : {}) } });
-    return { ...made.issueCreate.issue, description, auto };
+    // Counted and filed in turn, one report at a time: two at once must not both find the last place free.
+    return inTurn(async () => {
+      const auto = await mayAuto(t, sender).catch((e: unknown) => (console.error('feedback', id, 'counting the open auto issues', e), false));
+      const made = await gql<{ issueCreate: { issue: Omit<Filed, 'description'> } }>('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier url } } }', { input: { teamId: t.id, title: `[FEEDBACK] ${title}`, description, labelIds: [t.labels[r.kind], ...(auto ? [t.labels.auto] : [])], ...t.extra, ...(priority ? { priority } : {}) } });
+      return { ...made.issueCreate.issue, description };
+    });
+  };
+
+  /**
+   * Whether a new issue of `sender`'s may be labelled `auto`: whether fewer than the caps of the issues labelled so are
+   * open, of theirs (by the `**Sender:**` line) and of every report's (by the title's `[FEEDBACK]`). An issue of
+   * Brian's own that he labelled is not counted.
+   */
+  const mayAuto = async (t: Team, sender: string): Promise<boolean> => {
+    const open = 'team: { id: { eq: $team } }, labels: { some: { id: { eq: $label } } }, state: { type: { nin: ["completed", "canceled"] } }';
+    const had = await gql<{ theirs: { nodes: unknown[] }; all: { nodes: unknown[] } }>(`query($team: ID!, $label: ID!, $sender: String!, $theirs: Int!, $all: Int!) { theirs: issues(first: $theirs, filter: { ${open}, description: { contains: $sender } }) { nodes { id } } all: issues(first: $all, filter: { ${open}, title: { startsWith: "[FEEDBACK]" } }) { nodes { id } } }`, { team: t.id, label: t.labels.auto, sender: `**Sender:** ${sender}`, theirs: caps.perSender, all: caps.open });
+    return had.theirs.nodes.length < caps.perSender && had.all.nodes.length < caps.open;
   };
 
   /**
@@ -300,11 +343,11 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   };
 
   /** Passes a report on: what it was titled, the issue filed for it if one was, and its Discord post if it was posted. Never fails: what goes wrong is logged. */
-  const deliver = async (id: string, report: Report, kept: Reports | null): Promise<{ heading: Heading; issue: Filed | null; post: string | null }> => {
+  const deliver = async (id: string, report: Report, account: string | null): Promise<{ heading: Heading; issue: Filed | null; post: string | null }> => {
     const failed = (e: unknown): null => (console.error('feedback', id, e), null);
     // Named while Linear is readied; Linear before the other two, so that they can point at the issue. If it fails, they still get the report.
     const heading = head(id, report);
-    const issue = linear ? await toLinear(id, report, heading, kept).catch(failed) : null;
+    const issue = linear ? await toLinear(id, report, heading, account).catch(failed) : null;
     const named = await heading;
     const posted = webhook ? await toDiscord(id, report, named, issue ?? undefined).catch(failed) : null;
     if (issue && posted) await notePost(issue, posted).catch(failed);
@@ -347,9 +390,9 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
     const kept = reports && attempt(id, 'keeping it', () => (reports.add(id, now, report, account?.id ?? null), true)) ? reports : null;
     if (!kept && !webhook && !linear) return answer(500, 'That report could not be kept. Try again in a moment.');
     answer(200);
-    void deliver(id, report, kept)
+    void deliver(id, report, account?.id ?? null)
       .then(({ heading, issue, post }) => {
-        if (kept) attempt(id, 'noting what became of it', () => kept.passedOn(id, { heading, issue: issue?.url ?? null, post, auto: issue?.auto ?? false }));
+        if (kept) attempt(id, 'noting what became of it', () => kept.passedOn(id, { heading, issue: issue?.url ?? null, post }));
         else if (!issue && !post) console.error('feedback', id, 'delivered nowhere; the report was', JSON.stringify({ ...report, image: undefined }));
       })
       .finally(() => options.onDelivered?.(id))

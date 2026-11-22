@@ -872,9 +872,8 @@ it if they were signed in. The screenshot is a file beside the database, `report
 nothing serves these files (read them with `fly ssh sftp get`). The screenshots kept may come to 200 MB in all: past
 that a report is kept without its picture, which is still passed on (anyone at all can send one, and the accounts live
 on the same volume). Once it has been passed on, the row also says what it was titled, the address of the issue
-filed for it, the id of its Discord post (`post`) and whether the issue went to the auto-fanout (`auto`, counted by
-`sender`). So a report that reaches nowhere else is not lost. To read them:
-`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue, post, auto from report order by created_at desc;`
+filed for it and the id of its Discord post (`post`). So a report that reaches nowhere else is not lost. To read them:
+`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue, post from report order by created_at desc;`
 
 From there it is passed on wherever the server was told, to both if both are set:
 
@@ -886,9 +885,11 @@ From there it is passed on wherever the server was told, to both if both are set
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature, and `auto` (each
   label made if the team has none of that name), with the screenshot in its description. `auto` hands it to the
-  [auto-fanout](#auto-fanout), so one sender gets it on five issues at most, ever (`AUTO_PER_SENDER`): a sender is
-  their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count as one.
-  Past that, or for a report that could not be kept (and so counted), the issue is filed without `auto`.
+  [auto-fanout](#auto-fanout), so only so many of those issues may be open at once (not Done or Canceled, as Linear
+  says when the next is filed): five of one sender's (`AUTO_PER_SENDER`) and ten of every report's (`AUTO_OPEN`). A
+  sender is their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count
+  as one; the issue says who, hashed, on a `**Sender:**` line. Past a cap the issue is filed without `auto`, and a
+  merged or closed one frees its place.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
 - `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
   issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
@@ -900,25 +901,26 @@ Ten reports per address per minute; a screenshot is scaled down in the browser f
 
 ### Auto-fanout
 
-Every hour the droplet looks for Nertz issues labelled **`auto`** that nobody has started (Backlog or Todo, team SMI,
-project Nertz), and Claude implements them: a branch off `staging` and a PR to it for each, titled `[SMI-N] ...`, and a
+Every hour the droplet looks for issues labelled **`auto`** that nobody has started (Backlog or Todo, in the team
+`LINEAR_TEAM` names, SMI unless said), and Claude implements them: a branch off `staging` and a PR to it for each, titled `[SMI-N] ...`, and a
 second Claude's review of it, fixes pushed and the rest left as a PR comment. It never merges. Then BinaryBot opens a
 thread on the report's post in #nertz-feedback (or on a fresh message there, for an issue no report made), tags Brian
-and links the PR. An issue too vague to do gets a comment asking what it needs, and loses its `auto`.
+and links the PR and the issue. An issue too vague to do gets a comment asking what it needs, and loses its `auto`.
 
-- **Opting in:** the server labels the issues it files `auto` (up to five per sender, see [Feedback](#feedback)); add
+- **Opting in:** the server labels the issues it files `auto` (within its caps, see [Feedback](#feedback)); add
   the label to any other issue to hand it over, and take it off to keep one back. The issue's description is all it is told.
 - **Limits:** one run at a time (a lock), at most three issues a run and two Claudes at once (the box has 2 GB), no dev
   servers, at most $15 and three hours a run (`NERTZ_AUTO_BUDGET_USD`, `NERTZ_AUTO_HOURS`).
-- **The parts:** `scripts/auto-fanout.sh` is what cron runs: one call to Linear first, which costs nothing, and
-  `claude -p "/auto-fanout"` in `/root/projects/nertz` only if there is something to do. The flow itself is the skill
-  `.claude/skills/auto-fanout/SKILL.md`, read from that checkout as it stands. `scripts/feedback-thread.sh` opens the
+- **The parts:** `scripts/auto-fanout.sh` is what cron runs: one call to Linear first, which costs nothing, and only if
+  there is something to do, `claude -p "/auto-fanout"` in a checkout of its own (`~/.local/state/nertz-auto/checkout`,
+  a worktree of `/root/projects/nertz` put back to `origin/staging` each run). The flow itself is the skill
+  `.claude/skills/auto-fanout/SKILL.md`, so always staging's, whatever branch the main checkout is on. `scripts/feedback-thread.sh` opens the
   thread (`--dry-run` to see where it would go).
 - **Needs:** a Linear personal API key alone in `~/.config/linear/api-key` (mode 600; `LINEAR_KEY_FILE` says
   otherwise), for that first call; Claude's own `linear-personal` connection for the rest; BinaryBot's token in
   `~/.config/discord/binarybot-bot-token`.
 - **Logs:** `~/.local/state/nertz-auto/runs.log`, each line with its time: when a run started, its session (`claude
-  --resume <id>` in the checkout shows everything it did), its summary and how it ended. A check that found nothing
+  --resume <id>` in its checkout shows everything it did), its summary and how it ended. A check that found nothing
   writes nothing.
 - **Switching it on:** `crontab -e` and add `17 * * * * /root/projects/nertz/scripts/auto-fanout.sh`. **Off:** take
   the line out again; a run under way stops with `pkill -f 'claude -p /auto-fanout'`.
