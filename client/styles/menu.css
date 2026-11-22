@@ -35,31 +35,35 @@
   stroke: currentColor;
 }
 
+/* What to do: one ruled line across the foot, each a word with its icon, side by side; a table's five wrap to a second
+   line rather than squeeze. */
 .acts {
-  display: grid;
+  display: flex;
   flex: none;
-  padding-bottom: 0.35rem;
+  flex-wrap: wrap;
   border-top: 1px solid var(--rule);
 }
 
-/* Each line: its icon, its name, and at the far end the vote's tally. */
 .acts button {
   display: flex;
+  flex: 1 0 auto;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.65rem 1.1rem 0.6rem 0.95rem;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: 0 0 -1px;
+  padding: 0.7rem 0.85rem 0.65rem;
   border: 0;
+  border-bottom: 1px solid var(--rule);
   border-radius: 0;
   background: none;
   color: var(--ink);
-  font: 600 1rem/1.1 var(--ui);
-  text-align: left;
+  font: 600 0.95rem/1.1 var(--ui);
   white-space: nowrap;
   cursor: pointer;
 }
 
 .acts button + button {
-  border-top: 1px solid var(--rule);
+  box-shadow: inset 1px 0 var(--rule);
 }
 
 .acts button:hover {
@@ -73,8 +77,8 @@
 
 .acts button svg {
   flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.15rem;
+  height: 1.15rem;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -83,30 +87,7 @@
 }
 
 .acts small {
-  margin-left: auto;
-  padding-left: 1.2rem;
+  padding-left: 0.15rem;
   font: 700 0.95em/1 var(--num);
   font-variant-numeric: tabular-nums;
-}
-
-/* A phone on its side has not the height for both, one over the other (a round's lines alone nearly fill it): there
-   the lines of what to do stand beside the settings, each scrolling by itself if it must. */
-@media (max-height: 499px) and (orientation: landscape) {
-  .slip.menu {
-    flex-direction: row;
-    width: auto;
-  }
-
-  .menu .yours {
-    flex: none;
-    width: 17.5rem;
-  }
-
-  .acts {
-    align-content: start;
-    padding-top: 0.55rem; /* (clear of the slip's red edge) */
-    border-top: 0;
-    border-left: 1px solid var(--rule);
-    overflow-y: auto;
-  }
 }
