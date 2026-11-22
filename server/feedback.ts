@@ -29,7 +29,7 @@ import { newReportId, type Reports } from './reports';
  * can send a report, and each one the auto-fanout takes up costs a Claude run. Merging or closing one frees its place.
  */
 export const AUTO_PER_SENDER = 5;
-export const AUTO_OPEN = 10;
+export const AUTO_OPEN = 20;
 
 /**
  * Who sent a report, as the caps count them: their account if they were signed in (whatever name they gave), else the

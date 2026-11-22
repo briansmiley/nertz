@@ -886,7 +886,7 @@ From there it is passed on wherever the server was told, to both if both are set
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature, and `auto` (each
   label made if the team has none of that name), with the screenshot in its description. `auto` hands it to the
   [auto-fanout](#auto-fanout), so only so many of those issues may be open at once (not Done or Canceled, as Linear
-  says when the next is filed): five of one sender's (`AUTO_PER_SENDER`) and ten of every report's (`AUTO_OPEN`). A
+  says when the next is filed): five of one sender's (`AUTO_PER_SENDER`) and twenty of every report's (`AUTO_OPEN`). A
   sender is their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count
   as one; the issue says who, hashed, on a `**Sender:**` line. Past a cap the issue is filed without `auto`, and a
   merged or closed one frees its place.
