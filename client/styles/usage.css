@@ -16,6 +16,31 @@
   color: var(--ink-soft);
 }
 
+/* With the bots or just the humans: two words at the head's end, the one chosen in ink and underlined. */
+.usage .humans {
+  display: flex;
+  gap: 0.6rem;
+  flex: none;
+  margin: 0 0 0 auto;
+  white-space: nowrap;
+}
+
+.usage .humans button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.usage .humans [aria-checked='true'] {
+  color: var(--ink);
+  text-decoration: underline 1.5px;
+  text-underline-offset: 3px;
+}
+
 /* The totals: each figure big, its word small under it. */
 .usage .totals {
   display: flex;
@@ -81,12 +106,43 @@
   background: var(--red);
 }
 
-.usage .ends {
-  display: flex;
-  justify-content: space-between;
-  margin: -0.55rem 0 0;
-  font-size: 0.72rem;
+/* Under the rule: a notch for each day, its date under it (today's red, as its bar), the month under the first and a 1st. */
+.usage .dates {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 3px;
+  margin: -0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+  font: 600 0.68rem/1 var(--num);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
+  text-align: center;
+}
+
+.usage .dates li {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.usage .dates li::before {
+  content: '';
+  width: 1.5px;
+  height: 4px;
+  background: var(--ink);
+}
+
+.usage .dates li:last-child {
+  color: var(--red);
+}
+
+.usage .dates small {
+  justify-self: start;
+  font: inherit;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 /* The latest sittings: when, the table, how much; who was at it under that. */

@@ -160,7 +160,7 @@ describe('rounds kept', () => {
     // A month ago: on the totals, but on none of the days.
     rounds.keep({ ...round([hand(0, 'ada', 9)]), game: 'g3', code: 'OLDE' }, now - 30 * 24 * 60 * 60_000);
 
-    const usage = rounds.usage(300, now);
+    const usage = rounds.usage(300, false, now);
     expect(usage.total).toEqual({ games: 3, rounds: 4, players: 2, guests: 2, bots: 1 });
     expect(usage.days).toHaveLength(USAGE_DAYS);
     expect(usage.days[0]!.day).toBe('2026-11-09');
@@ -170,7 +170,7 @@ describe('rounds kept', () => {
     ]);
     expect(usage.days.slice(0, -2).every((d) => d.games === 0 && d.rounds === 0)).toBe(true);
     // By UTC's days, last night's is this morning's.
-    expect(rounds.usage(0, now).days.at(-1)).toMatchObject({ day: '2026-11-22', games: 2, rounds: 3 });
+    expect(rounds.usage(0, false, now).days.at(-1)).toMatchObject({ day: '2026-11-22', games: 2, rounds: 3 });
     expect(usage.games).toEqual([
       { at: now - 30 * 60_000, code: 'TEST', rounds: 2, ms: 120_000, players: [{ name: 'ada', as: 'account' }, { name: 'Guest', as: 'guest' }, { name: 'Bot', as: 'bot' }, { name: 'bob', as: 'account' }] },
       { at: Date.parse('2026-11-22T03:00:00Z'), code: 'NITE', rounds: 1, ms: 60_000, players: [{ name: 'bob', as: 'account' }, { name: 'Guest', as: 'guest' }] },
@@ -178,8 +178,25 @@ describe('rounds kept', () => {
     ] satisfies Usage['games']);
     // An account gone leaves its hands as a guest's, and no name to list.
     rounds.forget('bob');
-    expect(rounds.usage(300, now).total).toEqual({ games: 3, rounds: 4, players: 1, guests: 4, bots: 1 });
-    expect(rounds.usage(300, now).games[1]!.players).toEqual([{ name: 'Guest', as: 'guest' }]);
+    expect(rounds.usage(300, false, now).total).toEqual({ games: 3, rounds: 4, players: 1, guests: 4, bots: 1 });
+    expect(rounds.usage(300, false, now).games[1]!.players).toEqual([{ name: 'Guest', as: 'guest' }]);
+  });
+
+  it('just the humans: a bot\'s hand is not counted or listed, and a sitting of bots alone is not there', () => {
+    const rounds = openRounds(db);
+    const now = Date.parse('2026-11-22T15:00:00Z');
+    // Ada with a guest and a bot, then with Bob; and a table left to two bots.
+    rounds.keep(round([hand(0, 'ada', 4), hand(1, null, 2), hand(2, null, 6, 'slow')]), now - 60 * 60_000);
+    rounds.keep(round([hand(0, 'ada', 3), { ...hand(1, 'bob', 5), player: 4 }], undefined, 2), now - 30 * 60_000);
+    rounds.keep({ ...round([hand(0, null, 3, 'slow'), hand(1, null, 2, 'slow')]), game: 'g2', code: 'BOTS' }, now - 10 * 60_000);
+
+    expect(rounds.usage(0, false, now).total).toEqual({ games: 2, rounds: 3, players: 2, guests: 1, bots: 3 });
+    const usage = rounds.usage(0, true, now);
+    expect(usage.total).toEqual({ games: 1, rounds: 2, players: 2, guests: 1, bots: 0 });
+    expect(usage.days.at(-1)).toEqual({ day: '2026-11-22', games: 1, rounds: 2, players: 2, guests: 1, bots: 0 });
+    expect(usage.games).toEqual([
+      { at: now - 30 * 60_000, code: 'TEST', rounds: 2, ms: 120_000, players: [{ name: 'ada', as: 'account' }, { name: 'Guest', as: 'guest' }, { name: 'bob', as: 'account' }] },
+    ] satisfies Usage['games']);
   });
 
   it('the tables are made once: a database opened again has what it had', () => {
@@ -476,6 +493,7 @@ describe('over the wire', () => {
       expect(usage.total).toEqual({ games: 0, rounds: 0, players: 0, guests: 0, bots: 0 });
       expect([usage.days.length, usage.games]).toEqual([USAGE_DAYS, []]);
       expect((await ada.ask('/usage')).status).toBe(200);
+      expect((await ada.ask('/usage?tz=300&humans')).status).toBe(200);
       expect((await ada.ask('/usage?tz=later')).status).toBe(400);
       expect((await bob.ask('/usage')).status).toBe(404);
       expect((await guest.ask('/usage')).status).toBe(401);

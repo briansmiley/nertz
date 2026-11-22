@@ -34,8 +34,10 @@ export interface Rounds {
   /**
    * How much the game is played: all told, each of the last USAGE_DAYS days to `now`, and the latest USAGE_GAMES
    * sittings. A day is a date where the asker is, `offset` minutes behind UTC (as a browser's `getTimezoneOffset`).
+   * With `humans`, a bot's hand is not counted, nor listed among who played: a round (or a sitting) with no one else
+   * in it is not there.
    */
-  usage(offset?: number, now?: number): Usage;
+  usage(offset?: number, humans?: boolean, now?: number): Usage;
   /** Leaves `account`'s hands as they were played, but nobody's and with no name: the rounds stay whole for everyone else who played them. */
   forget(account: string): void;
 }
@@ -84,20 +86,23 @@ export function openRounds(db: Db): Rounds {
       where m.account = $account and o.account = $other
         and ($among <> 'no-bots' or not exists (select 1 from hand b where b.round = m.round and b.bot is not null))`,
   );
-  // A hand nobody's and no bot's is a guest's (or that of an account since gone: it is nobody's now).
+  // A hand nobody's and no bot's is a guest's (or that of an account since gone: it is nobody's now). With `$humans`,
+  // only the rounds someone other than a bot played, and only their hands.
+  const human = '(not $humans or exists (select 1 from hand p where p.round = r.id and p.bot is null))';
   const played = `count(distinct r.game) as games, count(distinct r.id) as rounds, count(distinct h.account) as players,
                   coalesce(sum(h.account is null and h.bot is null), 0) as guests, coalesce(sum(h.bot is not null), 0) as bots
-             from round r left join hand h on h.round = r.id`;
+             from round r left join hand h on h.round = r.id and (not $humans or h.bot is null)
+            where ${human}`;
   const total = db.prepare(`select ${played}`);
-  const daily = db.prepare(`select date(r.created_at / 1000 - $offset * 60, 'unixepoch') as day, ${played} where r.created_at >= $since group by day`);
+  const daily = db.prepare(`select date(r.created_at / 1000 - $offset * 60, 'unixepoch') as day, ${played} and r.created_at >= $since group by day`);
   // (Each sitting's code and time are its last round's.)
-  const latest = db.prepare('select game, code, max(created_at) as at, count(*) as rounds, sum(ms) as ms from round group by game order by at desc limit ?');
+  const latest = db.prepare(`select game, code, max(created_at) as at, count(*) as rounds, sum(ms) as ms from round r where ${human} group by game order by at desc limit $n`);
   // Who played in a sitting, in the order they came to it, each under the name of their last hand in it. (An account
   // gone leaves its hands with no name: it is not listed.)
   const players = db.prepare(
     `select h.name, h.account is not null as signed, h.bot is not null as bot, max(r.number)
        from hand h join round r on r.id = h.round
-      where r.game = ? and h.name <> ''
+      where r.game = $game and h.name <> '' and (not $humans or h.bot is null)
       group by h.player order by h.player`,
   );
   const count = (p: Played): Played => ({ games: p.games, rounds: p.rounds, players: p.players, guests: p.guests, bots: p.bots });
@@ -118,21 +123,22 @@ export function openRounds(db: Db): Rounds {
       const v = versus.get({ $account: account, $other: other, $among: among }) as unknown as Versus;
       return { rounds: v.rounds, ahead: v.ahead, behind: v.behind, points: v.points, theirs: v.theirs };
     },
-    usage: (offset = 0, now = Date.now()) => {
+    usage: (offset = 0, humans = false, now = Date.now()) => {
+      const $humans = humans ? 1 : 0;
       const date = (t: number): string => new Date(t).toISOString().slice(0, 10);
       /** Midnight today where the asker is, as if it were UTC's. */
       const today = Date.parse(date(now - offset * 60_000));
       const dates = Array.from({ length: USAGE_DAYS }, (_, i) => date(today - (USAGE_DAYS - 1 - i) * DAY_MS));
-      const had = new Map((daily.all({ $offset: offset, $since: Date.parse(dates[0]!) + offset * 60_000 }) as unknown as (Played & { day: string })[]).map((d) => [d.day, d]));
+      const had = new Map((daily.all({ $offset: offset, $since: Date.parse(dates[0]!) + offset * 60_000, $humans }) as unknown as (Played & { day: string })[]).map((d) => [d.day, d]));
       const none: Played = { games: 0, rounds: 0, players: 0, guests: 0, bots: 0 };
-      const games = (latest.all(USAGE_GAMES) as { game: string; code: string; at: number; rounds: number; ms: number }[]).map((g) => ({
+      const games = (latest.all({ $n: USAGE_GAMES, $humans }) as { game: string; code: string; at: number; rounds: number; ms: number }[]).map((g) => ({
         at: g.at,
         code: g.code,
         rounds: g.rounds,
         ms: g.ms,
-        players: (players.all(g.game) as { name: string; signed: number; bot: number }[]).map((p) => ({ name: p.name, as: p.bot ? ('bot' as const) : p.signed ? ('account' as const) : ('guest' as const) })),
+        players: (players.all({ $game: g.game, $humans }) as { name: string; signed: number; bot: number }[]).map((p) => ({ name: p.name, as: p.bot ? ('bot' as const) : p.signed ? ('account' as const) : ('guest' as const) })),
       }));
-      return { total: count(total.get() as unknown as Played), days: dates.map((day) => ({ day, ...count(had.get(day) ?? none) })), games };
+      return { total: count(total.get({ $humans }) as unknown as Played), days: dates.map((day) => ({ day, ...count(had.get(day) ?? none) })), games };
     },
     forget: (account) => void forget.run(account),
   };
