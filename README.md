@@ -222,6 +222,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
+  On that sheet the line of anyone no longer at the table (stood up to watch, waiting for a seat again, or gone) is
+  faint, its name slanted and its chip only the outline of the colour they played in.
 - **Standing someone up, sending someone away.** Whoever deals can do either to anyone else at any time, a round in
   play included: pressing a name at the table (or the eye and the × beside it on the lobby and the score sheet). Standing
   up gives the seat up to watch; sending away puts them out of the table altogether, and back by the same window they

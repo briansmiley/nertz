@@ -150,6 +150,22 @@
   color: var(--ink-soft);
 }
 
+/* A line of someone no longer at the table (they stood up since the round, or left): the whole of it faint, the name
+   slanted like the note of someone coming in, the chip only the outline of the colour they played it in. */
+.scores tr.up th,
+.scores tr.up td {
+  color: var(--ink-soft);
+}
+
+.scores tr.up .nm {
+  font-weight: 500;
+  font-style: italic;
+}
+
+.scores tr.up .called {
+  opacity: 0.5;
+}
+
 /* On the score sheet, a player who has sat down since the round: no line of it, only that they are coming in. */
 .scores .joining .note {
   text-align: center;

@@ -890,11 +890,13 @@ function Results({ room }: { room: RoomView }) {
           <tbody>
             {rows.map((s) => {
               const p = of(s);
+              /** No longer at the table: they stood up since (watching, or waiting for a seat again), or left. Their line is the round's, faint, the chip an outline: the colour is not theirs any more. */
+              const up = !p ? 'Left' : hasSeat(p) ? null : p.queued ? 'Waiting for a seat' : 'Watching';
               return (
-              <tr key={s.seat} className={s.id === room.me ? 'you' : ''}>
+              <tr key={s.seat} className={`${s.id === room.me ? 'you' : ''}${up ? ' up' : ''}`}>
                 <th scope="row">
                   <span className="who">
-                  <i className="chip" style={{ background: backColour(s.seat) }} />
+                  <i className="chip" style={up ? { borderColor: backColour(s.seat) } : { background: backColour(s.seat) }} data-tip={up ?? undefined} />
                   <Name host={p?.isHost} className="nm">
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{s.name}</Named>}
                   </Name>
