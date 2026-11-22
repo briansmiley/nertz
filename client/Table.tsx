@@ -910,7 +910,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         return (
           <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
-              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
+              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}${o.turn ? ' side' : ''}${o.turn === -90 ? ' end' : ''}`}
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <PictureBy picture={p?.picture} seat={o.seat} />
