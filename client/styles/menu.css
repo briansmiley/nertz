@@ -1,10 +1,13 @@
 /* The corner's menu (Menu.tsx): your settings, then under a rule what there is to do. */
 
-/* One slip off the score pad: the settings written on it, the lines of what to do ruled across the foot. */
+/* One slip off the score pad: the settings written on it, the lines of what to do ruled across the foot. It is held
+   short of the screen wherever it hangs (with all of it on, it is taller than most windows): the settings scroll, and
+   the lines of what to do stay put. */
 .slip.menu {
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-height: calc(100dvh - 64px);
   padding: 0;
   overflow: visible;
 }
@@ -14,6 +17,7 @@
   gap: 0.85rem;
   min-height: 0;
   padding: 1.5rem 1.2rem 1.1rem;
+  overflow-y: auto;
 }
 
 /* Their head: the gear, then the word. */
@@ -85,14 +89,24 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Where the slip is held short of the screen (settings.css: hanging from the bar of a phone held upright, or on a
-   phone on its side), the settings scroll and the lines of what to do stay at the foot. */
-.corner.top .menu .yours {
-  overflow-y: auto;
-}
-
+/* A phone on its side has not the height for both, one over the other (a round's lines alone nearly fill it): there
+   the lines of what to do stand beside the settings, each scrolling by itself if it must. */
 @media (max-height: 499px) and (orientation: landscape) {
+  .slip.menu {
+    flex-direction: row;
+    width: auto;
+  }
+
   .menu .yours {
+    flex: none;
+    width: 17.5rem;
+  }
+
+  .acts {
+    align-content: start;
+    padding-top: 0.55rem; /* (clear of the slip's red edge) */
+    border-top: 0;
+    border-left: 1px solid var(--rule);
     overflow-y: auto;
   }
 }
