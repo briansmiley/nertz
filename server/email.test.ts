@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_PATH, codeAllowance, CODES_A_DAY } from './accounts';
+import { AUTH_PATH, codeAllowance, CODES_A_DAY, DRAWN_HANDLE_LENGTH, HANDLE_ALPHABET } from './accounts';
 import { startServer, type NertzServer } from './index';
 import { ACCOUNTS, ADA, Browser, codeIn, fakeGoogle, fakeResend, rows as allRows, type Sent } from './testkit';
 
@@ -39,7 +39,7 @@ describe('signing in by email', () => {
     expect(sent[0]!.text).toContain(code);
 
     expect((await enter(browser, 'grace@example.com', code)).status).toBe(200);
-    expect(await profile(browser)).toEqual({ id: expect.any(String), name: null, image: null, picture: null, handle: expect.stringMatching(/^[0-9a-f]{16}$/), private: false });
+    expect(await profile(browser)).toEqual({ id: expect.any(String), name: null, image: null, picture: null, handle: expect.stringMatching(new RegExp(`^[${HANDLE_ALPHABET}]{${DRAWN_HANDLE_LENGTH}}$`)), private: false });
     expect(rows('user')).toMatchObject([{ email: 'grace@example.com', emailVerified: 1 }]);
     // Kept hashed: the code is not in the database.
     expect(JSON.stringify(rows('verification'))).not.toContain(code);
@@ -100,7 +100,7 @@ describe('signing in by email', () => {
     await send(browser, 'grace@example.com');
     const res = await browser.ask(`${AUTH_PATH}/sign-in/email-otp`, { email: 'grace@example.com', otp: codeIn(sent, 'grace@example.com'), name: 'Mallory', image: 'https://example.com/x.png' });
     expect(res.status).toBe(200);
-    expect(await profile(browser)).toEqual({ id: expect.any(String), name: null, image: null, picture: null, handle: expect.stringMatching(/^[0-9a-f]{16}$/), private: false });
+    expect(await profile(browser)).toEqual({ id: expect.any(String), name: null, image: null, picture: null, handle: expect.stringMatching(new RegExp(`^[${HANDLE_ALPHABET}]{${DRAWN_HANDLE_LENGTH}}$`)), private: false });
     expect(rows('user')).toMatchObject([{ name: '', image: null }]);
   });
 
