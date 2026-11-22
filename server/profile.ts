@@ -96,10 +96,12 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
 
 const TOO_BIG = Symbol('too big');
 
-/** What a request carries: `TOO_BIG` for more than `max` bytes (or of no stated size). */
+/**
+ * What a request carries: `TOO_BIG` for more than `max` bytes, said or sent. (A body may come with no size said: over
+ * HTTP/2, or chunked, as Fly's proxy passes such a one on. It is read as far as `max`, like any other.)
+ */
 async function readBytes(req: IncomingMessage, max: number): Promise<Buffer | typeof TOO_BIG> {
-  const stated = Number(req.headers['content-length']);
-  if (!(stated <= max)) return TOO_BIG;
+  if (Number(req.headers['content-length']) > max) return TOO_BIG;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
@@ -110,7 +112,7 @@ async function readBytes(req: IncomingMessage, max: number): Promise<Buffer | ty
   return Buffer.concat(chunks);
 }
 
-/** The JSON a request carries: null for none that reads, `TOO_BIG` for more than a profile is (or of no stated size). */
+/** The JSON a request carries: null for none that reads, `TOO_BIG` for more than a profile is. */
 async function read(req: IncomingMessage): Promise<unknown> {
   const bytes = await readBytes(req, MAX_BODY_BYTES);
   if (bytes === TOO_BIG) return TOO_BIG;

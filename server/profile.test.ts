@@ -185,6 +185,17 @@ describe('profile', () => {
     expect(await profile(ada)).toMatchObject({ name: 'Ada' });
   });
 
+  it('takes a change sent with no size said (as over HTTP/2, or chunked through a proxy), and still not too much of one', async () => {
+    const ada = await signedIn(ADA);
+    const unsized = (said: object): Promise<Response | null> =>
+      fetch(`http://localhost:${server.port}/profile`, { method: 'PUT', headers: { cookie: ada.cookie, origin: ACCOUNTS.url, 'content-type': 'application/json' }, body: new Blob([JSON.stringify(said)]).stream(), duplex: 'half' } as RequestInit).catch(() => null);
+    expect((await unsized({ handle: 'lovelace' }))?.status).toBe(200);
+    expect(await profile(ada)).toMatchObject({ handle: 'lovelace' });
+    const tooMuch = await unsized({ name: 'x'.repeat(5000) }); // (refused as it comes: the asking may fail rather than read the 413)
+    expect(tooMuch === null || tooMuch.status === 413).toBe(true);
+    expect(await profile(ada)).toMatchObject({ name: 'Ada' });
+  });
+
   it('goes with the account, which takes everything kept as theirs, and leaves the rounds they played whole and nobody’s', async () => {
     const ada = await signedIn(ADA);
     const bob = await signedIn(BOB);
