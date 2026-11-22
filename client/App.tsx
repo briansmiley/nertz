@@ -416,11 +416,20 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
-/** Your picture, or where there is none (or it will not load) the first letter of your name; a plain disc for no name yet. */
+/** Your picture, or where there is none (or it will not load) the first letter of your name; for no name yet (a guest's, or an account's), the figure of nobody in particular. */
 function Avatar({ image, name }: { image: string | null; name: string | null }) {
   const [broken, setBroken] = useState<string | null>(null);
   if (image && broken !== image) return <img src={image} alt="" referrerPolicy="no-referrer" onError={() => setBroken(image)} />;
-  return <i aria-hidden="true">{name ? [...name][0]!.toUpperCase() : ''}</i>;
+  if (!name)
+    return (
+      <i className="nobody" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="8.5" r="4.6" />
+          <path d="M2.5 25c0-6.2 4.3-10.2 9.5-10.2s9.5 4 9.5 10.2z" />
+        </svg>
+      </i>
+    );
+  return <i aria-hidden="true">{[...name][0]!.toUpperCase()}</i>;
 }
 
 function Home({ error, busy }: { error: string | null; busy: boolean }) {
@@ -430,12 +439,12 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const account = useAccount();
   const signedIn = signedInAs(account);
   const ways = waysIn(account);
-  /** A guest: chose to sit down under a name of their own, or did so before (the browser remembers it). */
-  const [guest, setGuest] = useState(() => !!rememberedName());
-  const sits = sitterOf(account, guest);
+  /** This browser has sat down as a guest before (it remembers the name). */
+  const [before] = useState(() => !!rememberedName());
+  const sits = sitterOf(account, before);
   const clean = cleanName(name);
   /** The name you sit down under: your account's, or the one written in the field. */
-  const sitAs = sits === 'you' ? signedIn!.name! : sits === 'name' ? clean : '';
+  const sitAs = sits === 'you' ? signedIn!.name! : sits === 'wait' ? '' : clean;
   /** Sits down. Signed in with no name yet, the one written becomes the name you go by. */
   const go = (room: string | null): void => {
     if (signedIn && sits === 'name') void rename(sitAs);
@@ -458,14 +467,25 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
   const nameField = useRef<HTMLInputElement>(null);
   const typed = code.trim().toUpperCase();
   const ready = !!sitAs && !busy;
-  /** A table picked off the list: as if its code were typed and Join pressed; without a name yet, the code waits in its field for one (still to choose: as a guest). */
+  /** A table picked off the list: as if its code were typed and Join pressed; without a name yet, the code waits in its field for one. */
   const pick = (room: string) => {
     if (busy) return;
     setCode(room);
     if (ready) go(room);
-    else if (sits === 'choose') setGuest(true);
     else nameField.current?.focus();
   };
+  const field = (
+    <input
+      ref={nameField}
+      autoFocus
+      aria-label="Name"
+      placeholder="Name"
+      value={name}
+      maxLength={MAX_NAME_LENGTH}
+      onChange={(e) => setName(e.target.value)}
+      autoComplete="nickname"
+    />
+  );
 
   // Enter in the form does the obvious thing: join if a code is filled in, otherwise start a table.
   const submit = (e: FormEvent) => {
@@ -498,41 +518,33 @@ function Home({ error, busy }: { error: string | null; busy: boolean }) {
                 </button>
                 <YourBacks colour={BACKS[0]} compact />
               </div>
-            ) : sits === 'choose' ? (
-              <div className="named choose">
-                <span className="either">
-                  <button type="button" className="plain" onClick={signInNow}>
-                    Sign in
-                  </button>
-                  <button type="button" className="plain" onClick={() => setGuest(true)}>
-                    Guest
-                  </button>
-                </span>
-                <YourBacks colour={BACKS[0]} compact />
-              </div>
+            ) : sits === 'guest' ? (
+              <>
+                <div className="named">
+                  <span className="guest">
+                    <span className="you">
+                      <Avatar image={null} name={null} />
+                      <span>Guest</span>
+                    </span>
+                    {ways && (
+                      <button type="button" className="plain" onClick={signInNow}>
+                        Sign in
+                      </button>
+                    )}
+                  </span>
+                  <YourBacks colour={BACKS[0]} compact />
+                </div>
+                <div className="plays">{field}</div>
+              </>
             ) : sits === 'name' ? (
               <div className="named">
-                <span className="guest">
+                <span className="own">
                   {signedIn && (
                     <button type="button" className="you" aria-label="Your page" data-tip="Your page" onClick={() => setTurned('page')}>
                       <Avatar image={signedIn.picture ?? signedIn.image} name={null} />
                     </button>
                   )}
-                  <input
-                    ref={nameField}
-                    autoFocus
-                    aria-label="Name"
-                    placeholder="Name"
-                    value={name}
-                    maxLength={MAX_NAME_LENGTH}
-                    onChange={(e) => setName(e.target.value)}
-                    autoComplete="nickname"
-                  />
-                  {ways && !signedIn && (
-                    <button type="button" className="who" onClick={signInNow}>
-                      Sign in
-                    </button>
-                  )}
+                  {field}
                 </span>
                 <YourBacks colour={BACKS[0]} compact />
               </div>
