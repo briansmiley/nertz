@@ -813,11 +813,11 @@ word), with a **Sign in** button beside it, and writes the name they play under 
 remembers goes straight to it). Signing in
 is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
 and Send code), and they are then known across tables and visits. Signed in, their
-picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by (theirs to change), a **Private** switch at the end of its line,
+picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by and, under it, their page's address (`/u/<handle>`; both theirs to change, where they are written), a **Private** switch at the end of the name's line,
 their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
 to their page or the way in and back again (with reduced motion, the other side simply comes up). Turned to their page,
-the address is their page's (`/u/<handle>`): the browser's back turns it over again, and that address, opened by them
+the address is their page's (`/u/<handle>`, and it follows a handle changed there): the browser's back turns it over again, and that address, opened by them
 signed in, is the home page with the pad turned to it. The address is the only thing that says the pad is turned to
 their page (`client/address.ts`); signing out of it, or deleting the account, goes back to `/`.
 
@@ -843,9 +843,13 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
 - **Accounts**: Better Auth's own tables (user, session, account, verification), which it brings up to date on boot:
   who signed in, as Google or their email says. Nothing of ours writes to them.
 - **Profiles** (`profile`): who someone is at the table, theirs to change: for now the name they go by (null until a
-  new email account chooses one). Made with the account (from Google's first name), and gone with it. With it, at
-  random, its `handle`: sixteen hex digits naming their page (`/u/<handle>`), and nothing of who they are; and whether
-  that page is `private` (off unless they switch it on).
+  new email account chooses one). Made with the account (from Google's first name), and gone with it. With it its
+  `handle`, naming their page (`/u/<handle>`): six letters and digits drawn at random (`k3f9x2`: none of 0 o 1 l i),
+  and nothing of who they are, until they claim one of their own. A handle is 3 to 20 lowercase letters and digits with
+  single hyphens between them, nobody else's and none of the few kept for the site (`RESERVED_HANDLES`,
+  `server/accounts.ts`); a changed one frees the old, whose links then lead nowhere (no aliases). Profiles made before
+  there were handles are given theirs when the server starts, drawn the same way. And whether that page is `private`
+  (off unless they switch it on).
 
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
 else: the room tells someone signed in only where the others signed in have their pages (`PlayerView.handle`), unless
@@ -867,13 +871,14 @@ times one at a table of two.
 
 `GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
 them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null
-on one's own page). 401 for nobody signed in, before anything is looked up, so nobody else can tell whether a handle is
+on one's own page). The handle may come in any case. 401 for nobody signed in, before anything is looked up, so nobody else can tell whether a handle is
 anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it), and for a private page asked
 for by anyone but its owner, so that it cannot be told from one that is nobody's.
 
 `/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
-nobody signed in); `PUT {name?, private?}` a new name to go by, whether their page is private, or both (anything
-else, or neither, is a 400); `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
+nobody signed in); `PUT {name?, handle?, private?}` a new name to go by, a handle of their own (in any case: kept in
+lower), whether their page is private, or any of them together (anything else, or none, is a 400; a handle someone else
+has, or one kept for the site, is a 409, and then nothing is changed); `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
 Deleting takes the profile, the user, its sessions and its link to Google in one transaction, and leaves their hands and
 reports kept as nobody's, with no name to them; any table they are sitting at plays on with them as a guest. Someone who
 asks with the bug button instead (`public/privacy.html` says they may) is deleted by hand: with the database open, run

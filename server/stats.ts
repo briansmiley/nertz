@@ -3,7 +3,7 @@
 // `?among=` says (every one, unless it says). Only someone signed in sees anyone's: nobody else is told whose a handle is.
 // A page made private is its own alone: to anyone else it is as if it were nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { isHandle } from '../shared/protocol';
+import { handleOf } from '../shared/protocol';
 import { AMONG, type Page } from '../shared/types';
 import type { Accounts } from './accounts';
 import type { Rounds } from './rounds';
@@ -17,9 +17,9 @@ export function statsHandler({ accounts, rounds }: { accounts: Accounts; rounds:
     const url = new URL(req.url ?? '/', 'http://localhost');
     const among = AMONG.find((a) => a === (url.searchParams.get('among') ?? 'all'));
     if (!among) return json(400, null);
-    /** Whose page is asked for: none, for one's own record. */
-    const handle = url.pathname === STATS_PATH ? null : url.pathname.slice(STATS_PATH.length + 1);
-    if (handle !== null && !isHandle(handle)) return json(404, null);
+    /** Whose page is asked for (in any case): none, for one's own record. */
+    const handle = url.pathname === STATS_PATH ? null : handleOf(url.pathname.slice(STATS_PATH.length + 1));
+    if (handle === null && url.pathname !== STATS_PATH) return json(404, null);
     const me = await accounts.who(req.headers);
     if (!me) return json(401, null);
     if (handle === null) return json(200, rounds.stats(me.id, among));

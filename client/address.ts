@@ -2,12 +2,12 @@
 // pad turned over), anything else is no one's. Nothing here keeps a copy: it is read from `location` whenever it is
 // wanted, and whoever wants it is told when it changes, by going to a page or back here, or by the browser's own back.
 import { useSyncExternalStore } from 'react';
-import { isHandle } from '../shared/protocol';
+import { handleOf } from '../shared/protocol';
 
-/** Whose page `path` is (`/u/<handle>`), if it is one. */
+/** Whose page `path` is (`/u/<handle>`, in any case), if it is one. */
 export function pageIn(path: string): string | null {
   const [, handle] = /^\/u\/([^/]+)\/?$/.exec(path) ?? [];
-  return handle && isHandle(handle) ? handle : null;
+  return handle ? handleOf(handle) : null;
 }
 
 const listeners = new Set<() => void>();
@@ -30,6 +30,13 @@ const FROM_HERE = 'nertz.from-here';
 /** Goes to `handle`'s page, from here: the browser's back comes back. */
 export function showPage(handle: string): void {
   history.pushState(FROM_HERE, '', `/u/${handle}`);
+  changed();
+}
+
+/** Your page's address, once you have moved it from `was` to `now`: followed where it is up, as if it had been there all along. */
+export function moved(was: string, now: string): void {
+  if (pageIn(location.pathname) !== was) return;
+  history.replaceState(history.state, '', `/u/${now}`);
   changed();
 }
 

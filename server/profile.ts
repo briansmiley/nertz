@@ -1,9 +1,9 @@
-// One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by or whether one's page is
-// private (either, or both), DELETE the account; and at
+// One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by, a handle of one's own (where
+// one's page is), or whether one's page is private (any of them, together or not), DELETE the account; and at
 // PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it. With the account goes everything
 // kept as theirs, their picture too; the rounds they played and the reports they sent stay, as nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { cleanName } from '../shared/protocol';
+import { cleanName, handleOf } from '../shared/protocol';
 import type { Account } from '../shared/types';
 import type { Accounts } from './accounts';
 import { MAX_SENT_BYTES, type Pictures } from './pictures';
@@ -44,13 +44,17 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     if (!me) return json(401, { ways: accounts.ways }); // (nobody: and the ways in there are)
     if (method === 'GET') return json(200, me);
     if (method === 'PUT') {
-      // What is said is changed, and nothing else: a name, cleaned and not empty; whether the page is private, yes or no.
-      const { name: raw, private: hidden } = (said ?? {}) as { name?: unknown; private?: unknown };
+      // What is said is changed, and nothing else: a name, cleaned and not empty; a handle, in any case (kept in lower);
+      // whether the page is private, yes or no. A handle that is someone else's, or the site's, is 409, and then
+      // nothing is changed. The one it had is free from then on, and its old links lead nowhere.
+      const { name: raw, handle: asked, private: hidden } = (said ?? {}) as { name?: unknown; handle?: unknown; private?: unknown };
       const name = raw === undefined ? undefined : typeof raw === 'string' ? cleanName(raw) : '';
-      if (name === '' || (hidden !== undefined && typeof hidden !== 'boolean') || (name === undefined && hidden === undefined)) return json(400, null);
+      const handle = asked === undefined ? undefined : typeof asked === 'string' ? handleOf(asked) : null;
+      if (name === '' || handle === null || (hidden !== undefined && typeof hidden !== 'boolean') || (name === undefined && handle === undefined && hidden === undefined)) return json(400, null);
+      if (handle !== undefined && !accounts.rehandle(me.id, handle)) return json(409, null);
       if (name !== undefined) accounts.rename(me.id, name);
       if (hidden !== undefined) accounts.setPrivate(me.id, hidden);
-      const now: Account = { ...me, ...(name !== undefined && { name }), ...(hidden !== undefined && { private: hidden }) };
+      const now: Account = { ...me, ...(name !== undefined && { name }), ...(handle !== undefined && { handle }), ...(hidden !== undefined && { private: hidden }) };
       changed(now);
       return json(200, now);
     }

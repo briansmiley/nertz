@@ -106,12 +106,17 @@ describe('who sits down, on the first page', () => {
 });
 
 describe('whose page the address is', () => {
-  it('is the handle in /u/<handle>, and nobody\'s for anything else', () => {
+  it('is the handle in /u/<handle>, in any case, and nobody\'s for anything else', () => {
     expect(pageIn('/u/0123456789abcdef')).toBe('0123456789abcdef');
+    expect(pageIn('/u/k3f9x2')).toBe('k3f9x2');
+    expect(pageIn('/u/Ada-Lovelace')).toBe('ada-lovelace');
     expect(pageIn('/u/0123456789abcdef/')).toBe('0123456789abcdef');
     expect(pageIn('/')).toBeNull();
     expect(pageIn('/u/')).toBeNull();
-    expect(pageIn('/u/0123456789ABCDEF')).toBeNull();
+    expect(pageIn('/u/0123456789ABCDEF')).toBe('0123456789abcdef');
+    expect(pageIn('/u/ab')).toBeNull();
+    expect(pageIn('/u/-ada')).toBeNull();
+    expect(pageIn('/u/a--b')).toBeNull();
     expect(pageIn('/u/0123456789abcdef/more')).toBeNull();
     expect(pageIn('/x/0123456789abcdef')).toBeNull();
   });

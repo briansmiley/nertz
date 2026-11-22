@@ -6,9 +6,13 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isHandle } from '../shared/protocol';
-import { firstName } from './accounts';
+import { DRAWN_HANDLE_LENGTH, firstName, HANDLE_ALPHABET, RESERVED_HANDLES, withDrawnHandle } from './accounts';
+import { openDb } from './db';
 import { startServer, type NertzServer } from './index';
 import { ACCOUNTS, ADA, BOB, Browser, fakeGoogle, rows as allRows } from './testkit';
+
+/** A handle as one is drawn: `k3f9x2`. */
+const DRAWN = new RegExp(`^[${HANDLE_ALPHABET}]{${DRAWN_HANDLE_LENGTH}}$`);
 
 describe('profile', () => {
   let server: NertzServer;
@@ -49,6 +53,8 @@ describe('profile', () => {
     const { handle } = (await profile(ada)) as { handle: string };
     expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null, handle, private: false });
     expect(isHandle(handle) && handle !== id).toBe(true); // (where their page is: drawn at random, and nothing of who they are)
+    expect(handle).toMatch(DRAWN);
+    expect(HANDLE_ALPHABET).not.toMatch(/[01ilo]/); // (nothing easily taken for something else)
     expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null, handle, private: 0 }]);
     expect(firstName('  Grace  Brewster Hopper')).toBe('Grace');
     expect(firstName('   ')).toBeNull();
@@ -86,6 +92,87 @@ describe('profile', () => {
     expect((await ada.ask('/profile', { private: true }, { method: 'PUT', origin: 'https://evil.example' })).status).toBe(403);
     expect((await new Browser(server.port).ask('/profile', { private: true }, { method: 'PUT' })).status).toBe(401);
     expect(await profile(ada)).toMatchObject({ name: 'Countess', private: false });
+  });
+
+  describe('handle', () => {
+    const handleOf = async (browser: Browser): Promise<string> => ((await profile(browser)) as { handle: string }).handle;
+    const claim = (browser: Browser, handle: unknown): Promise<Response> => browser.ask('/profile', { handle }, { method: 'PUT' });
+    const page = async (browser: Browser, handle: string): Promise<number> => (await browser.ask(`/stats/${handle}`)).status;
+
+    it('is yours to choose: kept in lower case, the old one free and leading nowhere', async () => {
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      const drawn = await handleOf(ada);
+      const res = await claim(ada, 'Ada-Lovelace');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ name: 'Ada', handle: 'ada-lovelace' });
+      expect(await handleOf(await signedIn(ADA))).toBe('ada-lovelace');
+      expect(rows('profile').map((p) => p.handle)).toContain('ada-lovelace');
+      expect(await page(bob, 'ada-lovelace')).toBe(200);
+      expect(await page(bob, 'ADA-Lovelace')).toBe(200); // (an address in any case)
+      expect(await page(bob, drawn)).toBe(404);
+      // The old one is anyone's now; one's own again is no change; and with the name, both or neither.
+      expect((await claim(bob, drawn)).status).toBe(200);
+      expect(await page(ada, drawn)).toBe(200);
+      expect((await claim(ada, 'ada-lovelace')).status).toBe(200);
+      expect(await (await ada.ask('/profile', { name: 'Countess', handle: 'countess' }, { method: 'PUT' })).json()).toMatchObject({ name: 'Countess', handle: 'countess' });
+    });
+
+    it('is 3 to 20 letters and digits, with single hyphens between them', async () => {
+      const ada = await signedIn(ADA);
+      for (const ok of ['abc', 'a-b', '20-chars-is-the-most', 'k3f9x2', '1a868b3c47fd956d', 'x-1-y-2']) expect((await claim(ada, ok)).status).toBe(200);
+      for (const bad of ['ab', 'twenty-one-chars-long', '-abc', 'abc-', 'a--b', 'a b', 'a_b', 'ä-b', 'a.b', '', 12345, null, 'abc/def'])
+        expect((await claim(ada, bad)).status).toBe(400);
+      expect(await handleOf(ada)).toBe('x-1-y-2');
+      // A bad handle spoils the whole: the name with it is not changed.
+      expect((await ada.ask('/profile', { name: 'Countess', handle: 'a' }, { method: 'PUT' })).status).toBe(400);
+      expect(await profile(ada)).toMatchObject({ name: 'Ada', handle: 'x-1-y-2' });
+    });
+
+    it('is not one someone else has, nor one the site keeps for itself: 409, and nothing changed', async () => {
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      expect((await claim(bob, 'bob')).status).toBe(200);
+      const had = await handleOf(ada);
+      expect((await claim(ada, 'bob')).status).toBe(409);
+      expect((await claim(ada, 'BOB')).status).toBe(409);
+      for (const kept of ['admin', 'api', 'nertz', 'settings', 'help', 'support', 'about', 'privacy', 'null', 'undefined', 'Admin']) expect((await claim(ada, kept)).status).toBe(409);
+      expect((await ada.ask('/profile', { name: 'Countess', handle: 'bob' }, { method: 'PUT' })).status).toBe(409);
+      expect(await profile(ada)).toMatchObject({ name: 'Ada', handle: had });
+      expect(RESERVED_HANDLES.has('k3f9x2')).toBe(false);
+    });
+
+    it('keeps a private page hidden from anyone else, by the handle it had and the one it has', async () => {
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      const drawn = await handleOf(bob);
+      await bob.ask('/profile', { private: true }, { method: 'PUT' });
+      expect(await page(ada, drawn)).toBe(404);
+      expect((await claim(bob, 'bob')).status).toBe(200);
+      expect(await page(ada, 'bob')).toBe(404);
+      expect(await page(ada, drawn)).toBe(404);
+      expect(await page(bob, 'bob')).toBe(200); // (still its own)
+    });
+
+    it('is drawn again on the rare clash with one someone has', () => {
+      const db = openDb(':memory:');
+      const made = db.prepare('insert into profile (account, handle) values (?, ?)');
+      made.run('a', 'k3f9x2');
+      const draws = ['k3f9x2', 'k3f9x2', 'm4p7q8'];
+      withDrawnHandle((handle) => made.run('b', handle), () => draws.shift()!);
+      expect(db.prepare('select handle from profile where account = ?').get('b')).toEqual({ handle: 'm4p7q8' });
+      expect(() => withDrawnHandle((handle) => made.run('c', handle), () => 'k3f9x2')).toThrow(/UNIQUE/); // (not for ever)
+      expect(() => withDrawnHandle(() => made.run('a', 'zzzzzz'))).toThrow(/UNIQUE/); // (nor for anything else)
+      db.close();
+    });
+
+    it('still leads to pages whose handles were drawn the old way, as sixteen hex digits', async () => {
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      write("update profile set handle = '1a868b3c47fd956d' where account = (select id from \"user\" where email = ?)", BOB.email);
+      expect(await page(ada, '1a868b3c47fd956d')).toBe(200);
+      expect(await handleOf(bob)).toBe('1a868b3c47fd956d');
+    });
   });
 
   it('takes no empty name, nor one from another site', async () => {
@@ -208,7 +295,7 @@ describe('profile', () => {
     await server.close();
     write('delete from profile');
     await start();
-    expect(rows('profile')).toMatchObject([{ name: 'Ada', handle: expect.stringMatching(/^[0-9a-f]{16}$/) }]);
+    expect(rows('profile')).toMatchObject([{ name: 'Ada', handle: expect.stringMatching(DRAWN) }]);
   });
 
   it('is given a page of its own if it was made before there were pages: each its own, drawn at random', async () => {
@@ -222,7 +309,7 @@ describe('profile', () => {
     write('pragma user_version = 5');
     await start();
     const handles = rows('profile').map((p) => p.handle as string);
-    expect(handles.every(isHandle)).toBe(true);
+    expect(handles.every((h) => DRAWN.test(h))).toBe(true);
     expect(new Set(handles).size).toBe(2);
     const ada = await signedIn(ADA);
     expect(handles).toContain(((await profile(ada)) as { handle: string }).handle);

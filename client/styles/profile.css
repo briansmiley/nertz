@@ -244,6 +244,63 @@
   border-bottom-color: var(--ink);
 }
 
+/* Your name, and under it where your page is. */
+.profile .names {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+}
+
+/* Where your page is, `/u/<handle>`: small and soft under the name, and written in place like it. Taken, in red. */
+.profile .yourhandle {
+  display: inline-flex;
+  gap: 0;
+  align-items: baseline;
+  max-width: 100%;
+  font: 400 0.9rem/1.3 var(--ui);
+  color: var(--ink-soft);
+  cursor: text;
+}
+
+.profile .yourhandle input {
+  field-sizing: content;
+  min-width: 3ch;
+  max-width: 100%;
+  padding: 0 0 0.1rem;
+  border: 0;
+  border-bottom: 1.5px solid transparent;
+  border-radius: 0;
+  margin: 0;
+  width: auto;
+  font: inherit;
+  color: inherit;
+  background: none;
+  outline: none;
+}
+
+
+.profile .yourhandle:hover,
+.profile .yourhandle:focus-within {
+  color: var(--ink);
+}
+
+.profile .yourhandle input:hover,
+.profile .yourhandle input:focus {
+  border-bottom-color: currentColor;
+}
+
+.profile .yourhandle.taken input {
+  color: var(--red);
+  border-bottom-color: var(--red);
+}
+
+.profile .yourhandle small {
+  margin-left: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--red);
+}
+
 .profile .record {
   flex-wrap: wrap;
   justify-content: center;

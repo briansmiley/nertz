@@ -345,7 +345,8 @@ describe('over the wire', () => {
     expect((await guest.ask(`/stats/${bobs}`)).status).toBe(401);
     expect((await guest.ask('/stats/0000000000000000')).status).toBe(401);
     expect((await ada.ask('/stats/0000000000000000')).status).toBe(404);
-    expect((await ada.ask(`/stats/${bobs.toUpperCase()}`)).status).toBe(404);
+    expect((await ada.ask(`/stats/${bobs.toUpperCase()}`)).status).toBe(200); // (an address in any case)
+    expect((await ada.ask('/stats/a--b')).status).toBe(404);
     expect((await ada.ask(`/stats/${bobs}/more`)).status).toBe(404);
     expect((await ada.ask(`/stats/${bobs}?among=robots`)).status).toBe(400);
     expect((await ada.ask(`/stats/${bobs}`, {})).status).toBe(405);

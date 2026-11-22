@@ -1,10 +1,10 @@
-// You, signed in: the name you go by (yours to change), your record, whether your page is yours alone, and the ways
-// out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
+// You, signed in: the name you go by and where your page is (both yours to change), your record, whether your page is
+// yours alone, and the ways out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
 // opened by pressing their name at a table: their record, and yours against them.
 import { useEffect, useRef, useState } from 'react';
-import { cleanName, MAX_NAME_LENGTH } from '../shared/protocol';
+import { cleanName, handleOf, MAX_HANDLE_LENGTH, MAX_NAME_LENGTH } from '../shared/protocol';
 import { AMONG, type Account, type Among, type Stats, type Versus } from '../shared/types';
-import { deleteAccount, rename, repicture, setPrivate, signOut, usePage, useStats, type Crop } from './account';
+import { deleteAccount, rehandle, rename, repicture, setPrivate, signOut, usePage, useStats, type Crop } from './account';
 import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
@@ -231,6 +231,50 @@ function YourName({ account }: { account: Account }) {
   );
 }
 
+/** What a handle is being typed as: lowercase, and only what a handle can have in it. */
+const typedHandle = (s: string): string => s.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, MAX_HANDLE_LENGTH);
+
+/**
+ * Where your page is, `/u/<handle>`, changed where it is written: kept on Enter or on leaving it. One that cannot be a
+ * handle (too short, a hyphen at an end or doubled) is tidied, else put back; one someone else has, or the site's, is
+ * left as typed, marked taken, until it is changed or Escape puts yours back.
+ */
+function YourHandle({ account }: { account: Account }) {
+  const [handle, setHandle] = useState(account.handle);
+  const [taken, setTaken] = useState(false);
+  useEffect(() => (setHandle(account.handle), setTaken(false)), [account.handle]);
+  const keep = async (): Promise<void> => {
+    const asked = handleOf(handle.replace(/-+/g, '-').replace(/^-|-$/g, ''));
+    if (!asked || asked === account.handle) return setHandle(account.handle);
+    setHandle(asked);
+    const claimed = await rehandle(asked);
+    if (claimed === 'taken') setTaken(true);
+    if (claimed === 'failed') setHandle(account.handle);
+  };
+  return (
+    <label className={`yourhandle${taken ? ' taken' : ''}`}>
+      <span aria-hidden="true">/u/</span>
+      <input
+        aria-label="Your page's address"
+        aria-invalid={taken || undefined}
+        value={handle}
+        maxLength={MAX_HANDLE_LENGTH}
+        size={Math.max(3, handle.length)} /* (where field-sizing is not had: about as wide as the handle) */
+        autoCapitalize="none"
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(e) => (setHandle(typedHandle(e.target.value)), setTaken(false))}
+        onBlur={() => void keep()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') (setHandle(account.handle), setTaken(false), e.stopPropagation());
+        }}
+      />
+      {taken && <small role="alert">taken</small>}
+    </label>
+  );
+}
+
 /**
  * Your picture: the one you put up, else Google's, else your initial. Under the pointer, a pencil over it. Pressed, a
  * picture of your own to put up in its place: first moved and zoomed to fit the circle (PictureCrop). Yours, a cross
@@ -319,7 +363,10 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
       <div className="you">
         {head}
         <YourPicture account={account} />
-        <YourName account={account} />
+        <div className="names">
+          <YourName account={account} />
+          <YourHandle account={account} />
+        </div>
         <Private account={account} />
       </div>
       <Record />

@@ -90,11 +90,13 @@ const MIGRATIONS: string[] = [
   // The Discord message a report was posted as (server/feedback.ts): its id, null where it was not posted (or was
   // before this). BinaryBot opens a thread on it once a PR for the report is ready (the auto-fanout, kept outside this repo).
   `alter table report add column post text;`,
-  // Where someone's page is (/u/<handle>, server/stats.ts): drawn at random with the profile (server/accounts.ts),
-  // sixteen hex digits, and nothing to do with who they are. It is what the others at a table are shown, as the
-  // account's id never is; and it goes with the profile.
+  // Where someone's page is (/u/<handle>, server/stats.ts): drawn at random with the profile (server/accounts.ts), six
+  // letters and digits, and nothing to do with who they are; theirs to change for one of their own, nobody else's. It
+  // is what the others at a table are shown, as the account's id never is; and it goes with the profile.
+  // Profiles already there are given theirs when the server starts, by server/accounts.ts, drawn the way a new one's
+  // is: SQL could draw from that alphabet, but not draw again on a clash, and a clash here would stop the server
+  // starting. (Until then they have none: a unique index lets any number of rows have none.)
   `alter table profile add column handle text;
-   update profile set handle = lower(hex(randomblob(8)));
    create unique index profile_handle on profile (handle);`,
   // Whether their page is theirs alone (server/stats.ts): to anyone else it is not there, and nobody at a table is told
   // where it is (server/room.ts). Off unless they say.

@@ -2,7 +2,7 @@
 // is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
 // nothing of its own: it asks. The same for their record (`/stats`), and someone's page (`/stats/<handle>`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { goHome, pageIn } from './address';
+import { goHome, moved, pageIn } from './address';
 import type { Account, Among, Page, Stats, Versus, Way } from '../shared/types';
 
 /**
@@ -130,20 +130,33 @@ export async function signOut(): Promise<void> {
   await ask();
 }
 
-/** Some of your profile changed: whether it was taken. */
-async function change(fields: { name?: string; private?: boolean }): Promise<boolean> {
+/** Some of your profile changed: whether it was taken (and the address following your page, if that moved); else, the server's no (0 for none). */
+async function change(fields: { name?: string; handle?: string; private?: boolean }): Promise<true | number> {
   const res = await fetch(PROFILE, { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) }).catch(() => null);
-  if (!res?.ok) return false;
+  if (!res?.ok) return res?.status ?? 0;
+  const was = signedIn(signed)?.handle;
   const next = read(res.status, await res.json().catch(() => null));
-  if (typeof next === 'object') set(next);
-  return typeof next === 'object';
+  if (typeof next !== 'object') return 0;
+  set(next);
+  const now = signedIn(next)?.handle;
+  if (was && now && now !== was) moved(was, now);
+  return true;
 }
 
 /** A new name to go by (cleaned by the server): whether it was taken. */
-export const rename = (name: string): Promise<boolean> => change({ name });
+export const rename = async (name: string): Promise<boolean> => (await change({ name })) === true;
+
+/** What came of claiming a handle: yours now; someone else's, or the site's; or not, for no answer (or one that cannot be a handle). */
+export type Claimed = 'yours' | 'taken' | 'failed';
+
+/** Your page moved to `handle` (in any case: the server keeps it in lower). */
+export async function rehandle(handle: string): Promise<Claimed> {
+  const done = await change({ handle });
+  return done === true ? 'yours' : done === 409 ? 'taken' : 'failed';
+}
 
 /** Your page made yours alone, or anyone's signed in again: whether it was taken. */
-export const setPrivate = (on: boolean): Promise<boolean> => change({ private: on });
+export const setPrivate = async (on: boolean): Promise<boolean> => (await change({ private: on })) === true;
 
 /** The side of a picture as it is sent: the server draws it afresh at its own size (server/pictures.ts); this only keeps what is sent small. */
 const SENT_SIDE = 256;
