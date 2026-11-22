@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { inPlay, lcg, roomOf, seats } from '../shared/testkit';
+import type { PlayerView } from '../shared/types';
 import { CLEAR_MS, finaleSteps, sortAt, sortMs, TIMING, washedAt } from './Finale';
-import { ending, stageOf, stepAtMount, unrevealed } from './stage';
+import { computeLayout } from './layout';
+import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 
 describe('the stage of the table', () => {
   it('is live the moment the next round is dealt, whatever step the last one had got to', () => {
@@ -58,5 +61,40 @@ describe('the stage of the table', () => {
       expect(at.sheet! - at.won!).toBe(TIMING.hold);
       expect(sortAt(tray, true) - sortAt(tray)).toBe(CLEAR_MS);
     }
+  });
+});
+
+describe('who is at the table between rounds', () => {
+  // Four played the round. Since: whoever deals sent seat 1 away, took the bot off seat 2 and put another bot there,
+  // stood seat 3 up to watch, and added a bot, which sat at seat 4.
+  const game = inPlay(seats(4), lcg(7));
+  const was = roomOf(game, 0);
+  const lastRound = { end: { by: 'vote' as const }, scores: seats(4).map((seat) => ({ seat, id: seat, name: `p${seat}`, played: 0, nertzLeft: 0, delta: 0, total: 0, rounds: 1, calls: 0 })) };
+  const players: PlayerView[] = [
+    was.players[0]!,
+    { ...was.players[0]!, id: 8, seat: 2, name: 'Bot Bix', isHost: false, bot: 'medium' },
+    { ...was.players[3]!, seat: null },
+    { ...was.players[0]!, id: 9, seat: 4, name: 'Bot Cleo', isHost: false, bot: 'medium' },
+  ];
+  const room = roomOf(game, 0, { phase: 'results', lastRound, players });
+  const sitting = players.flatMap((p) => (p.seat === null ? [] : [p.seat]));
+
+  it('keeps every hand of the round while it is played and while its end plays out: the cards of whoever has gone since lie where they left them', () => {
+    for (const stage of ['live', 'flip', 'wash', 'sort', 'won'] as const) expect(handsAt(stage, room)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('once the score sheet is up, keeps only the hands of those still sitting where they played them', () => {
+    expect(handsAt('sheet', room)).toEqual([0]);
+    expect(handsAt('sheet', roomOf(game, 0, { phase: 'results', lastRound }))).toEqual([0, 1, 2, 3]); // (nobody gone: everyone's)
+  });
+
+  it('lays out a place for whoever is at the table then and none for anyone gone: a seat someone else has taken is theirs, with no cards in it', () => {
+    const view = room.game!;
+    const hands = view.players.filter((g) => handsAt('sheet', room).includes(g.seat));
+    const L = computeLayout(1440, 900, view, 0, 'sheet', null, undefined, undefined, sitting, undefined, hands);
+    expect(L.opponents.map((o) => o.seat)).toEqual([2, 4]);
+    expect(L.cards.filter((c) => c.pile !== 'slot' && c.pile !== 'tray').every((c) => c.card.owner === 0)).toBe(true);
+    // While the round's end plays out, it is the table as the round left it, with whoever sat down since beside it.
+    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
   });
 });
