@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { read, readPage, readStats, signedIn, sitter, waysIn } from './account';
+import { claimedBy, read, readPage, readStats, signedIn, sitter, waysIn } from './account';
 import { pageIn } from './address';
 
 describe('who the server says is signed in', () => {
@@ -119,5 +119,13 @@ describe('whose page the address is', () => {
     expect(pageIn('/u/a--b')).toBeNull();
     expect(pageIn('/u/0123456789abcdef/more')).toBeNull();
     expect(pageIn('/x/0123456789abcdef')).toBeNull();
+  });
+});
+
+describe('what came of claiming a handle', () => {
+  it('is yours on a yes, taken on a 409, and failed on anything else: no answer, a bad one, the server gone wrong', () => {
+    expect(claimedBy(true)).toBe('yours');
+    expect(claimedBy(409)).toBe('taken');
+    for (const no of [0, 400, 401, 403, 500, 502]) expect(claimedBy(no)).toBe('failed');
   });
 });

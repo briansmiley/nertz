@@ -148,16 +148,10 @@ function versusOf(v: Versus): Figure[] {
   ];
 }
 
-/** Your record: the figures, and under each what it counts; over the rounds you choose, by who else was at them. (The choice stays up while the figures are being asked for, or could not be had.) */
-export function Record() {
-  const [among, choose] = useAmong();
+/** Your record: the figures, and under each what it counts, over the rounds `among` says. */
+function Record({ among }: { among: Among }) {
   const stats = useStats(among);
-  return (
-    <div className="yours-record">
-      <Which among={among} choose={choose} />
-      {stats && <Figures figures={recordOf(stats)} />}
-    </div>
-  );
+  return stats && <Figures figures={recordOf(stats)} />;
 }
 
 /**
@@ -174,13 +168,9 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         {head}
         {known && <TheirPicture picture={known.picture} name={known.name} />}
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
+        {page !== 'none' && <Which among={among} choose={choose} />}
       </div>
-      {page !== 'none' && (
-        <div className="yours-record">
-          <Which among={among} choose={choose} />
-          {known && <Figures figures={recordOf(known.stats)} />}
-        </div>
-      )}
+      {known && <Figures figures={recordOf(known.stats)} />}
       {known?.versus && (
         <div className="versus">
           <h3>You vs {known.name ?? 'them'}</h3>
@@ -234,60 +224,75 @@ function YourName({ account }: { account: Account }) {
 /** What a handle is being typed as: lowercase, and only what a handle can have in it. */
 const typedHandle = (s: string): string => s.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, MAX_HANDLE_LENGTH);
 
+/** Where setting a handle has got to: nothing asked yet; asked; someone else's (or the site's); or no yes, for any other reason. */
+type Claim = 'idle' | 'asking' | 'taken' | 'failed';
+
+/** How long Failed is said before the button is Set again, to try again. */
+const FAILED_MS = 2500;
+
 /**
  * Where your page is, `/u/<handle>`, changed where it is written. Typing a different one brings up Set (or Enter), which
- * asks for it: had, the button goes; someone else's, or the site's, the button says so until the handle is changed.
- * Leaving the field without one set puts yours back, so what it shows is always yours unless you are at it.
+ * asks for it (faint while what is typed cannot be one): had, the button goes; someone else's, or the site's, it says
+ * Taken until the handle is changed; no answer, or any other no, it says Failed for a moment, and is Set again. Leaving
+ * the field puts yours back (unless it is being asked for), so what it shows is yours unless you are at it.
  */
 function YourHandle({ account }: { account: Account }) {
   const [handle, setHandle] = useState(account.handle);
-  const [taken, setTaken] = useState(false);
-  const [asking, setAsking] = useState(false);
-  useEffect(() => (setHandle(account.handle), setTaken(false)), [account.handle]);
-  const back = (): void => (setHandle(account.handle), setTaken(false));
+  const [claim, setClaim] = useState<Claim>('idle');
+  /** Set is being pressed: the field losing the focus to it is not leaving. */
+  const pressing = useRef(false);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => (setHandle(account.handle), setClaim('idle')), [account.handle]);
+  useEffect(() => {
+    if (claim !== 'failed') return;
+    const t = setTimeout(() => setClaim((c) => (c === 'failed' ? 'idle' : c)), FAILED_MS);
+    return () => clearTimeout(t);
+  }, [claim]);
+  const back = (): void => (setHandle(account.handle), setClaim('idle'));
   const asked = handleOf(handle.replace(/-+/g, '-').replace(/^-|-$/g, ''));
-  const changed = asked !== null && asked !== account.handle;
   const set = async (): Promise<void> => {
-    if (!changed || taken || asking) return;
+    if (asked === null || asked === account.handle || claim === 'taken' || claim === 'asking') return;
     setHandle(asked);
-    setAsking(true);
+    setClaim('asking');
     const claimed = await rehandle(asked);
-    setAsking(false);
-    if (claimed === 'taken') setTaken(true);
-    if (claimed === 'failed') back();
+    setClaim(claimed === 'yours' ? 'idle' : claimed);
   };
   return (
-    <span
-      className={`yourhandle${taken ? ' taken' : ''}`}
-      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && back()}
-    >
+    <span className={`yourhandle ${claim}`} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && !pressing.current && claim !== 'asking' && back()}>
       <label>
         <span aria-hidden="true">/u/</span>
         <input
+          ref={field}
           aria-label="Your page's address"
-          aria-invalid={taken || undefined}
+          aria-invalid={claim === 'taken' || undefined}
           value={handle}
           maxLength={MAX_HANDLE_LENGTH}
           size={Math.max(3, handle.length)} /* (where field-sizing is not had: about as wide as the handle) */
           autoCapitalize="none"
           autoComplete="off"
           spellCheck={false}
-          onChange={(e) => (setHandle(typedHandle(e.target.value)), setTaken(false))}
+          onChange={(e) => (setHandle(typedHandle(e.target.value)), setClaim('idle'))}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void set();
             if (e.key === 'Escape') (back(), e.currentTarget.blur(), e.stopPropagation());
           }}
         />
       </label>
-      {changed && (
+      {handle !== account.handle && (
         <button
           type="button"
           className="set"
-          disabled={taken || asking}
-          onPointerDown={(e) => e.preventDefault()} /* (the field keeps the focus: Safari would not give it to the button, and leaving the field puts yours back) */
-          onClick={() => void set()}
+          aria-live="polite"
+          disabled={asked === null || asked === account.handle || claim === 'taken' || claim === 'asking'}
+          // (The field keeps the focus where a press can be stopped from taking it, and where it cannot (a tap, on some
+          // phones) losing it to Set is not leaving. Nothing is held back on the pointer's press: on iOS, a tap whose
+          // pointerdown is held back may get no click.)
+          onPointerDown={(e) => (pressing.current = !e.currentTarget.disabled)}
+          onPointerCancel={() => (pressing.current = false)}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => ((pressing.current = false), field.current?.focus(), void set())}
         >
-          {taken ? 'Taken' : 'Set'}
+          {claim === 'taken' ? 'Taken' : claim === 'failed' ? 'Failed' : 'Set'}
         </button>
       )}
     </span>
@@ -376,9 +381,9 @@ function SureDelete({ onNo }: { onNo: () => void }) {
 /** Everything about you, laid out the same wherever it is shown. */
 export function Profile({ account, head }: { account: Account; head?: React.ReactNode }) {
   const [deleting, setDeleting] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  const [among, choose] = useAmong();
   return (
-    <div className="profile" ref={root}>
+    <div className="profile">
       <div className="you">
         {head}
         <YourPicture account={account} />
@@ -387,8 +392,9 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
           <YourHandle account={account} />
         </div>
         <Private account={account} />
+        <Which among={among} choose={choose} />
       </div>
-      <Record />
+      <Record among={among} />
       <div className="outs">
         <button type="button" className="gone" onClick={() => setDeleting(true)}>
           Delete account

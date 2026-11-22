@@ -146,14 +146,14 @@ async function change(fields: { name?: string; handle?: string; private?: boolea
 /** A new name to go by (cleaned by the server): whether it was taken. */
 export const rename = async (name: string): Promise<boolean> => (await change({ name })) === true;
 
-/** What came of claiming a handle: yours now; someone else's, or the site's; or not, for no answer (or one that cannot be a handle). */
+/** What came of claiming a handle: yours now; someone else's, or the site's; or not, for no answer, or any other no. */
 export type Claimed = 'yours' | 'taken' | 'failed';
 
+/** What the server's answer to a claim comes to (`change`'s: taken, or its no, 0 for none). */
+export const claimedBy = (answer: true | number): Claimed => (answer === true ? 'yours' : answer === 409 ? 'taken' : 'failed');
+
 /** Your page moved to `handle` (in any case: the server keeps it in lower). */
-export async function rehandle(handle: string): Promise<Claimed> {
-  const done = await change({ handle });
-  return done === true ? 'yours' : done === 409 ? 'taken' : 'failed';
-}
+export const rehandle = async (handle: string): Promise<Claimed> => claimedBy(await change({ handle }));
 
 /** Your page made yours alone, or anyone's signed in again: whether it was taken. */
 export const setPrivate = async (on: boolean): Promise<boolean> => (await change({ private: on })) === true;
