@@ -7,15 +7,14 @@
 }
 
 /* The head: the way back, the picture, the name and under it the address (which has the line to its end, for the Set
-   beside it), Private at the end of the name's line; under them all, which rounds the record counts, over its end. Too
-   narrow for Private beside the name, it goes to the start of that last line. */
+   beside it); at the end of the name's line which rounds the record counts, and under it Private. Too narrow for them
+   beside the name, they go to a line of their own under it. */
 .profile .you {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'back picture name private'
-    'back picture handle handle'
-    'among among among among';
+    'back picture name among'
+    'back picture handle private';
   align-items: center;
   column-gap: 0.6rem;
 }
@@ -52,11 +51,16 @@
 
 .profile .you > .private {
   grid-area: private;
+  justify-self: end;
 }
 
 .profile .you > .among {
   grid-area: among;
-  margin-top: 1.4rem;
+}
+
+/* (In the head the drawings say which by their tooltips: no word under them to make the line taller.) */
+.profile .you > .among small {
+  display: none;
 }
 
 @container (max-width: 16rem) {
@@ -68,7 +72,12 @@
   }
 
   .profile .you > .private {
-    margin-top: 1.4rem;
+    justify-self: start;
+    margin-top: 0.8rem;
+  }
+
+  .profile .you > .among {
+    margin-top: 0.8rem;
   }
 }
 
@@ -411,6 +420,13 @@
 
 .profile .record div {
   flex: 0 0 25%;
+}
+
+/* Too narrow for four figures a line without their words breaking: three. */
+@container (max-width: 16rem) {
+  .profile .record div {
+    flex-basis: 33.333%;
+  }
 }
 
 
