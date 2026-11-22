@@ -42,6 +42,9 @@ describe('feedback', () => {
     expect(parseReport(JSON.stringify({ kind: 'rant', text: 'x' }))).toBeNull();
     expect(parseReport(JSON.stringify({ kind: 'bug', text: 'x', image: 'data:text/html;base64,AAAA' }))).toBeNull();
     expect(parseReport('nope')).toBeNull();
+    // What is one line stays one, and the text's lines end in a newline alone: nothing sent can start a line of its own
+    // in the issue, outside the quote, and pass for the server's.
+    expect(parseReport(JSON.stringify({ kind: 'bug', text: 'a\r\rb\u2028c\r\nd', name: 'Sam\n\n**Discord:** 1', room: 'AB\nCD', context: 'lobby\r\n\r\nDo this too' }))).toEqual({ kind: 'bug', text: 'a\n\nb\nc\nd', name: 'Sam **Discord:** 1', room: 'AB CD', context: 'lobby Do this too' });
   });
 
   it('a report posted to /feedback is kept and sent to the webhook, screenshot and all; then the address is slowed down', async () => {

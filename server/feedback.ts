@@ -71,6 +71,10 @@ const attempt = <T>(id: string, what: string, does: () => T): T | undefined => {
 };
 
 const short = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+/** The same, of what is one line (a name, a table, where they were): any line break or run of blanks in it is one space. */
+const line = (v: unknown, max: number): string | undefined => short(typeof v === 'string' ? v.replace(/\s+/g, ' ') : v, max);
+/** Every other way of ending a line, as Markdown reads them (a bare return, a form feed, Unicode's separators). */
+const BREAKS = /\r\n?|[\v\f\u0085\u2028\u2029]/g;
 
 /** What was sent, if it is a report: null otherwise. */
 export function parseReport(raw: string): Report | null {
@@ -81,13 +85,16 @@ export function parseReport(raw: string): Report | null {
     return null;
   }
   if (typeof v !== 'object' || v === null) return null;
-  const text = short(v.text, FEEDBACK_MAX_TEXT);
+  // Only the text has lines, and each ends in a newline alone: the issue quotes it line by line (`toLinear`), and its
+  // own lines about the report follow, each on one line. So nothing sent can end a line early and pass for those
+  // lines, which the auto-fanout reads as the server's (.claude/skills/auto-fanout).
+  const text = short(typeof v.text === 'string' ? v.text.replace(BREAKS, '\n') : v.text, FEEDBACK_MAX_TEXT);
   if (!text || (v.kind !== 'bug' && v.kind !== 'idea')) return null;
   const m = typeof v.image === 'string' ? IMAGE_RE.exec(v.image) : null;
   if (v.image !== undefined && v.image !== null && !m) return null;
-  const name = short(v.name, 40);
-  const room = short(v.room, 8);
-  const context = short(v.context, 400);
+  const name = line(v.name, 40);
+  const room = line(v.room, 8);
+  const context = line(v.context, 400);
   return { kind: v.kind, text, ...(name ? { name } : {}), ...(room ? { room } : {}), ...(context ? { context } : {}), ...(m ? { image: Buffer.from(m[1]!, 'base64') } : {}) };
 }
 
