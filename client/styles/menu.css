@@ -1,57 +1,70 @@
-/* The corner's menu (Menu.tsx). */
+/* The corner's menu (Menu.tsx): your settings, then under a rule what there is to do. */
 
-/* A narrow slip off the same pad as your settings: a ruled line a thing to do, nothing else on it. */
-.slip.acts {
+/* One slip off the score pad: the settings written on it, the lines of what to do ruled across the foot. It is held
+   short of the screen wherever it hangs (with all of it on, it is taller than most windows): the settings scroll, and
+   the lines of what to do stay put. */
+.slip.menu {
+  display: flex;
+  flex-direction: column;
   gap: 0;
-  width: auto;
-  min-width: 11.5rem;
-  padding: 0.9rem 0 0.35rem;
-  rotate: -0.6deg;
+  max-height: calc(100dvh - 64px);
+  padding: 0;
+  overflow: visible;
 }
 
-/* Each line: its icon, its name, and at the far end the vote's tally. */
-.acts button {
+.menu .yours {
+  display: grid;
+  gap: 0.85rem;
+  min-height: 0;
+  padding: 1.5rem 1.2rem 1.1rem;
+  overflow-y: auto;
+}
+
+/* Their head: the gear, then the word. */
+.yours > h3 {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.65rem 1.1rem 0.6rem 0.95rem;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: var(--ink);
-  font: 600 1rem/1.1 var(--ui);
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
+  gap: 0.45rem;
 }
 
-.acts button + button {
+.yours > h3 svg {
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+}
+
+/* What to do, across the foot under a rule: a round button each, its name a tooltip. */
+.acts {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  padding: 0.75rem 0.9rem 0.85rem;
   border-top: 1px solid var(--rule);
 }
 
-.acts button:hover {
-  background: rgba(0, 0, 0, 0.05);
+.acts .icon {
+  position: relative;
 }
 
-/* Your vote is in. */
-.acts button.on {
-  background: #fbe6ae;
+/* An icon with cards inside it, drawn a size up so they show. */
+.acts .icon svg.big {
+  width: 1.65rem;
+  height: 1.65rem;
 }
 
-.acts button svg {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
+/* The vote's tally, pinned to its button. */
 .acts small {
-  margin-left: auto;
-  padding-left: 1.2rem;
-  font: 700 0.95em/1 var(--num);
+  position: absolute;
+  right: -0.45rem;
+  bottom: -0.3rem;
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.5rem;
+  background: var(--ink);
+  color: var(--paper);
+  font: 700 0.68rem/1 var(--num);
   font-variant-numeric: tabular-nums;
 }
