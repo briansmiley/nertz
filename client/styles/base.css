@@ -95,9 +95,14 @@ button {
   font-size: 14px;
 }
 
+/* Along the foot of the window, where whoever is watching has no cards: the table is laid out above it (layout.ts
+   `WATCH`). One line while the window is wide enough for it, not just while half of it is. */
 .banner.low {
   top: auto;
   bottom: 12px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  text-align: center;
 }
 
 /* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */

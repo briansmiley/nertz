@@ -4,7 +4,7 @@ import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABL
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
-import { aloftAt, computeLayout, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, type Layout, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** `game` with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
@@ -259,6 +259,26 @@ describe('table layout', () => {
       }
       expect(L.opponents[0]!.box.y).toBeGreaterThan(L.middle.y + L.middle.h);
       expect(slotsOf(L)).toHaveLength(4 * n);
+    }
+  });
+
+  it('whoever watches without a seat has the foot of the window for the line that says so: the felt is above it, and so is every hand round the felt or in the right-hand column, and the count on its nertz pile', () => {
+    for (const [W, H] of [[1374, 701], [1024, 600], [1280, 720], [1920, 1080], [800, 520], [844, 390], [390, 844]] as const) {
+      for (let n = 2; n <= 8; n++) {
+        const L = computeLayout(W, H, aced(inPlay(seats(n), lcg(n))), -1);
+        const at = `${W}x${H}, ${n} playing`;
+        const line = H - 12 - WATCH.h;
+        expect(L.me, at).toBeNull();
+        expect(L.middle.y + L.middle.h, at).toBeLessThanOrEqual(line);
+        // (In rows above the felt, nobody is near the line. In columns, the right-hand one stops above it; the left-hand
+        // one comes down beside it as it does beside a hand, as far as the menu's button.)
+        const over = L.tall ? [] : L.low ? L.opponents.filter((o) => o.box.x > W / 2) : L.opponents;
+        for (const o of over) {
+          expect(o.box.y + o.box.h, at).toBeLessThanOrEqual(line + 0.01);
+          const count = countBox(o.count, W, H);
+          expect(count.y + count.h, at).toBeLessThanOrEqual(line + 0.01);
+        }
+      }
     }
   });
 
