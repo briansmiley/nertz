@@ -565,6 +565,13 @@ export const isTall = (W: number, H: number): boolean => W < TALL.below && H >= 
 export const LOW = { below: 500, col: 118, top: 50, knobs: 52 } as const;
 export const isLow = (W: number, H: number): boolean => !isTall(W, H) && H < LOW.below;
 
+/**
+ * Whoever watches without a seat has no hand of their own along the bottom edge: the line that says they are watching
+ * stands there instead (App.tsx, `.banner.low` in base.css: one line 40 high, in the middle, 12 above the bottom). `h` above
+ * the foot of the window is kept for it, and the table is laid out over that: the hand they watch from behind, the felt.
+ */
+export const WATCH = { h: 50 } as const;
+
 /** What the screen keeps for itself at its edges (a notch at the side of a phone on its side, the bar at the bottom): nothing is put there. */
 export interface Insets {
   l: number;
@@ -869,7 +876,8 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   /** Upright: the second row, where the nertz pile, the stock and the waste lie. */
   const rowY = H - 10 - oh;
   // Room below the row for work piles to fan into is kept short: a long pile squeezes, or rises into the cloth above.
-  const ownTop = !mine ? H - 12 : tall ? rowY - oh * (TALL.between + TALL.room + 1) : H - 12 - oh * 1.85;
+  // (Watching without a seat: where the table ends, above the line that says so.)
+  const ownTop = !mine ? H - 12 - WATCH.h : tall ? rowY - oh * (TALL.between + TALL.room + 1) : H - 12 - oh * 1.85;
   const handX = tall ? edge : (W - OWN_UNITS * ow) / 2;
 
   // Everyone else, by the direction their seat lies in as seen from yours: (0, 1) is straight down, towards you.
@@ -896,11 +904,11 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // then the hands of the others, as large as their columns and the number in each allow.
   const sideL = Math.max(8, keep.l);
   const sideR = Math.max(8, keep.r);
-  const col = { u: 0, w: 0, left: Math.ceil(seats.length / 2), topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: (mine ? ownTop : H - 12) - 6 };
+  const col = { u: 0, w: 0, left: Math.ceil(seats.length / 2), topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: ownTop - 6 };
   if (low) {
     // (A phone on its side has little width to give the columns; a wide window with more than six at the table gives each a sixth of it.)
     const most = W - sideL - sideR - 2 * (Math.max(LOW.col, isLow(W, H) ? 0 : W * 0.17) + CLEAR);
-    col.u = Math.max(40, Math.min(most / (2 * hw), ((mine ? ownTop : H - 12) - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
+    col.u = Math.max(40, Math.min(most / (2 * hw), (ownTop - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const each = (room: number, k: number) => (k ? (room / k - TAG_H - 6) / (RATIO * 1.85) : Infinity);
     const width = (botL: number) => Math.min(wide / OPP_UNITS, each(botL - col.topL, col.left), each(col.botR - col.topR, seats.length - col.left), mine ? ow * 0.62 : OPP_MAX);
@@ -938,7 +946,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const rows = tall ? Math.ceil(seats.length / grid.cols) : 1;
   // The band of the window the felt may use: under the top row, above your hand.
   const bandTop = tall ? topY + (rows - 1) * rowStep + handH + CLEAR : low ? 6 : tops.length ? topY + handH + CLEAR : 30;
-  const bandBottom = (mine ? ownTop : seats.some((s) => s.where === 'bottom') ? H - 12 - handH - TAG_H : H - 12) - CLEAR - 4;
+  const bandBottom = (!mine && seats.some((s) => s.where === 'bottom') ? ownTop - handH - TAG_H : ownTop) - CLEAR - 4;
   const cy = (bandTop + bandBottom) / 2;
   // The top row is spread out when there is room (three across the top sit shoulder to shoulder), and stays out of the corners.
   const xs = tops.map((s) => s.dir.x).sort((a, b) => a - b);
@@ -968,7 +976,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     if (where === 'side') {
       // A neighbour sits beside the felt, their hand turned to face it: level with its middle if they are straight to
       // one side, lower down the nearer they are to you. Clear of the chat button above and your hand below.
-      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, (mine ? ownTop : H - 12) - 8 - span);
+      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, ownTop - 8 - span);
       const local: Placed[] = [];
       const seat = placeHand(p, spec, local);
       const turned = turnHand(seat, local, dir.x < 0 ? 90 : -90, dir.x < 0 ? edge : W - edge - handH, y);
@@ -995,7 +1003,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       const x0 = W / 2 - (inRow * handW + (inRow - 1) * 14) / 2;
       return placeHand(p, { ...spec, x: x0 + (i - row * grid.cols) * (handW + 14), y: topY + row * rowStep }, cards);
     }
-    return placeHand(p, { ...spec, x: W / 2 + (where === 'top' ? dir.x * spread : 0) - handW / 2, y: where === 'top' ? topY : H - 12 - handH }, cards);
+    return placeHand(p, { ...spec, x: W / 2 + (where === 'top' ? dir.x * spread : 0) - handW / 2, y: where === 'top' ? topY : ownTop - handH }, cards);
   });
 
   // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than
