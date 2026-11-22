@@ -90,13 +90,14 @@ describe('who sits down, on the first page', () => {
     expect(sitter(named, false)).toBe('you');
     expect(sitter({ ...named, name: null }, false)).toBe('name');
   });
-  it('signed out where there are accounts: the choice, until you are a guest', () => {
-    expect(sitter({ ways: [...ways.ways] }, false)).toBe('choose');
-    expect(sitter({ ways: [...ways.ways] }, true)).toBe('name');
+  it('signed out where there are accounts: a guest, whether or not they have sat down before', () => {
+    expect(sitter({ ways: [...ways.ways] }, false)).toBe('guest');
+    expect(sitter({ ways: [...ways.ways] }, true)).toBe('guest');
   });
-  it('no accounts kept: a name to write; not known yet: a guest writes, anyone else waits', () => {
+  it('no accounts kept: only a name to write; not known yet: a guest from before is one still, anyone else waits', () => {
     expect(sitter('off', false)).toBe('name');
-    expect(sitter('unknown', true)).toBe('name');
+    expect(sitter('off', true)).toBe('name');
+    expect(sitter('unknown', true)).toBe('guest');
     expect(sitter('unknown', false)).toBe('wait');
   });
 });

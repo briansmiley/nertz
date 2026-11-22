@@ -200,7 +200,7 @@ describe('profile', () => {
     // (The database as it was before the migration that draws them.)
     write('drop index profile_handle');
     write('alter table profile drop column handle');
-    write('pragma user_version = 4');
+    write('pragma user_version = 5');
     await start();
     const handles = rows('profile').map((p) => p.handle as string);
     expect(handles.every(isHandle)).toBe(true);

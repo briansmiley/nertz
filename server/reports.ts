@@ -39,11 +39,21 @@ export function imageFile(dir: string, id: string): string {
   return join(dir, `${id}.jpg`);
 }
 
+/** What became of a report once it was passed on (server/feedback.ts). */
+export interface Passed {
+  /** What it was titled, and how much it was judged to matter (if it was judged). */
+  heading: Heading;
+  /** The address of the issue filed for it, if one was. */
+  issue: string | null;
+  /** The id of the Discord message it was posted as, if it was: where BinaryBot opens a thread once a PR for it is ready. */
+  post: string | null;
+}
+
 export interface Reports {
   /** Keeps a report as it came, and who sent it if they were signed in. Throws if it cannot, and then keeps nothing. */
   add(id: string, at: number, report: Report, account: string | null): void;
-  /** What became of it once it was passed on: what it was titled, how much it was judged to matter (if it was judged), and the address of the issue filed for it (if one was). */
-  passedOn(id: string, heading: Heading, issue: string | null): void;
+  /** What became of it once it was passed on. */
+  passedOn(id: string, passed: Passed): void;
   /** Keeps `account`'s reports, but as nobody's, with no name to them. */
   forget(account: string): void;
 }
@@ -57,7 +67,7 @@ export interface ReportsOptions {
 export function openReports(db: Db, { dir, maxImageBytes = MAX_KEPT_IMAGE_BYTES }: ReportsOptions): Reports {
   const add = db.prepare('insert into report (id, created_at, kind, text, name, room, context, account, image_bytes) values (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const pictures = db.prepare('select coalesce(sum(image_bytes), 0) as bytes from report');
-  const passedOn = db.prepare('update report set title = ?, priority = ?, issue = ? where id = ?');
+  const passedOn = db.prepare('update report set title = ?, priority = ?, issue = ?, post = ? where id = ?');
   const forget = db.prepare('update report set account = null, name = null where account = ?');
   return {
     add(id, at, r, account) {
@@ -73,7 +83,7 @@ export function openReports(db: Db, { dir, maxImageBytes = MAX_KEPT_IMAGE_BYTES 
         throw err;
       }
     },
-    passedOn: (id, heading, issue) => void passedOn.run(heading.title, heading.priority ?? null, issue, id),
+    passedOn: (id, { heading, issue, post }) => void passedOn.run(heading.title, heading.priority ?? null, issue, post, id),
     forget: (account) => void forget.run(account),
   };
 }

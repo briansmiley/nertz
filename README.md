@@ -674,6 +674,33 @@ is a few kilobytes and a busy table is a few messages a second.
 - Outgrowing one machine (unlikely) means routing by table code, for example with Fly's `fly-replay` header, so that a table
   always lands on the machine that owns it.
 
+### Previews
+
+- Every pull request into `staging` from a branch of this repo (not a fork: those get no secrets) gets its own app,
+  `nertz-pr-<number>`, at **https://nertz-pr-&lt;number&gt;.fly.dev**. `.github/workflows/preview.yml` runs the checks and
+  deploys the merge of the PR into staging on each push, and keeps one comment on the PR with the address.
+- Set up like the real apps (the same `fly.toml`, with `--app`): one machine, suspended when idle,
+  and a 1 GB `nertz_data` volume at `/data`, so accounts, pictures and anything else kept outlive pushes to the PR. The
+  workflow makes the volume once, before the first deploy, since a mount added to a machine with no volume destroys it.
+- A new preview starts from a copy of **staging's database**, taken when its volume is made and never again: read-only
+  from `nertz-staging` (never `nertz`), scrubbed on the runner of every session, sign-in code and account token, then
+  put in place and the machine restarted. Accounts, profiles, rounds, hands and reports come over; the files beside the
+  database (report screenshots, `pictures/`) do not, so those are missing there. If staging cannot be reached, the
+  preview starts empty, with a warning on the run.
+- Closing the PR destroys the app, and with it its volume ("When you destroy an app, you delete its volumes and volume
+  snapshots": [Fly, Delete an app](https://fly.io/docs/apps/delete/)). `.github/workflows/preview-sweep.yml` destroys,
+  daily, any `nertz-pr-<number>` whose PR is closed, in case a teardown failed. (Scheduled runs start once it is on
+  `main`; before then, run it by hand from the Actions tab.)
+- What does not work there: **Google sign-in** (Google only sends people back to redirect addresses registered in advance,
+  and one cannot be registered per preview; sign in by emailed code instead, which needs `RESEND_API_KEY`), and
+  **feedback**, which is sent nowhere: a preview has no `FEEDBACK_WEBHOOK`, `LINEAR_*` or `ANTHROPIC_API_KEY`.
+- Setup, once:
+  1. `fly tokens create org -o personal -n "nertz previews"`: a token for the whole org, since app tokens cannot make
+     apps. (It can also deploy or destroy `nertz` and `nertz-staging`; the workflow only ever names `nertz-pr-<number>`.)
+  2. Add it to the repo's Actions secrets as `FLY_API_TOKEN_PREVIEW`, the whole string, `FlyV1 ` and all.
+  3. For email sign-in, add `RESEND_API_KEY` as well (and `EMAIL_FROM`, if not the default sender). Without it, a preview
+     has no accounts, only play.
+
 ### Railway or Render
 
 Both run the same `Dockerfile` (or `npm run build` + `npm start`) as an always-on container with websocket support, and both
@@ -780,11 +807,12 @@ would still need one of the options above, and serving both from one origin is s
 
 ## Accounts
 
-Nobody has to sign in. At the top of the first page's pad, someone with no name yet chooses **Sign in** or **Guest**; a
-guest writes a name (one the browser remembers goes straight to it), with a quiet Sign in beside it for later. Signing in
+Nobody has to sign in. At the top of the first page's pad, someone signed out is a **Guest** (a grey figure, and the
+word), with a **Sign in** button beside it, and writes the name they play under on the line below (one the browser
+remembers goes straight to it). Signing in
 is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
 and Send code), and they are then known across tables and visits. Signed in, their
-picture (or initial) and name stand where the name was written, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
 to their page or the way in and back again (with reduced motion, the other side simply comes up).
 
@@ -887,18 +915,25 @@ it if they were signed in. The screenshot is a file beside the database, `report
 `DATA_DIR`: its name is made by the server from the report's id, never from anything sent, and
 nothing serves these files (read them with `fly ssh sftp get`). The screenshots kept may come to 200 MB in all: past
 that a report is kept without its picture, which is still passed on (anyone at all can send one, and the accounts live
-on the same volume). Once it has been passed on, the row also says what it was titled and the address of the issue
-filed for it. So a report that reaches nowhere else is not lost. To read them:
-`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue from report order by created_at desc;`
+on the same volume). Once it has been passed on, the row also says what it was titled, the address of the issue
+filed for it and the id of its Discord post (`post`). So a report that reaches nowhere else is not lost. To read them:
+`select id, datetime(created_at / 1000, 'unixepoch'), kind, title, text, image_bytes, issue, post from report order by created_at desc;`
 
 From there it is passed on wherever the server was told, to both if both are set:
 
 - `FEEDBACK_WEBHOOK`: a Discord webhook URL (channel settings, Integrations, Webhooks: no bot needed). The report is
-  posted there with the screenshot attached. On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
+  posted there with the screenshot attached, and Discord is asked for the message it made (`?wait=true`): its id is
+  kept, on the report's row and as a `**Discord:**` line at the foot of the issue (added once the post is made, since
+  the post links the issue). On Fly: `fly secrets set FEEDBACK_WEBHOOK=...`.
 
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
-  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature (the label is made
-  if the team has none of that name), with the screenshot in its description.
+  number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature, and `auto` (each
+  label made if the team has none of that name), with the screenshot in its description. `auto` hands it to the
+  [auto-fanout](#auto-fanout), so only so many of those issues may be open at once (not Done or Canceled, as Linear
+  says when the next is filed): five of one sender's (`AUTO_PER_SENDER`) and twenty of every report's (`AUTO_OPEN`). A
+  sender is their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count
+  as one; the issue says who, hashed, on a `**Sender:**` line. Past a cap the issue is filed without `auto`, and a
+  merged or closed one frees its place.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
 - `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
   issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
@@ -907,3 +942,11 @@ From there it is passed on wherever the server was told, to both if both are set
 Nothing names a particular server or workspace in the code: `.env.example` lists every name, with what to put there.
 
 Ten reports per address per minute; a screenshot is scaled down in the browser first.
+
+### Auto-fanout
+
+The `auto` label hands an issue to the auto-fanout, which runs outside this repo (`~/projects/auto-fanout` on the
+droplet): every hour it implements the waiting `auto` issues, a reviewed PR to `staging` for each, and opens a thread
+on the report's Discord post (the `**Discord:**` line) to say the PR is ready. It never merges. Add the label to any
+issue to hand it over; take it off to keep one back. It reads the issue's last lines, `**Report:**`, `**Sender:**` and
+`**Discord:**`, as the server's own, and everything else in a `[FEEDBACK]` issue as the player's report.

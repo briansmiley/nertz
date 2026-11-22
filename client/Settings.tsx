@@ -1,21 +1,22 @@
 // Settings. Two kinds, kept apart:
 // - `Corner`: on every screen, bottom left, one button (☰) and the menu it opens
-//   (Menu.tsx): sound on or off (also a key of your choosing, M at first), what
-//   can be done to the table during a round (actions.ts), and from there your
-//   settings (sound, motion) and feedback. While the sound is off, a small badge
-//   in the chat bar (Chat.tsx) says so, and turns it back on. The score sheet's
-//   gear opens the same settings. Whoever hosts finds the table's own settings
-//   at the bottom of theirs: chat and voice, and between rounds the house rules.
+//   (Menu.tsx): your settings at the top (`YourSettings`: sound, motion, keys),
+//   and under them sound on or off (also a key of your choosing, M at first),
+//   what can be done to the table during a round (actions.ts), and the way to
+//   feedback. While the sound is off, a small badge in the chat bar (Chat.tsx)
+//   says so, and turns it back on. The score sheet's gear opens the same menu.
+//   Whoever hosts finds the table's own settings at the bottom of theirs: chat
+//   and voice, and between rounds the house rules.
 // - `TableRules`: the house rules on the lobby sheet, for everyone to read.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { pause, setSeats, setTableSettings } from './net';
-import { canPause, canResume, tableActions } from './actions';
-import { Back, Menu, openCorner, useCorner } from './Menu';
-import { MenuIcon } from './icons';
+import { setSeats, setTableSettings } from './net';
+import { pauseKeyAction, perform, tableActions } from './actions';
+import { Menu, openCorner, useCorner } from './Menu';
+import { Gear, MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
@@ -23,11 +24,11 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
-const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic' };
+const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic', pauseKey: 'Pause' };
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
@@ -224,52 +225,20 @@ export function Clock({ clock, at }: { clock: NonNullable<RoomView['clock']>; at
 /** The corner controls. Rendered once, by App, over whatever screen is up. */
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
-  const social = useSocial();
-  const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
-  /** The slip that is open: the menu, or your settings or feedback (which it leads to). One at a time. */
+  /** The slip that is open: the menu, or feedback (which it leads to). One at a time. */
   const open = useCorner();
   useEffect(() => () => openCorner(null), []); // (a slip does not follow you from one screen's corner to the next)
   const root = useRef<HTMLDivElement>(null);
-  /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). */
-  const [keying, setKeying] = useState<Hotkey | null>(null);
-  useEffect(() => {
-    if (!keying) return;
-    const onKey = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopImmediatePropagation(); // (not a game key, nor a hotkey itself, while one is being chosen)
-      const taken = takeKey(getPrefs(), keying, e.code);
-      if (e.code === 'Backspace' || e.code === 'Delete') setPrefs({ [keying]: null });
-      else if (taken) setPrefs(taken); // (a hotkey of yours that had this key is left with none)
-      else if (e.code !== 'Escape') return; // a key the game uses: wait for another
-      setKeying(null);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [keying]);
-  useEffect(() => {
-    if (open !== 'settings') setKeying(null);
-  }, [open]);
 
-  /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
-  const stage = room?.game?.status.at;
-  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
-
-  const pausable = canPause(room);
-  const resumable = !!room && canResume(room);
   // The sound key mutes from anywhere (except while typing a name), and says so on the button.
   const said = useHotkey(prefs.soundKey, () => {
     const muted = !getPrefs().muted;
     setPrefs({ muted });
     return muted ? 'Muted' : 'Unmuted';
   });
-  // P pauses or unpauses: pressed as any hotkey is (`hotkeyPressed`).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (hotkeyPressed(e, 'KeyP') && (pausable || resumable)) pause(pausable);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [pausable, resumable]);
+  // The pause key pauses or unpauses, when you may; the card over a paused table says so, not the button.
+  const pausing = pauseKeyAction(room);
+  useHotkey(prefs.pauseKey, room && pausing ? () => (perform(pausing, room), pausing === 'pause' ? 'Paused' : 'Unpaused') : null);
 
   /** What can be done to the table now (actions.ts). */
   const actions = room ? tableActions(room) : [];
@@ -294,83 +263,114 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <MenuIcon />
         <SaidWord said={said} />
       </button>
-      {open === 'menu' && <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} go={openCorner} onDone={() => openCorner(null)} />}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
-      {open === 'settings' && (
-        <section className="slip" id="your-settings" aria-label="Settings">
-          <header className="slip-head">
-            <Back onClick={() => openCorner('menu')} />
-            <h3>Settings</h3>
-          </header>
-          <Volume prefs={prefs} />
-          <label className="check">
-            <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-            <span>Bots say "Nertz"</span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
-            <span>Show chat over the table</span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
-            <span>Show ping</span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
-            <span>Reduce motion</span>
-          </label>
-          {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
-          <div className={`level${styling ? '' : ' locked'}`}>
-            <span>Card back</span>
-            <YourBacks colour={BACKS[0]} locked={!styling} />
-          </div>
-          {/* Keys: only where there is a keyboard. */}
-          {!touchOnly() && (
-            <div className="hotkeys">
-              <h3>Hotkeys</h3>
-              {HOTKEYS.map((k) => {
-                const code = prefs[k];
-                return (
-                  <p key={k}>
-                    {HOTKEY_LABELS[k]}
-                    <button type="button" className={keying === k ? 'on' : ''} data-tip="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(keying === k ? null : k), e.currentTarget.blur())}>
-                      {keying === k ? 'Press a key…' : code ? keyName(code) : 'none'}
-                    </button>
-                  </p>
-                );
-              })}
-            </div>
-          )}
-          {/* Whoever hosts: whether this table has text chat and voice at all, and between rounds its house rules. */}
-          {room && hosting && (
-            <div className="end-vote">
-              <h3>Host</h3>
-              {/* Each row: the switch for the table, and at its end the same for those only watching (the glasses). */}
-              <div className="allow">
-                <label className="check">
-                  <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
-                  <span>Allow text chat</span>
-                </label>
-                <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
-              </div>
-              <div className="allow">
-                <label className="check">
-                  <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
-                  <span>Allow voice chat</span>
-                </label>
-                <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
-              </div>
-              {room.phase !== 'playing' && (
-                <div className="rules">
-                  <Rules room={room} mine />
-                </div>
-              )}
-            </div>
-          )}
-          <WholeScreen />
-        </section>
+      {open === 'menu' && (
+        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onDone={() => openCorner(null)}>
+          <YourSettings room={room} prefs={prefs} />
+        </Menu>
       )}
+      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
     </div>
+  );
+}
+
+/** Your settings, at the top of the corner's menu under a gear; whoever hosts finds the table's at the bottom of them. */
+function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs }) {
+  const social = useSocial();
+  const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
+  /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). Closing the menu drops it. */
+  const [keying, setKeying] = useState<Hotkey | null>(null);
+  useEffect(() => {
+    if (!keying) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation(); // (not a game key, nor a hotkey itself, while one is being chosen)
+      const taken = takeKey(getPrefs(), keying, e.code);
+      if (e.code === 'Backspace' || e.code === 'Delete') setPrefs({ [keying]: null });
+      else if (taken) setPrefs(taken); // (a hotkey of yours that had this key is left with none)
+      else if (e.code !== 'Escape') return; // a key the game uses: wait for another
+      setKeying(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [keying]);
+
+  /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
+  const stage = room?.game?.status.at;
+  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
+
+  return (
+    <section className="yours" aria-labelledby="your-settings">
+      <h3 id="your-settings">
+        <Gear />
+        Settings
+      </h3>
+      <Volume prefs={prefs} />
+      <label className="check">
+        <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+        <span>Bots say "Nertz"</span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
+        <span>Show chat over the table</span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
+        <span>Show ping</span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
+        <span>Reduce motion</span>
+      </label>
+      {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
+      <div className={`level${styling ? '' : ' locked'}`}>
+        <span>Card back</span>
+        <YourBacks colour={BACKS[0]} locked={!styling} />
+      </div>
+      {/* Keys: only where there is a keyboard. */}
+      {!touchOnly() && (
+        <div className="hotkeys">
+          <h3>Hotkeys</h3>
+          {HOTKEYS.map((k) => {
+            const code = prefs[k];
+            return (
+              <p key={k}>
+                {HOTKEY_LABELS[k]}
+                <button type="button" className={keying === k ? 'on' : ''} data-tip="Press, then press the key you want. Backspace: no key." onClick={(e) => (setKeying(keying === k ? null : k), e.currentTarget.blur())}>
+                  {keying === k ? 'Press a key…' : code ? keyName(code) : 'none'}
+                </button>
+              </p>
+            );
+          })}
+        </div>
+      )}
+      {/* Whoever hosts: whether this table has text chat and voice at all, and between rounds its house rules. */}
+      {room && hosting && (
+        <div className="end-vote">
+          <h3>Host</h3>
+          {/* Each row: the switch for the table, and at its end the same for those only watching (the glasses). */}
+          <div className="allow">
+            <label className="check">
+              <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
+              <span>Allow text chat</span>
+            </label>
+            <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+          </div>
+          <div className="allow">
+            <label className="check">
+              <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
+              <span>Allow voice chat</span>
+            </label>
+            <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+          </div>
+          {room.phase !== 'playing' && (
+            <div className="rules">
+              <Rules room={room} mine />
+            </div>
+          )}
+        </div>
+      )}
+      <WholeScreen />
+    </section>
   );
 }
 

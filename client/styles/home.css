@@ -89,7 +89,7 @@
   text-underline-offset: 3px;
 }
 
-/* On the first page, who sits down (your name, you, or the choice of the two) and the card beside it. */
+/* On the first page, who sits down (you, a guest, or only a name) and the card beside it. */
 .named {
   display: flex;
   align-items: center;
@@ -98,7 +98,7 @@
   min-height: 2.6rem;
 }
 
-/* Signed in: your picture and name, written on the pad; pressed, your page. */
+/* Signed in: your picture and name, written on the pad; pressed, your page. A guest: Guest, in the same place. */
 .named .you {
   display: inline-flex;
   align-items: center;
@@ -142,25 +142,54 @@
   text-underline-offset: 0.2em;
 }
 
-.named .you:hover span {
+/* No name yet: the figure of nobody in particular, in grey. */
+.named .you i.nobody {
+  place-items: end center;
+  overflow: hidden;
+  background: #c3bba6;
+}
+
+.named .you .nobody svg {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-bottom: -0.15rem;
+  fill: var(--paper);
+}
+
+.named button.you:hover span {
   text-decoration-color: currentColor;
 }
 
-/* Not signed in, and no name yet: the two ways to sit down. */
-.named .either {
+/* A guest: Guest, and beside it Sign in, a button of its own. */
+.named .guest {
   display: flex;
-  gap: 0.6rem;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
 }
 
-/* A guest: the line for a name, and beside it the way to sign in after all. */
-.named .guest {
+.named .guest .plain {
+  flex: none;
+  padding: 0.25rem 0.8rem 0.35rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+/* The name a guest plays under, just below, from the same left edge. */
+.home .plays {
+  margin-top: -0.6rem;
+}
+
+/* Signed in with no name yet: the line for one, with your disc (your page) beside it. */
+.named .own {
   display: flex;
   align-items: baseline;
   gap: 0.8rem;
   min-width: 0;
 }
 
-.named input {
+.named input,
+.plays input {
   /* As long as the name, from a short line up to the whole width. */
   flex: 0 1 auto;
   width: auto;
@@ -307,24 +336,6 @@
     gap: 1.25rem;
     padding-top: 3.5rem;
   }
-}
-
-/* A guest's way to sign in after all: a line of writing on the pad, not a button on it. */
-.home button.who {
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: 400 0.9rem/2rem var(--ui);
-  color: var(--ink-soft);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
-  text-underline-offset: 0.2em;
-}
-
-.home button.who:hover {
-  color: var(--ink);
-  text-decoration-color: currentColor;
 }
 
 /* Your record, on the first page: figures written on the pad, each over what it counts. */

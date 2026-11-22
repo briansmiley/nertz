@@ -1,7 +1,7 @@
 /* The corner and its slips: the clock, the buttons, a slip's head, your settings and the house rules;
    the ping; what a hotkey just did (hotkey.tsx). */
 
-/* Your own settings, on every screen: mute, a gear, the door to the table's actions, feedback. Bottom left, or in the
+/* The corner, on every screen: the ☰ and the menu it opens (menu.css), your settings at its top. Bottom left, or in the
    bar across the top of a phone held upright (`.top`): where exactly is the layout's to say (client/layout.ts,
    `corners`), clear of a notch and of the bar at the bottom of the screen. */
 .corner {

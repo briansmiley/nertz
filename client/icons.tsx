@@ -78,15 +78,14 @@ export function Flag() {
   );
 }
 
-/** How far each card of a fanned hand is turned, about the front card's bottom left corner: the back one first. */
-const FAN = [-45, -30, -15, 0];
-
-/** Dealing again: a hand fanned out. Laid back to front, each card filled with the paper it is drawn on, so it covers the ones behind. */
+/** Dealing again: two cards inside an arrow come round. Each card is filled with the paper it is drawn on, so the front one covers the back. */
 export function Redeal() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      {FAN.map((turn) => (
-        <rect key={turn} x="12" y="4" width="9.5" height="14.5" rx="1.8" transform={`rotate(${turn} 12 18.5)`} style={{ fill: 'var(--paper)' }} />
+    <svg className="big" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
+      <path d="M5.3 2.4v3.9h3.9" />
+      {[-14, 14].map((turn) => (
+        <rect key={turn} x="9.3" y="7.9" width="5.4" height="7.6" rx="1" transform={`rotate(${turn} 12 15.5)`} style={{ fill: 'var(--paper)' }} />
       ))}
     </svg>
   );
