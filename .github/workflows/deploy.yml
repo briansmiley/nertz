@@ -42,14 +42,15 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Build the image
         run: flyctl deploy --app "$APP" --remote-only --build-only --push --image-label "$GITHUB_SHA"
-      - name: Wait until nobody is connected
+      - name: Wait until no game is on
         if: github.ref_name == 'main'
         run: |
-          # Asked every 30 seconds for up to 90 minutes. (Anyone with the page open on a table counts, playing or not.)
+          # Asked every 30 seconds for up to 90 minutes. A game is a table someone is at that has dealt; a lobby doesn't count.
+          # (`.connections` is the fallback for a server from before `games` was reported.)
           for i in $(seq 1 180); do
-            n=$(curl -fsS --max-time 20 "https://$APP.fly.dev/healthz" | jq -r .connections || echo unknown)
-            if [ "$n" = "0" ]; then echo "Nobody connected: deploying."; exit 0; fi
-            echo "$n connected; waiting."
+            n=$(curl -fsS --max-time 20 "https://$APP.fly.dev/healthz" | jq -r '.games // .connections' || echo unknown)
+            if [ "$n" = "0" ]; then echo "No game on: deploying."; exit 0; fi
+            echo "$n game(s) on; waiting."
             sleep 30
           done
           echo "Still in use after 90 minutes. Re-run this job when the tables are empty."

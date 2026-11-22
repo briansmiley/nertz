@@ -662,7 +662,7 @@ is a few kilobytes and a busy table is a few messages a second.
   `nertz-staging`. The `Dockerfile` and `fly.toml` are their whole configuration: port 8080, health check on `/healthz`,
   connection-based concurrency.
 - `.github/workflows/deploy.yml` deploys them: a push to `staging` runs the checks and deploys staging; a push to `main`
-  runs the checks and then waits until `/healthz` says nobody is connected before it deploys. Exactly one machine each
+  runs the checks and then waits until `/healthz` says no game is on (`games`: tables someone is at that have dealt) before it deploys. Exactly one machine each
   (`--ha=false`): two would split tables across processes.
 - An idle machine is suspended, memory kept (`auto_stop_machines = "suspend"`), and resumed on the next request. Fly only
   suspends a machine with no open connections, and every player at a table holds a websocket, so a game in progress keeps

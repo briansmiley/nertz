@@ -161,7 +161,9 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
       if (path === '/healthz') {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, rooms: rooms.size, connections: wss.clients.size }));
+        // `games`: tables someone is at that have dealt (in a round or between rounds). A deploy to main waits for none.
+        const games = [...rooms.values()].filter((room) => room.connected > 0 && room.phase !== 'lobby').length;
+        res.end(JSON.stringify({ ok: true, rooms: rooms.size, connections: wss.clients.size, games }));
       } else if (path === '/tables') {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD' });

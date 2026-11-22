@@ -1912,7 +1912,7 @@ describe('server over real sockets', () => {
 
   it('answers /healthz, serves the client with an SPA fallback and does not leak files', async () => {
     const get = (path: string) => fetch(`http://127.0.0.1:${server.port}${path}`);
-    expect(await (await get('/healthz')).json()).toMatchObject({ ok: true });
+    expect(await (await get('/healthz')).json()).toMatchObject({ ok: true, games: 0 });
     for (const path of ['/', '/?room=ABCD', '/some/route']) {
       const res = await get(path);
       expect(res.status).toBe(200);
