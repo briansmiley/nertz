@@ -16,29 +16,9 @@
   color: var(--ink-soft);
 }
 
-/* Every game or one kind of them: words at the head's end, the one chosen in ink and underlined. */
-.usage .kinds {
-  display: flex;
-  gap: 0.6rem;
-  flex: none;
-  margin: 0 0 0 auto;
-  white-space: nowrap;
-}
-
-.usage .kinds button {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 0.8rem;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-
-.usage .kinds [aria-checked='true'] {
-  color: var(--ink);
-  text-decoration: underline 1.5px;
-  text-underline-offset: 3px;
+/* Which rounds: the drawings a record has (profile.css `.among`), at the head's end. */
+.usage .among {
+  margin-left: auto;
 }
 
 /* The totals: each figure big, its word small under it. */

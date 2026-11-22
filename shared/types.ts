@@ -311,8 +311,15 @@ export interface Account {
   admin?: true;
 }
 
-/** Which of someone's rounds their record counts: every one; those with someone else there who is no bot; those with no bot there at all. */
-export const AMONG = ['all', 'people', 'no-bots'] as const;
+/**
+ * What kind of game a round was, by who held hands in it (a guest is a person): every hand a person's (`humans`); two
+ * people or more, and bots (`mixed`); one person or none, the rest bots (`bots`).
+ */
+export const GAME_KINDS = ['humans', 'mixed', 'bots'] as const;
+export type GameKind = (typeof GAME_KINDS)[number];
+
+/** Which rounds are counted, for someone's record and for how much the game is played: every one, or one kind. */
+export const AMONG = ['all', ...GAME_KINDS] as const;
 export type Among = (typeof AMONG)[number];
 
 /**
@@ -368,13 +375,6 @@ export interface Page {
   stats: Stats;
   versus: Versus | null;
 }
-
-/**
- * What kind of game a round was, by who held hands in it: every hand a person's; two people or more, and bots; or one
- * person or none, and the rest bots.
- */
-export const GAME_KINDS = ['humans', 'mixed', 'bots'] as const;
-export type GameKind = (typeof GAME_KINDS)[number];
 
 /** How much was played (server/rounds.ts): sittings, rounds, the accounts that played, and hands played as a guest or by a bot. */
 export interface Played {

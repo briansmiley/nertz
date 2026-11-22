@@ -1,10 +1,11 @@
 // How much the game is played, for an admin (server/stats.ts `GET /usage`), from the corner's menu: all told; the
 // last days, a bar of games each (what else was played that day its tooltip) over a notch and its date; and the latest
-// sittings, who was at them. Of every game, or of one kind (`GameKind`).
+// sittings, who was at them. Over every round, or those of one kind (`Among`), chosen as for a record.
 import { useState } from 'react';
-import { GAME_KINDS, type GameKind, type Played, type Usage } from '../shared/types';
+import type { Among, Played, Usage } from '../shared/types';
 import { useUsage } from './account';
 import { Back } from './Menu';
+import { Which } from './Profile';
 
 /** What a count is said as, after its figure. */
 const COUNTS: { key: keyof Played; one: string; many: string }[] = [
@@ -14,32 +15,20 @@ const COUNTS: { key: keyof Played; one: string; many: string }[] = [
   { key: 'guests', one: 'guest hand', many: 'guest hands' },
   { key: 'bots', one: 'bot hand', many: 'bot hands' },
 ];
-/** Each kind of game as the slip's head says it, and its tooltip. */
-const KIND_SAID: Record<GameKind, [string, string]> = {
-  humans: ['humans', 'No bots'],
-  mixed: ['mixed', 'Two people or more, and bots'],
-  bots: ['bots', 'One person or none, and bots'],
-};
 const said = (n: number, { one, many }: { one: string; many: string }): string => `${n} ${n === 1 ? one : many}`;
 
 /** A day (`2026-11-21`, a date here) as it is written: `Sat 21 Nov`. */
 const dayWritten = (day: string): string => new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 export function UsageSlip({ back }: { back: () => void }) {
-  const [kind, setKind] = useState<GameKind | null>(null);
-  const usage = useUsage(kind);
+  const [among, choose] = useState<Among>('all');
+  const usage = useUsage(among);
   return (
     <section className="slip usage" aria-label="Played">
       <header className="slip-head">
         <Back onClick={back} />
         <h3>Played</h3>
-        <p className="kinds" role="radiogroup" aria-label="Which games">
-          {[null, ...GAME_KINDS].map((k) => (
-            <button key={k ?? 'all'} type="button" role="radio" aria-checked={k === kind} data-tip={k ? KIND_SAID[k][1] : undefined} onClick={() => setKind(k)}>
-              {k ? KIND_SAID[k][0] : 'all'}
-            </button>
-          ))}
-        </p>
+        <Which among={among} choose={choose} />
       </header>
       {usage === null ? <p className="none">—</p> : usage && <Figures usage={usage} />}
     </section>
