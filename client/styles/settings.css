@@ -361,6 +361,7 @@ label.check {
 
 /* Whose faces every card has: the word, then the choices in bare ink, the one chosen underlined. */
 .faces {
+  position: relative; /* where its (i) opens: under the row, as a checkbox's does */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
