@@ -22,7 +22,7 @@ import { nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, mover, moving, whoseOf, IN_PILE, type Doing, type Whose } from './level';
 import { Opening } from './Opening';
-import { ending, stageOf, stepAtMount, unrevealed } from './stage';
+import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
@@ -442,10 +442,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
   const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
+  // The round's hands at the table: once the score sheet is up, only of those still sitting where they played them.
+  const kept = handsAt(stage, room).join();
+  const hands = useMemo(() => game.players.filter((g) => kept.split(',').includes(`${g.seat}`)), [game, kept]);
   // What stands round the cards (the buttons in the corners, the clock, your name, "I'm stuck" and the vote) is placed
   // by the layout too, and the cards round it: nothing here is measured off the page or put down by hand.
   const fit = useFittings(room);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting, fit), [W, H, game, you, stage, peek, groupHeld, pad, sitting, fit]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting, fit, hands), [W, H, game, you, stage, peek, groupHeld, pad, sitting, fit, hands]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const handles = useRef<Handles>(new Map()).current;
   /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
@@ -584,7 +587,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (aloft.size > 0 || flights.size > 0) watch(); // a snapshot can start a hold, or end one
   });
 
-  const mine = game.players.find((p) => p.seat === you);
+  const mine = hands.find((p) => p.seat === you);
   /** Nertz has been called: the round is in grace, or over by the call. */
   const called = calledBy(game) !== null;
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
@@ -661,10 +664,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     const p = info(seat);
     return seenLook(prefs, seat === you ? myLook : (p && (!l || p.id === l.id) ? p.look : l?.look) ?? PLAIN_LOOK);
   };
-  const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
+  /** The line the place at `seat` goes by: its hand's, while that is at the table (`hands`); else none, and the place is whoever sits there. */
+  const placed = (seat: number) => (hands.some((g) => g.seat === seat) ? line(seat) : undefined);
+  const name = (seat: number) => placed(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
   const total = (seat: number) => {
-    const l = line(seat);
+    const l = placed(seat);
     return l ? l.total - (stage === 'sheet' ? 0 : l.delta) : (info(seat)?.score ?? 0);
   };
   /** The finished pile waiting for you to carry it to the tray. */
@@ -874,7 +879,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // large enough to read at any seat, and kept inside the window.
   const stamps = out.flatMap((seat) => {
     const pile = seat === you ? me?.nertz : L.opponents.find((o) => o.seat === seat)?.nertz;
-    if (!pile) return [];
+    if (!pile || !hands.some((g) => g.seat === seat)) return []; // (not on a place whose hand has gone from the table)
     const size = Math.max(22, Math.min(pile.w * 0.78, 60));
     return [{ seat, size, x: clamp(pile.x + pile.w / 2 - size * 2, 4, Math.max(4, W - size * 4 - 4)), y: pile.y, w: size * 4, h: pile.h }];
   });
@@ -919,7 +924,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
       {L.opponents.map((o) => {
         const p = info(o.seat);
-        const st = game.players.find((g) => g.seat === o.seat);
+        const st = hands.find((g) => g.seat === o.seat);
         return (
           <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
@@ -1125,7 +1130,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} looks={dress} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={(seat) => line(seat)?.name ?? name(seat)} stage={stage} looks={dress} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // Level with the menu's button, on every screen (so clear of what the screen keeps at its bottom, as that is). On

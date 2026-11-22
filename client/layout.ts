@@ -850,16 +850,18 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS, hands: PlayerState[] = game.players): Layout {
   const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
   const n = game.players.length; // (the felt and its cards are sized for those in the round)
-  // Whoever sits at the table without being in the round (`sitting`: they came in the middle of it, or were away at
-  // the deal) has a place round it all the same, in seat order with the rest: a hand with no cards in it.
-  const empty = sitting.filter((seat) => !game.players.some((p) => p.seat === seat));
+  // The round's hands that are at the table (`hands`: all of them, but on the score sheet, see stage.ts `handsAt`) each
+  // have a place round it. Whoever sits at the table without one of them (`sitting`: they came in the middle of the
+  // round, were away at the deal, or sat down since it ended) has a place all the same, in seat order with the rest: a
+  // hand with no cards in it.
+  const empty = sitting.filter((seat) => !hands.some((p) => p.seat === seat));
   const ring: PlayerState[] = empty.length
-    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
-    : game.players;
+    ? [...hands, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
+    : hands;
   const mine = ring.find((p) => p.seat === you);
   const open: Open = { work: game.status.at !== 'dealing', nertz: hasOpened(game) };
   // Someone who has no seat at the table at all watches from the first player's chair.
