@@ -1,15 +1,15 @@
-// Rounds kept, and one person's record of them: the table by itself, a room handing its rounds over, and the whole way
-// round over the wire (signed in, a round played, the record asked for).
+// Rounds kept, one person's record of them, and how much the game is played: the table by itself, a room handing its
+// rounds over, and the whole way round over the wire (signed in, a round played, the record asked for).
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deal, type Rng } from '../shared/engine';
 import { rig } from '../shared/testkit';
-import type { Account, GameState, Page, Stats } from '../shared/types';
+import type { Account, GameState, Page, Stats, Usage } from '../shared/types';
 import { openDb, type Db } from './db';
 import { startServer, type NertzServer } from './index';
-import { openRounds, type RoundRecord } from './rounds';
+import { openRounds, USAGE_DAYS, type RoundRecord } from './rounds';
 import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, rows, signedAs, startOver, startRound } from './testkit';
 
 /** A hand of a round, said shortly: who (an account, a bot, or with neither a guest), and what they scored. */
@@ -147,6 +147,39 @@ describe('rounds kept', () => {
     expect(db.isTransaction).toBe(true);
     db.exec('COMMIT');
     expect(db.prepare('select count(*) as n from round').get()).toEqual({ n: 1 });
+  });
+
+  it('says how much the game is played: all told, day by day where the asker is, and the latest sittings and who was at them', () => {
+    const rounds = openRounds(db);
+    const now = Date.parse('2026-11-22T15:00:00Z'); // (10am in New York, 300 minutes behind)
+    // A sitting this morning: two rounds, Ada throughout, a guest and a bot in the first, Bob come for the second.
+    rounds.keep(round([hand(0, 'ada', 4), hand(1, null, 2), hand(2, null, 6, 'slow')]), now - 60 * 60_000);
+    rounds.keep(round([hand(0, 'ada', 3), { ...hand(1, 'bob', 5), player: 4 }], undefined, 2), now - 30 * 60_000);
+    // Last night in New York (but already the 22nd by UTC): Bob and a guest.
+    rounds.keep({ ...round([hand(0, 'bob', 1), hand(1, null, 7)]), game: 'g2', code: 'NITE' }, Date.parse('2026-11-22T03:00:00Z'));
+    // A month ago: on the totals, but on none of the days.
+    rounds.keep({ ...round([hand(0, 'ada', 9)]), game: 'g3', code: 'OLDE' }, now - 30 * 24 * 60 * 60_000);
+
+    const usage = rounds.usage(300, now);
+    expect(usage.total).toEqual({ games: 3, rounds: 4, players: 2, guests: 2, bots: 1 });
+    expect(usage.days).toHaveLength(USAGE_DAYS);
+    expect(usage.days[0]!.day).toBe('2026-11-09');
+    expect(usage.days.slice(-2)).toEqual([
+      { day: '2026-11-21', games: 1, rounds: 1, players: 1, guests: 1, bots: 0 },
+      { day: '2026-11-22', games: 1, rounds: 2, players: 2, guests: 1, bots: 1 },
+    ]);
+    expect(usage.days.slice(0, -2).every((d) => d.games === 0 && d.rounds === 0)).toBe(true);
+    // By UTC's days, last night's is this morning's.
+    expect(rounds.usage(0, now).days.at(-1)).toMatchObject({ day: '2026-11-22', games: 2, rounds: 3 });
+    expect(usage.games).toEqual([
+      { at: now - 30 * 60_000, code: 'TEST', rounds: 2, ms: 120_000, players: [{ name: 'ada', as: 'account' }, { name: 'Guest', as: 'guest' }, { name: 'Bot', as: 'bot' }, { name: 'bob', as: 'account' }] },
+      { at: Date.parse('2026-11-22T03:00:00Z'), code: 'NITE', rounds: 1, ms: 60_000, players: [{ name: 'bob', as: 'account' }, { name: 'Guest', as: 'guest' }] },
+      { at: now - 30 * 24 * 60 * 60_000, code: 'OLDE', rounds: 1, ms: 60_000, players: [{ name: 'ada', as: 'account' }] },
+    ] satisfies Usage['games']);
+    // An account gone leaves its hands as a guest's, and no name to list.
+    rounds.forget('bob');
+    expect(rounds.usage(300, now).total).toEqual({ games: 3, rounds: 4, players: 1, guests: 4, bots: 1 });
+    expect(rounds.usage(300, now).games[1]!.players).toEqual([{ name: 'Guest', as: 'guest' }]);
   });
 
   it('the tables are made once: a database opened again has what it had', () => {
@@ -431,6 +464,30 @@ describe('over the wire', () => {
     g.ws.terminate();
   });
 
+  it('how much the game is played is for an admin alone: anyone else signed in is told there is no such thing', async () => {
+    const admins = await startServer({ port: 0, dist: '/nonexistent', data: join(dir, 'admins.db'), accounts: { ...ACCOUNTS, admins: [ADA.email] } });
+    try {
+      const [ada, bob, guest] = [new Browser(admins.port), new Browser(admins.port), new Browser(admins.port)];
+      await ada.signIn(ADA);
+      await bob.signIn(BOB);
+      expect(await (await ada.ask('/profile')).json()).toMatchObject({ admin: true });
+      expect(await (await bob.ask('/profile')).json()).not.toHaveProperty('admin');
+      const usage = (await (await ada.ask('/usage?tz=300')).json()) as Usage;
+      expect(usage.total).toEqual({ games: 0, rounds: 0, players: 0, guests: 0, bots: 0 });
+      expect([usage.days.length, usage.games]).toEqual([USAGE_DAYS, []]);
+      expect((await ada.ask('/usage')).status).toBe(200);
+      expect((await ada.ask('/usage?tz=later')).status).toBe(400);
+      expect((await bob.ask('/usage')).status).toBe(404);
+      expect((await guest.ask('/usage')).status).toBe(401);
+      // Nobody is an admin unless the server is told who.
+      const there = new Browser(server.port);
+      await there.signIn(ADA);
+      expect((await there.ask('/usage')).status).toBe(404);
+    } finally {
+      await admins.close();
+    }
+  });
+
   it('with nothing kept, or nobody able to sign in, there are no records to ask for', async () => {
     const bare = await startServer({ port: 0, dist: '/nonexistent' });
     const kept = await startServer({ port: 0, dist: '/nonexistent', data: ':memory:' });
@@ -438,6 +495,7 @@ describe('over the wire', () => {
       expect([bare.kept, kept.kept, kept.accounts]).toEqual([false, true, false]);
       expect((await fetch(`http://localhost:${bare.port}/stats`)).status).toBe(404);
       expect((await fetch(`http://localhost:${kept.port}/stats`)).status).toBe(404);
+      expect((await fetch(`http://localhost:${kept.port}/usage`)).status).toBe(404);
     } finally {
       await bare.close();
       await kept.close();

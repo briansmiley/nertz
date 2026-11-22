@@ -510,6 +510,7 @@ label.check {
 }
 
 .slip-head .back {
+  position: static;
   display: grid;
   place-items: center;
   width: 1.9rem;
@@ -519,6 +520,9 @@ label.check {
   border-radius: 50%;
   background: none;
   color: var(--ink);
+  box-shadow: none;
+  transform: none; /* (not a card's back: cards.css) */
+  backface-visibility: visible;
   cursor: pointer;
 }
 

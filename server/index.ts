@@ -1,5 +1,5 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile (/profile: server/profile.ts), and records (/stats: server/stats.ts);
+// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile (/profile: server/profile.ts), records (/stats: server/stats.ts), and for an admin how much the game is played (/usage, the same);
 // websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -15,7 +15,7 @@ import { openPictures, PICTURES_PATH } from './pictures';
 import { dataFromEnv, openDb } from './db';
 import { openReports } from './reports';
 import { openRounds } from './rounds';
-import { STATS_PATH, statsHandler } from './stats';
+import { STATS_PATH, statsHandler, USAGE_PATH, usageHandler } from './stats';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
 import { Room, type Conn, type RoomOptions } from './room';
@@ -141,6 +141,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const pictures = reportDir ? openPictures(join(dirname(reportDir), 'pictures')) : null;
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
   const stats = accounts && rounds && statsHandler({ accounts, rounds });
+  const usage = accounts && rounds && usageHandler({ accounts, rounds });
   /** Who each open socket is signed in as: what its cookie said as it opened, for as long as it is open and the account is there. */
   const signed = new Map<WebSocket, Account>();
   /** An account is gone: its sockets are nobody's from now on, and so is whoever sits at a table as it. */
@@ -184,6 +185,13 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
         if (!stats) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
         stats(req, res).catch((err: unknown) => {
           console.error('stats', err); // (the database gone wrong, or closed under us: an answer, not a crash)
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('null');
+        });
+      } else if (path === USAGE_PATH) {
+        if (!usage) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
+        usage(req, res).catch((err: unknown) => {
+          console.error('usage', err);
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
           res.end('null');
         });

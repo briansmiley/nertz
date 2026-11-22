@@ -37,6 +37,8 @@ describe('who the server says is signed in', () => {
     expect(read(200, { id: 'u1', name: 'Ada', handle })).toEqual({ id: 'u1', name: 'Ada', image: null, picture: null, handle, private: false });
     expect(read(200, { id: 'u1', name: null, image: null, handle })).toEqual({ id: 'u1', name: null, image: null, picture: null, handle, private: false });
     expect(read(200, { id: 'u1', name: 'Ada', image: null })).toBe('off'); // (no page: not a profile)
+    expect(read(200, { id: 'u1', name: 'Ada', handle, admin: true })).toMatchObject({ admin: true });
+    expect(read(200, { id: 'u1', name: 'Ada', handle, admin: 'yes' })).not.toHaveProperty('admin'); // (only a yes that is one)
   });
 });
 

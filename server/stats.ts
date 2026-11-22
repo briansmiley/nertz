@@ -2,6 +2,8 @@
 // the page of whoever `handle` is (`Page`): their record, and the asker's against them. Either over the rounds
 // `?among=` says (every one, unless it says). Only someone signed in sees anyone's: nobody else is told whose a handle is.
 // A page made private is its own alone: to anyone else it is as if it were nobody's.
+// `GET /usage` is how much the game is played (`Usage`), for an admin alone (server/accounts.ts): to anyone else signed
+// in it is not there. `?tz=` is the asker's offset from UTC, in minutes behind it, as their browser says (0 unless said).
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { handleOf } from '../shared/protocol';
 import { AMONG, type Page } from '../shared/types';
@@ -9,6 +11,7 @@ import type { Accounts } from './accounts';
 import type { Rounds } from './rounds';
 
 export const STATS_PATH = '/stats';
+export const USAGE_PATH = '/usage';
 
 export function statsHandler({ accounts, rounds }: { accounts: Accounts; rounds: Rounds }) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -27,5 +30,18 @@ export function statsHandler({ accounts, rounds }: { accounts: Accounts; rounds:
     if (!them || (them.private && them.id !== me.id)) return json(404, null);
     const page: Page = { name: them.name, picture: them.picture, stats: rounds.stats(them.id, among), versus: them.id === me.id ? null : rounds.versus(me.id, them.id, among) };
     json(200, page);
+  };
+}
+
+export function usageHandler({ accounts, rounds }: { accounts: Accounts; rounds: Rounds }) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
+    if (req.method !== 'GET') return json(405, null);
+    const tz = Number(new URL(req.url ?? '/', 'http://localhost').searchParams.get('tz') ?? 0);
+    const me = await accounts.who(req.headers);
+    if (!me) return json(401, null);
+    if (!me.admin) return json(404, null);
+    if (!Number.isInteger(tz) || Math.abs(tz) > 14 * 60) return json(400, null);
+    json(200, rounds.usage(tz));
   };
 }

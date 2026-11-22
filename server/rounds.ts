@@ -1,7 +1,7 @@
 // The rounds played to the end, kept (server/db.ts): what a room hands over when a round is scored, and what is
-// asked of them after: one person's record, and how they have done against someone else. A hand someone played signed
+// asked of them after: one person's record, how they have done against someone else, and how much the game is played. A hand someone played signed
 // in is theirs; every hand, theirs or not, is kept with the name it was played under.
-import type { Among, BotLevel, RoundEnd, RoundScore, Stats, Versus } from '../shared/types';
+import type { Among, BotLevel, Played, RoundEnd, RoundScore, Stats, Usage, Versus } from '../shared/types';
 import { transaction, type Db } from './db';
 
 /** A round as it ended, as a room tells it (server/room.ts, `settle`). */
@@ -20,12 +20,22 @@ export interface RoundRecord {
   snipes: { by: number; of: number; card: string }[];
 }
 
+/** How many days back `usage` counts day by day (today one of them), and how many of the latest sittings it lists. */
+export const USAGE_DAYS = 14;
+export const USAGE_GAMES = 12;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export interface Rounds {
   keep(round: RoundRecord, at?: number): void;
   /** The record of whoever `account` is, over the rounds `among` says: all noughts for someone who has played none. */
   stats(account: string, among?: Among): Stats;
   /** How `account` has done against `other`, over the rounds both played (of those `among` says): all noughts for none. */
   versus(account: string, other: string, among?: Among): Versus;
+  /**
+   * How much the game is played: all told, each of the last USAGE_DAYS days to `now`, and the latest USAGE_GAMES
+   * sittings. A day is a date where the asker is, `offset` minutes behind UTC (as a browser's `getTimezoneOffset`).
+   */
+  usage(offset?: number, now?: number): Usage;
   /** Leaves `account`'s hands as they were played, but nobody's and with no name: the rounds stay whole for everyone else who played them. */
   forget(account: string): void;
 }
@@ -74,6 +84,23 @@ export function openRounds(db: Db): Rounds {
       where m.account = $account and o.account = $other
         and ($among <> 'no-bots' or not exists (select 1 from hand b where b.round = m.round and b.bot is not null))`,
   );
+  // A hand nobody's and no bot's is a guest's (or that of an account since gone: it is nobody's now).
+  const played = `count(distinct r.game) as games, count(distinct r.id) as rounds, count(distinct h.account) as players,
+                  coalesce(sum(h.account is null and h.bot is null), 0) as guests, coalesce(sum(h.bot is not null), 0) as bots
+             from round r left join hand h on h.round = r.id`;
+  const total = db.prepare(`select ${played}`);
+  const daily = db.prepare(`select date(r.created_at / 1000 - $offset * 60, 'unixepoch') as day, ${played} where r.created_at >= $since group by day`);
+  // (Each sitting's code and time are its last round's.)
+  const latest = db.prepare('select game, code, max(created_at) as at, count(*) as rounds, sum(ms) as ms from round group by game order by at desc limit ?');
+  // Who played in a sitting, in the order they came to it, each under the name of their last hand in it. (An account
+  // gone leaves its hands with no name: it is not listed.)
+  const players = db.prepare(
+    `select h.name, h.account is not null as signed, h.bot is not null as bot, max(r.number)
+       from hand h join round r on r.id = h.round
+      where r.game = ? and h.name <> ''
+      group by h.player order by h.player`,
+  );
+  const count = (p: Played): Played => ({ games: p.games, rounds: p.rounds, players: p.players, guests: p.guests, bots: p.bots });
   const forget = db.prepare("update hand set account = null, name = '' where account = ?");
   return {
     keep(r, at = Date.now()) {
@@ -90,6 +117,22 @@ export function openRounds(db: Db): Rounds {
     versus: (account, other, among = 'all') => {
       const v = versus.get({ $account: account, $other: other, $among: among }) as unknown as Versus;
       return { rounds: v.rounds, ahead: v.ahead, behind: v.behind, points: v.points, theirs: v.theirs };
+    },
+    usage: (offset = 0, now = Date.now()) => {
+      const date = (t: number): string => new Date(t).toISOString().slice(0, 10);
+      /** Midnight today where the asker is, as if it were UTC's. */
+      const today = Date.parse(date(now - offset * 60_000));
+      const dates = Array.from({ length: USAGE_DAYS }, (_, i) => date(today - (USAGE_DAYS - 1 - i) * DAY_MS));
+      const had = new Map((daily.all({ $offset: offset, $since: Date.parse(dates[0]!) + offset * 60_000 }) as unknown as (Played & { day: string })[]).map((d) => [d.day, d]));
+      const none: Played = { games: 0, rounds: 0, players: 0, guests: 0, bots: 0 };
+      const games = (latest.all(USAGE_GAMES) as { game: string; code: string; at: number; rounds: number; ms: number }[]).map((g) => ({
+        at: g.at,
+        code: g.code,
+        rounds: g.rounds,
+        ms: g.ms,
+        players: (players.all(g.game) as { name: string; signed: number; bot: number }[]).map((p) => ({ name: p.name, as: p.bot ? ('bot' as const) : p.signed ? ('account' as const) : ('guest' as const) })),
+      }));
+      return { total: count(total.get() as unknown as Played), days: dates.map((day) => ({ day, ...count(had.get(day) ?? none) })), games };
     },
     forget: (account) => void forget.run(account),
   };
