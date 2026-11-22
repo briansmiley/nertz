@@ -36,6 +36,8 @@ export interface Prefs {
   soundKey: string | null;
   /** The key that mutes and unmutes your microphone while you are in voice, likewise. */
   voiceKey: string | null;
+  /** The key that pauses and unpauses the round, when you may (actions.ts), likewise. */
+  pauseKey: string | null;
 }
 
 /** How loud things are, each 0..1. Every channel plays at `master` times its own. */
@@ -74,14 +76,16 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
-export const HOTKEYS = ['soundKey', 'voiceKey'] as const;
+export const HOTKEYS = ['soundKey', 'voiceKey', 'pauseKey'] as const;
 export type Hotkey = (typeof HOTKEYS)[number];
+/** Every hotkey with no key. */
+const NO_KEYS = (): Pick<Prefs, Hotkey> => ({ soundKey: null, voiceKey: null, pauseKey: null });
 /** Keys the game already uses: not to be had for a hotkey. */
-export const TAKEN_KEYS = ['KeyP', 'Space', 'Enter', 'Escape', 'Tab'];
+export const TAKEN_KEYS = ['Space', 'Enter', 'Escape', 'Tab'];
 /**
  * May `code` be the key for `which`? A plain key (no modifier, nor Backspace or Delete, which choose none) that the
  * game does not use and that is not already another of your hotkeys.
@@ -93,7 +97,7 @@ export const keyFree = (p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): bo
  * is left with none. Null if it is no key for a hotkey at all (a modifier, or one the game uses).
  */
 export function takeKey(p: Pick<Prefs, Hotkey>, which: Hotkey, code: string): Partial<Pick<Prefs, Hotkey>> | null {
-  if (!keyFree({ soundKey: null, voiceKey: null }, which, code)) return null;
+  if (!keyFree(NO_KEYS(), which, code)) return null;
   const patch: Partial<Pick<Prefs, Hotkey>> = { [which]: code };
   for (const k of HOTKEYS) if (k !== which && p[k] === code) patch[k] = null;
   return patch;
@@ -138,7 +142,7 @@ export function cleanPrefs(raw: unknown): Prefs {
 
 /** Each hotkey as stored, if it may be that key (null stays none); otherwise its default, or none if another has that. */
 function cleanKeys(v: Record<string, unknown>): Pick<Prefs, Hotkey> {
-  const keys: Pick<Prefs, Hotkey> = { soundKey: null, voiceKey: null };
+  const keys = NO_KEYS();
   for (const k of HOTKEYS) {
     const code = v[k];
     if (code === null) continue;

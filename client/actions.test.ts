@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyIntent, deal, finishDeal, RESHUFFLES_BEFORE_VOTE, resolveEndVote, seatedPeople } from '../shared/engine';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 import type { GameState, PlayerView, RoomView } from '../shared/types';
-import { ballot, canPause, canRedeal, canReset, canResume, standing, tableActions } from './actions';
+import { ballot, canPause, canRedeal, canReset, canResume, pauseKeyAction, standing, tableActions } from './actions';
 
 const live = inPlay([0, 1, 2], lcg(7));
 const voting = (g: GameState, seat: number): GameState => {
@@ -65,6 +65,28 @@ describe("the table's actions", () => {
     expect(canReset(roomOf(live, 0))).toBe(false); // (not during a round)
     expect(canRedeal(room)).toBe(false);
     expect(canPause(room)).toBe(false);
+  });
+});
+
+describe('the pause key', () => {
+  it("presses the menu's Pause or Unpause, whichever is open to you, and otherwise nothing", () => {
+    expect(pauseKeyAction(roomOf(live, 1))).toBe('pause');
+    expect(pauseKeyAction(roomOf(live, 1, { paused: { by: 2 } }))).toBe('resume');
+    expect(pauseKeyAction(roomOf(finishDeal(deal([0, 1, 2], lcg(7))), 1))).toBeNull(); // (before Start)
+    expect(pauseKeyAction(roomOf(live, 0, { phase: 'lobby', game: null }))).toBeNull();
+    expect(pauseKeyAction(null)).toBeNull();
+  });
+
+  it('is nothing to someone watching, unless they deal and the round is paused', () => {
+    const base = roomOf(live, 1, { paused: { by: 1 } });
+    const watching = (isHost: boolean, paused: boolean): RoomView => {
+      const me: PlayerView = { ...base.players[1]!, id: 9, seat: null, name: 'w', isHost };
+      return { ...base, paused: paused ? base.paused : null, me: 9, seat: null, players: [...base.players.map((p) => ({ ...p, isHost: false })), me] };
+    };
+    expect(pauseKeyAction(watching(false, false))).toBeNull();
+    expect(pauseKeyAction(watching(false, true))).toBeNull();
+    expect(pauseKeyAction(watching(true, false))).toBeNull();
+    expect(pauseKeyAction(watching(true, true))).toBe('resume');
   });
 });
 

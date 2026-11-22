@@ -13,8 +13,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { pause, setSeats, setTableSettings } from './net';
-import { canPause, canResume, tableActions } from './actions';
+import { setSeats, setTableSettings } from './net';
+import { pauseKeyAction, perform, tableActions } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
 import { Gear, MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
@@ -24,11 +24,11 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, hotkeyPressed, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
-const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic' };
+const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic', pauseKey: 'Pause' };
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
@@ -230,22 +230,15 @@ export function Corner({ room }: { room?: RoomView | null }) {
   useEffect(() => () => openCorner(null), []); // (a slip does not follow you from one screen's corner to the next)
   const root = useRef<HTMLDivElement>(null);
 
-  const pausable = canPause(room);
-  const resumable = !!room && canResume(room);
   // The sound key mutes from anywhere (except while typing a name), and says so on the button.
   const said = useHotkey(prefs.soundKey, () => {
     const muted = !getPrefs().muted;
     setPrefs({ muted });
     return muted ? 'Muted' : 'Unmuted';
   });
-  // P pauses or unpauses: pressed as any hotkey is (`hotkeyPressed`).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (hotkeyPressed(e, 'KeyP') && (pausable || resumable)) pause(pausable);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [pausable, resumable]);
+  // The pause key pauses or unpauses, when you may; the card over a paused table says so, not the button.
+  const pausing = pauseKeyAction(room);
+  useHotkey(prefs.pauseKey, room && pausing ? () => (perform(pausing, room), pausing === 'pause' ? 'Paused' : 'Unpaused') : null);
 
   /** What can be done to the table now (actions.ts). */
   const actions = room ? tableActions(room) : [];
