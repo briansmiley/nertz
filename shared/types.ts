@@ -209,6 +209,8 @@ export interface PlayerView {
   /** With a seat: when they sat down (a count; lower is earlier). The lobby lists by it, so whoever sits down goes to the end, whatever colour they take. */
   sat?: number;
   name: string;
+  /** Where the picture they put up of themselves is (server/pictures.ts), if they are signed in and did. */
+  picture?: string;
   connected: boolean;
   /** Up from their cards in the round being played: they stood up (or whoever deals stood them up), left, or were sent away. Their cards lie there until it is over, and they play no more of it nor have a say in its votes. Then whoever stood up is watching; whoever left or was sent away is gone, and back by the same token is someone new. */
   left?: true;
@@ -294,6 +296,8 @@ export interface Account {
   name: string | null;
   /** Google's picture of them, if it has one. */
   image: string | null;
+  /** Where the picture they put up of themselves is (server/pictures.ts), if they did: shown before Google's, and the only one shown to anyone else. */
+  picture: string | null;
 }
 
 /** Which of someone's rounds their record counts: every one; those with someone else there who is no bot; those with no bot there at all. */

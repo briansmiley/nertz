@@ -84,6 +84,9 @@ const MIGRATIONS: string[] = [
      account text primary key,
      name text
    ) strict, without rowid;`,
+  // The picture they put up of themselves, null for none: its id, the name of a file in the pictures directory beside the
+  // database (server/pictures.ts). Without one they are shown by Google's, or by their initial.
+  `alter table profile add column picture text;`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

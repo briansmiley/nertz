@@ -326,6 +326,13 @@ const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.
  * it, as on the score sheet. The eye stands them up (their cards lie there for the round, and they watch); the × sends
  * them away.
  */
+/** Beside a name: the picture they put up, ringed in their colour; or, for none (or one that will not load), their colour's chip. */
+function PictureBy({ picture, seat }: { picture: string | undefined; seat: number }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  if (picture && broken !== picture) return <img className="face" src={picture} alt="" style={{ borderColor: backColour(seat) }} onError={() => setBroken(picture)} />;
+  return <i className="chip" style={{ background: backColour(seat) }} />;
+}
+
 function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   /** The × asks twice: mid-round, sending someone away cannot be taken back. */
@@ -840,7 +847,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const mineLine = L.name && (
     <div className={`mine ${L.name.full ? 'full' : 'line'} ${L.name.align}`} style={{ left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h }}>
       <span className="who">
-        <i className="chip" style={{ background: backColour(you) }} />
+        <PictureBy picture={info(you)?.picture} seat={you} />
         <span className="name">{name(you)}</span>
         <b>{points(total(you))}</b>
       </span>
@@ -906,7 +913,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
               className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
-              <i className="chip" style={{ background: backColour(o.seat) }} />
+              <PictureBy picture={p?.picture} seat={o.seat} />
               {hosting && p && !p.bot && !p.left && !results ? (
                 <Hosting who={p}>
                   <Name host={p.isHost} className="name">

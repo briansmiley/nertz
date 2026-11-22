@@ -17,7 +17,7 @@ describe('who the server says is signed in', () => {
   });
 
   it('tells who is signed in from the ways in', () => {
-    const ada = { id: 'u1', name: 'Ada', image: null };
+    const ada = { id: 'u1', name: 'Ada', image: null, picture: null };
     expect(signedIn(ada)).toBe(ada);
     expect(waysIn(ada)).toBeNull();
     expect(signedIn({ ways: ['email'] })).toBeNull();
@@ -27,9 +27,11 @@ describe('who the server says is signed in', () => {
   });
 
   it('is whoever the profile is', () => {
-    expect(read(200, { id: 'u1', name: 'Ada', image: 'https://example.com/a.png', extra: 'x' })).toEqual({ id: 'u1', name: 'Ada', image: 'https://example.com/a.png' });
-    expect(read(200, { id: 'u1', name: 'Ada' })).toEqual({ id: 'u1', name: 'Ada', image: null });
-    expect(read(200, { id: 'u1', name: null, image: null })).toEqual({ id: 'u1', name: null, image: null });
+    expect(read(200, { id: 'u1', name: 'Ada', image: 'https://example.com/a.png', extra: 'x' })).toEqual({ id: 'u1', name: 'Ada', image: 'https://example.com/a.png', picture: null });
+    expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: '/pictures/0123456789abcdef.webp' })).toMatchObject({ picture: '/pictures/0123456789abcdef.webp' });
+    expect(read(200, { id: 'u1', name: 'Ada', image: null, picture: 'https://evil.example/me.webp' })).toMatchObject({ picture: null }); // (only ever one of ours)
+    expect(read(200, { id: 'u1', name: 'Ada' })).toEqual({ id: 'u1', name: 'Ada', image: null, picture: null });
+    expect(read(200, { id: 'u1', name: null, image: null })).toEqual({ id: 'u1', name: null, image: null, picture: null });
   });
 });
 
@@ -56,18 +58,19 @@ describe('the record the server says is theirs', () => {
 
 describe('who sits down, on the first page', () => {
   const ways = { ways: ['google', 'email'] } as const;
-  const named = { id: 'u', name: 'Ada', image: null };
+  const named = { id: 'u', name: 'Ada', image: null, picture: null };
   it('signed in with a name: you; signed in without one: a name to write', () => {
     expect(sitter(named, false)).toBe('you');
     expect(sitter({ ...named, name: null }, false)).toBe('name');
   });
-  it('signed out where there are accounts: the choice, until you are a guest', () => {
-    expect(sitter({ ways: [...ways.ways] }, false)).toBe('choose');
-    expect(sitter({ ways: [...ways.ways] }, true)).toBe('name');
+  it('signed out where there are accounts: a guest, whether or not they have sat down before', () => {
+    expect(sitter({ ways: [...ways.ways] }, false)).toBe('guest');
+    expect(sitter({ ways: [...ways.ways] }, true)).toBe('guest');
   });
-  it('no accounts kept: a name to write; not known yet: a guest writes, anyone else waits', () => {
+  it('no accounts kept: only a name to write; not known yet: a guest from before is one still, anyone else waits', () => {
     expect(sitter('off', false)).toBe('name');
-    expect(sitter('unknown', true)).toBe('name');
+    expect(sitter('off', true)).toBe('name');
+    expect(sitter('unknown', true)).toBe('guest');
     expect(sitter('unknown', false)).toBe('wait');
   });
 });

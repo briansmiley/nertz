@@ -25,15 +25,16 @@ const set = (next: Signed): void => {
 
 /**
  * Who sits down, at the top of the pad. Signed in (with a name): you, your picture and name, which open your page.
- * Otherwise, where the server keeps accounts and you have not yet chosen: Sign in, or Guest. A guest (or anyone, where
- * there are no accounts) writes a name. Nothing while the server has not said which.
+ * Signed out where the server keeps accounts: a guest, in that same place, with Sign in beside it and the name they
+ * play under written below. Where there are no accounts (or signed in with no name yet), only a name to write. While
+ * the server has not said which: a guest if this browser has sat down as one `before`, else nothing yet.
  */
-export type Sitter = 'you' | 'choose' | 'name' | 'wait';
-export const sitter = (signed: Signed, guest: boolean): Sitter => {
+export type Sitter = 'you' | 'guest' | 'name' | 'wait';
+export const sitter = (signed: Signed, before: boolean): Sitter => {
   const you = signedIn(signed);
   if (you) return you.name ? 'you' : 'name';
-  if (signed === 'unknown') return guest ? 'name' : 'wait';
-  return waysIn(signed) && !guest ? 'choose' : 'name';
+  if (signed === 'unknown') return before ? 'guest' : 'wait';
+  return waysIn(signed) ? 'guest' : 'name';
 };
 
 /** What an answer from `/profile` comes to: a 401 is nobody signed in, with the ways in; and anything but a profile (the 404 for no accounts kept, a proxy with no server behind it) is no signing in. */
@@ -43,12 +44,15 @@ export function read(status: number, body: unknown): Signed {
     const ways = (Array.isArray(said) ? said : []).filter((w): w is Way => w === 'google' || w === 'email');
     return ways.length ? { ways } : 'off';
   }
-  const v = body as { id?: unknown; name?: unknown; image?: unknown } | null;
+  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown } | null;
   if (status !== 200 || !v || typeof v.id !== 'string') return 'off';
-  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null };
+  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture) };
 }
 
 const PROFILE = '/profile';
+
+/** A picture's address, if it is one of ours (server/pictures.ts): nothing else is shown as anyone's picture. */
+export const ownPicture = (v: unknown): string | null => (typeof v === 'string' && /^\/pictures\/[0-9a-f]{16}\.webp$/.test(v) ? v : null);
 
 async function ask(): Promise<void> {
   try {
@@ -121,6 +125,36 @@ export async function signOut(): Promise<void> {
 /** A new name to go by (cleaned by the server): whether it was taken. */
 export async function rename(name: string): Promise<boolean> {
   const res = await fetch(PROFILE, { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => null);
+  if (!res?.ok) return false;
+  const next = read(res.status, await res.json().catch(() => null));
+  if (typeof next === 'object') set(next);
+  return typeof next === 'object';
+}
+
+/** The side of a picture as it is sent: the server draws it afresh at its own size (server/pictures.ts); this only keeps what is sent small. */
+const SENT_SIDE = 256;
+
+/** The square of a picture to put up, in the picture's own px (turned upright, as its camera said): from its top left corner, and how wide. */
+export type Crop = { x: number; y: number; side: number };
+
+/** A square of a picture (`crop`, else the middle one), shrunk to SENT_SIDE (never grown): as a WebP, or a PNG where the browser will not make a WebP. */
+async function square(file: Blob, crop?: Crop): Promise<Blob> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const middle = Math.min(bitmap.width, bitmap.height);
+  const { x, y, side } = crop ?? { x: (bitmap.width - middle) / 2, y: (bitmap.height - middle) / 2, side: middle };
+  const out = Math.max(1, Math.round(Math.min(SENT_SIDE, side)));
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = out;
+  canvas.getContext('2d')!.drawImage(bitmap, x, y, side, side, 0, 0, out, out);
+  bitmap.close();
+  return new Promise((done, failed) => canvas.toBlob((b) => (b ? done(b) : failed(new Error('no picture'))), 'image/webp', 0.9));
+}
+
+/** A picture of you put up (the square `crop` of it), or yours taken down (for null): whether it went. */
+export async function repicture(file: Blob | null, crop?: Crop): Promise<boolean> {
+  const body = file && (await square(file, crop).catch(() => null));
+  if (file && !body) return false;
+  const res = await fetch(`${PROFILE}/picture`, { method: body ? 'PUT' : 'DELETE', credentials: 'same-origin', ...(body ? { headers: { 'content-type': body.type }, body } : {}) }).catch(() => null);
   if (!res?.ok) return false;
   const next = read(res.status, await res.json().catch(() => null));
   if (typeof next === 'object') set(next);

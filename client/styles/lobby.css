@@ -138,6 +138,15 @@
   min-width: 0;
 }
 
+.seats .person > .face {
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .seats .name {
   flex: 0 1 auto;
   min-width: 0;

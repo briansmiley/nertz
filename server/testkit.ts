@@ -288,13 +288,13 @@ export class Browser {
   get cookie(): string {
     return [...this.kept].map(([k, v]) => `${k}=${v}`).join('; ');
   }
-  /** GET `path`; or with `body`, POST it as JSON (or `method` it, from `origin`). */
+  /** GET `path`; or with `body`, POST it as JSON, or as it is for bytes (or `method` it, from `origin`). */
   async ask(path: string, body?: object, { method = body ? 'POST' : 'GET', origin = ACCOUNTS.url }: { method?: string; origin?: string } = {}): Promise<Response> {
     const res = await fetch(`http://localhost:${this.port}${path}`, {
       method,
       redirect: 'manual',
-      headers: { cookie: this.cookie, origin, ...(body ? { 'content-type': 'application/json' } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      headers: { cookie: this.cookie, origin, ...(body ? { 'content-type': body instanceof Uint8Array ? 'application/octet-stream' : 'application/json' } : {}) },
+      ...(body ? { body: body instanceof Uint8Array ? new Uint8Array(body) : JSON.stringify(body) } : {}),
     });
     for (const line of res.headers.getSetCookie()) {
       const [pair] = line.split(';');

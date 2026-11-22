@@ -4,7 +4,8 @@
      cards before table                         .card.dealt's animation under .card.nod and .card.nudge
      pad before lobby                           .pad.wide under .pad:has(> .seats)
      backs before gallery                       .picker .stack, .picker .heading under .showroom's, at equal weight
-     settings before feedback                   .corner.top .slip under .slip.feedback.writing */
+     settings before feedback                   .corner.top .slip under .slip.feedback.writing
+     settings before menu                       .corner.top .slip under .slip.menu */
 @import './base.css';
 @import './controls.css';
 @import './cards.css';
