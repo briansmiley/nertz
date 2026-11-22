@@ -3,10 +3,10 @@
 // the sender is answered. From there it is passed on to whichever of these is set up:
 // - FEEDBACK_WEBHOOK: a Discord webhook URL. The report is posted to its channel, the screenshot attached. The post's
 //   id is kept (on the report's row, and as a `**Discord:**` line on the issue): it is where BinaryBot opens a thread
-//   once a PR for it is ready (.claude/skills/auto-fanout).
+//   once a PR for it is ready (the auto-fanout, kept outside this repo).
 // - LINEAR_API_KEY and LINEAR_TEAM (a team's key, like NRZ): an issue is filed in that team, titled "[FEEDBACK] ...",
 //   labelled Bug or Feature and `auto` (each label made if the team has none of that name), the screenshot in its
-//   description. `auto` is what puts it in the way of the auto-fanout (scripts/auto-fanout.sh), which implements it:
+//   description. `auto` is what puts it in the way of the auto-fanout (kept outside this repo), which implements it:
 //   so only so many of the issues it is on may be open at once, of one sender's (`AUTO_PER_SENDER`) and of everyone's
 //   (`AUTO_OPEN`), as Linear says when the issue is filed. Past that the issue is filed all the same, without it.
 //   Optional, each left alone if unset: LINEAR_PRIORITY (1 urgent, 2 high, 3 medium, 4 low), LINEAR_ASSIGNEE (an
@@ -106,7 +106,7 @@ export function parseReport(raw: string): Report | null {
   if (typeof v !== 'object' || v === null) return null;
   // Only the text has lines, and each ends in a newline alone: the issue quotes it line by line (`toLinear`), and its
   // own lines about the report follow, each on one line. So nothing sent can end a line early and pass for those
-  // lines, which the auto-fanout reads as the server's (.claude/skills/auto-fanout).
+  // lines, which the auto-fanout reads as the server's.
   const text = short(typeof v.text === 'string' ? v.text.replace(BREAKS, '\n') : v.text, FEEDBACK_MAX_TEXT);
   if (!text || (v.kind !== 'bug' && v.kind !== 'idea')) return null;
   const m = typeof v.image === 'string' ? IMAGE_RE.exec(v.image) : null;

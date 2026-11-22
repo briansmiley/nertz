@@ -901,26 +901,8 @@ Ten reports per address per minute; a screenshot is scaled down in the browser f
 
 ### Auto-fanout
 
-Every hour the droplet looks for issues labelled **`auto`** that nobody has started (Backlog or Todo, in the team
-`LINEAR_TEAM` names, SMI unless said), and Claude implements them: a branch off `staging` and a PR to it for each, titled `[SMI-N] ...`, and a
-second Claude's review of it, fixes pushed and the rest left as a PR comment. It never merges. Then BinaryBot opens a
-thread on the report's post in #nertz-feedback (or on a fresh message there, for an issue no report made), tags Brian
-and links the PR and the issue. An issue too vague to do gets a comment asking what it needs, and loses its `auto`.
-
-- **Opting in:** the server labels the issues it files `auto` (within its caps, see [Feedback](#feedback)); add
-  the label to any other issue to hand it over, and take it off to keep one back. The issue's description is all it is told.
-- **Limits:** one run at a time (a lock), at most three issues a run and two Claudes at once (the box has 2 GB), no dev
-  servers, at most $15 and three hours a run (`NERTZ_AUTO_BUDGET_USD`, `NERTZ_AUTO_HOURS`).
-- **The parts:** `scripts/auto-fanout.sh` is what cron runs: one call to Linear first, which costs nothing, and only if
-  there is something to do, `claude -p "/auto-fanout"` in a checkout of its own (`~/.local/state/nertz-auto/checkout`,
-  a worktree of `/root/projects/nertz` put back to `origin/staging` each run). The flow itself is the skill
-  `.claude/skills/auto-fanout/SKILL.md`, so always staging's, whatever branch the main checkout is on. `scripts/feedback-thread.sh` opens the
-  thread (`--dry-run` to see where it would go).
-- **Needs:** a Linear personal API key alone in `~/.config/linear/api-key` (mode 600; `LINEAR_KEY_FILE` says
-  otherwise), for that first call; Claude's own `linear-personal` connection for the rest; BinaryBot's token in
-  `~/.config/discord/binarybot-bot-token`.
-- **Logs:** `~/.local/state/nertz-auto/runs.log`, each line with its time: when a run started, its session (`claude
-  --resume <id>` in its checkout shows everything it did), its summary and how it ended. A check that found nothing
-  writes nothing.
-- **Switching it on:** `crontab -e` and add `17 * * * * /root/projects/nertz/scripts/auto-fanout.sh`. **Off:** take
-  the line out again; a run under way stops with `pkill -f 'claude -p /auto-fanout'`.
+The `auto` label hands an issue to the auto-fanout, which runs outside this repo (`~/projects/auto-fanout` on the
+droplet): every hour it implements the waiting `auto` issues, a reviewed PR to `staging` for each, and opens a thread
+on the report's Discord post (the `**Discord:**` line) to say the PR is ready. It never merges. Add the label to any
+issue to hand it over; take it off to keep one back. It reads the issue's last lines, `**Report:**`, `**Sender:**` and
+`**Discord:**`, as the server's own, and everything else in a `[FEEDBACK]` issue as the player's report.

@@ -88,7 +88,7 @@ const MIGRATIONS: string[] = [
   // database (server/pictures.ts). Without one they are shown by Google's, or by their initial.
   `alter table profile add column picture text;`,
   // The Discord message a report was posted as (server/feedback.ts): its id, null where it was not posted (or was
-  // before this). BinaryBot opens a thread on it once a PR for the report is ready (.claude/skills/auto-fanout).
+  // before this). BinaryBot opens a thread on it once a PR for the report is ready (the auto-fanout, kept outside this repo).
   `alter table report add column post text;`,
 ];
 
