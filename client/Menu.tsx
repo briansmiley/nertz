@@ -1,5 +1,5 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: your settings at the top, under their
-// own head, and at the bottom what there is to do, one line each: sound on or off, the table's actions (which are
+// own head, and across the bottom what there is to do, a round button each (its name a tooltip): sound on or off, the table's actions (which are
 // open to you, and what each does, is actions.ts), and the way to feedback, which opens in the same place.
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
@@ -48,9 +48,8 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onDone, childre
     <section className="slip menu" id="menu" aria-label="Menu">
       {children}
       <div className="acts">
-        <button type="button" aria-pressed={muted} onClick={(e) => (e.currentTarget.blur(), onMute())}>
+        <button type="button" className="icon" aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} data-tip={muted ? 'Unmute' : 'Mute'} onClick={(e) => (e.currentTarget.blur(), onMute())}>
           <Speaker off={muted} />
-          {muted ? 'Unmute' : 'Mute'}
         </button>
         {room &&
           actions.map((a) => {
@@ -59,8 +58,10 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onDone, childre
               <button
                 key={a.id}
                 type="button"
-                className={a.on ? 'on' : undefined}
+                className={a.on ? 'icon on' : 'icon'}
                 aria-pressed={a.on}
+                aria-label={a.tally ? `${a.label} ${a.tally}` : a.label}
+                data-tip={a.label}
                 onClick={(e) => {
                   e.currentTarget.blur(); // keep Space for the cards
                   press(a.id, room);
@@ -68,14 +69,12 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onDone, childre
                 }}
               >
                 <Icon />
-                {a.label}
                 {a.tally && <small>{a.tally}</small>}
               </button>
             );
           })}
-        <button type="button" onClick={onFeedback}>
+        <button type="button" className="icon" aria-label="Feedback" data-tip="Feedback" onClick={onFeedback}>
           <Bug />
-          Feedback
         </button>
       </div>
     </section>
