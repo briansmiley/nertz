@@ -307,10 +307,19 @@ export interface Account {
   handle: string;
   /** Their page is theirs alone: to anyone else it is not there, and nobody at a table is told where it is. */
   private: boolean;
+  /** Theirs is an address the server's ADMIN_EMAILS names: they can see how much the game is played (`Usage`). */
+  admin?: true;
 }
 
-/** Which of someone's rounds their record counts: every one; those with someone else there who is no bot; those with no bot there at all. */
-export const AMONG = ['all', 'people', 'no-bots'] as const;
+/**
+ * What kind of game a round was, by who held hands in it (a guest is a person): every hand a person's (`humans`); two
+ * people or more, and bots (`mixed`); one person or none, the rest bots (`bots`).
+ */
+export const GAME_KINDS = ['humans', 'mixed', 'bots'] as const;
+export type GameKind = (typeof GAME_KINDS)[number];
+
+/** Which rounds are counted, for someone's record and for how much the game is played: every one, or one kind. */
+export const AMONG = ['all', ...GAME_KINDS] as const;
 export type Among = (typeof AMONG)[number];
 
 /**
@@ -365,6 +374,33 @@ export interface Page {
   picture: string | null;
   stats: Stats;
   versus: Versus | null;
+}
+
+/** How much was played (server/rounds.ts): sittings, rounds, the accounts that played, and hands played as a guest or by a bot. */
+export interface Played {
+  games: number;
+  rounds: number;
+  players: number;
+  guests: number;
+  bots: number;
+}
+
+/**
+ * How much the game is played (`GET /usage`, for an admin alone): all told; each of the last days, oldest first, by
+ * the date it was where the asker is; and the latest sittings, latest first.
+ */
+export interface Usage {
+  total: Played;
+  days: (Played & { day: string })[];
+  games: {
+    /** When its last round ended (ms), the table's code, its rounds and how long they were played (ms). */
+    at: number;
+    code: string;
+    rounds: number;
+    ms: number;
+    /** Who played in it, by the name they played under: signed in, a guest, or a bot. */
+    players: { name: string; as: 'account' | 'guest' | 'bot' }[];
+  }[];
 }
 
 /**

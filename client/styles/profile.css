@@ -58,11 +58,6 @@
   grid-area: among;
 }
 
-/* (In the head the drawings say which by their tooltips: no word under them to make the line taller.) */
-.profile .you > .among small {
-  display: none;
-}
-
 @container (max-width: 16rem) {
   .profile .you {
     grid-template-areas:
@@ -461,22 +456,12 @@
   box-shadow: 0 4px 0 #8f1622;
 }
 
-/* Which rounds the record counts: three small drawings, the one chosen in ink. */
+/* Which rounds are counted (Profile.tsx `Which`; on the Played slip too): four small drawings, each saying which by its
+   tooltip, the one chosen in ink. */
 .among {
   justify-self: end;
-  display: grid;
-  justify-items: center;
-  gap: 0.1rem;
-}
-
-.among > div {
   display: flex;
   gap: 0.15rem;
-}
-
-.among small {
-  font: 400 0.8rem/1rem var(--ui);
-  color: var(--ink-soft);
 }
 
 .among button {

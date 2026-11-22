@@ -13,22 +13,20 @@ const written = (n: number, places = 0): string => {
   return n < 0 && Number(text) !== 0 ? `−${text}` : text;
 };
 
-/** Which rounds the record counts, drawn (a bot; a person with a bot; two people), and said in a word or two under them. */
-const AMONG_DRAWN: Record<Among, { title: string; said: string; draw: React.JSX.Element }> = {
-  all: { title: 'Every round', said: 'All', draw: <Bot x={6} /> },
-  people: {
-    title: 'Rounds with someone else, bots or not',
-    said: 'With people',
+/** Which rounds are counted (every one, or one kind), drawn (people, bots, or both), and said in their tooltip. */
+const AMONG_DRAWN: Record<Among, { title: string; draw: React.JSX.Element }> = {
+  all: {
+    title: 'All',
     draw: (
       <>
-        <Person x={2} />
-        <Bot x={12} />
+        <Person x={0.5} small />
+        <Bot x={8.3} small />
+        <Person x={16.5} small />
       </>
     ),
   },
-  'no-bots': {
-    title: 'Rounds with no bots',
-    said: 'No bots',
+  humans: {
+    title: 'Humans',
     draw: (
       <>
         <Person x={2} />
@@ -36,20 +34,33 @@ const AMONG_DRAWN: Record<Among, { title: string; said: string; draw: React.JSX.
       </>
     ),
   },
+  mixed: {
+    title: 'Humans and bots',
+    draw: (
+      <>
+        <Person x={2} />
+        <Bot x={12} />
+      </>
+    ),
+  },
+  bots: { title: 'Bots', draw: <Bot x={6} /> },
 };
 
-function Person({ x }: { x: number }) {
+/** (`small`: three to a drawing, at three quarters of the size, standing on the same line.) */
+const at = (x: number, small?: boolean): string => (small ? `translate(${x} 4.5) scale(0.75)` : `translate(${x} 0)`);
+
+function Person({ x, small }: { x: number; small?: boolean }) {
   return (
-    <g transform={`translate(${x} 0)`}>
+    <g transform={at(x, small)}>
       <circle cx="4.5" cy="8" r="2.6" />
       <path d="M0 19.5c0-3.4 2-5.6 4.5-5.6s4.5 2.2 4.5 5.6" />
     </g>
   );
 }
 
-function Bot({ x }: { x: number }) {
+function Bot({ x, small }: { x: number; small?: boolean }) {
   return (
-    <g transform={`translate(${x} 0)`}>
+    <g transform={at(x, small)}>
       <rect x="0" y="9" width="10" height="9" rx="2.2" />
       <path d="M5 9V6.3" />
       <circle cx="5" cy="5.4" r="1" fill="currentColor" stroke="none" />
@@ -62,7 +73,8 @@ function Bot({ x }: { x: number }) {
 const AMONG_KEY = 'nertz.among';
 const rememberedAmong = (): Among => {
   try {
-    return AMONG.find((a) => a === localStorage.getItem(AMONG_KEY)) ?? 'all';
+    const was = localStorage.getItem(AMONG_KEY);
+    return was === 'no-bots' ? 'humans' : (AMONG.find((a) => a === was) ?? 'all'); // (as 'no-bots' was once said; 'people' is now none)
   } catch {
     return 'all';
   }
@@ -82,20 +94,17 @@ function useAmong(): [Among, (a: Among) => void] {
   return [among, choose];
 }
 
-/** The rounds to count, by who else was at them. */
-function Which({ among, choose }: { among: Among; choose: (a: Among) => void }) {
+/** The rounds to count, by who held hands in them: on a record, and on how much the game is played (Usage.tsx). */
+export function Which({ among, choose }: { among: Among; choose: (a: Among) => void }) {
   return (
-    <div className="among">
-      <div role="radiogroup" aria-label="Which rounds">
-        {AMONG.map((a) => (
-          <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} data-tip={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              {AMONG_DRAWN[a].draw}
-            </svg>
-          </button>
-        ))}
-      </div>
-      <small aria-hidden="true">{AMONG_DRAWN[among].said}</small>
+    <div className="among" role="radiogroup" aria-label="Which rounds">
+      {AMONG.map((a) => (
+        <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} data-tip={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {AMONG_DRAWN[a].draw}
+          </svg>
+        </button>
+      ))}
     </div>
   );
 }

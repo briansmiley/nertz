@@ -871,8 +871,12 @@ a page is private, and a guest not even that. Only a socket opened from a page o
 page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
 (`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
 
-`GET /stats?among=all|people|no-bots` answers whoever asks, by their cookie, with their own record (`Stats`,
-shared/types.ts) over every round, those with someone else there who is no bot, or those with no bot at all: rounds
+`GET /stats?among=all|humans|mixed|bots` answers whoever asks, by their cookie, with their own record (`Stats`,
+shared/types.ts) over every round, or those of one kind (`GameKind`, by who held hands in the round, a guest counting as
+a person): no bots (humans; a round played alone is one too, though nobody is beaten in it), two people or more and bots
+(mixed: you, someone else and bots), or one person or none with the rest bots (bots: you alone with bots). Your page and
+someone else's choose among them with four small drawings, each named by its tooltip (All, Humans, Humans and bots,
+Bots); the choice is remembered in the browser. A record counts rounds
 played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points and
 cards played to the middle in all and the most of each in one round, nertz cards left in all, how far ahead they finish,
 and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of

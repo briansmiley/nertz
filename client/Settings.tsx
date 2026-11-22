@@ -20,6 +20,8 @@ import { Gear, MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
+import { UsageSlip } from './Usage';
+import { signedIn, useAccount } from './account';
 import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
@@ -231,8 +233,9 @@ export function Clock({ clock, at }: { clock: NonNullable<RoomView['clock']>; at
 /** The corner controls. Rendered once, by App, over whatever screen is up. */
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
-  /** The slip that is open: the menu, or feedback (which it leads to). One at a time. */
+  /** The slip that is open: the menu, or feedback or how much the game is played (which it leads to). One at a time. */
   const open = useCorner();
+  const admin = !!signedIn(useAccount())?.admin;
   useEffect(() => () => openCorner(null), []); // (a slip does not follow you from one screen's corner to the next)
   const root = useRef<HTMLDivElement>(null);
 
@@ -270,11 +273,12 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <SaidWord said={said} />
       </button>
       {open === 'menu' && (
-        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onDone={() => openCorner(null)}>
+        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onUsage={admin ? () => openCorner('usage') : undefined} onDone={() => openCorner(null)}>
           <YourSettings room={room} prefs={prefs} />
         </Menu>
       )}
       {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
+      {open === 'usage' && admin && <UsageSlip back={() => openCorner('menu')} />}
     </div>
   );
 }
