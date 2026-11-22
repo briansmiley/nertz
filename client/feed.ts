@@ -1,6 +1,6 @@
-// Notices that stack while they last (the snipes told of on the felt, client/Table.tsx): each new one goes under those
-// still showing, and each goes on its own once its time is up. How long that is, is the stylesheet's: a notice is gone
-// when its animation ends (`done`).
+// Notices that stack while they last (the snipes and the reshuffle told of on the felt, client/Table.tsx): each new one
+// goes under those still showing, and each goes on its own once its time is up. How long that is, is the stylesheet's:
+// a notice is gone when its animation ends (`done`).
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** At most this many at once: a new one beyond it puts out the oldest. */

@@ -10,7 +10,7 @@
 //   that is the 'home' cue;
 // - nothing is compared across a reconnect, a reload or a change of table, so
 //   whatever happened meanwhile is not replayed.
-import { calledBy, hasOpened, inGrace } from '../shared/engine';
+import { calledBy, hasOpened, inGrace, reshuffledSince } from '../shared/engine';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { GameState, RoomView } from '../shared/types';
 
@@ -27,6 +27,8 @@ export type Cue =
   | { k: 'stock'; who: Who }
   /** The waste went back under the stock. */
   | { k: 'recycle'; who: Who }
+  /** The whole table was stuck: every hand's waste went back under its stock at once. The table's sound, in place of a `recycle` for each hand. */
+  | { k: 'reshuffle' }
   /** A card other than a King landed in the middle. */
   | { k: 'centre'; who: Who }
   /** A King completed a centre pile. */
@@ -106,6 +108,10 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   if (b.game.status.at === 'countdown' && a.game.status.at !== 'countdown') add({ k: 'count', at: startBeats(b.timerMs ?? START_MS) });
   if (hasOpened(b.game) && !hasOpened(a.game)) add({ k: 'open' });
 
+  // The table was stuck and the server turned every stock over: said once, for the table, not hand by hand.
+  const reshuffled = reshuffledSince(a.game, b.game);
+  if (reshuffled) add({ k: 'reshuffle' });
+
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
@@ -130,7 +136,7 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     } else if (to.pile === 'waste' && from.pile === 'stock') {
       add({ k: 'stock', who: who(to.seat) }, id); // once per card
     } else if (to.pile === 'stock' && from.pile === 'waste') {
-      add({ k: 'recycle', who: who(to.seat) });
+      if (!reshuffled) add({ k: 'recycle', who: who(to.seat) });
     }
   }
 

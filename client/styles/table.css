@@ -643,6 +643,16 @@
   }
 }
 
+/* A table that was stuck has its stocks turned over: the table's own word in the same feed. In chalk (no one player's
+   colour) with a dark edge heavy enough to read over a card's face as over the felt, a little larger than a snipe (it
+   is one short word), and up half as long again. */
+.gotnertz.sniped span.reshuffle {
+  font-size: 1.2em;
+  -webkit-text-stroke: 0.1em var(--ink);
+  filter: drop-shadow(0 0.05em 0.02em var(--ink)) drop-shadow(0 0.1em 0.2em rgba(0, 0, 0, 0.6));
+  animation-duration: 1.7s;
+}
+
 .calm .gotnertz span {
   animation-name: got-calm;
 }

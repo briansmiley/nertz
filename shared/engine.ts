@@ -481,6 +481,9 @@ export const RESHUFFLES_BEFORE_VOTE = 3;
 /** The round drags: the whole table has been stuck, and had its stocks turned over, `RESHUFFLES_BEFORE_VOTE` times. */
 export const dragsOn = (state: GameState): boolean => isLive(state) && state.reshuffles >= RESHUFFLES_BEFORE_VOTE;
 
+/** Between `was` and `now`, two states of one round, the whole table was stuck and had its stocks turned over (`resolveStuck`). */
+export const reshuffledSince = (was: GameState, now: GameState): boolean => now.reshuffles > was.reshuffles;
+
 /**
  * Could `seat`, whatever they do with their own cards, ever get anywhere: put a card in the middle, or take one off
  * their nertz pile? The only two things that count: both score, and nothing else does. (Judged on the full state:

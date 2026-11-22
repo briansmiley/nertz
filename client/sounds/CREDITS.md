@@ -28,7 +28,7 @@ as MP3 (which every browser's Web Audio decoder reads, Safari included). About
 | `slide-1.mp3` | `card-shove-3.ogg` | 0.08 - 0.62 | a finished pile to the tray |
 | `slide-2.mp3` | `card-shove-1.ogg` | 0.08 - 0.62 | the waste turned back over |
 | `lift.mp3` | `card-slide-7.ogg` | 0.15 - 0.48 | picking a card up |
-| `shuffle.mp3` | `card-shuffle.ogg` | 0.06 - 1.86 | the wash at the end of a round |
+| `shuffle.mp3` | `card-shuffle.ogg` | 0.06 - 1.86 | the wash at the end of a round, the reshuffle of a table that was stuck |
 | `fan.mp3` | `card-fan-1.ogg` | 0.00 - 0.72 | the score sheet appearing |
 
 The tones (the ding for a card played to the middle, the King's chime, the
