@@ -1,0 +1,196 @@
+# A pull request into staging -> its own app, https://nertz-pr-<number>.fly.dev (see README "Previews"). Each push runs
+# the checks and deploys the merge of the PR into staging; closing the PR destroys the app. PRs from forks get none:
+# they are not given the secrets.
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [staging]
+
+permissions:
+  contents: read
+
+# A newer push to the PR replaces an older run; closing it replaces a deploy still going.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  APP: nertz-pr-${{ github.event.pull_request.number }}
+  FLY_ORG: personal
+  PR: ${{ github.event.pull_request.number }}
+  MARK: '<!-- nertz-preview -->'
+
+jobs:
+  test:
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run --testTimeout=180000
+      - run: npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # the comment with the address
+    # Only here, not in the job that runs the PR's own code (npm ci, the tests).
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PREVIEW }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The token is there
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then echo "::error::No FLY_API_TOKEN_PREVIEW secret: see README \"Previews\"."; exit 1; fi
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200 # master as of 2026-11-21
+      - name: Make the app, the first time
+        run: |
+          # Listed on its own line: a list that fails stops the step, rather than reading as "no such app".
+          apps=$(flyctl apps list --org "$FLY_ORG" --json)
+          if jq -e --arg app "$APP" 'any(.[]; .Name == $app)' <<< "$apps" > /dev/null; then
+            echo "$APP is there."
+          else
+            flyctl apps create "$APP" --org "$FLY_ORG"
+          fi
+      - name: Its volume, before any deploy mounts it
+        id: volume
+        run: |
+          # fly.toml mounts nertz_data at /data: accounts and pictures outlive pushes. It has to
+          # be made before the first deploy, since a mount added to a machine that has no volume destroys the machine.
+          # Listed on its own line: a list that fails stops the step, rather than making a second volume.
+          volumes=$(flyctl volumes list --app "$APP" --json)
+          if jq -e 'any(.[]?; .name == "nertz_data" and (.state | test("destroy") | not))' <<< "$volumes" > /dev/null; then
+            echo "$APP has its volume."
+          else
+            flyctl volumes create nertz_data --app "$APP" --region sjc --size 1 --yes
+            echo "made=true" >> "$GITHUB_OUTPUT"
+          fi
+      # A new preview starts from staging's database, scrubbed; never on a later push (the volume has its own by then),
+      # never from nertz itself, and never failing the preview: without it, the preview starts empty.
+      - uses: actions/setup-node@v4
+        if: steps.volume.outputs.made == 'true'
+        with:
+          node-version: 24
+      - name: A copy of staging's database, scrubbed
+        id: seed
+        if: steps.volume.outputs.made == 'true'
+        continue-on-error: true
+        env:
+          FROM: nertz-staging
+          COPY: /tmp/nertz-seed-${{ github.run_id }}-${{ github.run_attempt }}.db
+        run: |
+          # A suspended machine takes no ssh: a request wakes it.
+          curl -fsS --max-time 30 "https://$FROM.fly.dev/healthz" > /dev/null
+          # Taken read-only (VACUUM INTO, consistent while the server writes), into /tmp, which is cleared after.
+          trap 'flyctl ssh console --app "$FROM" -C "rm -f $COPY" || true' EXIT
+          flyctl ssh console --app "$FROM" -C "node -e 'const { DatabaseSync } = require(\"node:sqlite\"); new DatabaseSync(\"/data/nertz.db\", { readOnly: true }).prepare(\"VACUUM INTO ?\").run(process.argv[1])' $COPY"
+          flyctl ssh sftp get --app "$FROM" "$COPY" seed.db
+          # Nobody's sign-ins or keys: no sessions, no codes, no tokens. Accounts, profiles, rounds and reports stay.
+          # (VACUUM, so that what was deleted is not left in the file's free pages.)
+          node - seed.db <<'JS'
+          const { DatabaseSync } = require('node:sqlite');
+          const db = new DatabaseSync(process.argv[2]);
+          const has = (t) => !!db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(t);
+          for (const t of ['session', 'verification']) if (has(t)) db.exec(`delete from "${t}"`);
+          if (has('account')) {
+            const cols = db.prepare("select name from pragma_table_info('account')").all().map((c) => c.name);
+            const keys = ['accessToken', 'refreshToken', 'idToken', 'password'].filter((c) => cols.includes(c));
+            if (keys.length) db.exec(`update account set ${keys.map((c) => `"${c}" = null`).join(', ')}`);
+          }
+          db.exec('VACUUM');
+          const count = (t) => (has(t) ? db.prepare(`select count(*) as n from "${t}"`).get().n : '-');
+          console.log(['user', 'profile', 'round', 'hand', 'report', 'session', 'verification'].map((t) => `${t} ${count(t)}`).join(', '));
+          JS
+      - name: Its secrets
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          # Sign-in by emailed code only (Google's redirect addresses cannot be registered per preview). Nothing for
+          # feedback: a preview's reports go nowhere. AUTH_SECRET is made once per app, so later pushes keep sessions.
+          set -- PUBLIC_URL="https://$APP.fly.dev"
+          secrets=$(flyctl secrets list --app "$APP" --json)
+          if ! jq -e 'any(.[]?; .name == "AUTH_SECRET")' <<< "$secrets" > /dev/null; then
+            set -- "$@" AUTH_SECRET="$(openssl rand -hex 32)"
+          fi
+          if [ -n "$RESEND_API_KEY" ]; then set -- "$@" RESEND_API_KEY="$RESEND_API_KEY"; fi
+          if [ -n "$EMAIL_FROM" ]; then set -- "$@" EMAIL_FROM="$EMAIL_FROM"; fi
+          # Staged: the deploy below takes them up.
+          flyctl secrets set --app "$APP" --stage "$@"
+      - name: Deploy
+        run: flyctl deploy --app "$APP" --config fly.toml --remote-only --ha=false
+      - name: The copy in place
+        id: place
+        if: steps.seed.outcome == 'success'
+        continue-on-error: true
+        run: |
+          # Put beside the new, empty database, moved over it (the server, still on the old file, writes nowhere that
+          # stays), and the machine restarted onto it. Owned by node, as the server runs.
+          curl -fsS --max-time 30 "https://$APP.fly.dev/healthz" > /dev/null
+          flyctl ssh sftp put --app "$APP" seed.db /data/seed.db
+          flyctl ssh console --app "$APP" -C 'sh -c "chown node:node /data/seed.db && mv -f /data/seed.db /data/nertz.db && rm -f /data/nertz.db-wal /data/nertz.db-shm"'
+          flyctl apps restart "$APP"
+      - name: Empty, if not
+        if: steps.seed.outcome == 'failure' || steps.place.outcome == 'failure'
+        run: echo "::warning::$APP starts with an empty database; staging's could not be copied in (see the steps above)."
+      - name: Say where, on the PR
+        env:
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # One comment per PR: the address once, then a line for each deploy, so it keeps its own history.
+          line="- $(date -u '+%Y-%m-%d %H:%M UTC'): deployed [\`${SHA:0:7}\`](https://github.com/$GITHUB_REPOSITORY/commit/$SHA)"
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARK\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            was=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$was
+          $line" > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$MARK
+          Preview: https://$APP.fly.dev
+
+          $line" > /dev/null
+          fi
+
+  destroy:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # the comment with the address
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PREVIEW }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200 # master as of 2026-11-21
+      - name: Destroy the app
+        run: |
+          # Listed on its own line: a list that fails stops the step, rather than reading as "no such app".
+          apps=$(flyctl apps list --org "$FLY_ORG" --json)
+          if jq -e --arg app "$APP" 'any(.[]; .Name == $app)' <<< "$apps" > /dev/null; then
+            flyctl apps destroy "$APP" --yes
+          else
+            echo "No $APP to destroy."
+          fi
+      - name: Say so, on the PR
+        run: |
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARK\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            was=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$was
+          - $(date -u '+%Y-%m-%d %H:%M UTC'): taken down with the PR, its volume with it" > /dev/null
+          fi

@@ -673,6 +673,33 @@ is a few kilobytes and a busy table is a few messages a second.
 - Outgrowing one machine (unlikely) means routing by table code, for example with Fly's `fly-replay` header, so that a table
   always lands on the machine that owns it.
 
+### Previews
+
+- Every pull request into `staging` from a branch of this repo (not a fork: those get no secrets) gets its own app,
+  `nertz-pr-<number>`, at **https://nertz-pr-&lt;number&gt;.fly.dev**. `.github/workflows/preview.yml` runs the checks and
+  deploys the merge of the PR into staging on each push, and keeps one comment on the PR with the address.
+- Set up like the real apps (the same `fly.toml`, with `--app`): one machine, suspended when idle,
+  and a 1 GB `nertz_data` volume at `/data`, so accounts, pictures and anything else kept outlive pushes to the PR. The
+  workflow makes the volume once, before the first deploy, since a mount added to a machine with no volume destroys it.
+- A new preview starts from a copy of **staging's database**, taken when its volume is made and never again: read-only
+  from `nertz-staging` (never `nertz`), scrubbed on the runner of every session, sign-in code and account token, then
+  put in place and the machine restarted. Accounts, profiles, rounds, hands and reports come over; the files beside the
+  database (report screenshots, `pictures/`) do not, so those are missing there. If staging cannot be reached, the
+  preview starts empty, with a warning on the run.
+- Closing the PR destroys the app, and with it its volume ("When you destroy an app, you delete its volumes and volume
+  snapshots": [Fly, Delete an app](https://fly.io/docs/apps/delete/)). `.github/workflows/preview-sweep.yml` destroys,
+  daily, any `nertz-pr-<number>` whose PR is closed, in case a teardown failed. (Scheduled runs start once it is on
+  `main`; before then, run it by hand from the Actions tab.)
+- What does not work there: **Google sign-in** (Google only sends people back to redirect addresses registered in advance,
+  and one cannot be registered per preview; sign in by emailed code instead, which needs `RESEND_API_KEY`), and
+  **feedback**, which is sent nowhere: a preview has no `FEEDBACK_WEBHOOK`, `LINEAR_*` or `ANTHROPIC_API_KEY`.
+- Setup, once:
+  1. `fly tokens create org -o personal -n "nertz previews"`: a token for the whole org, since app tokens cannot make
+     apps. (It can also deploy or destroy `nertz` and `nertz-staging`; the workflow only ever names `nertz-pr-<number>`.)
+  2. Add it to the repo's Actions secrets as `FLY_API_TOKEN_PREVIEW`, the whole string, `FlyV1 ` and all.
+  3. For email sign-in, add `RESEND_API_KEY` as well (and `EMAIL_FROM`, if not the default sender). Without it, a preview
+     has no accounts, only play.
+
 ### Railway or Render
 
 Both run the same `Dockerfile` (or `npm run build` + `npm start`) as an always-on container with websocket support, and both
