@@ -640,13 +640,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /**
    * Whose faces and backs the cards from `seat` have: yours, if it is yours; the player's who sits there, as they have them now; but on the
    * finished table, if whoever played the round has left (the seat is empty, or someone else's by now), as they were
-   * when the round ended. All as you see them: with your faces, if you have everyone's cards so (`Prefs.myFaces`).
+   * when the round ended. All as you see them: with your faces or Big print, if you have every card so (`Prefs.faces`).
    */
   const dress = (seat: number): Look => {
-    if (seat === you) return myLook;
     const l = line(seat);
     const p = info(seat);
-    return seenLook(prefs, (p && (!l || p.id === l.id) ? p.look : l?.look) ?? PLAIN_LOOK);
+    return seenLook(prefs, seat === you ? myLook : (p && (!l || p.id === l.id) ? p.look : l?.look) ?? PLAIN_LOOK);
   };
   const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */

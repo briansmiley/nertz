@@ -11,7 +11,7 @@
 // Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
-import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
+import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { setSeats, setTableSettings } from './net';
 import { pauseKeyAction, perform, tableActions } from './actions';
@@ -24,11 +24,18 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
 const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic', pauseKey: 'Pause' };
+
+/** Each choice of whose faces you see on every card, as the settings list it. */
+const FACES_SAID: Record<Faces, [string, string]> = {
+  owner: ["Owner's", "Each card in its owner's style"],
+  mine: ['Mine', 'Every card in your style'],
+  big: [DECKS.big, `Every card in ${DECKS.big}, for legibility`],
+};
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
@@ -322,10 +329,16 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <span>Reduce motion</span>
       </label>
       {/* (Any time, a round or not: it changes the cards for nobody but you.) */}
-      <label className="check">
-        <input type="checkbox" checked={prefs.myFaces} onChange={(e) => setPrefs({ myFaces: e.target.checked })} />
-        <span>My faces on every card</span>
-      </label>
+      <div className="faces">
+        <span id="faces-label">Card faces</span>
+        <span role="radiogroup" aria-labelledby="faces-label">
+          {FACES.map((f) => (
+            <button key={f} type="button" role="radio" aria-checked={prefs.faces === f} className={prefs.faces === f ? 'on' : ''} data-tip={FACES_SAID[f][1]} onClick={(e) => (setPrefs({ faces: f }), e.currentTarget.blur())}>
+              {FACES_SAID[f][0]}
+            </button>
+          ))}
+        </span>
+      </div>
       {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
       <div className={`level${styling ? '' : ' locked'}`}>
         <span>Card back</span>

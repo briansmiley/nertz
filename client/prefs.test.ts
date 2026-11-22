@@ -137,20 +137,29 @@ describe('hotkeyPressed', () => {
 
 describe("seenLook: someone's cards on your screen", () => {
   const theirs: Look = { deck: 'pixel', night: true, backs: { k: 'own', back: 'hilbert' }, bare: true };
+  const mine = { deck: 'cute', night: false } as const;
 
-  it('is as they chose them, unless you have your faces on every card', () => {
-    expect(seenLook({ deck: 'big', night: false, myFaces: false }, theirs)).toBe(theirs);
+  it("is as they chose them, owner's faces being the default", () => {
+    expect(seenLook({ ...mine, faces: 'owner' }, theirs)).toBe(theirs);
     expect(seenLook(DEFAULT_PREFS, theirs)).toBe(theirs);
   });
 
   it('has your faces, light or dark as yours are, and still their backs', () => {
-    expect(seenLook({ deck: 'big', night: false, myFaces: true }, theirs)).toEqual({ deck: 'big', night: false, backs: theirs.backs, bare: true });
-    expect(seenLook({ deck: 'cute', night: true, myFaces: true }, PLAIN_LOOK)).toEqual({ ...PLAIN_LOOK, deck: 'cute', night: true });
+    expect(seenLook({ ...mine, faces: 'mine' }, theirs)).toEqual({ deck: 'cute', night: false, backs: theirs.backs, bare: true });
   });
 
-  it('is off until it is turned on, and kept once it is', () => {
-    expect(cleanPrefs(null).myFaces).toBe(false);
-    expect(cleanPrefs({ myFaces: 'yes' }).myFaces).toBe(false);
-    expect(cleanPrefs({ myFaces: true }).myFaces).toBe(true);
+  it('has Big print, light or dark as yours are, and still their backs; your own hand too', () => {
+    expect(seenLook({ ...mine, faces: 'big' }, theirs)).toEqual({ deck: 'big', night: false, backs: theirs.backs, bare: true });
+    expect(seenLook({ deck: 'pixel', night: true, faces: 'big' }, PLAIN_LOOK)).toEqual({ ...PLAIN_LOOK, deck: 'big', night: true });
+  });
+
+  it("is the owner's until chosen, and kept once it is; a stored myFaces box becomes Mine", () => {
+    expect(cleanPrefs(null).faces).toBe('owner');
+    expect(cleanPrefs({ faces: 'big' }).faces).toBe('big');
+    expect(cleanPrefs({ faces: 'mine' }).faces).toBe('mine');
+    expect(cleanPrefs({ faces: 'huge' }).faces).toBe('owner');
+    expect(cleanPrefs({ myFaces: true }).faces).toBe('mine');
+    expect(cleanPrefs({ myFaces: false }).faces).toBe('owner');
+    expect(cleanPrefs({ myFaces: 'yes' }).faces).toBe('owner');
   });
 });

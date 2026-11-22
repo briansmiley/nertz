@@ -287,7 +287,7 @@ function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour:
 
 /**
  * The face of one card. `mini` picks the large-print rendition. A card belongs to its owner's deck, and is drawn as
- * they chose for everyone, or as you chose for yours if you have every card so (`deck` and `night`: whoever draws the
+ * they chose for everyone, or as you chose for every card (yours or Big print) (`deck` and `night`: whoever draws the
  * card says which, client/prefs.ts `seenLook`, so that a change to your other settings does not draw every card on
  * the table again).
  */
