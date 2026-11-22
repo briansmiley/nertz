@@ -4,7 +4,8 @@
 // Who signed in is Better Auth's `user`, as Google or their email says, and nothing here writes to it. One email is one
 // user, whichever way they come in by: Google's word for an address and a code sent to it are both proof of it. Who they are at the table is
 // their `profile` (server/db.ts), ours, theirs to change: made with the account, from Google's first name, and gone with it.
-// Where their page is, its `handle`, is drawn at random with it, and theirs to change: what anyone else is shown of
+// Where their page is, its `handle`, is made with it from the name they go by (drawn at random for none, and following
+// the first name they take, until they choose one themselves), and theirs to change: what anyone else is shown of
 // them, never the account's id.
 //
 // The game runs without any of this. Accounts are on when there is a database to keep them in (server/db.ts) and the
@@ -21,7 +22,7 @@ import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
-import { cleanName, isHandle } from '../shared/protocol';
+import { cleanName, isHandle, MAX_HANDLE_LENGTH } from '../shared/protocol';
 import type { Account, Way } from '../shared/types';
 import { transaction, type Db } from './db';
 import { pictureUrl } from './pictures';
@@ -41,11 +42,14 @@ export interface Accounts {
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
   /** Whose page `handle` is, the name they go by, the picture they put up, and whether it is theirs alone: null for nobody's. */
   whose(handle: string): { id: string; name: string | null; picture: string | null; private: boolean } | null;
-  /** Gives `account` a name to go by, already clean and not empty. */
-  rename(account: string, name: string): void;
   /**
-   * Moves `account`'s page to `handle` (one `isHandle`), freeing the one it had: false, and nothing changed, for one
-   * that is someone else's or kept for the site's own.
+   * Gives `account` a name to go by, already clean and not empty: the handle it has now, which is made from that name
+   * if it is the first it has taken and its handle is still the one made for it.
+   */
+  rename(account: string, name: string): string;
+  /**
+   * Moves `account`'s page to `handle` (one `isHandle`), chosen: freeing the one it had, and never made for it again. False, and
+   * nothing changed, for one that is someone else's or kept for the site's own.
    */
   rehandle(account: string, handle: string): boolean;
   /** Makes `account`'s page its own alone, or anyone's signed in again. */
@@ -148,16 +152,47 @@ export function drawHandle(): string {
   }
 }
 
+/**
+ * The handle a name makes: in lower case with its accents dropped, its letters and digits, anything else between them
+ * one hyphen, cut to the most a handle can be. Null for a name with nothing in it a handle can have. (Not always a
+ * handle by itself: `Al` makes `al`, one too short.)
+ */
+export function handleFrom(name: string): string | null {
+  const words = name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return words.slice(0, MAX_HANDLE_LENGTH).replace(/-$/, '') || null;
+}
+
+/** How far a name is counted on (`ada-2`, `ada-3`, …) before handles are drawn at random instead. */
+export const NAMED_TRIES = 99;
+
+/**
+ * The handles a profile could be given, best first: its name's, then that with `-2`, `-3`, …; with no name to make one
+ * from (or every count taken), handles drawn at random. Some may be no handle or kept for the site: `giveHandle` skips them.
+ */
+export function* handlesFor(name: string | null, draw = drawHandle): Generator<string> {
+  const made = name === null ? null : handleFrom(name);
+  if (made) {
+    yield made;
+    for (let n = 2; n <= NAMED_TRIES; n++) yield `${made.slice(0, MAX_HANDLE_LENGTH - `-${n}`.length).replace(/-+$/, '')}-${n}`;
+  }
+  for (;;) yield draw();
+}
+
 /** Whether `err` is the database refusing a handle someone else has (the unique index on `profile.handle`). */
 const taken = (err: unknown): boolean => err instanceof Error && /UNIQUE constraint failed: profile\.handle/.test(err.message);
 
-/** Runs `give` with handles drawn at random until one is nobody's (a few tries: more would mean something else is wrong). */
-export function withDrawnHandle(give: (handle: string) => void, draw = drawHandle): void {
-  for (let tries = 1; ; tries++) {
+/**
+ * Runs `give` with the first of `handles` that is one, not the site's, and nobody's (the database says, by its unique
+ * index). A few clashes past the name's (more would mean something else is wrong) is an error.
+ */
+export function giveHandle(give: (handle: string) => void, handles: Iterable<string>): void {
+  let clashes = 0;
+  for (const handle of handles) {
+    if (!isHandle(handle) || RESERVED_HANDLES.has(handle)) continue;
     try {
-      return give(draw());
+      return give(handle);
     } catch (err) {
-      if (!taken(err) || tries >= 8) throw err;
+      if (!taken(err) || ++clashes >= NAMED_TRIES + 8) throw err;
     }
   }
 }
@@ -166,9 +201,12 @@ export function withDrawnHandle(give: (handle: string) => void, draw = drawHandl
 const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
 
 export async function openAccounts(db: Db, options: AccountsOptions): Promise<Accounts> {
-  // A profile, made with its account (its name from Google's, if it came from there) and a handle drawn for it.
+  // A profile, made with its account (its name from Google's, if it came from there) and a handle made from that name.
   const made = db.prepare('insert into profile (account, name, handle) values (?, ?, ?) on conflict (account) do nothing');
-  const make = (account: string, name: string): void => withDrawnHandle((handle) => made.run(account, firstName(name), handle));
+  const make = (account: string, googled: string): void => {
+    const name = firstName(googled);
+    giveHandle((handle) => made.run(account, name, handle), handlesFor(name));
+  };
   const allowance = codeAllowance();
   const config = {
     appName: 'Nertz',
@@ -238,14 +276,17 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   // not there until Better Auth has made it.)
   const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
   if (unmade.length) transaction(db, () => unmade.forEach((u) => make(u.id, u.name)));
-  // And any profile made before there were pages is given its handle now, drawn as a new one's is (server/db.ts says why here).
-  const unhandled = db.prepare('select account from profile where handle is null').all() as { account: string }[];
+  // A handle made for a profile, not chosen: from its name, as a new one's is.
   const handled = db.prepare('update profile set handle = ? where account = ?');
-  if (unhandled.length) transaction(db, () => unhandled.forEach(({ account }) => withDrawnHandle((handle) => handled.run(handle, account))));
-  const named = db.prepare('select name, picture, handle, private from profile where account = ?');
+  const handleFor = (account: string, name: string | null): void => giveHandle((handle) => handled.run(handle, account), handlesFor(name));
+  // And any profile made before there were pages is given its handle now (server/db.ts says why here): the first to
+  // have signed up has the name's own, and anyone after with the same name the next count.
+  const unhandled = db.prepare('select account, profile.name from profile left join "user" on "user".id = account where handle is null order by "user".createdAt, account').all() as { account: string; name: string | null }[];
+  if (unhandled.length) transaction(db, () => unhandled.forEach(({ account, name }) => handleFor(account, name)));
+  const named = db.prepare('select name, picture, handle, private, handle_chosen from profile where account = ?');
   const whose = db.prepare('select account as id, name, picture, private from profile where handle = ?');
   const rename = db.prepare('update profile set name = ? where account = ?');
-  const rehandle = db.prepare('update profile set handle = ? where account = ?');
+  const rehandle = db.prepare('update profile set handle = ?, handle_chosen = 1 where account = ?');
   const setPrivate = db.prepare('update profile set private = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
   const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
@@ -264,7 +305,14 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       const them = whose.get(handle) as { id: string; name: string | null; picture: string | null; private: number } | undefined;
       return them ? { ...them, picture: them.picture && pictureUrl(them.picture), private: them.private === 1 } : null;
     },
-    rename: (account, name) => void rename.run(name, account),
+    // (The one place a name is taken, and so where the handle made for a profile with none follows its first.)
+    rename: (account, name) =>
+      transaction(db, () => {
+        const had = named.get(account) as { name: string | null; handle: string; handle_chosen: number } | undefined;
+        rename.run(name, account);
+        if (had && had.name === null && !had.handle_chosen) handleFor(account, name);
+        return (named.get(account) as { handle: string }).handle;
+      }),
     // (The one place a handle is claimed. Whether it is free is the database's to say: its unique index.)
     rehandle: (account, handle) => {
       if (!isHandle(handle) || RESERVED_HANDLES.has(handle)) return false;

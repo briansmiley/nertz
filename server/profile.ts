@@ -51,10 +51,11 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
       const name = raw === undefined ? undefined : typeof raw === 'string' ? cleanName(raw) : '';
       const handle = asked === undefined ? undefined : typeof asked === 'string' ? handleOf(asked) : null;
       if (name === '' || handle === null || (hidden !== undefined && typeof hidden !== 'boolean') || (name === undefined && handle === undefined && hidden === undefined)) return json(400, null);
+      // (A name taken first can move the page too: to the name's, where the handle was only the one made for it.)
       if (handle !== undefined && !accounts.rehandle(me.id, handle)) return json(409, null);
-      if (name !== undefined) accounts.rename(me.id, name);
-      if (hidden !== undefined) accounts.setPrivate(me.id, hidden);
-      const now: Account = { ...me, ...(name !== undefined && { name }), ...(handle !== undefined && { handle }), ...(hidden !== undefined && { private: hidden }) };
+      const now: Account = { ...me, ...(handle !== undefined && { handle }) };
+      if (name !== undefined) Object.assign(now, { name, handle: accounts.rename(me.id, name) });
+      if (hidden !== undefined) (accounts.setPrivate(me.id, hidden), (now.private = hidden));
       changed(now);
       return json(200, now);
     }

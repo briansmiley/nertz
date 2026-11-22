@@ -5,11 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isHandle } from '../shared/protocol';
-import { DRAWN_HANDLE_LENGTH, firstName, HANDLE_ALPHABET, RESERVED_HANDLES, withDrawnHandle } from './accounts';
+import { DRAWN_HANDLE_LENGTH, firstName, giveHandle, HANDLE_ALPHABET, handleFrom, handlesFor, NAMED_TRIES, RESERVED_HANDLES } from './accounts';
 import { openDb } from './db';
 import { startServer, type NertzServer } from './index';
-import { ACCOUNTS, ADA, BOB, Browser, fakeGoogle, rows as allRows } from './testkit';
+import { ACCOUNTS, ADA, BOB, Browser, fakeGoogle, rows as allRows, type Googler } from './testkit';
 
 /** A handle as one is drawn: `k3f9x2`. */
 const DRAWN = new RegExp(`^[${HANDLE_ALPHABET}]{${DRAWN_HANDLE_LENGTH}}$`);
@@ -51,11 +50,9 @@ describe('profile', () => {
     const ada = await signedIn(ADA);
     const id = (rows('user')[0] as { id: string }).id;
     const { handle } = (await profile(ada)) as { handle: string };
-    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null, handle, private: false });
-    expect(isHandle(handle) && handle !== id).toBe(true); // (where their page is: drawn at random, and nothing of who they are)
-    expect(handle).toMatch(DRAWN);
-    expect(HANDLE_ALPHABET).not.toMatch(/[01ilo]/); // (nothing easily taken for something else)
-    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null, handle, private: 0 }]);
+    expect(await profile(ada)).toEqual({ id, name: 'Ada', image: ADA.picture, picture: null, handle: 'ada', private: false });
+    expect(handle).not.toBe(id); // (where their page is: their name's, never who they are signed in as)
+    expect(rows('profile')).toEqual([{ account: id, name: 'Ada', picture: null, handle: 'ada', private: 0, handle_chosen: 0 }]);
     expect(firstName('  Grace  Brewster Hopper')).toBe('Grace');
     expect(firstName('   ')).toBeNull();
   });
@@ -154,16 +151,68 @@ describe('profile', () => {
       expect(await page(bob, 'bob')).toBe(200); // (still its own)
     });
 
-    it('is drawn again on the rare clash with one someone has', () => {
+    it('is the next one on a clash with one someone has: the next count, or drawn again', () => {
       const db = openDb(':memory:');
       const made = db.prepare('insert into profile (account, handle) values (?, ?)');
+      const of = (account: string): unknown => (db.prepare('select handle from profile where account = ?').get(account) as { handle: string }).handle;
       made.run('a', 'k3f9x2');
       const draws = ['k3f9x2', 'k3f9x2', 'm4p7q8'];
-      withDrawnHandle((handle) => made.run('b', handle), () => draws.shift()!);
-      expect(db.prepare('select handle from profile where account = ?').get('b')).toEqual({ handle: 'm4p7q8' });
-      expect(() => withDrawnHandle((handle) => made.run('c', handle), () => 'k3f9x2')).toThrow(/UNIQUE/); // (not for ever)
-      expect(() => withDrawnHandle(() => made.run('a', 'zzzzzz'))).toThrow(/UNIQUE/); // (nor for anything else)
+      giveHandle((handle) => made.run('b', handle), handlesFor(null, () => draws.shift()!));
+      expect(of('b')).toBe('m4p7q8');
+      made.run('c', 'ada');
+      made.run('d', 'ada-2');
+      giveHandle((handle) => made.run('e', handle), handlesFor('Ada'));
+      expect(of('e')).toBe('ada-3');
+      expect(() => giveHandle((handle) => made.run('f', handle), handlesFor(null, () => 'k3f9x2'))).toThrow(/UNIQUE/); // (not for ever)
+      expect(() => giveHandle(() => made.run('a', 'zzzzzz'), handlesFor('Zed'))).toThrow(/UNIQUE/); // (nor for anything else)
       db.close();
+    });
+
+    it('is made from the name: lower case, accents dropped, anything else one hyphen, cut to twenty', () => {
+      expect(handleFrom('Ada')).toBe('ada');
+      expect(handleFrom('  Zoë  ')).toBe('zoe');
+      expect(handleFrom('José María')).toBe('jose-maria');
+      expect(handleFrom("D'Arcy O'Neil")).toBe('d-arcy-o-neil');
+      expect(handleFrom('Ünïcödé--Fan!!')).toBe('unicode-fan');
+      expect(handleFrom('Anastasia Romanova The Second')).toBe('anastasia-romanova-t'); // (twenty)
+      expect(handleFrom('Anastasia Romanovas Cat')).toBe('anastasia-romanovas'); // (no hyphen left at the end)
+      expect(handleFrom('R2-D2')).toBe('r2-d2');
+      for (const none of ['李', '🃏', '---', '']) expect(handleFrom(none)).toBeNull();
+      /** The first `n` handles tried for `name` (there is no end to them). */
+      const first = (name: string | null, n: number): string[] => {
+        const tried: string[] = [];
+        for (const handle of handlesFor(name, () => 'drawn1')) if (tried.push(handle) >= n) break;
+        return tried;
+      };
+      expect(first('Ada', 3)).toEqual(['ada', 'ada-2', 'ada-3']);
+      expect(first('Anastasia Romanova The Second', 2)).toEqual(['anastasia-romanova-t', 'anastasia-romanova-2']);
+      expect(first('Al', 2)).toEqual(['al', 'al-2']); // (`al` is too short to be one: `giveHandle` passes it by)
+      expect(first('李', 2)).toEqual(['drawn1', 'drawn1']);
+      expect(first(null, 1)).toEqual(['drawn1']);
+      expect(first('Ada', NAMED_TRIES + 1).slice(-2)).toEqual([`ada-${NAMED_TRIES}`, 'drawn1']);
+      expect(HANDLE_ALPHABET).not.toMatch(/[01ilo]/); // (nothing drawn easily taken for something else)
+    });
+
+    it('is made from the name Google gives: the next count on a clash, never one the site keeps, drawn for a name with nothing to make one', async () => {
+      const people: Googler[] = [ADA, { sub: 'g-2', email: 'ada2@example.com', name: 'Ada King' }, { sub: 'g-3', email: 'adm@example.com', name: 'Admin Person' }, { sub: 'g-4', email: 'al@example.com', name: 'Al' }, { sub: 'g-5', email: 'zoe@example.com', name: 'Zoë Q' }, { sub: 'g-6', email: 'li@example.com', name: '李' }];
+      fakeGoogle(people);
+      const handles: string[] = [];
+      for (const who of people) handles.push(await handleOf(await signedIn(who)));
+      expect(handles.slice(0, 5)).toEqual(['ada', 'ada-2', 'admin-2', 'al-2', 'zoe']);
+      expect(handles[5]).toMatch(DRAWN);
+      expect(rows('profile').every((p) => p.handle_chosen === 0)).toBe(true);
+      // And it stays where it was made as the name changes.
+      const ada = await signedIn(ADA);
+      expect(await (await ada.ask('/profile', { name: 'Countess' }, { method: 'PUT' })).json()).toMatchObject({ name: 'Countess', handle: 'ada' });
+    });
+
+    it('chosen, is theirs for good: marked so, and never made for them again', async () => {
+      const ada = await signedIn(ADA);
+      expect((await claim(ada, 'lovelace')).status).toBe(200);
+      expect(rows('profile')).toMatchObject([{ handle: 'lovelace', handle_chosen: 1 }]);
+      write('update profile set name = null'); // (as if it had none yet: still not made afresh, once chosen)
+      expect(await (await ada.ask('/profile', { name: 'Ada' }, { method: 'PUT' })).json()).toMatchObject({ name: 'Ada', handle: 'lovelace' });
+      expect(rows('profile')).toMatchObject([{ handle: 'lovelace', handle_chosen: 1 }]);
     });
 
     it('still leads to pages whose handles were drawn the old way, as sixteen hex digits', async () => {
@@ -306,24 +355,26 @@ describe('profile', () => {
     await server.close();
     write('delete from profile');
     await start();
-    expect(rows('profile')).toMatchObject([{ name: 'Ada', handle: expect.stringMatching(DRAWN) }]);
+    expect(rows('profile')).toMatchObject([{ name: 'Ada', handle: 'ada', handle_chosen: 0 }]);
   });
 
-  it('is given a page of its own if it was made before there were pages: each its own, drawn at random', async () => {
-    await signedIn(ADA);
-    await signedIn(BOB);
+  it('is given a page of its own if it was made before there were pages: from its name, the first to sign up first', async () => {
+    fakeGoogle([ADA, BOB, { sub: 'google-789', email: 'ada2@example.com', name: 'Ada Byron' }, { sub: 'google-0', email: 'x@example.com', name: '李' }]);
+    for (const sub of ['google-123', 'google-456', 'google-789', 'google-0']) await new Browser(server.port).signIn({ sub } as Googler);
     await server.close();
-    // (The database as it was before the migration that draws them.)
+    // (The database as it was before the migration that makes them: and one with no name, from signing in by email.)
+    write("update profile set name = null where name = '李'");
+    write("update \"user\" set createdAt = '2026-01-0' || (case email when 'ada@example.com' then 1 when 'bob@example.com' then 2 when 'ada2@example.com' then 3 else 4 end) || 'T00:00:00.000Z'");
+    write('alter table profile drop column handle_chosen');
     write('alter table profile drop column private');
     write('drop index profile_handle');
     write('alter table profile drop column handle');
     write('pragma user_version = 5');
     await start();
-    const handles = rows('profile').map((p) => p.handle as string);
-    expect(handles.every((h) => DRAWN.test(h))).toBe(true);
-    expect(new Set(handles).size).toBe(2);
-    const ada = await signedIn(ADA);
-    expect(handles).toContain(((await profile(ada)) as { handle: string }).handle);
+    const email = new Map(rows('user').map((u) => [u.id, u.email]));
+    const handles = Object.fromEntries(rows('profile').map((p) => [email.get(p.account), p.handle]));
+    expect(handles).toEqual({ 'ada@example.com': 'ada', 'bob@example.com': 'bob', 'ada2@example.com': 'ada-2', 'x@example.com': expect.stringMatching(DRAWN) });
+    expect(((await profile(await signedIn(ADA))) as { handle: string }).handle).toBe('ada');
   });
 
   it('is anyone\'s page, not private, if it was made before pages could be', async () => {
@@ -331,6 +382,7 @@ describe('profile', () => {
     await ada.ask('/profile', { private: true }, { method: 'PUT' });
     await server.close();
     // (The database as it was before the migration that adds the switch.)
+    write('alter table profile drop column handle_chosen');
     write('alter table profile drop column private');
     write('pragma user_version = 6');
     await start();

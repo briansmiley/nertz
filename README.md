@@ -813,7 +813,8 @@ word), with a **Sign in** button beside it, and writes the name they play under 
 remembers goes straight to it). Signing in
 is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
 and Send code), and they are then known across tables and visits. Signed in, their
-picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by and, under it, their page's address (`/u/<handle>`; both theirs to change, where they are written), a **Private** switch at the end of the name's line,
+picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by and, under it, their page's address (`/u/<handle>`; both theirs to change, where they are written: a
+new handle is asked for with Set or Enter, which says Taken, or Failed, when it is not had), a **Private** switch at the end of the name's line,
 their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
 to their page or the way in and back again (with reduced motion, the other side simply comes up). Turned to their page,
@@ -844,12 +845,14 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
   who signed in, as Google or their email says. Nothing of ours writes to them.
 - **Profiles** (`profile`): who someone is at the table, theirs to change: for now the name they go by (null until a
   new email account chooses one). Made with the account (from Google's first name), and gone with it. With it its
-  `handle`, naming their page (`/u/<handle>`): six letters and digits drawn at random (`k3f9x2`: none of 0 o 1 l i),
-  and nothing of who they are, until they claim one of their own. A handle is 3 to 20 lowercase letters and digits with
+  `handle`, naming their page (`/u/<handle>`): made from the name they go by (`Zoë Q` is `zoe-q`; `ada-2`, `ada-3`, …
+  where it is someone else's or kept for the site), or for a profile with no name, six letters and digits drawn at
+  random (`k3f9x2`: none of 0 o 1 l i) until the first name it takes, which it then follows. Theirs to change for one of
+  their own (`handle_chosen`), after which nothing makes one for them again. A handle is 3 to 20 lowercase letters and digits with
   single hyphens between them, nobody else's and none of the few kept for the site (`RESERVED_HANDLES`,
   `server/accounts.ts`); a changed one frees the old, whose links then lead nowhere (no aliases). Profiles made before
-  there were handles are given theirs when the server starts, drawn the same way. And whether that page is `private`
-  (off unless they switch it on).
+  there were handles are given theirs when the server starts, made the same way (the first to have signed up has the
+  name's own). And whether that page is `private` (off unless they switch it on).
 
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
 else: the room tells someone signed in only where the others signed in have their pages (`PlayerView.handle`), unless

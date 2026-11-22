@@ -45,6 +45,30 @@ describe('signing in by email', () => {
     expect(JSON.stringify(rows('verification'))).not.toContain(code);
   });
 
+  it('has its page follow the first name it takes, unless a handle was chosen first; and stay there', async () => {
+    const signUp = async (email: string): Promise<Browser> => {
+      const browser = new Browser(server.port);
+      await send(browser, email);
+      await enter(browser, email, codeIn(sent, email));
+      return browser;
+    };
+    const name = async (browser: Browser, name: string): Promise<unknown> => (await browser.ask('/profile', { name }, { method: 'PUT' })).json();
+    const grace = await signUp('grace@example.com');
+    const drawn = ((await profile(grace)) as { handle: string }).handle;
+    expect(await name(grace, 'Grace Hopper')).toMatchObject({ name: 'Grace Hopper', handle: 'grace-hopper' });
+    expect(await profile(grace)).toMatchObject({ handle: 'grace-hopper' });
+    expect((await grace.ask(`/stats/${drawn}`)).status).toBe(404); // (the one drawn is gone)
+    expect(await name(grace, 'Amazing Grace')).toMatchObject({ name: 'Amazing Grace', handle: 'grace-hopper' }); // (only the first)
+    // Another of the same name: the next count.
+    expect(await name(await signUp('grace2@example.com'), 'Grace Hopper')).toMatchObject({ handle: 'grace-hopper-2' });
+    // One chosen before any name is theirs: the name does not move it.
+    const ann = await signUp('ann@example.com');
+    expect((await ann.ask('/profile', { handle: 'annie' }, { method: 'PUT' })).status).toBe(200);
+    expect(await name(ann, 'Ann')).toMatchObject({ name: 'Ann', handle: 'annie' });
+    // Both at once: the handle said is the one kept.
+    expect(await (await (await signUp('bo@example.com')).ask('/profile', { name: 'Bo Peep', handle: 'sheep' }, { method: 'PUT' })).json()).toMatchObject({ name: 'Bo Peep', handle: 'sheep' });
+  });
+
   it('takes three wrong codes at most: after them, not even the right one', async () => {
     const browser = new Browser(server.port);
     await send(browser, 'grace@example.com');
