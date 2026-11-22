@@ -1,7 +1,7 @@
 // The rounds played to the end, kept (server/db.ts): what a room hands over when a round is scored, and what is
-// asked of them after: one person's record. A hand someone played signed in is theirs; every hand, theirs or not, is
-// kept with the name it was played under.
-import type { Among, BotLevel, RoundEnd, RoundScore, Stats } from '../shared/types';
+// asked of them after: one person's record, and how they have done against someone else. A hand someone played signed
+// in is theirs; every hand, theirs or not, is kept with the name it was played under.
+import type { Among, BotLevel, RoundEnd, RoundScore, Stats, Versus } from '../shared/types';
 import { transaction, type Db } from './db';
 
 /** A round as it ended, as a room tells it (server/room.ts, `settle`). */
@@ -24,6 +24,8 @@ export interface Rounds {
   keep(round: RoundRecord, at?: number): void;
   /** The record of whoever `account` is, over the rounds `among` says: all noughts for someone who has played none. */
   stats(account: string, among?: Among): Stats;
+  /** How `account` has done against `other`, over the rounds both played (of those `among` says): all noughts for none. */
+  versus(account: string, other: string, among?: Among): Versus;
   /** Leaves `account`'s hands as they were played, but nobody's and with no name: the rounds stay whole for everyone else who played them. */
   forget(account: string): void;
 }
@@ -35,6 +37,8 @@ export function openRounds(db: Db): Rounds {
   // A round is won by the best score in it, by everyone who has it; a round of one hand is nobody's to win, and has no
   // one else to be ahead of. How far ahead someone finished is the share of the others in the round who scored less
   // than they did, a tie counting half: 1 for first, 0 for last, ½ for the middle of the table, whatever its size.
+  // Against the odds, a round won by k together is a k-th of a win, so that a round's wins add up to one, as the
+  // chances of its n hands, a 1/n each, do.
   const stats = db.prepare(
     `with mine as (
        select h.round, h.seat, h.delta, h.played, h.nertz_left, h.nertz,
@@ -46,6 +50,7 @@ export function openRounds(db: Db): Rounds {
          from hand h where h.account = $account)
      select count(*) as rounds,
             coalesce(sum(above = 0 and hands > 1), 0) as won,
+            sum(case when hands > 1 then (above = 0) / (level + 1.0) end) / sum(case when hands > 1 then 1.0 / hands end) as odds,
             coalesce(sum(nertz), 0) as nertz,
             coalesce(sum(delta), 0) as points,
             max(delta) as bestPoints,
@@ -58,6 +63,17 @@ export function openRounds(db: Db): Rounds {
        from mine
       where $among = 'all' or ($among = 'people' and people > 0) or ($among = 'no-bots' and bots = 0)`,
   );
+  // Every round with someone else in it has someone who is no bot, for two people: 'people' is every round, as 'all' is.
+  const versus = db.prepare(
+    `select count(*) as rounds,
+            coalesce(sum(m.delta > o.delta), 0) as ahead,
+            coalesce(sum(m.delta < o.delta), 0) as behind,
+            coalesce(sum(m.delta), 0) as points,
+            coalesce(sum(o.delta), 0) as theirs
+       from hand m join hand o on o.round = m.round
+      where m.account = $account and o.account = $other
+        and ($among <> 'no-bots' or not exists (select 1 from hand b where b.round = m.round and b.bot is not null))`,
+  );
   const forget = db.prepare("update hand set account = null, name = '' where account = ?");
   return {
     keep(r, at = Date.now()) {
@@ -69,7 +85,11 @@ export function openRounds(db: Db): Rounds {
     },
     stats: (account, among = 'all') => {
       const s = stats.get({ $account: account, $among: among }) as unknown as Stats;
-      return { rounds: s.rounds, won: s.won, nertz: s.nertz, points: s.points, bestPoints: s.bestPoints, cards: s.cards, bestCards: s.bestCards, nertzLeft: s.nertzLeft, ahead: s.ahead, snipes: s.snipes, sniped: s.sniped };
+      return { rounds: s.rounds, won: s.won, odds: s.odds, nertz: s.nertz, points: s.points, bestPoints: s.bestPoints, cards: s.cards, bestCards: s.bestCards, nertzLeft: s.nertzLeft, ahead: s.ahead, snipes: s.snipes, sniped: s.sniped };
+    },
+    versus: (account, other, among = 'all') => {
+      const v = versus.get({ $account: account, $other: other, $among: among }) as unknown as Versus;
+      return { rounds: v.rounds, ahead: v.ahead, behind: v.behind, points: v.points, theirs: v.theirs };
     },
     forget: (account) => void forget.run(account),
   };

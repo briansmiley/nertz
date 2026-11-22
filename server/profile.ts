@@ -1,8 +1,10 @@
-// One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by, DELETE the account; and at
+// One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by, a handle of one's own (where
+// one's page is), or whether one's page is private (any of them, together or not), DELETE the account; and at
 // PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it. With the account goes everything
 // kept as theirs, their picture too; the rounds they played and the reports they sent stay, as nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { cleanName } from '../shared/protocol';
+import { cleanName, handleOf } from '../shared/protocol';
+import type { Account } from '../shared/types';
 import type { Accounts } from './accounts';
 import { MAX_SENT_BYTES, type Pictures } from './pictures';
 import { transaction, type Db } from './db';
@@ -25,9 +27,11 @@ export interface ProfileKeeping {
   home: string;
   /** Tells every table that an account is gone: anyone at one signed in as it plays on as nobody's. */
   gone: (account: string) => void;
+  /** Tells every table what an account now is: its page made private or not, its picture put up or taken down. */
+  changed: (account: Account) => void;
 }
 
-export function profileHandler({ db, accounts, rounds, reports, pictures, home, gone }: ProfileKeeping) {
+export function profileHandler({ db, accounts, rounds, reports, pictures, home, gone, changed }: ProfileKeeping) {
   return async (req: IncomingMessage, res: ServerResponse, path: string): Promise<void> => {
     const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     const method = req.method ?? 'GET';
@@ -40,11 +44,20 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     if (!me) return json(401, { ways: accounts.ways }); // (nobody: and the ways in there are)
     if (method === 'GET') return json(200, me);
     if (method === 'PUT') {
-      const raw = (said as { name?: unknown } | null)?.name;
-      const name = typeof raw === 'string' ? cleanName(raw) : '';
-      if (!name) return json(400, null);
-      accounts.rename(me.id, name);
-      return json(200, { ...me, name });
+      // What is said is changed, and nothing else: a name, cleaned and not empty; a handle, in any case (kept in lower);
+      // whether the page is private, yes or no. A handle that is someone else's, or the site's, is 409, and then
+      // nothing is changed. The one it had is free from then on, and its old links lead nowhere.
+      const { name: raw, handle: asked, private: hidden } = (said ?? {}) as { name?: unknown; handle?: unknown; private?: unknown };
+      const name = raw === undefined ? undefined : typeof raw === 'string' ? cleanName(raw) : '';
+      const handle = asked === undefined ? undefined : typeof asked === 'string' ? handleOf(asked) : null;
+      if (name === '' || handle === null || (hidden !== undefined && typeof hidden !== 'boolean') || (name === undefined && handle === undefined && hidden === undefined)) return json(400, null);
+      // (A name taken first can move the page too: to the name's, where the handle was only the one made for it.)
+      if (handle !== undefined && !accounts.rehandle(me.id, handle)) return json(409, null);
+      const now: Account = { ...me, ...(handle !== undefined && { handle }) };
+      if (name !== undefined) Object.assign(now, { name, handle: accounts.rename(me.id, name) });
+      if (hidden !== undefined) (accounts.setPrivate(me.id, hidden), (now.private = hidden));
+      changed(now);
+      return json(200, now);
     }
     // All of it at once, or none; then the tables, and the cookies that forget them in this browser. (With the profile
     // gone their cookie is nobody's already: signing out only tidies it away.)
@@ -76,16 +89,20 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     // (Asked again: the account may have gone while the picture was drawn. Then it is not kept.)
     if (!(await accounts.who(req.headers))) return (pictures.remove(id), json(401, { ways: accounts.ways }));
     pictures.remove(accounts.repicture(me.id, id));
-    json(200, await accounts.who(req.headers));
+    const now = await accounts.who(req.headers);
+    if (now) changed(now);
+    json(200, now);
   }
 }
 
 const TOO_BIG = Symbol('too big');
 
-/** What a request carries: `TOO_BIG` for more than `max` bytes (or of no stated size). */
+/**
+ * What a request carries: `TOO_BIG` for more than `max` bytes, said or sent. (A body may come with no size said: over
+ * HTTP/2, or chunked, as Fly's proxy passes such a one on. It is read as far as `max`, like any other.)
+ */
 async function readBytes(req: IncomingMessage, max: number): Promise<Buffer | typeof TOO_BIG> {
-  const stated = Number(req.headers['content-length']);
-  if (!(stated <= max)) return TOO_BIG;
+  if (Number(req.headers['content-length']) > max) return TOO_BIG;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
@@ -96,7 +113,7 @@ async function readBytes(req: IncomingMessage, max: number): Promise<Buffer | ty
   return Buffer.concat(chunks);
 }
 
-/** The JSON a request carries: null for none that reads, `TOO_BIG` for more than a profile is (or of no stated size). */
+/** The JSON a request carries: null for none that reads, `TOO_BIG` for more than a profile is. */
 async function read(req: IncomingMessage): Promise<unknown> {
   const bytes = await readBytes(req, MAX_BODY_BYTES);
   if (bytes === TOO_BIG) return TOO_BIG;

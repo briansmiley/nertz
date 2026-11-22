@@ -11,7 +11,7 @@ import { DEAL_MS, parseClientMsg, START_MS, type ServerMsg } from '../shared/pro
 import { seeded, wire } from '../shared/testkit';
 import type { GameState, RoomView } from '../shared/types';
 import { AUTH_PATH, type AccountsOptions } from './accounts';
-import { Room, type Conn, type RoomOptions } from './room';
+import { Room, type Conn, type RoomOptions, type SignedAs } from './room';
 
 export type Of<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 export type StateMsg = Of<'state'>;
@@ -56,6 +56,9 @@ export class FakeConn implements Conn {
     return this.of('social').at(-1)!;
   }
 }
+
+/** Someone signed in as `id`, as a room is told it: their page is named after them (a real one is drawn at random). */
+export const signedAs = (id: string, picture: string | null = null): SignedAs => ({ id, handle: `${id}-page`, picture, private: false });
 
 /** A room that only flushes when the test says so, with `n` players joined and seated (P0, P1, ...; tokens tok-0000, tok-0001, ...). */
 export function roomWith(n: number, { code = 'TEST', ...options }: RoomOptions & { code?: string } = {}): { room: Room; conns: FakeConn[] } {

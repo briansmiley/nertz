@@ -29,3 +29,16 @@ svg.host text {
 .seats .name + svg.host {
   margin-left: -0.35rem;
 }
+
+/* A name that is someone's page (App.tsx, `Named`): written as any name is, underlined only under the pointer. */
+a.page {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.page:hover,
+a.page:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.2em;
+}

@@ -90,6 +90,20 @@ const MIGRATIONS: string[] = [
   // The Discord message a report was posted as (server/feedback.ts): its id, null where it was not posted (or was
   // before this). BinaryBot opens a thread on it once a PR for the report is ready (the auto-fanout, kept outside this repo).
   `alter table report add column post text;`,
+  // Where someone's page is (/u/<handle>, server/stats.ts): made with the profile from the name it goes by (server/accounts.ts),
+  // `ada`, `ada-2` on a clash, or six letters and digits drawn at random for a profile with no name; theirs to change for one of their own, nobody else's. It
+  // is what the others at a table are shown, as the account's id never is; and it goes with the profile.
+  // Profiles already there are given theirs when the server starts, by server/accounts.ts, made the way a new one's
+  // is: SQL could not try the next on a clash, and a clash here would stop the server starting. (Until then they have
+  // none: a unique index lets any number of rows have none.)
+  `alter table profile add column handle text;
+   create unique index profile_handle on profile (handle);`,
+  // Whether their page is theirs alone (server/stats.ts): to anyone else it is not there, and nobody at a table is told
+  // where it is (server/room.ts). Off unless they say.
+  `alter table profile add column private integer not null default 0 check (private in (0, 1));`,
+  // Whether they chose their handle themselves (PUT /profile). Until they do it is the one made for them, from their
+  // name, and a profile made with no name has its handle follow the first name it is given (server/accounts.ts).
+  `alter table profile add column handle_chosen integer not null default 0 check (handle_chosen in (0, 1));`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

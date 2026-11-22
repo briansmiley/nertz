@@ -6,11 +6,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deal, type Rng } from '../shared/engine';
 import { rig } from '../shared/testkit';
-import type { GameState, Stats } from '../shared/types';
+import type { Account, GameState, Page, Stats } from '../shared/types';
 import { openDb, type Db } from './db';
 import { startServer, type NertzServer } from './index';
 import { openRounds, type RoundRecord } from './rounds';
-import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, rows, startOver, startRound } from './testkit';
+import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, rows, signedAs, startOver, startRound } from './testkit';
 
 /** A hand of a round, said shortly: who (an account, a bot, or with neither a guest), and what they scored. */
 const hand = (seat: number, who: string | null, delta: number, bot: 'slow' | null = null): RoundRecord['hands'][number] => ({ seat, player: seat + 1, name: who ?? (bot ? 'Bot' : 'Guest'), account: who, bot, out: null, played: Math.max(delta, 0), nertzLeft: Math.max(-delta, 0) / 2, delta });
@@ -24,7 +24,7 @@ describe('rounds kept', () => {
   afterEach(() => db.close());
 
   it('someone who has played nothing has a record of noughts', () => {
-    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
+    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
   });
 
   it("adds up one person's rounds: how many, their points, cards played and nertz left, the most of each, and the ones they got Nertz in", () => {
@@ -32,8 +32,8 @@ describe('rounds kept', () => {
     rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)], { by: 'nertz', seat: 0, out: [0] }));
     rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4)], { by: 'nertz', seat: 0, out: [0, 1] }, 2)); // (ada went out too, without calling)
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], { by: 'jam' }, 3));
-    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
-    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
+    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, odds: 4 / 3, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
+    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, odds: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
   });
 
   it('a round is won by everyone with its best score, against a guest or a bot as against anyone; alone, by nobody', () => {
@@ -64,6 +64,39 @@ describe('rounds kept', () => {
     } finally {
       middle.close();
     }
+  });
+
+  it('weighs a win by the odds against it: a round won at a table of ten counts five times one won at two, and a tie at the top is shared', () => {
+    const rounds = openRounds(db);
+    rounds.keep(round([hand(0, 'ada', 20), ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => hand(s, null, s))])); // won, against 1 in 10
+    rounds.keep(round([hand(0, 'ada', 1), hand(1, 'bob', 5)], undefined, 2)); // lost, against 1 in 2
+    rounds.keep(round([hand(0, 'ada', 30)], undefined, 3)); // (alone: nothing to win)
+    expect(rounds.stats('ada')).toMatchObject({ won: 1 });
+    expect(rounds.stats('ada').odds).toBeCloseTo(1 / (0.1 + 0.5));
+    expect(rounds.stats('bob').odds).toBe(2); // won the one round, against 1 in 2
+    // Two of three level at the top: each has half a win, against a third of one.
+    rounds.keep(round([hand(0, 'cy', 6), hand(1, 'di', 6), hand(2, null, 2)], undefined, 4));
+    expect(rounds.stats('cy')).toMatchObject({ won: 1 });
+    expect(rounds.stats('cy').odds).toBeCloseTo(1.5);
+    // No round, or only one played alone: no odds to be against.
+    rounds.keep(round([hand(0, 'zed', 9)], undefined, 5));
+    expect([rounds.stats('eve').odds, rounds.stats('zed').odds]).toEqual([null, null]);
+  });
+
+  it("says how one person has done against another, over the rounds they both played: who finished ahead, and each one's points", () => {
+    const rounds = openRounds(db);
+    rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)])); // ada ahead
+    rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4), hand(2, null, 1)], undefined, 2)); // bob ahead
+    rounds.keep(round([hand(0, 'ada', 3), hand(1, 'bob', 3), hand(2, null, 9, 'slow')], undefined, 3)); // level, with a bot
+    rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], undefined, 4)); // (without bob)
+    expect(rounds.versus('ada', 'bob')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 11, theirs: 28 });
+    expect(rounds.versus('bob', 'ada')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 28, theirs: 11 });
+    expect(rounds.versus('ada', 'bob', 'people')).toEqual(rounds.versus('ada', 'bob'));
+    expect(rounds.versus('ada', 'bob', 'no-bots')).toEqual({ rounds: 2, ahead: 1, behind: 1, points: 8, theirs: 25 });
+    expect(rounds.versus('ada', 'cy')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0 });
+    // Gone, an account's rounds are nobody's: nobody has played them against it.
+    rounds.forget('bob');
+    expect(rounds.versus('ada', 'bob')).toMatchObject({ rounds: 0 });
   });
 
   it('counts every round, only those with someone else there who is no bot, or only those with no bot at all', () => {
@@ -139,7 +172,7 @@ describe('a room hands its rounds over', () => {
     const kept: RoundRecord[] = [];
     const { room } = roomWith(0, { deal: rigged, record: (r) => kept.push(r) });
     const [a, b] = [new FakeConn(), new FakeConn()];
-    room.join(a, 'Ada', 'tok-000a', true, 'ada');
+    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
     room.join(b, 'Guest', 'tok-000b', true);
     room.handle(a, { t: 'addBot', level: 'slow' });
     startRound(room, a);
@@ -173,9 +206,9 @@ describe('a room hands its rounds over', () => {
     const kept: RoundRecord[] = [];
     const { room } = roomWith(0, { record: (r) => kept.push(r) });
     const [a, again, b] = [new FakeConn(), new FakeConn(), new FakeConn()];
-    room.join(a, 'Ada', 'tok-000a', true, 'ada');
-    room.join(again, 'Ada', 'tok-001a', true, 'ada');
-    room.join(b, 'Bob', 'tok-000b', true, 'bob');
+    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
+    room.join(again, 'Ada', 'tok-001a', true, signedAs('ada'));
+    room.join(b, 'Bob', 'tok-000b', true, signedAs('bob'));
     room.flush();
     expect(again.states.at(-1)!.room.seat).toBeNull();
     startRound(room, a);
@@ -191,8 +224,8 @@ describe('a room hands its rounds over', () => {
     const kept: RoundRecord[] = [];
     const { room } = roomWith(0, { deal: rigged, record: (r) => kept.push(r) });
     const [a, b, c] = [new FakeConn(), new FakeConn(), new FakeConn()];
-    room.join(a, 'Ada', 'tok-000a', true, 'ada');
-    room.join(b, 'Bob', 'tok-000b', true, 'bob');
+    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
+    room.join(b, 'Bob', 'tok-000b', true, signedAs('bob'));
     room.join(c, 'Cy', 'tok-000c', true);
     startRound(room, a);
     room.handle(b, { t: 'leave' });
@@ -208,8 +241,8 @@ describe('a room hands its rounds over', () => {
     const kept: RoundRecord[] = [];
     const { room } = roomWith(0, { record: (r) => kept.push(r) });
     const [a, b] = [new FakeConn(), new FakeConn()];
-    room.join(a, 'Ada', 'tok-000a', true, 'ada');
-    room.join(b, 'Bob', 'tok-000b', true, 'bob');
+    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
+    room.join(b, 'Bob', 'tok-000b', true, signedAs('bob'));
     const again = new FakeConn();
     room.join(again, 'Ada', 'tok-000a', true, null); // the same window, come back signed out
     startRound(room, again);
@@ -222,7 +255,7 @@ describe('a room hands its rounds over', () => {
     let flush = (): void => {};
     const { room } = roomWith(0, { schedule: (f) => void (flush = f) });
     const [a, b] = [new FakeConn(), new FakeConn()];
-    room.join(a, 'Ada', 'tok-000a', true, 'ada', '/pictures/0123456789abcdef.webp');
+    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada', '/pictures/0123456789abcdef.webp'));
     room.join(b, 'Guest', 'tok-000b', true);
     flush();
     expect(b.last.room.players.map((p) => p.picture)).toEqual(['/pictures/0123456789abcdef.webp', undefined]);
@@ -251,7 +284,7 @@ describe('over the wire', () => {
     const [ada, bob, guest] = [new Browser(server.port), new Browser(server.port), new Browser(server.port)];
     await ada.signIn(ADA);
     await bob.signIn(BOB);
-    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
+    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
     expect(await (await ada.ask('/stats?among=no-bots')).json()).toMatchObject({ rounds: 0 });
     expect((await ada.ask('/stats?among=robots')).status).toBe(400);
     expect((await guest.ask('/stats')).status).toBe(401);
@@ -272,6 +305,97 @@ describe('over the wire', () => {
     g.ws.terminate();
   });
 
+  it("someone's page is where their handle says: their record, and the asker's against them; for someone signed in alone", async () => {
+    const [ada, bob, guest] = [new Browser(server.port), new Browser(server.port), new Browser(server.port)];
+    await ada.signIn(ADA);
+    await bob.signIn(BOB);
+    const handleOf = async (b: Browser): Promise<string> => ((await (await b.ask('/profile')).json()) as Account).handle;
+    const [adas, bobs] = [await handleOf(ada), await handleOf(bob)];
+
+    const a = await Client.open(server.port, null, 'Ada', undefined, true, ada.cookie);
+    const b = await Client.open(server.port, a.last.room.code, 'Bob', undefined, true, bob.cookie);
+    const g = await Client.open(server.port, a.last.room.code, 'Guest');
+    const room = server.rooms.get(a.last.room.code)!;
+    await startOver(room, a, [a, b, g]);
+    for (const c of [a, b, g]) await c.did({ k: 'end', on: true });
+    await vi.waitFor(() => expect(room.phase).toBe('results'));
+
+    // At the table, whoever is signed in is told where the page of everyone else signed in is, and a guest is told nobody's.
+    const handles = (c: Client) => c.last.room.players.map((p) => [p.name, p.handle]);
+    expect(handles(a)).toEqual([['Ada', undefined], ['Bob', bobs], ['Guest', undefined]]);
+    expect(handles(b)).toEqual([['Ada', adas], ['Bob', undefined], ['Guest', undefined]]);
+    expect(handles(g)).toEqual([['Ada', undefined], ['Bob', undefined], ['Guest', undefined]]);
+    // Who they are signed in as goes to nobody.
+    const ids = rows(join(dir, 'nertz.db'), 'user').map((u) => u.id as string);
+    for (const c of [a, b, g]) expect(ids.filter((id) => c.raw.some((m) => m.includes(id)))).toEqual([]);
+
+    const line = (c: Client) => room.lastRound!.scores.find((s) => s.id === c.last.room.me)!.delta;
+    const page = (await (await ada.ask(`/stats/${bobs}`)).json()) as Page;
+    expect(page).toEqual({
+      name: 'Bob',
+      picture: null, // (none put up: Google's is never shown to anyone else)
+      stats: await (await bob.ask('/stats')).json(),
+      versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), points: line(a), theirs: line(b) },
+    });
+    expect(((await (await bob.ask(`/stats/${adas}?among=no-bots`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a) });
+    // One's own: one's record, and nobody to be against.
+    expect(await (await ada.ask(`/stats/${adas}`)).json()).toEqual({ name: 'Ada', picture: null, stats: await (await ada.ask('/stats')).json(), versus: null });
+
+    // Nobody signed in is told nothing, not even whether there is such a page; a page that is nobody's is not there.
+    expect((await guest.ask(`/stats/${bobs}`)).status).toBe(401);
+    expect((await guest.ask('/stats/0000000000000000')).status).toBe(401);
+    expect((await ada.ask('/stats/0000000000000000')).status).toBe(404);
+    expect((await ada.ask(`/stats/${bobs.toUpperCase()}`)).status).toBe(200); // (an address in any case)
+    expect((await ada.ask('/stats/a--b')).status).toBe(404);
+    expect((await ada.ask(`/stats/${bobs}/more`)).status).toBe(404);
+    expect((await ada.ask(`/stats/${bobs}?among=robots`)).status).toBe(400);
+    expect((await ada.ask(`/stats/${bobs}`, {})).status).toBe(405);
+    // An account gone takes its page with it.
+    expect((await bob.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+    expect((await ada.ask(`/stats/${bobs}`)).status).toBe(404);
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Bob', undefined], ['Guest', undefined]]));
+    // Their socket, still open, is nobody's from then on: joining again on it brings nothing of the account back.
+    b.send({ t: 'join', room: a.last.room.code, name: 'Rob', token: b.token });
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Rob', undefined], ['Guest', undefined]]));
+    for (const c of [a, b, g]) c.ws.terminate();
+  });
+
+  it('a private page is its own alone: to anyone else it is not there, and nobody at a table is told where it is', async () => {
+    const [ada, bob] = [new Browser(server.port), new Browser(server.port)];
+    await ada.signIn(ADA);
+    await bob.signIn(BOB);
+    const handleOf = async (b: Browser): Promise<string> => ((await (await b.ask('/profile')).json()) as Account).handle;
+    const [adas, bobs] = [await handleOf(ada), await handleOf(bob)];
+    const a = await Client.open(server.port, null, 'Ada', undefined, true, ada.cookie);
+    const b = await Client.open(server.port, a.last.room.code, 'Bob', undefined, true, bob.cookie);
+    const handles = (c: Client) => c.last.room.players.map((p) => [p.name, p.handle]);
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Bob', bobs]]));
+
+    // Made private while sitting at the table: at once, the others there are no longer told where it is.
+    expect((await bob.ask('/profile', { private: true }, { method: 'PUT' })).status).toBe(200);
+    await vi.waitFor(() => expect(handles(a)).toEqual([['Ada', undefined], ['Bob', undefined]]));
+    expect(handles(b)).toEqual([['Ada', adas], ['Bob', undefined]]); // (theirs is still where it was to them)
+    // Nor when they join again on the same socket, or sit down at a table anew.
+    b.send({ t: 'join', room: a.last.room.code, name: 'Bob', token: b.token });
+    const b2 = await Client.open(server.port, null, 'Bob', undefined, true, bob.cookie);
+    const a2 = await Client.open(server.port, b2.last.room.code, 'Ada', undefined, true, ada.cookie);
+    await vi.waitFor(() => expect(handles(a2)).toEqual([['Bob', undefined], ['Ada', undefined]]));
+    expect(a2.raw.some((m) => m.includes(bobs))).toBe(false);
+    expect(handles(a)).toEqual([['Ada', undefined], ['Bob', undefined]]);
+
+    // To anyone else, the page is as if it were nobody's; to them, theirs as ever.
+    expect((await ada.ask(`/stats/${bobs}`)).status).toBe(404);
+    expect((await new Browser(server.port).ask(`/stats/${bobs}`)).status).toBe(401); // (nobody signed in is still told nothing)
+    expect(await (await bob.ask(`/stats/${bobs}`)).json()).toMatchObject({ name: 'Bob', versus: null });
+    expect((await bob.ask(`/stats/${adas}`)).status).toBe(200); // (and they still see everyone else's)
+
+    // Made anyone's again: the page is there, and the table says where it is.
+    expect((await bob.ask('/profile', { private: false }, { method: 'PUT' })).status).toBe(200);
+    expect((await ada.ask(`/stats/${bobs}`)).status).toBe(200);
+    await vi.waitFor(() => expect(handles(a2)).toEqual([['Bob', bobs], ['Ada', undefined]]));
+    for (const c of [a, b, a2, b2]) c.ws.terminate();
+  });
+
   it('an account deleted while it sits at a table plays on there as nobody: the round it finishes is kept as nobody\'s', async () => {
     const ada = new Browser(server.port);
     await ada.signIn(ADA);
@@ -282,6 +406,7 @@ describe('over the wire', () => {
     const room = server.rooms.get(a.last.room.code)!;
     await startOver(room, a, [a, g]);
     expect((await elsewhere.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+    a.send({ t: 'join', room: a.last.room.code, name: 'Ada', token: a.token }); // (their socket, opened signed in, joining again: still nobody)
     await a.did({ k: 'end', on: true });
     await g.did({ k: 'end', on: true });
     await vi.waitFor(() => expect(room.phase).toBe('results'));

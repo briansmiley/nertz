@@ -1,5 +1,5 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile (/profile: server/profile.ts) and record (/stats);
+// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile (/profile: server/profile.ts), and records (/stats: server/stats.ts);
 // websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -8,13 +8,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
-import { AMONG, type Account } from '../shared/types';
+import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
 import { PICTURE_PATH, PROFILE_PATH, profileHandler } from './profile';
 import { openPictures, PICTURES_PATH } from './pictures';
 import { dataFromEnv, openDb } from './db';
 import { openReports } from './reports';
 import { openRounds } from './rounds';
+import { STATS_PATH, statsHandler } from './stats';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
 import { Room, type Conn, type RoomOptions } from './room';
@@ -139,7 +140,20 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   /** Pictures people put up of themselves, likewise (server/pictures.ts). */
   const pictures = reportDir ? openPictures(join(dirname(reportDir), 'pictures')) : null;
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
-  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone: (account) => rooms.forEach((room) => room.forgetAccount(account)) }) : null;
+  const stats = accounts && rounds && statsHandler({ accounts, rounds });
+  /** Who each open socket is signed in as: what its cookie said as it opened, for as long as it is open and the account is there. */
+  const signed = new Map<WebSocket, Account>();
+  /** An account is gone: its sockets are nobody's from now on, and so is whoever sits at a table as it. */
+  const gone = (account: string): void => {
+    for (const [ws, as] of signed) if (as.id === account) signed.delete(ws);
+    rooms.forEach((room) => room.forgetAccount(account));
+  };
+  /** An account has changed (its page made private, its picture): its sockets are it as it now is, and so is whoever sits at a table as it. */
+  const changed = (account: Account): void => {
+    for (const [ws, as] of signed) if (as.id === account.id) signed.set(ws, account);
+    rooms.forEach((room) => room.reaccount(account));
+  };
+  const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone, changed }) : null;
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
   const http = createServer((req, res) => {
@@ -164,19 +178,13 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
         };
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body));
-      } else if (path === '/stats') {
-        // The record of whoever asks: theirs alone, by their cookie.
-        const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
-        if (!accounts || !rounds) return json(404, null);
-        if (req.method !== 'GET') return json(405, null);
-        // Which of their rounds: every one, unless they say.
-        const asked = new URL(req.url ?? '/', 'http://localhost').searchParams.get('among') ?? 'all';
-        const among = AMONG.find((a) => a === asked);
-        if (!among) return json(400, null);
-        accounts
-          .who(req.headers)
-          .then((account) => (account ? json(200, rounds.stats(account.id, among)) : json(401, null)))
-          .catch((err: unknown) => (console.error('stats', err), res.headersSent ? void res.end() : json(500, null))); // (the database gone wrong, or closed under us: an answer, not a crash)
+      } else if (path === STATS_PATH || path.startsWith(`${STATS_PATH}/`)) {
+        if (!stats) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
+        stats(req, res).catch((err: unknown) => {
+          console.error('stats', err); // (the database gone wrong, or closed under us: an answer, not a crash)
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('null');
+        });
       } else if (path.startsWith(`${PICTURES_PATH}/`)) {
         if (!pictures) return void res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found');
         pictures.serve(path, req, res);
@@ -222,7 +230,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   http.on('upgrade', (req, socket, head) => {
     if (req.url?.split('?')[0] !== '/ws') return socket.destroy();
     const open = (account: Account | null): void => wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, account));
-    // Who a socket is signed in as is what its cookie says as it opens, and stays so for as long as it is open.
+    // Who a socket is signed in as is what its cookie says as it opens, and stays so for as long as it is open (`signed`).
     if (!accounts || !req.headers.cookie || req.headers.origin !== home) return open(null);
     const gone = (): void => void socket.destroy(); // (a socket that fails while we ask must not be an error nobody listens for)
     socket.on('error', gone);
@@ -234,6 +242,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
   wss.on('connection', (ws: WebSocket, account: Account | null) => {
     alive.add(ws);
+    if (account) signed.set(ws, account);
     let room: Room | null = null;
     // Token bucket: a few seconds of burst, then `rate` messages per second.
     let allowance = rate * RATE_BURST_SECONDS;
@@ -275,7 +284,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
     ws.on('pong', () => alive.add(ws));
     ws.on('error', () => {}); // e.g. an oversized frame; 'close' follows and does the cleanup
-    ws.on('close', () => guard("a socket's close", detach));
+    ws.on('close', () => (signed.delete(ws), guard("a socket's close", detach)));
     ws.on('message', (data, isBinary) => {
       const now = Date.now();
       allowance = Math.min(rate * RATE_BURST_SECONDS, allowance + ((now - refilled) / 1000) * rate) - 1;
@@ -296,7 +305,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
             target = new Room(freshCode(), { flipMs, hearMs, deal: options.deal, record });
           }
-          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', account?.id ?? null, account?.picture ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
+          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', signed.get(ws) ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);
           rooms.set(target.code, target);
           idleSince.delete(target);

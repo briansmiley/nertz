@@ -341,6 +341,19 @@ const MAX_ID_LENGTH = 64;
 
 export const isRoomCode = (s: string): boolean => ROOM_RE.test(s);
 
+/**
+ * Where someone's page is (`Account.handle`), as it is kept: 3 to 20 lowercase letters and digits, with single hyphens
+ * between them. Drawn at random until its owner claims one of their own (server/accounts.ts).
+ */
+export const MAX_HANDLE_LENGTH = 20;
+const HANDLE_RE = new RegExp(`^(?=.{3,${MAX_HANDLE_LENGTH}}$)[a-z0-9]+(?:-[a-z0-9]+)*$`);
+export const isHandle = (s: string): boolean => HANDLE_RE.test(s);
+/** `s`, in any case, as the handle it is: null for none it could be. */
+export const handleOf = (s: string): string | null => {
+  const handle = s.toLowerCase();
+  return isHandle(handle) ? handle : null;
+};
+
 export function randomRoomCode(rng: () => number = Math.random): string {
   let code = '';
   for (let i = 0; i < ROOM_CODE_LENGTH; i++) {

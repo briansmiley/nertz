@@ -613,11 +613,12 @@ server/   Node http + ws
   room.ts       one table: seats, host, rounds, intent handling, the deal, start and grace timers, bot timers, the relay of card positions, snapshots. No IO.
   bot.ts        the bot's whole brain: chooseIntent, a pure function from its redacted view to one intent
   chat.ts       one table's chat history, rate limit, host switches, voice presence and signalling relay. No IO.
-  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list), /api/auth, /profile, /stats
+  index.ts      http server, websocket upgrade on /ws, room registry, static files from dist/, /healthz, /tables (the home page's list), /api/auth, /profile, /stats and /stats/<handle>
   db.ts         what outlives the process: the one SQLite file, and the tables of ours in it
   accounts.ts   signing in with Google or a code by email (Better Auth): the only file that knows how
   profile.ts    /profile: one's own name to go by, and one's account deleted
-  rounds.ts     every round played to its end, kept; and one person's record of them
+  stats.ts      /stats: one's own record; /stats/<handle>: someone's page, their record and yours against them
+  rounds.ts     every round played to its end, kept; one person's record of them, and how they have done against another
   reports.ts    what players send with the bug button, kept
   guard.ts      what every message, timer, snapshot and socket close runs inside: a throw is logged, and every other table carries on
 client/   Vite + React
@@ -630,6 +631,7 @@ client/   Vite + React
   clearFirst.tsx  what your finished pile does while it waits for the tray: a nod, a shake when you try something else, and then its words
   Finale.tsx    the end of a round: the wash on the felt and each player's pile gathered in front of their seat (a canvas), and where the labels go
   App.tsx       home, lobby and score sheet
+  address.ts    whose page the address is (`/u/<handle>`): going to one and back again, and the browser's own back
   Settings.tsx  the corner (the menu button, and your settings it leads to, the host's table settings at their foot), the table rules on the lobby sheet, and the small icon buttons the sheets share
   actions.ts    what can be done to the table during a round (pause, the vote to end it, deal again, leave): the one rule for each of whether it is open to you
   Menu.tsx      the menu: mute, those actions, and the way to settings and feedback
@@ -811,9 +813,21 @@ word), with a **Sign in** button beside it, and writes the name they play under 
 remembers goes straight to it). Signing in
 is with Google or with a code sent to their email (two equal buttons; the email one opens in its place into the address
 and Send code), and they are then known across tables and visits. Signed in, their
-picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by (theirs to change), their record over the rounds they played
+picture (or initial) and name take the Guest's place, and pressing them turns the pad over to their page: the name they go by and, under it, their page's address (`/u/<handle>`; both theirs to change, where they are written: a
+new handle is asked for with Set or Enter, which says Taken, or Failed, when it is not had), a **Private** switch at the end of the name's line,
+their record over the rounds they played
 signed in, deleting their account at the foot on the left and signing out on the right. The pad turns over like a card,
-to their page or the way in and back again (with reduced motion, the other side simply comes up).
+to their page or the way in and back again (with reduced motion, the other side simply comes up). Turned to their page,
+the address is their page's (`/u/<handle>`, and it follows a handle changed there): the browser's back turns it over again, and that address, opened by them
+signed in, is the home page with the pad turned to it. The address is the only thing that says the pad is turned to
+their page (`client/address.ts`); signing out of it, or deleting the account, goes back to `/`.
+
+Everyone signed in also has a page for others to see, at `/u/<handle>`: their name and the picture they put up (never Google's; their initial without one), their record, and under it the
+record of whoever is looking against them. Only someone signed in can see it (anyone else is shown the way in, which
+comes back to it). At a table, someone signed in sees the names of the others signed in there as links to their pages,
+in the lobby and on the score sheet; each opens in a tab of its own, so the table stays where it is. A page made
+**Private** is its owner's alone: to anyone else it is not there (the same 404 as a handle that is nobody's), and their
+name at a table is no link, from the moment it is switched on (tables they are at are told at once).
 
 ### What is kept
 
@@ -830,10 +844,19 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
 - **Accounts**: Better Auth's own tables (user, session, account, verification), which it brings up to date on boot:
   who signed in, as Google or their email says. Nothing of ours writes to them.
 - **Profiles** (`profile`): who someone is at the table, theirs to change: for now the name they go by (null until a
-  new email account chooses one). Made with the account (from Google's first name), and gone with it.
+  new email account chooses one). Made with the account (from Google's first name), and gone with it. With it its
+  `handle`, naming their page (`/u/<handle>`): made from the name they go by (`Zoë Q` is `zoe-q`; `ada-2`, `ada-3`, …
+  where it is someone else's or kept for the site), or for a profile with no name, six letters and digits drawn at
+  random (`k3f9x2`: none of 0 o 1 l i) until the first name it takes, which it then follows. Theirs to change for one of
+  their own (`handle_chosen`), after which nothing makes one for them again. A handle is 3 to 20 lowercase letters and digits with
+  single hyphens between them, nobody else's and none of the few kept for the site (`RESERVED_HANDLES`,
+  `server/accounts.ts`); a changed one frees the old, whose links then lead nowhere (no aliases). Profiles made before
+  there were handles are given theirs when the server starts, made the same way (the first to have signed up has the
+  name's own). And whether that page is `private` (off unless they switch it on).
 
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
-else. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
+else: the room tells someone signed in only where the others signed in have their pages (`PlayerView.handle`), unless
+a page is private, and a guest not even that. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
 page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
 (`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
 
@@ -844,10 +867,21 @@ cards played to the middle in all and the most of each in one round, nertz cards
 and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of
 the others in a round who scored less, a tie counting half, averaged over the rounds with someone else in them: 1 for
 first, 0 for last and ½ for the middle of a table of any size (an average place would mean something else at two than at
-six). Your page shows it as a percentage, and the sums as so much a round.
+six). Your page shows it as a percentage, and the sums as so much a round. Rounds won against the odds (`odds`) weighs
+each win by the table: the rounds won (a tie at the top shared among those in it) over the 1 in n chance gives each at a
+table of n, both summed over the rounds with someone else in them; 1× is chance, and a win at a table of ten counts five
+times one at a table of two.
+
+`GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
+them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null
+on one's own page). The handle may come in any case. 401 for nobody signed in, before anything is looked up, so nobody else can tell whether a handle is
+anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it), and for a private page asked
+for by anyone but its owner, so that it cannot be told from one that is nobody's.
 
 `/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
-nobody signed in); `PUT {name}` a new name to go by; `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
+nobody signed in); `PUT {name?, handle?, private?}` a new name to go by, a handle of their own (in any case: kept in
+lower), whether their page is private, or any of them together (anything else, or none, is a 400; a handle someone else
+has, or one kept for the site, is a 409, and then nothing is changed); `DELETE` the account. Changes are taken only from `PUBLIC_URL`.
 Deleting takes the profile, the user, its sessions and its link to Google in one transaction, and leaves their hands and
 reports kept as nobody's, with no name to them; any table they are sitting at plays on with them as a guest. Someone who
 asks with the bug button instead (`public/privacy.html` says they may) is deleted by hand: with the database open, run

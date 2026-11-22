@@ -4,6 +4,9 @@
 // Who signed in is Better Auth's `user`, as Google or their email says, and nothing here writes to it. One email is one
 // user, whichever way they come in by: Google's word for an address and a code sent to it are both proof of it. Who they are at the table is
 // their `profile` (server/db.ts), ours, theirs to change: made with the account, from Google's first name, and gone with it.
+// Where their page is, its `handle`, is made with it from the name they go by (drawn at random for none, and following
+// the first name they take, until they choose one themselves), and theirs to change: what anyone else is shown of
+// them, never the account's id.
 //
 // The game runs without any of this. Accounts are on when there is a database to keep them in (server/db.ts) and the
 // environment gives a way in: a Google OAuth client, a Resend key, or both (see .env.example); otherwise /api/auth
@@ -12,13 +15,14 @@
 // Better Auth does the work: the OAuth exchange, the session cookie, and its own tables (user, session, account,
 // verification) in the database, which it brings up to date on boot. This file is the only one that knows it.
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomInt } from 'node:crypto';
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
-import { cleanName } from '../shared/protocol';
+import { cleanName, isHandle, MAX_HANDLE_LENGTH } from '../shared/protocol';
 import type { Account, Way } from '../shared/types';
 import { transaction, type Db } from './db';
 import { pictureUrl } from './pictures';
@@ -36,8 +40,20 @@ export interface Accounts {
    * for a few minutes). Never rejects: asking gone wrong is said in the log, and is nobody.
    */
   who(headers: IncomingHttpHeaders): Promise<Account | null>;
-  /** Gives `account` a name to go by, already clean and not empty. */
-  rename(account: string, name: string): void;
+  /** Whose page `handle` is, the name they go by, the picture they put up, and whether it is theirs alone: null for nobody's. */
+  whose(handle: string): { id: string; name: string | null; picture: string | null; private: boolean } | null;
+  /**
+   * Gives `account` a name to go by, already clean and not empty: the handle it has now, which is made from that name
+   * if it is the first it has taken and its handle is still the one made for it.
+   */
+  rename(account: string, name: string): string;
+  /**
+   * Moves `account`'s page to `handle` (one `isHandle`), chosen: freeing the one it had, and never made for it again. False, and
+   * nothing changed, for one that is someone else's or kept for the site's own.
+   */
+  rehandle(account: string, handle: string): boolean;
+  /** Makes `account`'s page its own alone, or anyone's signed in again. */
+  setPrivate(account: string, on: boolean): void;
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
   repicture(account: string, id: string | null): string | null;
   /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
@@ -118,11 +134,79 @@ export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsO
 /** The name a profile starts from: the first of the names Google gives, null for none. */
 export const firstName = (name: string): string | null => cleanName(name.trim().split(' ')[0] ?? '') || null;
 
+/** Handles that would read as the site's own: nobody's to claim (and never drawn). */
+export const RESERVED_HANDLES: ReadonlySet<string> = new Set(
+  'about account accounts admin administrator api app auth anonymous bot bots everyone guest help here home login logout me mod moderator new nertz null official pictures privacy profile root settings signin signout signup staff stats status support system terms u undefined user users www you'.split(' '),
+);
+
+/** What a handle is drawn from: lowercase letters and digits, but for those easily taken for one another (0 o, 1 l i). */
+export const HANDLE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+export const DRAWN_HANDLE_LENGTH = 6;
+
+/** A handle drawn at random, `k3f9x2`: one in about 900 million, so a clash with one kept is rare, and drawn again. */
+export function drawHandle(): string {
+  for (;;) {
+    let handle = '';
+    for (let i = 0; i < DRAWN_HANDLE_LENGTH; i++) handle += HANDLE_ALPHABET[randomInt(HANDLE_ALPHABET.length)];
+    if (!RESERVED_HANDLES.has(handle)) return handle;
+  }
+}
+
+/**
+ * The handle a name makes: in lower case with its accents dropped, its letters and digits, anything else between them
+ * one hyphen, cut to the most a handle can be. Null for a name with nothing in it a handle can have. (Not always a
+ * handle by itself: `Al` makes `al`, one too short.)
+ */
+export function handleFrom(name: string): string | null {
+  const words = name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return words.slice(0, MAX_HANDLE_LENGTH).replace(/-$/, '') || null;
+}
+
+/** How far a name is counted on (`ada-2`, `ada-3`, …) before handles are drawn at random instead. */
+export const NAMED_TRIES = 99;
+
+/**
+ * The handles a profile could be given, best first: its name's, then that with `-2`, `-3`, …; with no name to make one
+ * from (or every count taken), handles drawn at random. Some may be no handle or kept for the site: `giveHandle` skips them.
+ */
+export function* handlesFor(name: string | null, draw = drawHandle): Generator<string> {
+  const made = name === null ? null : handleFrom(name);
+  if (made) {
+    yield made;
+    for (let n = 2; n <= NAMED_TRIES; n++) yield `${made.slice(0, MAX_HANDLE_LENGTH - `-${n}`.length).replace(/-+$/, '')}-${n}`;
+  }
+  for (;;) yield draw();
+}
+
+/** Whether `err` is the database refusing a handle someone else has (the unique index on `profile.handle`). */
+const taken = (err: unknown): boolean => err instanceof Error && /UNIQUE constraint failed: profile\.handle/.test(err.message);
+
+/**
+ * Runs `give` with the first of `handles` that is one, not the site's, and nobody's (the database says, by its unique
+ * index). A few clashes past the name's (more would mean something else is wrong) is an error.
+ */
+export function giveHandle(give: (handle: string) => void, handles: Iterable<string>): void {
+  let clashes = 0;
+  for (const handle of handles) {
+    if (!isHandle(handle) || RESERVED_HANDLES.has(handle)) continue;
+    try {
+      return give(handle);
+    } catch (err) {
+      if (!taken(err) || ++clashes >= NAMED_TRIES + 8) throw err;
+    }
+  }
+}
+
 /** Google's keys to someone's account, which signing in hands over and nothing here needs. */
 const NO_KEYS = { accessToken: null, refreshToken: null, idToken: null };
 
 export async function openAccounts(db: Db, options: AccountsOptions): Promise<Accounts> {
-  const made = db.prepare('insert into profile (account, name) values (?, ?) on conflict do nothing');
+  // A profile, made with its account (its name from Google's, if it came from there) and a handle made from that name.
+  const made = db.prepare('insert into profile (account, name, handle) values (?, ?, ?) on conflict (account) do nothing');
+  const make = (account: string, googled: string): void => {
+    const name = firstName(googled);
+    giveHandle((handle) => made.run(account, name, handle), handlesFor(name));
+  };
   const allowance = codeAllowance();
   const config = {
     appName: 'Nertz',
@@ -175,7 +259,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       user: {
         create: {
           before: async (user, ctx) => (ctx?.path?.startsWith('/callback/') ? undefined : { data: { ...user, name: '', image: null } }),
-          after: async (user) => void made.run(user.id, firstName(user.name)),
+          after: async (user) => make(user.id, user.name),
         },
       },
       session: { create: { before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }) } },
@@ -191,9 +275,19 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   // Anyone signed up before there were profiles has one made now, as if just signed up. (Here, not in db.ts: `user` is
   // not there until Better Auth has made it.)
   const unmade = db.prepare('select id, name from "user" where id not in (select account from profile)').all() as { id: string; name: string }[];
-  if (unmade.length) transaction(db, () => unmade.forEach((u) => made.run(u.id, firstName(u.name))));
-  const named = db.prepare('select name, picture from profile where account = ?');
+  if (unmade.length) transaction(db, () => unmade.forEach((u) => make(u.id, u.name)));
+  // A handle made for a profile, not chosen: from its name, as a new one's is.
+  const handled = db.prepare('update profile set handle = ? where account = ?');
+  const handleFor = (account: string, name: string | null): void => giveHandle((handle) => handled.run(handle, account), handlesFor(name));
+  // And any profile made before there were pages is given its handle now (server/db.ts says why here): the first to
+  // have signed up has the name's own, and anyone after with the same name the next count.
+  const unhandled = db.prepare('select account, profile.name from profile left join "user" on "user".id = account where handle is null order by "user".createdAt, account').all() as { account: string; name: string | null }[];
+  if (unhandled.length) transaction(db, () => unhandled.forEach(({ account, name }) => handleFor(account, name)));
+  const named = db.prepare('select name, picture, handle, private, handle_chosen from profile where account = ?');
+  const whose = db.prepare('select account as id, name, picture, private from profile where handle = ?');
   const rename = db.prepare('update profile set name = ? where account = ?');
+  const rehandle = db.prepare('update profile set handle = ?, handle_chosen = 1 where account = ?');
+  const setPrivate = db.prepare('update profile set private = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
   const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
   const auth = betterAuth(config);
@@ -204,10 +298,33 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
     who: async (headers) => {
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
-      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null } | undefined);
-      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture) } : null;
+      const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null; handle: string; private: number } | undefined);
+      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle, private: profile.private === 1 } : null;
     },
-    rename: (account, name) => void rename.run(name, account),
+    whose: (handle) => {
+      const them = whose.get(handle) as { id: string; name: string | null; picture: string | null; private: number } | undefined;
+      return them ? { ...them, picture: them.picture && pictureUrl(them.picture), private: them.private === 1 } : null;
+    },
+    // (The one place a name is taken, and so where the handle made for a profile with none follows its first.)
+    rename: (account, name) =>
+      transaction(db, () => {
+        const had = named.get(account) as { name: string | null; handle: string; handle_chosen: number } | undefined;
+        rename.run(name, account);
+        if (had && had.name === null && !had.handle_chosen) handleFor(account, name);
+        return (named.get(account) as { handle: string }).handle;
+      }),
+    // (The one place a handle is claimed. Whether it is free is the database's to say: its unique index.)
+    rehandle: (account, handle) => {
+      if (!isHandle(handle) || RESERVED_HANDLES.has(handle)) return false;
+      try {
+        rehandle.run(handle, account);
+        return true;
+      } catch (err) {
+        if (taken(err)) return false;
+        throw err;
+      }
+    },
+    setPrivate: (account, on) => void setPrivate.run(on ? 1 : 0, account),
     // (Read and written with nothing between: the database is this process's alone, and node:sqlite is synchronous.)
     repicture: (account, id) => {
       const had = (named.get(account) as { picture: string | null } | undefined)?.picture ?? null;
