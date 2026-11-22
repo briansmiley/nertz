@@ -1,5 +1,5 @@
-# Fly.io config for both apps (see README "Hosting"): `nertz`, and `nertz-staging`, which
-# .github/workflows/deploy.yml names with --app.
+# Fly.io config for every app (see README "Hosting" and "Previews"): `nertz`, `nertz-staging` (.github/workflows/deploy.yml)
+# and the PR previews `nertz-pr-<number>` (.github/workflows/preview.yml), each named with --app.
 app = "nertz"
 primary_region = "sjc"
 

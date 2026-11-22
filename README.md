@@ -678,7 +678,7 @@ is a few kilobytes and a busy table is a few messages a second.
 - Every pull request into `staging` from a branch of this repo (not a fork: those get no secrets) gets its own app,
   `nertz-pr-<number>`, at **https://nertz-pr-&lt;number&gt;.fly.dev**. `.github/workflows/preview.yml` runs the checks and
   deploys the merge of the PR into staging on each push, and keeps one comment on the PR with the address.
-- Set up like the real apps (`fly.preview.toml`, as `fly.toml`): one machine, suspended when idle,
+- Set up like the real apps (the same `fly.toml`, with `--app`): one machine, suspended when idle,
   and a 1 GB `nertz_data` volume at `/data`, so accounts, pictures and anything else kept outlive pushes to the PR. The
   workflow makes the volume once, before the first deploy, since a mount added to a machine with no volume destroys it.
 - A new preview starts from a copy of **staging's database**, taken when its volume is made and never again: read-only

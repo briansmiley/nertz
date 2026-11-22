@@ -67,7 +67,7 @@ jobs:
       - name: Its volume, before any deploy mounts it
         id: volume
         run: |
-          # fly.preview.toml mounts nertz_data at /data, as fly.toml does: accounts and pictures outlive pushes. It has to
+          # fly.toml mounts nertz_data at /data: accounts and pictures outlive pushes. It has to
           # be made before the first deploy, since a mount added to a machine that has no volume destroys the machine.
           # Listed on its own line: a list that fails stops the step, rather than making a second volume.
           volumes=$(flyctl volumes list --app "$APP" --json)
@@ -130,7 +130,7 @@ jobs:
           # Staged: the deploy below takes them up.
           flyctl secrets set --app "$APP" --stage "$@"
       - name: Deploy
-        run: flyctl deploy --app "$APP" --config fly.preview.toml --remote-only --ha=false
+        run: flyctl deploy --app "$APP" --config fly.toml --remote-only --ha=false
       - name: The copy in place
         id: place
         if: steps.seed.outcome == 'success'
@@ -149,14 +149,19 @@ jobs:
         env:
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          body="$MARK
-          Preview: https://$APP.fly.dev (at ${SHA:0:7})"
+          # One comment per PR: the address once, then a line for each deploy, so it keeps its own history.
+          line="- $(date -u '+%Y-%m-%d %H:%M UTC'): deployed [\`${SHA:0:7}\`](https://github.com/$GITHUB_REPOSITORY/commit/$SHA)"
           id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARK\"))) | .id" | head -n 1)
           if [ -n "$id" ]; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+            was=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$was
+          $line" > /dev/null
           else
-            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" > /dev/null
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$MARK
+          Preview: https://$APP.fly.dev
+
+          $line" > /dev/null
           fi
 
   destroy:
@@ -185,6 +190,7 @@ jobs:
           id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARK\"))) | .id" | head -n 1)
           if [ -n "$id" ]; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$MARK
-          Preview taken down with the PR, and its volume with it." > /dev/null
+            was=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$was
+          - $(date -u '+%Y-%m-%d %H:%M UTC'): taken down with the PR, its volume with it" > /dev/null
           fi
