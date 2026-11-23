@@ -132,7 +132,7 @@ function recordOf(stats: Stats): Figure[] {
   return [
     [written(stats.rounds), stats.rounds === 1 ? 'round' : 'rounds'],
     [stats.rounds ? `${written(stats.won)}–${written(stats.rounds - stats.won)}` : '–', 'W–L'],
-    [stats.odds === null ? '–' : `${written(stats.odds, 1)}×`, 'vs chance', 'Rounds won, against 1 in n at a table of n: 1× is chance'],
+    [stats.odds === null ? '–' : `${written(stats.odds, 1)}×`, 'fair share', 'Rounds won, against winning 1 in n at a table of n: 1× is your fair share'],
     [written(stats.nertz), 'Nertz'],
     [stats.ahead === null ? '–' : `${written(stats.ahead * 100)}%`, 'ahead', 'Average ending rank: 1st = 100%, last = 0%'],
     [per(stats.points), 'avg score'],
