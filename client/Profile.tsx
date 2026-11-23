@@ -1,10 +1,11 @@
 // You, signed in: the name you go by and where your page is (both yours to change), your record, whether your page is
 // yours alone, and the ways out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
 // opened by pressing their name at a table: their record, and yours against them.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cleanName, handleOf, MAX_HANDLE_LENGTH, MAX_NAME_LENGTH } from '../shared/protocol';
 import { AMONG, type Account, type Among, type Stats, type Versus } from '../shared/types';
 import { deleteAccount, rehandle, rename, repicture, setPrivate, signOut, usePage, useStats, type Crop } from './account';
+import { useDismiss } from './dismiss';
 import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
@@ -13,7 +14,7 @@ const written = (n: number, places = 0): string => {
   return n < 0 && Number(text) !== 0 ? `−${text}` : text;
 };
 
-/** Which rounds are counted (every one, or one kind), drawn (people, bots, or both), and said in their tooltip. */
+/** Which rounds are counted (every one, or one kind), drawn (people, bots, or both), and said. */
 const AMONG_DRAWN: Record<Among, { title: string; draw: React.JSX.Element }> = {
   all: {
     title: 'All',
@@ -94,17 +95,70 @@ function useAmong(): [Among, (a: Among) => void] {
   return [among, choose];
 }
 
-/** The rounds to count, by who held hands in them: on a record, and on how much the game is played (Usage.tsx). */
+/** A choice of rounds as it is shown: its drawing and its word. */
+const drawn = (a: Among): React.JSX.Element => (
+  <>
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      {AMONG_DRAWN[a].draw}
+    </svg>
+    {AMONG_DRAWN[a].title}
+  </>
+);
+
+/**
+ * The rounds to count, by who held hands in them: on a record, and on how much the game is played (Usage.tsx). The one
+ * chosen; pressed, all of them on a slip over what is under it (above it where there is no room below), put away by
+ * choosing, by Esc, or by a press anywhere else.
+ */
 export function Which({ among, choose }: { among: Among; choose: (a: Among) => void }) {
+  const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
+  const here = useRef<HTMLDivElement>(null);
+  const shown = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  useDismiss(here, open, () => setOpen(false));
+  useLayoutEffect(() => {
+    if (!open) return;
+    const { top, bottom } = shown.current!.getBoundingClientRect();
+    const tall = list.current!.offsetHeight;
+    setUp(innerHeight - bottom < tall && top >= tall);
+    list.current!.querySelector<HTMLElement>('[aria-selected="true"]')?.focus({ preventScroll: true });
+  }, [open]);
+  /** Put away, with the focus back on what opened it. */
+  const shut = (): void => (setOpen(false), shown.current?.focus());
+  const onKey = (e: React.KeyboardEvent): void => {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), setOpen(true));
+      return;
+    }
+    if (e.key === 'Tab') return shut(); // (and the Tab goes on from the button)
+    const options = [...list.current!.querySelectorAll<HTMLElement>('[role="option"]')];
+    const at = options.indexOf(document.activeElement as HTMLElement);
+    const moves: Record<string, number | undefined> = { ArrowDown: Math.min(at + 1, options.length - 1), ArrowUp: Math.max(at - 1, 0), Home: 0, End: options.length - 1 };
+    const to = moves[e.key];
+    if (to === undefined && e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation(); // (Esc puts this away, and not the slip it may be on)
+    if (to === undefined) shut();
+    else options[to]!.focus();
+  };
   return (
-    <div className="among" role="radiogroup" aria-label="Which rounds">
-      {AMONG.map((a) => (
-        <button key={a} type="button" role="radio" aria-checked={a === among} aria-label={AMONG_DRAWN[a].title} data-tip={AMONG_DRAWN[a].title} onClick={() => choose(a)}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            {AMONG_DRAWN[a].draw}
-          </svg>
-        </button>
-      ))}
+    <div ref={here} className="among" onKeyDown={onKey}>
+      <button ref={shown} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`Which rounds: ${AMONG_DRAWN[among].title}`} onClick={() => setOpen(!open)}>
+        {drawn(among)}
+        <svg className="caret" viewBox="0 0 10 6" aria-hidden="true">
+          <path d="M1 1l4 4 4-4" />
+        </svg>
+      </button>
+      {open && (
+        <div ref={list} className={up ? 'up' : undefined} role="listbox" aria-label="Which rounds">
+          {AMONG.map((a) => (
+            <button key={a} type="button" role="option" aria-selected={a === among} tabIndex={-1} onClick={() => (choose(a), shut())}>
+              {drawn(a)}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -157,10 +211,17 @@ function versusOf(v: Versus): Figure[] {
   ];
 }
 
-/** Your record: the figures, and under each what it counts, over the rounds `among` says. */
-function Record({ among }: { among: Among }) {
+/** Your record: the figures, and under each what it counts, over the rounds `among` says, chosen under them (and still there to choose again if an answer fails). */
+function Record({ among, choose }: { among: Among; choose: (a: Among) => void }) {
   const stats = useStats(among);
-  return stats && <Figures figures={recordOf(stats)} />;
+  const had = useRef(false);
+  had.current ||= stats !== null;
+  return (
+    <>
+      {stats && <Figures figures={recordOf(stats)} />}
+      {had.current && <Which among={among} choose={choose} />}
+    </>
+  );
 }
 
 /**
@@ -177,9 +238,9 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         {head}
         {known && <TheirPicture picture={known.picture} name={known.name} />}
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
-        {page !== 'none' && <Which among={among} choose={choose} />}
       </div>
       {known && <Figures figures={recordOf(known.stats)} />}
+      {known && <Which among={among} choose={choose} />}
       {known?.versus && (
         <div className="versus">
           <h3>You vs {known.name ?? 'them'}</h3>
@@ -401,9 +462,8 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
           <YourHandle account={account} />
         </div>
         <Private account={account} />
-        <Which among={among} choose={choose} />
       </div>
-      <Record among={among} />
+      <Record among={among} choose={choose} />
       <div className="outs">
         <button type="button" className="gone" onClick={() => setDeleting(true)}>
           Delete account
