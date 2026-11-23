@@ -80,7 +80,7 @@ const rememberedAmong = (): Among => {
   }
 };
 
-/** Which rounds a record counts, as last chosen in this browser (one choice, for anyone's record). */
+/** Which rounds a record counts, as last chosen in this browser (one choice, for anyone's record), and `humans` until one is made. */
 function useAmong(): [Among, (a: Among) => void] {
   const [among, setAmong] = useState(rememberedAmong);
   const choose = (a: Among): void => {
