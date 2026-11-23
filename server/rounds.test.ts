@@ -24,7 +24,7 @@ describe('rounds kept', () => {
   afterEach(() => db.close());
 
   it('someone who has played nothing has a record of noughts', () => {
-    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
+    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
   });
 
   it("adds up one person's rounds: how many, their points, cards played and nertz left, the most of each, and the ones they got Nertz in", () => {
@@ -32,8 +32,8 @@ describe('rounds kept', () => {
     rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)], { by: 'nertz', seat: 0, out: [0] }));
     rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4)], { by: 'nertz', seat: 0, out: [0, 1] }, 2)); // (ada went out too, without calling)
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], { by: 'jam' }, 3));
-    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, odds: 4 / 3, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
-    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, odds: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
+    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
+    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
   });
 
   it('a round is won by everyone with its best score, against a guest or a bot as against anyone; alone, by nobody', () => {
@@ -64,23 +64,6 @@ describe('rounds kept', () => {
     } finally {
       middle.close();
     }
-  });
-
-  it('weighs a win by the odds against it: a round won at a table of ten counts five times one won at two, and a tie at the top is shared', () => {
-    const rounds = openRounds(db);
-    rounds.keep(round([hand(0, 'ada', 20), ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => hand(s, null, s))])); // won, against 1 in 10
-    rounds.keep(round([hand(0, 'ada', 1), hand(1, 'bob', 5)], undefined, 2)); // lost, against 1 in 2
-    rounds.keep(round([hand(0, 'ada', 30)], undefined, 3)); // (alone: nothing to win)
-    expect(rounds.stats('ada')).toMatchObject({ won: 1 });
-    expect(rounds.stats('ada').odds).toBeCloseTo(1 / (0.1 + 0.5));
-    expect(rounds.stats('bob').odds).toBe(2); // won the one round, against 1 in 2
-    // Two of three level at the top: each has half a win, against a third of one.
-    rounds.keep(round([hand(0, 'cy', 6), hand(1, 'di', 6), hand(2, null, 2)], undefined, 4));
-    expect(rounds.stats('cy')).toMatchObject({ won: 1 });
-    expect(rounds.stats('cy').odds).toBeCloseTo(1.5);
-    // No round, or only one played alone: no odds to be against.
-    rounds.keep(round([hand(0, 'zed', 9)], undefined, 5));
-    expect([rounds.stats('eve').odds, rounds.stats('zed').odds]).toEqual([null, null]);
   });
 
   it("says how one person has done against another, over the rounds they both played: who finished ahead, and each one's points", () => {
@@ -354,7 +337,7 @@ describe('over the wire', () => {
     const [ada, bob, guest] = [new Browser(server.port), new Browser(server.port), new Browser(server.port)];
     await ada.signIn(ADA);
     await bob.signIn(BOB);
-    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
+    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
     expect(await (await ada.ask('/stats?among=humans')).json()).toMatchObject({ rounds: 0 });
     expect((await ada.ask('/stats?among=no-bots')).status).toBe(400); // (as it once was said)
     expect((await ada.ask('/stats?among=robots')).status).toBe(400);

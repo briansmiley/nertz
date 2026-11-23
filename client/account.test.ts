@@ -43,8 +43,8 @@ describe('who the server says is signed in', () => {
 });
 
 describe('the record the server says is theirs', () => {
-  const record = { rounds: 42, won: 17, odds: 1.84, nertz: 9, points: 261, bestPoints: 23, cards: 1010, bestCards: 38, nertzLeft: 210, ahead: 0.62, snipes: 31, sniped: 12 };
-  const none = { rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 };
+  const record = { rounds: 42, won: 17, nertz: 9, points: 261, bestPoints: 23, cards: 1010, bestCards: 38, nertzLeft: 210, ahead: 0.62, snipes: 31, sniped: 12 };
+  const none = { rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 };
 
   it('is what it says, and nothing else it may have sent along', () => {
     expect(readStats(200, { ...record, extra: 'x' })).toEqual(record);
@@ -59,14 +59,12 @@ describe('the record the server says is theirs', () => {
     expect(readStats(200, { ...record, bestPoints: undefined })).toBeNull();
     expect(readStats(200, { ...record, cards: 10.5 })).toBeNull();
     expect(readStats(200, { ...record, ahead: 1.2 })).toBeNull();
-    expect(readStats(200, { ...record, odds: -1 })).toBeNull();
-    expect(readStats(200, { ...record, odds: undefined })).toBeNull();
     expect(readStats(200, { ...record, place: 1.8, ahead: undefined })).toBeNull(); // (the record as it was)
   });
 });
 
 describe("someone's page, as the server says it", () => {
-  const stats = { rounds: 3, won: 1, odds: 1.2, nertz: 0, points: 12, bestPoints: 9, cards: 30, bestCards: 14, nertzLeft: 6, ahead: 0.5, snipes: 1, sniped: 2 };
+  const stats = { rounds: 3, won: 1, nertz: 0, points: 12, bestPoints: 9, cards: 30, bestCards: 14, nertzLeft: 6, ahead: 0.5, snipes: 1, sniped: 2 };
   const versus = { rounds: 2, ahead: 1, behind: 0, points: 10, theirs: 4 };
 
   it('is their name, their record and yours against them; on your own, nobody to be against', () => {
