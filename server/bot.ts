@@ -55,7 +55,8 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
 
 /**
  * One look at the table. Rules in priority order; every candidate move is
- * noticed with a probability, and the highest-priority noticed one is taken:
+ * noticed with a probability, and the highest-priority noticed one is taken. A group once started is finished first:
+ * with a card or two of it dealt, a bot does nothing but a and b (which it cannot put off) until the third lands.
  *
  *   a. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
  *   b. nertz pile empty: call Nertz (always noticed)
@@ -65,7 +66,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  *      (an Ace, in c or e, is always noticed: nobody deals past an Ace)
  *   f. a work pile's whole face-up run onto another pile, if that turns over a face-down card or empties the pile
  *   g. waste top onto a work pile it builds down on
- *   h. deal one card off the stock (always noticed; three looks make a group); after a whole fruitless cycle, say "stuck" instead
+ *   h. deal one card off the stock (always noticed; the three of a group go one after another); after a whole fruitless cycle, say "stuck" instead
  *
  * Returns the intent and the memory to keep IF the intent is accepted, or null
  * when there is nothing to do: play has not opened, the round is called, it is
@@ -116,6 +117,8 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   if (finished >= 0) return acted({ k: 'clear', slot: finished });
   // b
   if (!nertz) return acted({ k: 'nertz' });
+  // A group half-dealt: it deals on. No chance to notice or play anything else, and no cycle check (it is not stuck mid-group).
+  if (me.dealt > 0) return { intent: { k: 'flip' }, memory: me.stuck ? memory : { ...memory, flips: memory.flips + 1 } };
   // c
   const out = slotFor(nertz);
   if (out && (ace(nertz) || noticed(NERTZ_FOCUS))) return acted(move(nertz, out));
