@@ -25,7 +25,7 @@ import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
-import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, rttNow, send as play, sit } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -41,15 +41,26 @@ const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
 /**
  * A card turned up by your own move before its face has come (`unseen`): it starts over at once, slower than a flip,
- * and waits at AJAR (degrees; 180 is face-down, 90 edge-on) with its back still showing. When the face comes it
- * finishes the turn (FINISH); if the move is refused it settles back down.
+ * with its back still showing (degrees; 180 is face-down, 90 edge-on). It is at AJAR after the OPENING, about one round
+ * trip (`rttNow`), when the face should come; if it hasn't, the card keeps on towards EDGE, ever slower, rather than
+ * stopping. When the face comes it finishes the turn (FINISH); if the move is refused it settles back down.
  */
 const AJAR = 125;
-const OPENING = () => ({ duration: calm() ? 0 : 0.22, ease: 'easeOut' }) as const;
-const FINISH = () => ({ duration: calm() ? 0 : 0.12, ease: 'easeIn' }) as const;
-const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? AJAR : 180);
+const EDGE = 100;
+/** Seconds. */
+const OPENING = () => clamp((rttNow() ?? 0) / 1000, 0.22, 0.8);
+/**
+ * The turn towards EDGE leaves the same share of the way still to go after every OPENING (as much as AJAR leaves), so it
+ * slows without ever stopping dead; OPENINGS of them bring it all but there.
+ */
+const LEFT = (AJAR - EDGE) / (180 - EDGE);
+const OPENINGS = 4;
+const towardsEdge = (p: number) => (1 - LEFT ** (OPENINGS * p)) / (1 - LEFT ** OPENINGS);
+const UNSEEN = () => ({ duration: calm() ? 0 : OPENINGS * OPENING(), ease: towardsEdge });
+const FINISH = () => ({ duration: calm() ? 0 : 0.08, ease: 'easeIn' }) as const;
+const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? EDGE : 180);
 /** How a card turns from showing `was` to showing `face`: the one place that is decided. */
-const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? OPENING() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
+const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? UNSEEN() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
