@@ -366,8 +366,9 @@ the first of these that applies:
 6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
    It never moves a run that gains nothing, and never undoes its own last run move.
 7. Waste top onto a work pile it builds down on (empty piles are kept for the nertz card).
-8. Otherwise deal one card off the stock (or turn the waste over). Three looks make a group, and at each of them it may
-   find something better to do with its other piles; the waste is out of play until the group is up, as for anyone. Once
+8. Otherwise deal one card off the stock (or turn the waste over). A group it has started it finishes: the rest of it
+   follows card after card, and until the last one is up it looks for nothing in 3 to 7 (a move the group buries is a
+   miss); the waste is out of play until the group is up, as for anyone. Once
    it has dealt all the way round to where it started without making a single move, it says "I'm stuck" (and keeps
    dealing, in case the middle changes). Any move starts the count again.
 
