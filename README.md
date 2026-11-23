@@ -875,8 +875,8 @@ page it is a guest's. The same account in two windows is one seat at a table: th
 shared/types.ts) over every round, or those of one kind (`GameKind`, by who held hands in the round, a guest counting as
 a person): no bots (humans; a round played alone is one too, though nobody is beaten in it), two people or more and bots
 (mixed: you, someone else and bots), or one person or none with the rest bots (bots: you alone with bots). Your page and
-someone else's choose among them with four small drawings, each named by its tooltip (All, Humans, Humans and bots,
-Bots); the choice is remembered in the browser. A record counts rounds
+someone else's choose among them under the record: the one chosen, as its drawing and its word (All, Humans, Humans and
+bots, Bots), and pressed, all four to choose from; the choice is remembered in the browser. A record counts rounds
 played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points and
 cards played to the middle in all and the most of each in one round, nertz cards left in all, how far ahead they finish,
 and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of
