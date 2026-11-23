@@ -882,10 +882,7 @@ cards played to the middle in all and the most of each in one round, nertz cards
 and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of
 the others in a round who scored less, a tie counting half, averaged over the rounds with someone else in them: 1 for
 first, 0 for last and ½ for the middle of a table of any size (an average place would mean something else at two than at
-six). Your page shows it as a percentage, and the sums as so much a round. Rounds won against the odds (`odds`) weighs
-each win by the table: the rounds won (a tie at the top shared among those in it) over the 1 in n chance gives each at a
-table of n, both summed over the rounds with someone else in them; 1× is chance, and a win at a table of ten counts five
-times one at a table of two.
+six). Your page shows it as a percentage, and the sums as so much a round.
 
 `GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
 them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null

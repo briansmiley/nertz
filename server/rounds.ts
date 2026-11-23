@@ -58,8 +58,6 @@ export function openRounds(db: Db): Rounds {
   // A round is won by the best score in it, by everyone who has it; a round of one hand is nobody's to win, and has no
   // one else to be ahead of. How far ahead someone finished is the share of the others in the round who scored less
   // than they did, a tie counting half: 1 for first, 0 for last, ½ for the middle of the table, whatever its size.
-  // Against the odds, a round won by k together is a k-th of a win, so that a round's wins add up to one, as the
-  // chances of its n hands, a 1/n each, do.
   const stats = db.prepare(
     `with mine as (
        select h.round, h.seat, h.delta, h.played, h.nertz_left, h.nertz,
@@ -69,7 +67,6 @@ export function openRounds(db: Db): Rounds {
          from hand h where h.account = $account)
      select count(*) as rounds,
             coalesce(sum(above = 0 and hands > 1), 0) as won,
-            sum(case when hands > 1 then (above = 0) / (level + 1.0) end) / sum(case when hands > 1 then 1.0 / hands end) as odds,
             coalesce(sum(nertz), 0) as nertz,
             coalesce(sum(delta), 0) as points,
             max(delta) as bestPoints,
@@ -121,7 +118,7 @@ export function openRounds(db: Db): Rounds {
     },
     stats: (account, among = 'all') => {
       const s = stats.get({ $account: account, $among: among }) as unknown as Stats;
-      return { rounds: s.rounds, won: s.won, odds: s.odds, nertz: s.nertz, points: s.points, bestPoints: s.bestPoints, cards: s.cards, bestCards: s.bestCards, nertzLeft: s.nertzLeft, ahead: s.ahead, snipes: s.snipes, sniped: s.sniped };
+      return { rounds: s.rounds, won: s.won, nertz: s.nertz, points: s.points, bestPoints: s.bestPoints, cards: s.cards, bestCards: s.bestCards, nertzLeft: s.nertzLeft, ahead: s.ahead, snipes: s.snipes, sniped: s.sniped };
     },
     versus: (account, other, among = 'all') => {
       const v = versus.get({ $account: account, $other: other, $among: among }) as unknown as Versus;
