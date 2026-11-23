@@ -145,7 +145,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   the word every nertz top is turned over and play is open for everyone at once. There is no time limit on the dealer.
 - **Small tables** bury fewer cards: with two players in the round no work pile has a face-down card (4 cards in the
   work piles, 35 in the stock); with three they have 0, 0, 1 and 2 (7 and 32); from four up the standard 0, 1, 2 and 3.
-  The nertz pile is 13 either way. This is the rule, not an option (`faceDown` in `shared/settings.ts`).
+  The nertz pile is 13 either way. This is the rule, not an option (`faceDown` in `shared/settings.ts`). It goes by how
+  many the round was dealt to: sitting down or standing up before Start changes nobody's cards, so until the round is
+  dealt again it stays as it was dealt.
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -219,7 +221,10 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   shown as away, your cards lie as they are, and the votes (stuck, end round) go on without you; you sit back down by
   pressing **Sit back down** (in the menu, or where "I'm stuck" was) or by playing a card, and if you have not by the
   time the round is over you are watching from then on. (Until the dealer has said Start nothing has been played: whoever sits down or
-  comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
+  comes back by then is dealt in, and **Stand up** gives your seat up to watch, your cards coming off the table. Neither
+  changes anyone else's cards. A hand is its seat's for the round: sit back down and you have the same seat (while
+  nobody else has taken it) and the same cards, and whoever takes a seat someone left has the cards dealt there. Only **Restart round** shuffles again.)
+  The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
   On that sheet the line of anyone no longer at the table (stood up to watch, waiting for a seat again, or gone) is
@@ -227,7 +232,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Standing someone up, sending someone away.** Whoever deals can do either to anyone else at any time, a round in
   play included: pressing a name at the table (or the eye and the × beside it on the lobby and the score sheet). Standing
   up gives the seat up to watch; sending away puts them out of the table altogether, and back by the same window they
-  are someone new. Between rounds either happens at once. In a round, it is the same for its cards whichever it is (and
+  are someone new. Between rounds either happens at once, and so it does until the dealer has said Start (their cards
+  come off the table). In a round, it is the same for its cards whichever it is (and
   the same as pressing Leave): their cards lie where they are, marked "left", and are scored as they lie; they play no
   more of it and no longer count in "I'm stuck", the vote to end the round, or whether the table is jammed, so those
   who remain can carry on, unstick or end it without them. The seat is held for those cards until the round is over.
