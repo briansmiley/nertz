@@ -53,9 +53,9 @@ const OPENING = () => clamp((rttNow() ?? 0) / 1000, 0.22, 0.8);
  * The turn towards EDGE leaves the same share of the way still to go after every OPENING (as much as AJAR leaves), so it
  * slows without ever stopping dead; OPENINGS of them bring it all but there.
  */
-const LEFT = (AJAR - EDGE) / (180 - EDGE);
+const REMAINING = (AJAR - EDGE) / (180 - EDGE);
 const OPENINGS = 4;
-const towardsEdge = (p: number) => (1 - LEFT ** (OPENINGS * p)) / (1 - LEFT ** OPENINGS);
+const towardsEdge = (p: number) => (1 - REMAINING ** (OPENINGS * p)) / (1 - REMAINING ** OPENINGS);
 const UNSEEN = () => ({ duration: calm() ? 0 : OPENINGS * OPENING(), ease: towardsEdge });
 const FINISH = () => ({ duration: calm() ? 0 : 0.08, ease: 'easeIn' }) as const;
 const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? EDGE : 180);
