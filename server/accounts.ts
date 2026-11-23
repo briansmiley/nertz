@@ -348,7 +348,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       setPicture.run(id, account);
       return had;
     },
-    friends: (account) => friends.all(account) as Friend[],
+    friends: (account) => friends.all(account) as unknown as Friend[],
     befriend: (account, friend, on) => void (on ? befriend : unfriend).run(account, friend),
     signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
     forget: (account) => forgets.forEach((f) => f.run(account)),
