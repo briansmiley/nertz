@@ -110,7 +110,7 @@ const drawn = (a: Among): React.JSX.Element => (
  * chosen; pressed, all of them on a slip over what is under it (above it where there is no room below), put away by
  * choosing, by Esc, or by a press anywhere else.
  */
-export function Which({ among, choose }: { among: Among; choose: (a: Among) => void }) {
+export function Which({ among, choose, vs }: { among: Among; choose: (a: Among) => void; vs?: boolean }) {
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
   const here = useRef<HTMLDivElement>(null);
@@ -145,6 +145,7 @@ export function Which({ among, choose }: { among: Among; choose: (a: Among) => v
   return (
     <div ref={here} className="among" onKeyDown={onKey}>
       <button ref={shown} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`Which rounds: ${AMONG_DRAWN[among].title}`} onClick={() => setOpen(!open)}>
+        {vs && <span className="vs">vs.</span>}
         {drawn(among)}
         <svg className="caret" viewBox="0 0 10 6" aria-hidden="true">
           <path d="M1 1l4 4 4-4" />
@@ -219,7 +220,7 @@ function Record({ among, choose }: { among: Among; choose: (a: Among) => void })
   return (
     <>
       {stats && <Figures figures={recordOf(stats)} />}
-      {had.current && <Which among={among} choose={choose} />}
+      {had.current && <Which among={among} choose={choose} vs />}
     </>
   );
 }
@@ -240,7 +241,7 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
       </div>
       {known && <Figures figures={recordOf(known.stats)} />}
-      {known && <Which among={among} choose={choose} />}
+      {known && <Which among={among} choose={choose} vs />}
       {known?.versus && (
         <div className="versus">
           <h3>You vs {known.name ?? 'them'}</h3>

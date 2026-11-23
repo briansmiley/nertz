@@ -475,6 +475,19 @@
   border-bottom: 1.5px solid transparent;
 }
 
+/* (On a page, on the rule straight under the figures, and the ways out straight under it.) */
+.profile > .among {
+  margin-top: -0.6rem;
+}
+
+.profile > .among + .outs {
+  margin-top: -0.6rem;
+}
+
+.among .vs {
+  color: var(--ink-soft);
+}
+
 .among > button:hover,
 .among > button[aria-expanded='true'] {
   border-bottom-color: var(--ink);
