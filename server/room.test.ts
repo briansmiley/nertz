@@ -405,6 +405,11 @@ describe('Room', () => {
     }
     expect(room.game!.status.at).toBe('ready');
     expect(vi.getTimerCount()).toBe(0); // (nothing is dealt over: the table goes on waiting)
+    room.handle(c, { t: 'ready', on: true });
+    expect(them()).toMatchObject({ ready: true });
+    standUp(room, c);
+    sitDown(room, c);
+    expect(them()).not.toHaveProperty('ready'); // (ready for the hand they got up from: they say so again)
 
     // Someone new sits down: dealt in beside the others, buried as deep as the round was dealt (to three).
     const d = new FakeConn();

@@ -909,6 +909,7 @@ export class Room {
       const game = this.state!;
       const hand = game.players.find((g) => g.seat === p.seat)!;
       this.aside.push({ hand, from: p.id });
+      delete p.ready; // (ready for the hand they had, not whichever they sit down to)
       this.state = withHands(game, game.players.filter((g) => g !== hand));
       this.sendOff();
     }
