@@ -296,11 +296,13 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   /**
    * Whether a new issue of `sender`'s may be labelled `auto`: whether fewer than the caps of the issues labelled so are
    * open, of theirs (by the `**Sender:**` line) and of every report's (by the title's `[FEEDBACK]`). An issue of
-   * Brian's own that he labelled is not counted.
+   * Brian's own that he labelled is not counted. Only the project's, if issues are filed into one: Semantle Duel files
+   * into the same team, with caps of its own.
    */
   const mayAuto = async (t: Team, sender: string): Promise<boolean> => {
-    const open = 'team: { id: { eq: $team } }, labels: { some: { id: { eq: $label } } }, state: { type: { nin: ["completed", "canceled"] } }';
-    const had = await gql<{ theirs: { nodes: unknown[] }; all: { nodes: unknown[] } }>(`query($team: ID!, $label: ID!, $sender: String!, $theirs: Int!, $all: Int!) { theirs: issues(first: $theirs, filter: { ${open}, description: { contains: $sender } }) { nodes { id } } all: issues(first: $all, filter: { ${open}, title: { startsWith: "[FEEDBACK]" } }) { nodes { id } } }`, { team: t.id, label: t.labels.auto, sender: `**Sender:** ${sender}`, theirs: caps.perSender, all: caps.open });
+    const project = t.extra.projectId as string | undefined;
+    const open = `team: { id: { eq: $team } }, ${project ? 'project: { id: { eq: $project } }, ' : ''}labels: { some: { id: { eq: $label } } }, state: { type: { nin: ["completed", "canceled"] } }`;
+    const had = await gql<{ theirs: { nodes: unknown[] }; all: { nodes: unknown[] } }>(`query($team: ID!, ${project ? '$project: ID!, ' : ''}$label: ID!, $sender: String!, $theirs: Int!, $all: Int!) { theirs: issues(first: $theirs, filter: { ${open}, description: { contains: $sender } }) { nodes { id } } all: issues(first: $all, filter: { ${open}, title: { startsWith: "[FEEDBACK]" } }) { nodes { id } } }`, { team: t.id, ...(project ? { project } : {}), label: t.labels.auto, sender: `**Sender:** ${sender}`, theirs: caps.perSender, all: caps.open });
     return had.theirs.nodes.length < caps.perSender && had.all.nodes.length < caps.open;
   };
 

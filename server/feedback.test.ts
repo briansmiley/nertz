@@ -120,11 +120,13 @@ describe('feedback', () => {
     let asked = 0;
     const inputs: Record<string, unknown>[] = [];
     const waits: boolean[] = [];
+    const counted: (string | undefined)[] = []; // the project each count of open auto issues was limited to
     const fake = (async (_url: unknown, init?: RequestInit) => {
       waits.push(init?.signal instanceof AbortSignal);
       const { query: q, variables } = JSON.parse(String(init!.body)) as { query: string; variables: { input: Record<string, unknown> } };
       if (q.includes('projects(') && asked++ === 0) throw new Error('no answer');
       if (q.includes('issueCreate')) inputs.push(variables.input);
+      if (q.includes('theirs:')) counted.push((variables as { project?: string }).project);
       const data = q.includes('theirs:') ? NONE_OPEN : q.includes('projects(') ? { projects: { nodes: [{ id: 'proj1' }] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
@@ -136,6 +138,7 @@ describe('feedback', () => {
       await settled(n);
     }
     expect(inputs.map((i) => i.projectId)).toEqual([undefined, 'proj1', 'proj1']);
+    expect(counted).toEqual([undefined, 'proj1', 'proj1']); // (the caps count the project's issues only, once it is known)
     expect(asked).toBe(2); // (found: not asked a third time)
     expect(waits.every(Boolean)).toBe(true);
   });
