@@ -1,7 +1,8 @@
 // One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by, a handle of one's own (where
 // one's page is), or whether one's page is private (any of them, together or not), DELETE the account; and at
-// PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it. With the account goes everything
-// kept as theirs, their picture too; the rounds they played and the reports they sent stay, as nobody's.
+// PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it; and at FRIENDS_PATH, GET one's
+// friends, or at FRIENDS_PATH/<handle> PUT whoever's page that is among them or DELETE them from it. With the account
+// goes everything kept as theirs, their picture and friends too; the rounds they played and the reports they sent stay, as nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanName, handleOf } from '../shared/protocol';
 import type { Account } from '../shared/types';
@@ -13,6 +14,7 @@ import type { Rounds } from './rounds';
 
 export const PROFILE_PATH = '/profile';
 export const PICTURE_PATH = '/profile/picture';
+export const FRIENDS_PATH = '/profile/friends';
 /** A name, and room to spare. */
 const MAX_BODY_BYTES = 1024;
 
@@ -36,6 +38,7 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     const method = req.method ?? 'GET';
     if (path === PICTURE_PATH) return picture(req, res, json);
+    if (path === FRIENDS_PATH || path.startsWith(`${FRIENDS_PATH}/`)) return friends(req, res, path, json);
     if (method !== 'GET' && method !== 'PUT' && method !== 'DELETE') return void res.writeHead(405, { allow: 'GET, PUT, DELETE' }).end();
     if (method !== 'GET' && req.headers.origin !== home) return json(403, null);
     const said = method === 'PUT' ? await read(req) : null;
@@ -73,6 +76,29 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     const forgotten = await accounts.signOut(req.headers).catch((err: unknown) => (console.error('profile: signing out a deleted account', err), []));
     res.writeHead(204, { 'cache-control': 'no-store', 'set-cookie': forgotten }).end();
   };
+
+  /**
+   * GET your friends; PUT someone's handle (in any case) to add them, DELETE it to take them off: answered with your
+   * friends as they now are. Only someone whose page you can see is anyone to add: a handle that is nobody's, or a
+   * private page's, is 404, as at `/stats/<handle>`; your own, 400. Taking off is answered alike whoever the handle is.
+   */
+  async function friends(req: IncomingMessage, res: ServerResponse, path: string, json: (status: number, body: unknown) => void): Promise<void> {
+    const method = req.method ?? 'GET';
+    const at = path === FRIENDS_PATH ? null : path.slice(FRIENDS_PATH.length + 1);
+    if (at === null ? method !== 'GET' : method !== 'PUT' && method !== 'DELETE') return void res.writeHead(405, { allow: at === null ? 'GET' : 'PUT, DELETE' }).end();
+    if (method !== 'GET' && req.headers.origin !== home) return json(403, null);
+    const me = await accounts.who(req.headers);
+    if (!me) return json(401, { ways: accounts.ways });
+    const handle = at === null ? null : handleOf(at);
+    const them = handle === null ? null : accounts.whose(handle);
+    if (method === 'PUT') {
+      if (!them || (them.private && them.id !== me.id)) return json(404, null);
+      if (them.id === me.id) return json(400, null);
+      accounts.befriend(me.id, them.id, true);
+    }
+    if (method === 'DELETE' && them) accounts.befriend(me.id, them.id, false);
+    json(200, accounts.friends(me.id));
+  }
 
   /** PUT a picture of yourself, or DELETE yours: answered with your profile as it now is. */
   async function picture(req: IncomingMessage, res: ServerResponse, json: (status: number, body: unknown) => void): Promise<void> {

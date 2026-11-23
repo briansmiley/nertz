@@ -376,6 +376,12 @@ export interface Page {
   versus: Versus | null;
 }
 
+/** Someone you added as a friend (`GET /profile/friends`): the name they go by, and where their page is, null for a page that is theirs alone. */
+export interface Friend {
+  name: string | null;
+  handle: string | null;
+}
+
 /** How much was played (server/rounds.ts): sittings, rounds, the accounts that played, and hands played as a guest or by a bot. */
 export interface Played {
   games: number;

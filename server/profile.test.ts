@@ -350,6 +350,81 @@ describe('profile', () => {
     });
   });
 
+  describe('friends', () => {
+    const FRIENDS = '/profile/friends';
+    const friendsOf = async (browser: Browser): Promise<unknown> => (await browser.ask(FRIENDS)).json();
+    const add = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FRIENDS}/${handle}`, undefined, { method: 'PUT' });
+    const drop = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FRIENDS}/${handle}`, undefined, { method: 'DELETE' });
+    const CY: Googler = { sub: 'google-789', email: 'cy@example.com', name: 'Cyrus Young' };
+
+    it('are added by their handle (in any case) and taken off again, one way: the other is asked nothing', async () => {
+      fakeGoogle([ADA, BOB, CY]);
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      await signedIn(CY);
+      expect(await friendsOf(ada)).toEqual([]);
+      const added = await add(ada, 'Bob');
+      expect(added.status).toBe(200);
+      expect(await added.json()).toEqual([{ name: 'Bob', handle: 'bob' }]);
+      expect((await add(ada, 'bob')).status).toBe(200); // (twice is once)
+      expect(await (await add(ada, 'cyrus')).json()).toEqual([
+        { name: 'Bob', handle: 'bob' },
+        { name: 'Cyrus', handle: 'cyrus' },
+      ]);
+      expect(await friendsOf(bob)).toEqual([]);
+      expect(await (await drop(ada, 'bob')).json()).toEqual([{ name: 'Cyrus', handle: 'cyrus' }]);
+      expect(await (await drop(ada, 'bob')).json()).toEqual([{ name: 'Cyrus', handle: 'cyrus' }]); // (and off twice is off)
+      expect(rows('friend')).toHaveLength(1);
+    });
+
+    it('whose page is private are listed by name alone, and nobody to add', async () => {
+      fakeGoogle([ADA, BOB, CY]);
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      const cy = await signedIn(CY);
+      await add(ada, 'bob');
+      await bob.ask('/profile', { private: true }, { method: 'PUT' });
+      await cy.ask('/profile', { private: true }, { method: 'PUT' });
+      const listed = await ada.ask(FRIENDS);
+      expect(await listed.clone().json()).toEqual([{ name: 'Bob', handle: null }]);
+      expect(await listed.text()).not.toContain('"bob"'); // (where a private page is, it never says)
+      expect((await add(ada, 'cyrus')).status).toBe(404); // (as for a handle that is nobody's)
+      expect((await drop(ada, 'cyrus')).status).toBe(200); // (and taking off is answered alike)
+      expect(await friendsOf(ada)).toEqual([{ name: 'Bob', handle: null }]);
+      await bob.ask('/profile', { private: false }, { method: 'PUT' });
+      expect(await friendsOf(ada)).toEqual([{ name: 'Bob', handle: 'bob' }]);
+    });
+
+    it('are nobody\'s for nobody signed in, and none of yourself, of nobody, or from another site', async () => {
+      const ada = await signedIn(ADA);
+      await signedIn(BOB);
+      const guest = new Browser(server.port);
+      expect((await guest.ask(FRIENDS)).status).toBe(401);
+      expect((await add(guest, 'bob')).status).toBe(401);
+      expect((await drop(guest, 'bob')).status).toBe(401);
+      expect((await add(ada, 'ada')).status).toBe(400);
+      expect((await add(ada, 'nobody-here')).status).toBe(404);
+      expect((await add(ada, 'x')).status).toBe(404); // (no handle at all)
+      expect((await ada.ask(`${FRIENDS}/bob`, undefined, { method: 'PUT', origin: 'https://evil.example' })).status).toBe(403);
+      expect((await ada.ask(`${FRIENDS}/bob`, undefined, { method: 'DELETE', origin: 'https://evil.example' })).status).toBe(403);
+      expect((await ada.ask(FRIENDS, undefined, { method: 'PUT' })).status).toBe(405);
+      expect((await ada.ask(`${FRIENDS}/bob`)).status).toBe(405);
+      expect(await friendsOf(ada)).toEqual([]);
+      expect(rows('friend')).toEqual([]);
+    });
+
+    it('go with either account', async () => {
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      await add(ada, 'bob');
+      await add(bob, 'ada');
+      expect(rows('friend')).toHaveLength(2);
+      expect((await bob.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+      expect(rows('friend')).toEqual([]);
+      expect(await friendsOf(ada)).toEqual([]);
+    });
+  });
+
   it('is made for anyone who signed up before there were profiles', async () => {
     await signedIn(ADA);
     await server.close();
@@ -365,6 +440,7 @@ describe('profile', () => {
     // (The database as it was before the migration that makes them: and one with no name, from signing in by email.)
     write("update profile set name = null where name = '李'");
     write("update \"user\" set createdAt = '2026-01-0' || (case email when 'ada@example.com' then 1 when 'bob@example.com' then 2 when 'ada2@example.com' then 3 else 4 end) || 'T00:00:00.000Z'");
+    write('drop table friend');
     write('alter table profile drop column handle_chosen');
     write('alter table profile drop column private');
     write('drop index profile_handle');
@@ -382,6 +458,7 @@ describe('profile', () => {
     await ada.ask('/profile', { private: true }, { method: 'PUT' });
     await server.close();
     // (The database as it was before the migration that adds the switch.)
+    write('drop table friend');
     write('alter table profile drop column handle_chosen');
     write('alter table profile drop column private');
     write('pragma user_version = 6');

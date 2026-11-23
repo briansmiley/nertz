@@ -179,11 +179,13 @@
 }
 
 .seats .standup,
-.seats .unseat {
+.seats .unseat,
+.seats .befriend {
   margin-left: 0;
 }
 
-.seats .standup svg {
+.seats .standup svg,
+.seats .befriend svg {
   width: 16px;
   height: 16px;
 }

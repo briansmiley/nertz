@@ -654,6 +654,54 @@
   text-overflow: ellipsis;
 }
 
+/* Them added to your friends, or taken off: a word at the far end of the head's line, where Private is on your own. */
+.profile .you > .befriend {
+  grid-area: private;
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 0.9rem/2rem var(--ui);
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.profile .you > .befriend:hover {
+  color: var(--ink);
+}
+
+@container (max-width: 16rem) {
+  .profile .you > .befriend {
+    justify-self: start;
+    margin-top: 0.8rem;
+  }
+}
+
+/* Your friends: their names in a line under your record, each one's page under the pointer. */
+.profile .friends {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+}
+
+.profile .friends h3 {
+  margin: 0;
+  font: 600 0.95rem/1.3rem var(--ui);
+}
+
+.profile .friends ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: 400 1rem/1.5 var(--ui);
+}
+
 /* You against them: a line of its own under their record. */
 .versus {
   display: grid;

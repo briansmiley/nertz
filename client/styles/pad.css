@@ -188,6 +188,36 @@
   stroke-linejoin: round;
 }
 
+/* Beside someone's name: add them to your friends (a figure and a plus), or, a friend (a tick), take them off. */
+.befriend.small {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  margin-left: 0.4rem;
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.befriend.small:hover,
+.befriend.small[aria-pressed='true'] {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.befriend.small svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .solo {
   min-height: 100%;
   display: grid;

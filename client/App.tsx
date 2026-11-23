@@ -2,7 +2,7 @@
 import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
 import { goHome, showPage, useAddressed } from './address';
 import { SignIn } from './SignIn';
-import { Profile, Theirs } from './Profile';
+import { Befriend, Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
@@ -666,6 +666,7 @@ function Lobby({ room }: { room: RoomView }) {
         )}
       </span>
       <span className="deeds">
+        {p.handle && <Befriend handle={p.handle} name={p.name} small />}
         {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
         {me?.isHost && p.id !== room.me && <Unseat who={p} />}
       </span>
@@ -900,6 +901,7 @@ function Results({ room }: { room: RoomView }) {
                   <Name host={p?.isHost} className="nm">
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{s.name}</Named>}
                   </Name>
+                  {p?.handle && <Befriend handle={p.handle} name={p.name} small />}
                   {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
@@ -937,6 +939,7 @@ function Results({ room }: { room: RoomView }) {
                     <Name host={p.isHost} className="nm">
                       <Named who={p}>{p.name}</Named>
                     </Name>
+                    {p.handle && <Befriend handle={p.handle} name={p.name} small />}
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                     </span>

@@ -1,5 +1,5 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
-// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile (/profile: server/profile.ts), records (/stats: server/stats.ts), and for an admin how much the game is played (/usage, the same);
+// built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile and friends (/profile: server/profile.ts), records (/stats: server/stats.ts), and for an admin how much the game is played (/usage, the same);
 // websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -10,7 +10,7 @@ import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode,
 import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
-import { PICTURE_PATH, PROFILE_PATH, profileHandler } from './profile';
+import { FRIENDS_PATH, PICTURE_PATH, PROFILE_PATH, profileHandler } from './profile';
 import { openPictures, PICTURES_PATH } from './pictures';
 import { dataFromEnv, openDb } from './db';
 import { openReports } from './reports';
@@ -198,7 +198,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       } else if (path.startsWith(`${PICTURES_PATH}/`)) {
         if (!pictures) return void res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found');
         pictures.serve(path, req, res);
-      } else if (path === PROFILE_PATH || path === PICTURE_PATH) {
+      } else if (path === PROFILE_PATH || path === PICTURE_PATH || path === FRIENDS_PATH || path.startsWith(`${FRIENDS_PATH}/`)) {
         if (!profile) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
         profile(req, res, path).catch((err: unknown) => {
           console.error('profile', err);

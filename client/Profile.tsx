@@ -1,10 +1,11 @@
 // You, signed in: the name you go by and where your page is (both yours to change), your record, whether your page is
-// yours alone, and the ways out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
-// opened by pressing their name at a table: their record, and yours against them.
+// yours alone, your friends, and the ways out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
+// opened by pressing their name at a table: their record, yours against them, and them added to your friends or taken off.
 import { useEffect, useRef, useState } from 'react';
 import { cleanName, handleOf, MAX_HANDLE_LENGTH, MAX_NAME_LENGTH } from '../shared/protocol';
 import { AMONG, type Account, type Among, type Stats, type Versus } from '../shared/types';
-import { deleteAccount, rehandle, rename, repicture, setPrivate, signOut, usePage, useStats, type Crop } from './account';
+import { befriend, deleteAccount, rehandle, rename, repicture, setPrivate, signOut, useFriends, usePage, useStats, type Crop } from './account';
+import { showPage } from './address';
 import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
@@ -178,6 +179,7 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         {known && <TheirPicture picture={known.picture} name={known.name} />}
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
         {page !== 'none' && <Which among={among} choose={choose} />}
+        {known && <Befriend handle={handle} name={known.name ?? handle} />}
       </div>
       {known && <Figures figures={recordOf(known.stats)} />}
       {known?.versus && (
@@ -186,6 +188,61 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
           <Figures figures={versusOf(known.versus)} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Whoever's page `handle` is, added to your friends or taken off: turned at once, and back if the server did not take
+ * it. Written out on their page; at a table (`small`), a figure beside their name. Nothing until your friends are known.
+ */
+export function Befriend({ handle, name, small }: { handle: string; name: string; small?: boolean }) {
+  const friends = useFriends();
+  const [asked, setAsked] = useState<boolean | null>(null);
+  if (!friends) return null;
+  const on = asked ?? friends.some((f) => f.handle === handle);
+  const turn = (): void => {
+    setAsked(!on);
+    void befriend(handle, !on).then(() => setAsked(null));
+  };
+  if (!small)
+    return (
+      <button type="button" className="befriend" onClick={turn}>
+        {on ? 'Remove friend' : 'Add friend'}
+      </button>
+    );
+  const says = on ? `Remove ${name} from your friends` : `Add ${name} as a friend`;
+  return (
+    <button type="button" className="befriend small" aria-pressed={on} aria-label={says} data-tip={says} onClick={turn}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="8" r="3.2" />
+        <path d="M3 19.5c0-3.6 2.7-6 6-6s6 2.4 6 6" />
+        <path d={on ? 'M15.5 11.5l2 2 4-4.5' : 'M19 8v7M15.5 11.5h7'} />
+      </svg>
+    </button>
+  );
+}
+
+/** Who you added as friends, each a link to their page, but for a page that is theirs alone. Nothing, for nobody yet. */
+function Friends() {
+  const friends = useFriends();
+  if (!friends?.length) return null;
+  return (
+    <div className="friends">
+      <h3>Friends</h3>
+      <ul>
+        {friends.map(({ name, handle }, i) => (
+          <li key={handle ?? `private ${i}`}>
+            {handle ? (
+              <a className="page" href={`/u/${handle}`} onClick={(e) => !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) && (e.preventDefault(), showPage(handle))}>
+                {name ?? handle}
+              </a>
+            ) : (
+              name
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -404,6 +461,7 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
         <Which among={among} choose={choose} />
       </div>
       <Record among={among} />
+      <Friends />
       <div className="outs">
         <button type="button" className="gone" onClick={() => setDeleting(true)}>
           Delete account
