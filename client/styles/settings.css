@@ -11,7 +11,7 @@
   align-items: center;
 }
 
-/* The round's clock: above them, or in small figures after the chat's buttons, wherever the table has a free place for it. */
+/* The round's clock: after them or above them, or in small figures after the chat's buttons, wherever the table has a free place for it. */
 .clock {
   position: fixed;
   z-index: 45000;
