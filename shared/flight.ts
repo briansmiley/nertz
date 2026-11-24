@@ -16,6 +16,8 @@ export const OPP = { gap: 0.14, wide: 0.42 } as const;
 
 /** How long a bot's card is in the air, ms: a move along its own row, and one out to the middle. */
 export const FLIGHT_MS = { row: 300, centre: 650 } as const;
+/** How much of a bot's way to the middle is the hop out of its hand to the felt's edge; the rest is the felt. */
+const OUT = 0.25;
 /** How often the made-up reports go out (a dragging window reports at DRAG_HZ, 18 a second). */
 export const FLIGHT_STEP_MS = 55;
 
@@ -53,8 +55,8 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000;
  * the place it lands. Empty when there is nothing to show (not a move, or a
  * card it does not have). Read by the window as it reads a person's:
  * - out to the middle: `p` is the place all along (so the window picks that
- *   pile), `w` goes 0 to 1 (how far along to it) and the card lifts a little
- *   out of the hand (`h`) as it goes;
+ *   pile), `w` goes 0 to 2 (out to the felt's edge, and on to the place) and
+ *   the card lifts a little out of the hand (`h`) as it goes;
  * - along its own row (to a work pile): `h` slides it the width of piles
  *   between, with a small hop, and `p` is off the felt so it never lingers there.
  */
@@ -69,10 +71,10 @@ export function flightFrames(state: GameState, seat: number, intent: Intent): Dr
   for (let k = 1; k <= n; k++) {
     const e = ease(k / n);
     if (there) {
-      frames.push({ id: intent.cardId, w: r3(e), h: [0, r3(0.5 * e)], p: [r3(there.x), r3(there.y)], f: r3(e) });
+      frames.push({ id: intent.cardId, w: r3(e < OUT ? e / OUT : 1 + (e - OUT) / (1 - OUT)), h: [0, r3(0.5 * e)], p: [r3(there.x), r3(there.y)] });
     } else {
       const to = intent.to.k === 'work' ? rowX('work', intent.to.i) : from;
-      frames.push({ id: intent.cardId, w: 0, h: [r3((to - from) * e), r3(0.35 * Math.sin(Math.PI * e))], p: [0, 50], f: 0 });
+      frames.push({ id: intent.cardId, w: 0, h: [r3((to - from) * e), r3(0.35 * Math.sin(Math.PI * e))], p: [0, 50] });
     }
   }
   return frames;
