@@ -21,7 +21,7 @@
   z-index: 50001; /* over everything, the connection banner too: it is there only while pointed at */
   left: 0;
   top: 0;
-  max-width: min(17rem, calc(100vw - 16px));
+  max-width: min(17rem, calc(var(--seen-width, 100vw) - 16px)); /* (what a pinch leaves of the window: client/tip.ts) */
   width: max-content;
   padding: 0.3rem 0.55rem;
   pointer-events: none;
