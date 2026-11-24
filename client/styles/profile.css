@@ -283,7 +283,7 @@
   max-width: 100%;
   text-overflow: ellipsis;
   /* (Its line's height and no more: Safari holds a field to its font's own line, far taller in this one.) */
-  height: calc(1.6rem * 1.2 + 0.3rem + 2px);
+  height: calc(1.2em + 0.3rem + 2px);
   padding: 0.1rem 0 0.2rem;
   border: 0;
   border-bottom: 2px solid transparent;

@@ -322,25 +322,28 @@
   .home .pad h2 {
     display: none;
   }
+}
 
-  /* Your page: the pad wider, into the room beside the name (a size down), for your record to be two lines of
-     figures, each average over its best, and the page to fit the height. */
-  .home:has(.profile) {
+/* Your page there, on a phone long enough for it: the pad wider, into the room beside the name (a size down), for your
+   record to be two lines of figures, each average over its best, and the page to fit the height. (The way in, laid out
+   as a page is, keeps the pad as it was.) */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 780px) {
+  .home:has(.profile:not(.signin)) {
     grid-template-columns: minmax(0, 1fr) minmax(0, 29rem);
     padding-block: 0.5rem;
   }
 
-  .home:has(.profile) .hero {
+  .home:has(.profile:not(.signin)) .hero {
     height: calc(100dvh - 1rem);
   }
 
-  .home:has(.profile) .hero h1 {
-    font-size: clamp(3rem, 7vw, 3.75rem);
+  .home:has(.profile:not(.signin)) .hero h1 {
+    font-size: min(7vw, 3.75rem);
   }
 
-  .home .pad:has(> .profile) {
+  .home .pad:has(> .profile:not(.signin)) {
     width: 100%;
-    padding-bottom: 0.7rem;
+    padding-block: 1.4rem 0.7rem;
   }
 
   .home .profile .outs {
