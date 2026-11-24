@@ -5,6 +5,8 @@
   position: absolute;
   z-index: 19500; /* over the cards, under a card in hand */
   translate: -50% -50%;
+  width: max-content; /* not shrink-to-fit: that stops at the table's right edge, half a table from `left`, and wraps the names early */
+  max-width: min(560px, 86vw);
   display: grid;
   place-items: center;
   text-align: center;
@@ -141,7 +143,6 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px 22px;
-  max-width: min(560px, 86vw);
   margin: 18px 0 0;
   padding: 0;
   list-style: none;
@@ -219,6 +220,10 @@
 
 /* On a phone the middle is small: the ready button and the names under it shrink to stay on the felt. */
 @media (max-width: 560px) {
+  .opening {
+    max-width: 94vw;
+  }
+
   .opening .kickoff.readyup {
     padding: 9px 26px 9px;
     font-size: 26px;
@@ -236,7 +241,6 @@
 
   .opening .readies {
     gap: 3px 12px;
-    max-width: 94vw;
     margin-top: 10px;
   }
 
