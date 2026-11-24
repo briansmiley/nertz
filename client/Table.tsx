@@ -507,7 +507,12 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     if (!before || reburied.size === 0 || before.game.status.at === 'dealing') return;
     const gone = [...reburied.keys()].flatMap((id) => {
       const c = before.byId.get(id);
-      return c ? [{ key: `${id}:${++ghostN.current}`, c, off: behind(c, before.game, before.byId) }] : [];
+      if (!c) return [];
+      // At the level of the bottom of the pile it left, not its own: the face-ups close up over it as it goes, and a
+      // card that lay high in the pile (the second of two face-downs) would otherwise go over the one that comes down.
+      const pile = before.game.players.flatMap((q) => q.work).find((w) => w.cards.some((x) => x.id === id))?.cards ?? [];
+      const z = Math.min(c.z, ...pile.map((x) => before.byId.get(x.id)?.z ?? c.z));
+      return [{ key: `${id}:${++ghostN.current}`, c: { ...c, z }, off: behind(c, before.game, before.byId) }];
     });
     if (gone.length) setGhosts((g) => [...g, ...gone]);
   }, [reburied]);
