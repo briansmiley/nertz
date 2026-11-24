@@ -7,7 +7,7 @@ import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { downs, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
-import type { Card, GameState, Intent } from '../shared/types';
+import type { Card, GameState, Intent, PlayerState } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, send, startOver, startRound, type StateMsg } from './testkit';
@@ -22,6 +22,8 @@ const sendIntent = (room: Room, conn: Conn, seq: number, intent: Intent) => room
  */
 const rigged = (emptyNertz: readonly number[] = []) => (seats: readonly number[], rng: Rng): GameState => rig(deal(seats, rng), { work: ['S1', 'S2', 'H1', 'D5'], emptyNertz });
 const filled = (g: GameState) => g.slots.flatMap((pile) => (pile ? [pile.cards.map((c) => c.id)] : []));
+/** What of each hand shows, or will once play opens: its nertz pile and the top of each work pile. Before Start only what is buried changes when the table does. */
+const faceUps = (players: readonly PlayerState[]) => players.map((p) => ({ seat: p.seat, nertz: p.nertz, tops: p.work.map((w) => w.cards.at(-1)) }));
 
 // ---------------------------------------------------------------- Room, driven directly
 
@@ -346,9 +348,10 @@ describe('Room', () => {
     room.handle(a, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
     const dealt = room.game!.players;
-    sitDown(room, c); // the cards are dealt, nothing is played: theirs are dealt beside them
+    sitDown(room, c); // the cards are dealt, nothing is played: theirs are dealt beside them, and everyone's buried as three are
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
-    expect(room.game!.players.slice(0, 2)).toEqual(dealt);
+    expect(faceUps(room.game!.players.slice(0, 2))).toEqual(faceUps(dealt));
+    expect(room.game!.players.map(downs)).toEqual([[0, 0, 1, 2], [0, 0, 1, 2], [0, 0, 1, 2]]);
     expect(room.game!.status.at).toBe('dealing');
     standUp(room, c); // up from cards that are dealt but not played: they come off the table, and C watches at once
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
@@ -374,11 +377,13 @@ describe('Room', () => {
     const theirs = room.game!.players;
     room.join(d, 'D', 'tok-dddd', true);
     expect(room.game!.players.map((p) => p.seat)).toEqual([1, 2, 3]);
+    expect(faceUps(room.game!.players.slice(0, 2))).toEqual(faceUps(theirs));
+    const three = room.game!.players;
     room.join(b, 'P1', 'tok-0001');
-    expect(room.game!.players.slice(0, 2)).toEqual(theirs);
+    expect(room.game!.players).toEqual(three);
   });
 
-  it("before Start, sitting down and standing up change nobody else's cards, and whoever sits back down has the hand they got up from: a hand is its seat's for the round", () => {
+  it("before Start, sitting down and standing up change nobody else's face-up cards, only how deep they are buried, and whoever sits back down has the hand they got up from: a hand is its seat's for the round", () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
@@ -387,13 +392,14 @@ describe('Room', () => {
     room.handle(c, { t: 'seat', seat: 5 }); // (a seat of their own choosing: not the lowest that is free)
     room.handle(a, { t: 'start' });
     const dealt = hands();
-    const others = JSON.stringify(room.game!.players.slice(0, 2));
+    const others = faceUps(room.game!.players.slice(0, 2));
     // During the deal, and again while the table waits for Start.
     for (const wait of [0, DEAL_MS]) {
       vi.advanceTimersByTime(wait);
       standUp(room, c);
       expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
-      expect(hands()).toBe(others);
+      expect(faceUps(room.game!.players)).toEqual(others);
+      expect(room.game!.players.map(downs)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]); // (two hands: nothing face-down)
       expect(room.game!.slots).toHaveLength(8);
       expect(checkInvariants(room.game!)).toBeNull();
       sitDown(room, c);
@@ -410,12 +416,12 @@ describe('Room', () => {
     sitDown(room, c);
     expect(them()).not.toHaveProperty('ready'); // (ready for the hand they got up from: they say so again)
 
-    // Someone new sits down: dealt in beside the others, buried as deep as the round was dealt (to three).
+    // Someone new sits down: dealt in beside the others, and every hand buried as four are.
     const d = new FakeConn();
     room.join(d, 'D', 'tok-dddd');
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'D@2', 'P2@5']);
-    expect(JSON.stringify(room.game!.players.filter((p) => p.seat !== 2))).toBe(dealt);
-    expect(downs(room.game!.players[2]!)).toEqual([0, 0, 1, 2]);
+    expect(faceUps(room.game!.players.filter((p) => p.seat !== 2))).toEqual(faceUps(JSON.parse(dealt)));
+    expect(room.game!.players.map(downs)).toEqual(Array.from({ length: 4 }, () => [0, 1, 2, 3]));
     expect(room.game!.slots).toHaveLength(16);
     expect(room.game!.status.at).toBe('ready');
     expect(checkInvariants(room.game!)).toBeNull();
@@ -453,7 +459,33 @@ describe('Room', () => {
     expect(room.game!.status.at).toBe('play');
   });
 
-  it("before Start, whoever deals may seat a bot and take one off, the way a person sits down and gets up: nobody else's cards change; not once Start is pressed", () => {
+  it('before Start, whoever leaves or is sent away takes their hand off the table, and the others are buried as deep as the hands left call for', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(4);
+    const [a, , , d] = conns as [FakeConn, FakeConn, FakeConn, FakeConn];
+    room.handle(a, { t: 'start' });
+    vi.advanceTimersByTime(DEAL_MS);
+    const dealt = room.game!.players;
+    expect(dealt.map(downs)).toEqual(Array.from({ length: 4 }, () => [0, 1, 2, 3]));
+    room.handle(d, { t: 'leave' }); // four to three
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    expect(room.game!.players.map(downs)).toEqual(Array.from({ length: 3 }, () => [0, 0, 1, 2]));
+    expect(faceUps(room.game!.players)).toEqual(faceUps(dealt.slice(0, 3)));
+    for (const [i, p] of room.game!.players.entries()) {
+      // The three no longer face-down are back at the bottom of the stock (the end drawn last), the rest as it was.
+      expect(p.stock).toHaveLength(32);
+      expect(p.stock.slice(3)).toEqual(dealt[i]!.stock);
+    }
+    expect(checkInvariants(room.game!)).toBeNull();
+    room.handle(a, { t: 'kick', id: 2 }); // three to two
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    expect(room.game!.players.map(downs)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]);
+    expect(room.game!.players.map((p) => p.stock.length)).toEqual([35, 35]);
+    expect(faceUps(room.game!.players)).toEqual(faceUps(dealt.slice(0, 2)));
+    expect(checkInvariants(room.game!)).toBeNull();
+  });
+
+  it("before Start, whoever deals may seat a bot and take one off, the way a person sits down and gets up: nobody else's face-up cards change; not once Start is pressed", () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
@@ -468,9 +500,9 @@ describe('Room', () => {
       expect(bots()).toEqual([]);
       room.handle(a, { t: 'addBot', level: 'slow' });
       expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', `${bots()[0]!.name}@2`]);
-      expect(JSON.stringify(room.game!.players.slice(0, 2))).toBe(dealt);
+      expect(faceUps(room.game!.players.slice(0, 2))).toEqual(faceUps(JSON.parse(dealt)));
       expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
-      expect(downs(room.game!.players[2]!)).toEqual(downs(room.game!.players[0]!)); // (buried as deep as the round was dealt: to two)
+      expect(room.game!.players.map(downs)).toEqual([[0, 0, 1, 2], [0, 0, 1, 2], [0, 0, 1, 2]]); // (everyone buried as three are)
       expect(bots()[0]).toMatchObject({ ready: true }); // (a bot never holds up Start)
       expect(room.game!.slots).toHaveLength(12);
       expect(checkInvariants(room.game!)).toBeNull();

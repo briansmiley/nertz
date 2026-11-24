@@ -248,18 +248,33 @@ describe('deal', () => {
     expect(checkInvariants(inPlay([3, 5], () => 1))).toBeNull();
   });
 
-  it('before Start a hand goes on the table or comes off it and no other is touched; one dealt in late is buried as the round was', () => {
+  it('before Start a hand goes on the table or comes off it, and every hand is buried as deep as the hands now there call for', () => {
     const rng = seeded(3);
     const dealt = dealRound([0, 2], rng);
-    const late = dealRound([1], rng, 2).players[0]!;
-    expect(downs(late)).toEqual(downs(dealt.players[0]!)); // as two were dealt: nothing face-down
-    expect(downs(dealRound([1], rng, 4).players[0]!)).toEqual([0, 1, 2, 3]);
+    const late = dealRound([1], rng).players[0]!;
+    expect(downs(late)).toEqual([0, 0, 0, 0]);
+    const tops = (p: PlayerState) => [p.nertz, p.work.map((w) => w.cards.at(-1))];
+    const cardsOf = (p: PlayerState) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].map((x) => x.id).sort();
     const three = withHands(dealt, [...dealt.players, late]);
     expect(three.players.map((p) => p.seat)).toEqual([0, 1, 2]);
-    expect([three.players[0], three.players[2]]).toEqual(dealt.players);
+    for (const p of three.players) {
+      const was = [...dealt.players, late].find((q) => q.seat === p.seat)!;
+      expect(downs(p)).toEqual([0, 0, 1, 2]);
+      expect(tops(p)).toEqual(tops(was)); // face-ups and the nertz pile as they were
+      expect(cardsOf(p)).toEqual(cardsOf(was));
+      expect(p.stock).toHaveLength(32);
+      expect(p.stock.slice(3)).toEqual(was.stock.slice(3)); // the three now face-down came off the bottom of the stock
+      expect(p.work.flatMap((w) => w.cards.slice(0, w.down))).toEqual(was.stock.slice(0, 3));
+    }
     expect(three.slots).toEqual(Array.from({ length: 12 }, () => null));
     expect(checkInvariants(three)).toBeNull();
-    const two = withHands(finishDeal(three), three.players.slice(1));
+    const four = withHands(three, [...three.players, dealRound([3], rng).players[0]!]);
+    for (const p of four.players) expect([downs(p), p.stock.length]).toEqual([[0, 1, 2, 3], 29]);
+    expect(checkInvariants(four)).toBeNull();
+    // Back down to three, and to two: the face-down cards go back under the stock, and each hand is the one it was.
+    const less = withHands(finishDeal(four), four.players.slice(0, 3));
+    expect(less).toMatchObject({ status: { at: 'ready' }, players: three.players });
+    const two = withHands(less, less.players.slice(1));
     expect(two).toMatchObject({ status: { at: 'ready' }, players: [late, dealt.players[1]] });
     expect(two.slots).toHaveLength(8);
     expect(checkInvariants(two)).toBeNull();
