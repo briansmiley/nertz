@@ -322,6 +322,37 @@
   .home .pad h2 {
     display: none;
   }
+
+  /* Your page: the pad wider, into the room beside the name (a size down), for your record to be two lines of
+     figures, each average over its best, and the page to fit the height. */
+  .home:has(.profile) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 29rem);
+    padding-block: 0.5rem;
+  }
+
+  .home:has(.profile) .hero {
+    height: calc(100dvh - 1rem);
+  }
+
+  .home:has(.profile) .hero h1 {
+    font-size: clamp(3rem, 7vw, 3.75rem);
+  }
+
+  .home .pad:has(> .profile) {
+    width: 100%;
+    padding-bottom: 0.7rem;
+  }
+
+  .home .profile .outs {
+    margin-top: 0;
+  }
+
+  .home .profile > .record {
+    display: grid;
+    grid-template-rows: auto auto;
+    grid-auto-flow: column;
+    justify-content: space-between;
+  }
 }
 
 /* Reduced motion. A class rather than a media query: the player's own setting (prefs.ts) overrules the system's either way. */
@@ -334,9 +365,15 @@
     font-size: 4rem;
   }
 
+  /* (Room over the fan for the corner's buttons, and under the pad no more than its shadow: what fits does not scroll.) */
   .home {
     gap: 1.25rem;
-    padding-top: 3.5rem;
+    padding-top: 3rem;
+    padding-bottom: 1rem;
+  }
+
+  .spread {
+    zoom: 0.6;
   }
 }
 
@@ -356,7 +393,7 @@
 
 .record dd {
   margin: 0;
-  font: 700 1.5rem/2rem var(--num);
+  font: 700 1.5rem/1.75rem var(--num);
   letter-spacing: 0.02em;
   color: var(--ink);
 }
