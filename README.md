@@ -981,11 +981,9 @@ From there it is passed on wherever the server was told, to both if both are set
 - `LINEAR_API_KEY` and `LINEAR_TEAM`: a Linear personal API key and the key of a team (the letters before an issue's
   number, like `NRZ`). An issue is filed there, titled `[FEEDBACK] ...` and labelled Bug or Feature, and `auto` (each
   label made if the team has none of that name), with the screenshot in its description. `auto` hands it to the
-  [auto-fanout](#auto-fanout), so only so many of those issues may be open at once (not Done or Canceled, as Linear
-  says when the next is filed): five of one sender's (`AUTO_PER_SENDER`) and twenty of every report's (`AUTO_OPEN`). A
+  [auto-fanout](#auto-fanout), which decides how many it takes on at once, of everyone's and of one sender's. A
   sender is their account if they were signed in, else the name they gave (in any case), else nobody, all of whom count
-  as one; the issue says who, hashed, on a `**Sender:**` line. Past a cap the issue is filed without `auto`, and a
-  merged or closed one frees its place.
+  as one; the issue says who, hashed, on a `**Sender:**` line.
   Optional: `LINEAR_PRIORITY`, `LINEAR_ASSIGNEE`, `LINEAR_STATE` and `LINEAR_PROJECT` say how the issue is filed.
 - `ANTHROPIC_API_KEY` (optional): Claude Haiku names each report, for the issue and the Discord message, and sets the
   issue's priority by how bad it sounds (High, Medium or Low, over `LINEAR_PRIORITY`; never Urgent, since a player could
