@@ -670,10 +670,21 @@
 }
 
 .signin .mail .code {
-  width: 100%;
-  max-width: none;
+  /* Exactly six digits (each with its letter-spacing) and the pad's side padding; the button stays at the far right. */
+  width: calc(6ch + 1.8em + 0.2rem);
+  max-width: 100%;
+  justify-self: start;
   font-size: 1.7rem;
   letter-spacing: 0.3em;
+}
+
+/* The browser's one-time-code autofill paints the field blue-grey; keep it the pad's plain line. */
+.signin .mail .code:-webkit-autofill,
+.signin .mail .code:autofill {
+  -webkit-box-shadow: 0 0 0 100rem var(--paper) inset;
+  box-shadow: 0 0 0 100rem var(--paper) inset;
+  -webkit-text-fill-color: var(--ink);
+  transition: background-color 600000s 0s;
 }
 
 .signin .sent {
