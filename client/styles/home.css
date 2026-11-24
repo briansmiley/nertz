@@ -361,7 +361,7 @@
   }
 
   @container (min-width: 23rem) {
-    .home .profile > .record {
+    .home .profile .stats > .record {
       display: grid;
       grid-template-rows: auto auto;
       grid-auto-flow: column;

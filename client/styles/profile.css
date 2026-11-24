@@ -401,11 +401,12 @@
 }
 
 /* The record, and (on someone's page) you against them under a line: one sheet laid on the ruled paper, the rounds
-   counted chosen at its top. */
+   counted chosen at its top. Close about its figures, which keep nearly the room they had (and the page its height);
+   and never wider than the page, whatever is in it. */
 .profile .stats {
   display: grid;
-  gap: 0.2rem;
-  padding: 0.1rem 0.6rem 0.7rem;
+  min-width: 0;
+  padding: 0 0.3rem 0.25rem;
   border: 1px solid var(--ink);
   border-radius: 6px;
   background: #fff;
@@ -426,6 +427,11 @@
   .profile .record div {
     flex-basis: 33.333%;
   }
+}
+
+/* (What a figure counts keeps to one line, a little past its share of the line if it must.) */
+.profile .record dt {
+  white-space: nowrap;
 }
 
 
@@ -909,6 +915,7 @@
 .versus {
   display: grid;
   gap: 0.3rem;
+  min-width: 0;
   margin-top: 0.5rem;
   padding-top: 0.6rem;
   border-top: 1px solid var(--ink);
@@ -926,6 +933,7 @@
 .profile .versus .record {
   flex-wrap: nowrap;
   gap: 0 0.6rem;
+  min-width: 0;
 }
 
 /* (Five to the line: each as wide as its figure needs, a pair never broken, a size down from the record's.) */

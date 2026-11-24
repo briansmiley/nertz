@@ -230,13 +230,12 @@ function Record({ among, choose }: { among: Among; choose: (a: Among) => void })
   const stats = useStats(among);
   const had = useRef(false);
   had.current ||= stats !== null;
+  if (!had.current) return null;
   return (
-    had.current ? (
-      <div className="stats">
-        <Which among={among} choose={choose} vs />
-        {stats && <Figures figures={recordOf(stats)} />}
-      </div>
-    ) : null
+    <div className="stats">
+      <Which among={among} choose={choose} vs />
+      {stats && <Figures figures={recordOf(stats)} />}
+    </div>
   );
 }
 
