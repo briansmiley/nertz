@@ -85,6 +85,12 @@
   gap: 0.5rem 0.8rem;
 }
 
+/* The speed holds the width of its longest word ("medium"), the caret at its end: choosing another moves nothing. */
+.bots .dropdown > button {
+  min-width: 5.2em;
+  justify-content: space-between;
+}
+
 .seats .away .name {
   opacity: 0.5;
 }
