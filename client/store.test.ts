@@ -187,11 +187,11 @@ describe('the connection', () => {
     const first = last();
     first.open();
     expect(first.sent).toMatchObject([{ t: 'join', room: 'ABCD', name: 'Ada' }, { t: 'deck' }]);
-    expect(net.send({ k: 'flip' })).toBe(false); // nothing to play on yet
+    expect(net.send({ k: 'draw' })).toBe(false); // nothing to play on yet
     first.deliver(at('ABCD'));
     expect(net.current()).toMatchObject({ status: 'online', room: { phase: 'playing' } });
-    expect(net.send({ k: 'flip' })).toBe(true);
-    expect(first.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'flip' } });
+    expect(net.send({ k: 'draw' })).toBe(true);
+    expect(first.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'draw' } });
 
     first.closed();
     expect(net.current().status).toBe('reconnecting');
@@ -203,14 +203,14 @@ describe('the connection', () => {
     expect(shown?.game).toBeTruthy();
     expect(shown!.game!.players[0]!.waste).toHaveLength(0); // the flip that was never answered died with the line
 
-    expect(net.send({ k: 'flip' })).toBe(false);
+    expect(net.send({ k: 'draw' })).toBe(false);
     expect(second.sent).toHaveLength(2); // nothing went out
     expect(net.current().room).toBe(shown); // and the table is still what is rendered
 
     second.deliver(at('ABCD'));
     expect(net.current().status).toBe('online');
-    expect(net.send({ k: 'flip' })).toBe(true);
-    expect(second.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'flip' } }); // seq starts over with the connection
+    expect(net.send({ k: 'draw' })).toBe(true);
+    expect(second.sent.at(-1)).toEqual({ t: 'intent', seq: 1, intent: { k: 'draw' } }); // seq starts over with the connection
     expect(net.current().room!.game!.players[0]!.waste).toHaveLength(1);
   });
 

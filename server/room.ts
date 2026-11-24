@@ -1,18 +1,18 @@
 // One game room. No IO: it is handed parsed messages for opaque connection
 // handles and decides what each connection is sent. Its only clocks are the
 // deal timer and the "1, 2, 3" start timer at the opening of a round, the
-// held-card grace timer at its end (and within it, the wait for a call to reach every window), and one timer per bot
-// (see server/bot.ts); every rule about the first two lives in the engine.
+// held-card grace timer at its end (and within it, the wait for a call to reach every window), the steps of each
+// group in flight off a stock, and one timer per bot (see server/bot.ts); every rule about them lives in the engine.
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, yetToHear, type Rng } from '../shared/engine';
-import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
+import { applyIntent, deal, dealOn, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, yetToHear, type Rng } from '../shared/engine';
+import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
 import type { Account, BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
-import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
+import { botAt, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import type { Named } from '../shared/chat';
@@ -96,8 +96,6 @@ interface Player {
   look: Look;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
-  /** When this player last dealt a card off their stock: dealing is paced by the server, not by how fast a client can send. */
-  flipped?: number;
   /** Said they are ready for Start, for the round now dealt. */
   ready?: boolean;
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
@@ -136,8 +134,6 @@ export interface RoomOptions {
   deal?: typeof deal;
   /** How to defer the coalesced flush; defaults to once per event-loop turn. */
   schedule?: (flush: () => void) => void;
-  /** The least time between two cards a person deals off their stock (ms). 0, the default here, is no limit. */
-  flipMs?: number;
   /**
    * The longest a Nertz call waits to reach the windows of the others who play the round (ms, see HEAR_MS). 0, the
    * default here: it waits for nobody, and reaches them all at once.
@@ -195,6 +191,8 @@ export class Room {
   private roundTimer: { handle: ReturnType<typeof setTimeout>; endsAt: number } | null = null;
   /** Within the grace after a call, the end of its wait to be heard (`hearMs`): set with the round timer, and called off with it. */
   private hearTimer: ReturnType<typeof setTimeout> | null = null;
+  /** By seat, the next step of each group in flight off a stock (`draws`). Called off with the round timer, and by a pause: the group waits where it is. */
+  private steps = new Map<number, ReturnType<typeof setTimeout>>();
   /** The last round whose start the chat was told of. */
   private startTold = 0;
   /** Who paused the round in play, if it is paused. */
@@ -205,7 +203,6 @@ export class Room {
   private readonly rng: Rng;
   private readonly deal: typeof deal;
   private readonly schedule: (flush: () => void) => void;
-  private readonly flipMs: number;
   private readonly hearMs: number;
   private readonly record: RoomOptions['record'];
 
@@ -216,7 +213,6 @@ export class Room {
     this.rng = options.rng ?? Math.random;
     this.deal = options.deal ?? deal;
     this.schedule = options.schedule ?? setImmediate;
-    this.flipMs = options.flipMs ?? 0;
     this.hearMs = options.hearMs ?? 0;
     this.record = options.record;
   }
@@ -567,6 +563,39 @@ export class Room {
     if (this.roundTimer) clearTimeout(this.roundTimer.handle);
     if (this.hearTimer) clearTimeout(this.hearTimer);
     this.roundTimer = this.hearTimer = null;
+    this.stopDraws();
+  }
+
+  /**
+   * Every group in flight off a stock takes its next step (`dealOn`) STOCK_CARD_MS after its last: the server deals
+   * the cards of a draw, so a draw is one intent and nobody deals faster than anyone else. Only while the round is
+   * live: a group in flight at a call stays as it lies. After anything that can start a draw, or let one go on.
+   */
+  private draws(): void {
+    if (this.phase !== 'playing' || !this.state || !isLive(this.state) || this.pausedBy) return;
+    for (const { seat, dealt } of this.state.players) {
+      if (dealt === 0 || this.steps.has(seat)) continue;
+      this.steps.set(
+        seat,
+        this.later(STOCK_CARD_MS, () => {
+          this.steps.delete(seat);
+          if (this.phase !== 'playing' || !this.state || this.pausedBy) return;
+          const next = dealOn(this.state, seat);
+          if (next === this.state) return;
+          this.state = next;
+          this.changed();
+          this.draws();
+          // A bot waits to see what its draw turns up (bot.ts): it looks it over now.
+          const bot = this.table.find((p) => p.bot && at(p) === seat);
+          if (bot && !this.steps.has(seat)) this.decide(bot);
+        }),
+      );
+    }
+  }
+
+  private stopDraws(): void {
+    for (const t of this.steps.values()) clearTimeout(t);
+    this.steps.clear();
   }
 
   /**
@@ -583,11 +612,6 @@ export class Room {
     player.ack = seq;
     if (this.phase !== 'playing' || !this.state || (this.pausedBy && sent.k !== 'end')) return this.changed(player), false; // while paused, only the vote to end the round
     if (sent.k !== 'heard') delete player.standing; // playing is sitting back down (hearing a call is not)
-    if (sent.k === 'flip' && this.flipMs > 0 && !player.bot) {
-      const now = Date.now();
-      if (now - (player.flipped ?? 0) < this.flipMs) return this.changed(player), false; // too soon after their last card: refused
-      player.flipped = now;
-    }
     // Who a call has yet to reach is the room's to say, whoever sent it.
     const intent: Intent = sent.k === 'nertz' ? { k: 'nertz', unheard: this.listening(player) } : sent;
     const result = applyIntent(this.state, at(player), intent);
@@ -605,6 +629,7 @@ export class Room {
       if (yetToHear(next).length > 0) this.hearTimer = this.later(this.hearMs, () => this.hearingOver());
     }
     this.settle();
+    this.draws();
     this.changed();
     return result.ok;
   }
@@ -693,11 +718,13 @@ export class Room {
       this.stopClock();
       for (const p of this.players) this.letGo(p);
       this.stopBots();
+      this.stopDraws();
     } else {
       if (!this.pausedBy) return;
       this.pausedBy = null;
       this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p);
+      this.draws();
     }
     this.changed();
   }
@@ -997,10 +1024,9 @@ export class Room {
 
   /**
    * Schedules the bot's next look, a human-ish pause from now: its level's mean delay, half to one and a half times.
-   * In the middle of dealing a group (`dealing`), the next card instead follows at the same quick step for everyone.
    * `fresh`: a new round, which the bot starts with nothing remembered and nothing in hand.
    */
-  private wake(player: Player, fresh = false, dealing = false, spent = 0): void {
+  private wake(player: Player, fresh = false, spent = 0): void {
     const bot = player.bot!;
     if (fresh) {
       bot.memory = freshMemory();
@@ -1014,7 +1040,7 @@ export class Room {
     const k = bot.pending?.intent.k;
     const react = BOT_REACT_MS * (0.75 + 0.5 * this.rng());
     const reflex = k === 'clear' ? react + FLIGHT_MS.centre : k === 'nertz' ? react : null;
-    bot.timer = this.later(dealing ? DEAL_STEP_MS : (reflex ?? Math.max(FLIGHT_STEP_MS, think - spent)), () => this.look(player));
+    bot.timer = this.later(reflex ?? Math.max(FLIGHT_STEP_MS, think - spent), () => this.look(player));
   }
 
   /**
@@ -1031,7 +1057,6 @@ export class Room {
     const bot = player.bot!;
     bot.timer = null;
     if (this.phase !== 'playing' || !this.state || this.pausedBy) return;
-    let midGroup = false;
     if (bot.pending) {
       const before = this.state;
       const { intent, memory } = bot.pending;
@@ -1040,21 +1065,17 @@ export class Room {
       if (intent.k === 'move' && !applyIntent(before, at(player), intent).ok) return this.rethink(player);
       if (intent.k === 'move' && flightFrames(before, at(player), intent).length > 0) return this.fly(player);
       bot.pending = null;
-      if (this.intent(player, player.ack + 1, intent)) {
-        bot.memory = memory;
-        // It dealt a card off the stock and the group isn't finished: the rest of it comes at the common deal speed.
-        midGroup = intent.k === 'flip' && (this.state.players.find((p) => p.seat === at(player))?.dealt ?? 0) > 0;
-      }
+      if (this.intent(player, player.ack + 1, intent)) bot.memory = memory;
     }
-    this.decide(player, midGroup);
+    this.decide(player);
   }
 
   /** The bot looks the table over and picks its next action, done after a pause (less `spent`: time already gone on a move). */
-  private decide(player: Player, midGroup = false, spent = 0): void {
+  private decide(player: Player, spent = 0): void {
     const bot = player.bot!;
     if (this.phase !== 'playing' || !this.state) return;
     bot.pending = chooseIntent(viewFor(this.state, at(player)), at(player), bot.memory, this.rng, this.botNow(bot).observance);
-    this.wake(player, false, midGroup && bot.pending?.intent.k === 'flip', spent);
+    this.wake(player, false, spent);
   }
 
   /**
@@ -1090,7 +1111,7 @@ export class Room {
       }
       bot.pending = null;
       if (this.intent(player, player.ack + 1, intent)) bot.memory = memory; // (a refused drop changes the table too: the card goes home)
-      this.decide(player, false, frames.length * FLIGHT_STEP_MS);
+      this.decide(player, frames.length * FLIGHT_STEP_MS);
     };
     step();
   }

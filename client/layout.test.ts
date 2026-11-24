@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, viewFor } from '../shared/engine';
+import { applyIntent, canDrop, checkInvariants, DEAL_MS, dealOn, isHidden, NERTZ_SIZE, viewFor } from '../shared/engine';
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
@@ -742,9 +742,9 @@ describe('table layout', () => {
         for (const you of [0, n - 1]) {
           const where = `${n} players at ${W}x${H}, seat ${you}`;
           const keep = { l: notch, r: notch, b: 0 };
-          expect(computeLayout(W, H, game, you, 'flip', null, undefined, keep).cleared, where).toBe(false);
-          expect(computeLayout(W, H, game, you, 'wash', null, undefined, keep).cleared, where).toBe(false); // the wash is on the felt, among the hands
-          const L = computeLayout(W, H, game, you, 'sort', null, undefined, keep);
+          expect(computeLayout(W, H, game, you, 'flip', null, keep).cleared, where).toBe(false);
+          expect(computeLayout(W, H, game, you, 'wash', null, keep).cleared, where).toBe(false); // the wash is on the felt, among the hands
+          const L = computeLayout(W, H, game, you, 'sort', null, keep);
           expect(L.cleared, where).toBe(true);
           const plan = planFinale(L, game);
           expect(plan.piles.map((p) => p.seat), where).toEqual(game.players.map((p) => p.seat));
@@ -1047,8 +1047,10 @@ describe('the deal', () => {
 });
 
 describe('a group dealt off the stock', () => {
+  /** The next step of seat 0's draw: the draw itself, then the server's steps (`dealOn`). */
   const flip = (g: GameState): GameState => {
-    const r = applyIntent(g, 0, { k: 'flip' });
+    if (g.players[0]!.dealt > 0) return dealOn(g, 0);
+    const r = applyIntent(g, 0, { k: 'draw' });
     if (!r.ok) throw new Error(r.reason);
     return r.state;
   };
@@ -1071,11 +1073,12 @@ describe('a group dealt off the stock', () => {
       expect(L.cards.some((c) => c.pile === 'waste')).toBe(false);
     }
     g = flip(g);
-    // The whole group is held a beat, all three off the stock, before it lands.
-    const beat = computeLayout(1280, 720, g, 0, 'live', null, new Map([[0, 3]]));
+    // The whole group is held a beat (the server's last step), all three off the stock, before it lands.
+    const beat = computeLayout(1280, 720, g, 0);
     const whole = three.map((id) => at(beat, id)!);
     expect(whole.every((c) => c.pile === 'stock' && c.face !== 'up' && c.y < beat.me!.stock.y)).toBe(true);
     expect(new Set(whole.map((c) => `${c.x},${c.y}`)).size).toBe(3);
+    g = flip(g);
     const L = computeLayout(1280, 720, g, 0);
     const landed = three.map((id) => at(L, id)!);
     expect(landed.every((c) => c.pile === 'waste' && c.x === L.me!.waste.x && c.y === L.me!.waste.y && c.rot === 0)).toBe(true);
@@ -1096,7 +1099,7 @@ describe('a group dealt off the stock', () => {
       for (let k = 1; k <= 3; k++) {
         g = flip(g);
         // While it is counted off (the cards that come up under the ones held travel at the level they lie at), and held whole for its beat.
-        const L = computeLayout(W, H, g, 0, 'live', null, k === 3 ? new Map([[0, 3]]) : undefined);
+        const L = computeLayout(W, H, g, 0);
         const middle = L.cards.filter((c) => c.pile === 'slot');
         const held = L.cards.filter((c) => c.mine && c.pile === 'stock' && c.y < L.me!.stock.y);
         expect(middle.map((c) => c.card.id)).toEqual(['club1', 'club2']);

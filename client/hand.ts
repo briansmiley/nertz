@@ -352,18 +352,6 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
   }
 }
 
-// ---------------------------------------------------------------- the stock
-
-/**
- * A group is coming off your stock and its next card would be played now: Table.tsx deals it STOCK_CARD_MS after the
- * last card that went. While the flip would be refused (a finished pile of yours waiting, no connection) none is due,
- * and the group goes on as soon as it would be played again. Nobody is nagged for what the timer tried.
- */
-export function cardDue({ game, you, frozen, plays }: Scene): boolean {
-  const me = game.players.find((p) => p.seat === you);
-  return !frozen && (me?.dealt ?? 0) > 0 && plays({ k: 'flip' });
-}
-
 // ---------------------------------------------------------------- telling the others
 
 /**

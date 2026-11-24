@@ -117,15 +117,6 @@ describe('table settings in a room', () => {
     for (const c of conns) expect(c.room.settings).toEqual({ tapToMove: false });
   });
 
-  it('a flip is one card off the stock: a client that sends flips on its own gains nothing', () => {
-    const { room, conns } = roomWith(2, { rng: lcg(3) });
-    const [host, guest] = conns as [FakeConn, FakeConn];
-    startRound(room, host);
-    for (let seq = 0; seq < 4; seq++) room.handle(guest, { t: 'intent', seq, intent: { k: 'flip' } });
-    expect(room.game!.players[1]).toMatchObject({ waste: { length: 4 }, dealt: 1 });
-    expect(checkInvariants(room.game!)).toBeNull();
-  });
-
   it('follows the dealing role: while the host is away the first connected player may change them', () => {
     const { room, conns } = roomWith(3, { rng: lcg(3) });
     const [host, guest] = conns as [FakeConn, FakeConn, FakeConn];

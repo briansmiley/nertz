@@ -91,17 +91,17 @@ describe('who is at the table between rounds', () => {
   it('lays out a place for whoever is at the table then and none for anyone gone: a seat someone else has taken is theirs, with no cards in it', () => {
     const view = room.game!;
     const hands = view.players.filter((g) => handsAt('sheet', room).includes(g.seat));
-    const L = computeLayout(1440, 900, view, 0, 'sheet', null, undefined, undefined, sitting, undefined, hands);
+    const L = computeLayout(1440, 900, view, 0, 'sheet', null, undefined, sitting, undefined, hands);
     expect(L.opponents.map((o) => o.seat)).toEqual([2, 4]);
     expect(L.cards.filter((c) => c.pile !== 'slot' && c.pile !== 'tray').every((c) => c.card.owner === 0)).toBe(true);
     // While the round's end plays out, it is the table as the round left it, with whoever sat down since beside it.
-    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
+    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
   });
 
   it('lays the table out for one alone at it (everyone else gone since: the one bot taken off), whatever the shape of the window', () => {
     const view = room.game!;
     for (const [W, H] of [[1440, 900], [390, 844], [844, 390]] as const) {
-      const L = computeLayout(W, H, view, 0, 'sheet', null, undefined, undefined, [0], undefined, view.players.filter((g) => g.seat === 0));
+      const L = computeLayout(W, H, view, 0, 'sheet', null, undefined, [0], undefined, view.players.filter((g) => g.seat === 0));
       expect(L.opponents).toEqual([]);
       const box = L.me!.box;
       expect([L.felt.cx, L.felt.cy, L.fs, box.x, box.y, box.w, box.h, ...L.cards.flatMap((c) => [c.x, c.y, c.s])].every(Number.isFinite)).toBe(true);

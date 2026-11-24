@@ -266,7 +266,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
         data-tip="Menu"
         onClick={(e) => {
           openCorner(open ? null : 'menu');
-          e.currentTarget.blur(); // keep Space for flipping
+          e.currentTarget.blur(); // keep Space for drawing
         }}
       >
         <MenuIcon />

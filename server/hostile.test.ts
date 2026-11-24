@@ -82,7 +82,7 @@ describe('a hostile client over real sockets', () => {
   beforeAll(async () => {
     dist = mkdtempSync(join(tmpdir(), 'nertz-hostile-'));
     writeFileSync(join(dist, 'index.html'), '<!doctype html><title>nertz</title>');
-    server = await startServer({ port: 0, dist, flipMs: 0, deal: (seats, rng) => dealing(seats, rng) }); // the real rate limit; the stock's pacing has its own test in room.test.ts
+    server = await startServer({ port: 0, dist, deal: (seats, rng) => dealing(seats, rng) }); // the real rate limit
   });
   afterAll(async () => {
     await server.close();
@@ -190,44 +190,36 @@ describe('a hostile client over real sockets', () => {
     await converged(room, [back, b, c]);
   });
 
-  it('the stock gives one card per message whatever the message says, and nobody is shown a card of a half-dealt group', async () => {
+  it('the stock gives one group per draw whatever the messages say, and nobody is shown a card of a group in flight', async () => {
     const { room, players } = await playing(2);
     const [a, b] = players as [Client, Client];
     const stock = me(room.game!, a.seat).stock.length;
-    // Everything a doctored client might hope deals three: extra fields, a list of messages, a list of intents.
-    await a.did({ k: 'flip', count: 3, n: 3, cards: 3 });
-    expect(me(room.game!, a.seat)).toMatchObject({ stock: { length: stock - 1 }, waste: { length: 1 }, dealt: 1 });
-    a.send([{ t: 'intent', seq: a.seq, intent: { k: 'flip' } }, { t: 'intent', seq: a.seq + 1, intent: { k: 'flip' } }]);
-    a.send({ t: 'intent', seq: a.seq, intent: [{ k: 'flip' }, { k: 'flip' }] });
-    a.send({ t: 'intent', seq: a.seq, intents: [{ k: 'flip' }, { k: 'flip' }] });
-    a.send(`${JSON.stringify({ t: 'intent', seq: a.seq, intent: { k: 'flip' } })}\n${JSON.stringify({ t: 'intent', seq: a.seq + 1, intent: { k: 'flip' } })}`);
-    await a.synced();
-    expect(me(room.game!, a.seat)).toMatchObject({ stock: { length: stock - 1 }, dealt: 1 });
-    // The same sequence number again is not a second card.
-    a.send({ t: 'intent', seq: a.seq - 1, intent: { k: 'flip' } });
-    a.send({ t: 'intent', seq: a.seq - 1, intent: { k: 'flip' } });
-    await a.synced();
-    expect(me(room.game!, a.seat).dealt).toBe(1);
-    // Half-dealt: out of play, and hidden from everyone but its owner (who was sent it to turn up the moment the group is whole).
-    await converged(room, players);
-    const top = me(room.game!, a.seat).waste.at(-1)!;
-    for (const p of players) expect(isHidden(me(p.game, a.seat).waste.at(-1)!)).toBe(p !== a);
-    for (const p of players) expect(p.raw.some((text) => text.includes(`"id":"${top.id}","owner":${a.seat},"suit"`))).toBe(p === a);
-    await a.did({ k: 'hold', cardId: top.id });
-    await a.did(move(top.id, { k: 'work', i: 0 }));
-    expect(me(room.game!, a.seat)).toMatchObject({ holding: null, waste: { length: 1 } });
-    await a.did({ k: 'flip' });
-    for (const p of players) expect(me(p.game, a.seat).waste.every(isHidden)).toBe(p !== a);
-    await a.did({ k: 'flip' });
-    await converged(room, players);
-    for (const p of players) expect(me(p.game, a.seat).waste.some(isHidden)).toBe(false); // the third turned the group up
-    // A whole lap, sent at once: exactly one card each, and the last message turns the waste over.
+    // Everything a doctored client might hope deals more: extra fields, a list of messages, a list of intents, the same
+    // sequence number again, and draws on top of a draw in flight.
+    await a.did({ k: 'draw', count: 3, n: 3, cards: 3 });
+    a.send([{ t: 'intent', seq: a.seq, intent: { k: 'draw' } }, { t: 'intent', seq: a.seq + 1, intent: { k: 'draw' } }]);
+    a.send({ t: 'intent', seq: a.seq, intent: [{ k: 'draw' }, { k: 'draw' }] });
+    a.send({ t: 'intent', seq: a.seq, intents: [{ k: 'draw' }, { k: 'draw' }] });
+    a.send(`${JSON.stringify({ t: 'intent', seq: a.seq, intent: { k: 'draw' } })}\n${JSON.stringify({ t: 'intent', seq: a.seq + 1, intent: { k: 'draw' } })}`);
+    a.send({ t: 'intent', seq: a.seq - 1, intent: { k: 'draw' } });
     let last = 0;
-    for (let i = 0; i < stock - 3 + 1; i++) last = a.intent({ k: 'flip' });
+    for (let i = 0; i < 20; i++) last = a.intent({ k: 'draw' });
     await vi.waitFor(() => expect(a.last.ack).toBe(last));
-    expect(me(room.game!, a.seat)).toMatchObject({ stock: { length: stock }, waste: [], dealt: 0 });
+    // One group, dealt by the server on its own time.
+    await vi.waitFor(() => expect(me(room.game!, a.seat).dealt).toBe(0));
+    expect(me(room.game!, a.seat)).toMatchObject({ stock: { length: stock - 3 }, waste: { length: 3 } });
     expect(me(room.game!, b.seat).stock).toHaveLength(stock); // and nobody else's stock was touched
     await converged(room, players);
+    const group = me(room.game!, a.seat).waste.map((c) => c.id);
+    for (const p of players) {
+      // While it was in flight nobody was sent a face of it, its owner included; now everyone sees it.
+      for (const { room: r } of p.states) {
+        const h = r.game && me(r.game, a.seat);
+        if (h && h.dealt > 0) expect(h.waste.slice(-h.dealt).every(isHidden)).toBe(true);
+      }
+      expect(me(p.game, a.seat).waste.some(isHidden)).toBe(false);
+      expect(me(p.game, a.seat).waste.map((c) => c.id)).toEqual(group);
+    }
   });
 
   it('nothing is accepted, forwarded or shown before play opens: every intent, a position report and a reconnect, in dealing, ready and the count', async () => {
@@ -283,10 +275,10 @@ describe('a hostile client over real sockets', () => {
     expect(players[2]!.last.room.timerMs).toBeLessThanOrEqual(START_MS);
     // The word: every nertz top turns over, for everyone, and now the same messages count.
     await vi.waitFor(() => players.forEach((p) => expect(p.game.status.at).toBe('play')), { timeout: START_MS + 1000 });
-    // (And each is sent the faces its own next move could turn up: the card under its nertz top, three off its stock,
-    // and the top buried card of each of its two work piles that have any.)
-    for (const p of players) expect(faceUp(p)).toBe(3 * 5 + 1 + 3 + 2);
-    await a.did({ k: 'flip' });
+    // (And each is sent the faces its own next move could turn up: the card under its nertz top and the top buried card
+    // of each of its two work piles that have any. Never a stock card.)
+    for (const p of players) expect(faceUp(p)).toBe(3 * 5 + 1 + 2);
+    await a.did({ k: 'draw' });
     expect(me(room.game!, a.seat).waste).toHaveLength(1);
     // Nobody was ever sent the face of a nertz top before the word. (Each client's whole history is checked after the test.)
     expect(DEAL_MS).toBeGreaterThan(0);
@@ -307,7 +299,7 @@ describe('a hostile client over real sockets', () => {
     a.intent({ k: 'hold', cardId: ace });
     a.intent(move(king, slot(pile)));
     const tries: unknown[] = [
-      { k: 'flip' },
+      { k: 'draw' },
       { k: 'stuck', on: true },
       { k: 'nertz' }, // (its nertz pile is empty)
       { k: 'hold', cardId: ace },
@@ -337,7 +329,7 @@ describe('a hostile client over real sockets', () => {
     // The other player is not held up, and cannot clear it for them.
     await b.did({ k: 'clear', slot: pile });
     expect(room.game).toBe(waiting);
-    await b.did({ k: 'flip' });
+    await b.did({ k: 'draw' });
     expect(me(room.game!, b.seat).waste).toHaveLength(1);
     // Into the tray, and everything works again.
     await a2.did({ k: 'clear', slot: pile });

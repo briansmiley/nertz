@@ -51,8 +51,8 @@ describe('parseClientMsg', () => {
       { t: 'join', room: 'ABCD', name: '   ', token: TOKEN }, { t: 'join', room: 'ABCD', name: 'x'.repeat(201), token: TOKEN },
       { t: 'join', room: 'ABCD', name: 7, token: TOKEN }, { t: 'join', room: 'ABCD', name: 'A', token: 'short' },
       { t: 'join', room: 'ABCD', name: 'A', token: 'has spaces in it' }, { t: 'join', room: 'ABCD', name: 'A', token: 'x'.repeat(65) },
-      { t: 'intent' }, { t: 'intent', seq: 1 }, { t: 'intent', seq: -1, intent: { k: 'flip' } }, { t: 'intent', seq: 1.5, intent: { k: 'flip' } },
-      { t: 'intent', seq: '1', intent: { k: 'flip' } }, { t: 'intent', seq: 2 ** 60, intent: { k: 'flip' } }, { t: 'intent', seq: 1, intent: { k: 'jump' } },
+      { t: 'intent' }, { t: 'intent', seq: 1 }, { t: 'intent', seq: -1, intent: { k: 'draw' } }, { t: 'intent', seq: 1.5, intent: { k: 'draw' } },
+      { t: 'intent', seq: '1', intent: { k: 'draw' } }, { t: 'intent', seq: 2 ** 60, intent: { k: 'draw' } }, { t: 'intent', seq: 1, intent: { k: 'jump' } },
       { t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count: 1, to: { k: 'work', i: 4 } } },
       // a move must say how many cards were lifted: 1 to 13
       ...[undefined, 0, 14, 1.5, '1'].map((count) => ({ t: 'intent', seq: 1, intent: { k: 'move', cardId: 'c', count, to: { k: 'work', i: 0 } } })),
@@ -134,7 +134,7 @@ describe('card-position reports (drag)', () => {
 
 describe('small helpers', () => {
   it('parseIntent returns clean copies', () => {
-    expect(parseIntent({ k: 'flip', x: 1 })).toEqual({ k: 'flip' });
+    expect(parseIntent({ k: 'draw', x: 1 })).toEqual({ k: 'draw' });
     expect(parseIntent({ k: 'move', cardId: 'a', count: 13, to: { k: 'slot', i: 7, id: 'f' } })).toEqual({ k: 'move', cardId: 'a', count: 13, to: { k: 'slot', i: 7 } });
     expect(parseIntent({ k: 'hold', cardId: 'a', to: 1 })).toEqual({ k: 'hold', cardId: 'a' });
     expect(parseIntent({ k: 'release', cardId: 'a' })).toEqual({ k: 'release' });

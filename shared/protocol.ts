@@ -317,15 +317,11 @@ export const HEAR_MS = 1000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
 /**
- * Dealing from the stock takes time, as it does with real cards: one click starts a group of three, and the cards
- * come off the stock one at a time, this far apart. The next group cannot start sooner than this after the last card.
+ * Dealing from the stock takes time, as it does with real cards: one draw deals a group of three, and the server
+ * takes the cards off the stock one at a time, this far apart, and turns the group up this long after the third. So
+ * a draw takes half a second, and the next can start once its group is up.
  */
 export const STOCK_CARD_MS = 170;
-/**
- * The beat a completed group is held, counted off and still face-down, before it turns over onto the waste. Only how
- * it is drawn: the server has turned the group up already. Two gaps and the beat are the half second a group takes.
- */
-export const STOCK_TURN_MS = 160;
 /** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */
 export const START_BEAT_MS = 700;
 export const START_BEATS = 3;
@@ -398,8 +394,8 @@ export function parseIntent(raw: unknown): Intent | null {
       const count = raw.count;
       return isId(raw.cardId) && Number.isInteger(count) && to && isIndex((count as number) - 1, MAX_RUN) ? { k: 'move', cardId: raw.cardId, count: count as number, to } : null;
     }
-    case 'flip':
-      return { k: 'flip' };
+    case 'draw':
+      return { k: 'draw' };
     case 'stuck':
       return typeof raw.on === 'boolean' ? { k: 'stuck', on: raw.on } : null;
     case 'end':

@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, inGrace, isLive, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
-import { DEAL_MS, MAX_PLAYERS, parseClientMsg, PLAIN_LOOK, START_MS } from '../shared/protocol';
-import { card, FUZZ_MS, inPlay, pile, seeded, slot, table as wholeTable, untilReached, work, type Hand } from '../shared/testkit';
+import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, dealOn, DRAW_COUNT, inGrace, isLive, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
+import { DEAL_MS, MAX_PLAYERS, parseClientMsg, PLAIN_LOOK, START_MS, STOCK_CARD_MS } from '../shared/protocol';
+import { card, FUZZ_MS, inPlay, pile, seeded, slot, stepDraws, table as wholeTable, untilReached, work, type Hand } from '../shared/testkit';
 import type { GameState, Intent, Suit } from '../shared/types';
-import { BOTS, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
+import { BOTS, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { startServer, type NertzServer } from './index';
 import type { Room } from './room';
 import { Client, FakeConn, opening, roomWith } from './testkit';
@@ -38,7 +38,7 @@ describe('chooseIntent', () => {
     expect(look(mine)?.intent).toEqual({ k: 'clear', slot: 1 });
     expect(look(mine, freshMemory(), 0)?.intent).toEqual({ k: 'clear', slot: 1 }); // always noticed: nothing else is allowed
     // Everything else it might have wanted to do is refused by the engine until the pile is gone.
-    for (const intent of [{ k: 'flip' }, { k: 'stuck', on: true }, move('S5', work(0))] as Intent[]) expect(applyIntent(mine, 0, intent)).toEqual({ ok: false, reason: CLEAR_FIRST });
+    for (const intent of [{ k: 'draw' }, { k: 'stuck', on: true }, move('S5', work(0))] as Intent[]) expect(applyIntent(mine, 0, intent)).toEqual({ ok: false, reason: CLEAR_FIRST });
     // Out of nertz cards AND a pile waiting: the pile first, then the call.
     const out = table({ nertz: [], work: [['S1'], ['H2'], [], []] }, [{ owner: 0, suit: 'C', upTo: 13 }]);
     expect(look(out)?.intent).toEqual({ k: 'clear', slot: 0 });
@@ -46,7 +46,7 @@ describe('chooseIntent', () => {
     const cleared = applyIntent(out, 0, look(out)!.intent);
     expect(cleared.ok && look(cleared.state)?.intent).toEqual({ k: 'nertz' });
     const theirs = table({ nertz: ['S5'], work: DEAD }, [{ owner: 1, suit: 'C', upTo: 13 }], { nertz: ['D13'] });
-    expect(look(theirs)?.intent).toEqual({ k: 'flip' });
+    expect(look(theirs)?.intent).toEqual({ k: 'draw' });
   });
 
   it('b. calls Nertz when its nertz pile is empty, before any move', () => {
@@ -104,11 +104,11 @@ describe('chooseIntent', () => {
   it('never makes a pointless run move, and never undoes its own last one', () => {
     // The 8 on top of pile 0 fits on the 9 in pile 1, but moving it uncovers nothing and empties nothing.
     const pointless = table({ nertz: ['S13'], work: [['S9', 'H8'], ['C9'], ['H13'], ['D13']] });
-    expect(look(pointless)?.intent).toEqual({ k: 'flip' });
+    expect(look(pointless)?.intent).toEqual({ k: 'draw' });
     // A lone 8 fits the 9 in pile 1: normally taken (it empties pile 0), but not if it has just come from there.
     const back = table({ nertz: ['S13'], work: [['H8'], ['C9'], ['H13'], ['D13']] });
     expect(look(back)?.intent).toEqual(move('H8', work(1)));
-    expect(look(back, { flips: 0, last: { cardId: id(0, 'H8'), from: 1 } })?.intent).toEqual({ k: 'flip' });
+    expect(look(back, { draws: 0, last: { cardId: id(0, 'H8'), from: 1 } })?.intent).toEqual({ k: 'draw' });
     expect(look(back)?.memory.last).toEqual({ cardId: id(0, 'H8'), from: 0 });
   });
 
@@ -119,7 +119,7 @@ describe('chooseIntent', () => {
     expect(look(emptier)?.intent).toEqual(move('D8', work(0))); // f before g
   });
 
-  it('h. deals a card off the stock when there is nothing else, says stuck after one whole fruitless cycle, and starts over after a move', () => {
+  it('h. draws off the stock when there is nothing else, says stuck after one whole fruitless cycle, and starts over after a move', () => {
     // A dead hand: the middle is full of finished and barely started piles, the 3s and Queens lie under the nertz top,
     // and none of the 31 cards in the stock goes anywhere.
     const full: Centre[] = [...SUITS.map((suit) => ({ owner: 1, suit, upTo: 13 })), ...SUITS.map((suit) => ({ owner: 0, suit, upTo: 2 }))];
@@ -132,17 +132,17 @@ describe('chooseIntent', () => {
       const choice = look(state, memory)!;
       const result = applyIntent(state, 0, choice.intent);
       if (!result.ok) throw new Error(result.reason);
-      state = result.state;
+      state = dealOn(dealOn(dealOn(result.state, 0), 0), 0); // (the server deals the group out before the bot looks again)
       memory = choice.memory;
       intents.push(choice.intent.k);
     };
-    const cycle = 31 + 1; // a flip per card to run out, one to turn the waste over: the same state again
+    const cycle = Math.ceil(31 / DRAW_COUNT) + 1; // a draw per group to run out, one to turn the waste over: the same state again
     for (let i = 0; i <= cycle; i++) step();
-    expect(intents).toEqual([...Array<string>(cycle).fill('flip'), 'stuck']);
+    expect(intents).toEqual([...Array<string>(cycle).fill('draw'), 'stuck']);
     expect(state.players[0]).toMatchObject({ stuck: true, waste: [] });
-    // Stuck, it keeps flipping (the middle may change) without saying so again.
+    // Stuck, it keeps drawing (the middle may change) without saying so again.
     for (let i = 0; i < 2 * cycle; i++) step();
-    expect(intents.slice(cycle + 1)).toEqual(Array(2 * cycle).fill('flip'));
+    expect(intents.slice(cycle + 1)).toEqual(Array(2 * cycle).fill('draw'));
     // Everyone stuck at this dead table ends the round (nothing can move anywhere). Were it only stuck for now, the flags
     // would clear: it goes through the whole stock again before saying stuck.
     expect(resolveStuck({ ...state, players: state.players.map((p) => ({ ...p, stuck: true })) }, [0, 1]).status).toEqual({ at: 'over', end: { by: 'jam' } });
@@ -150,49 +150,45 @@ describe('chooseIntent', () => {
     expect(state.players[0]!.stuck).toBe(false);
     intents.length = 0;
     for (let i = 0; i <= cycle; i++) step();
-    expect(intents).toEqual([...Array<string>(cycle).fill('flip'), 'stuck']);
+    expect(intents).toEqual([...Array<string>(cycle).fill('draw'), 'stuck']);
     // A real move clears the memory.
-    expect(look(table({ nertz: ['S5'], work: [['H6'], [], [], []] }), { flips: 9, last: { cardId: 'x', from: 2 } })?.memory).toEqual(freshMemory());
-    // Nothing left to flip and nothing to play: stuck at once, then nothing.
+    expect(look(table({ nertz: ['S5'], work: [['H6'], [], [], []] }), { draws: 9, last: { cardId: 'x', from: 2 } })?.memory).toEqual(freshMemory());
+    // Nothing left to draw and nothing to play: stuck at once, then nothing.
     const bare = table(dead, full, { nertz: [] });
     const none = { ...bare, players: bare.players.map((p) => (p.seat === 0 ? { ...p, stock: [], nertz: [...p.stock, ...p.nertz] } : p)) };
     expect(look(none)?.intent).toEqual({ k: 'stuck', on: true });
     expect(look({ ...none, players: none.players.map((p) => ({ ...p, stuck: true })) })).toBeNull();
   });
 
-  it('with a group half-dealt it deals on: it leaves the waste alone and notices nothing until the group is done', () => {
-    const one = (state: GameState) => {
-      const r = applyIntent(state, 0, { k: 'flip' });
+  it('draws with one intent, and while the group is in flight waits to see what comes up: it leaves the waste alone and notices nothing', () => {
+    const draw = (state: GameState) => {
+      const r = applyIntent(state, 0, { k: 'draw' });
       if (!r.ok) throw new Error(r.reason);
       return r.state;
     };
-    // The waste top would go to the middle: it does, until a card is dealt onto it. Then the bot finishes the group.
+    // The waste top would go to the middle: it does, until a draw covers it. Then the bot waits for the group.
     const centre: Centre[] = [{ owner: 1, suit: 'H', upTo: 3 }];
     const waste = table({ nertz: ['S9'], work: DEAD, waste: ['C2', 'H4'] }, centre);
     expect(look(waste)?.intent).toEqual(move('H4', slot(0)));
-    for (const mid of [one(waste), one(one(waste))]) {
-      expect(mid.players[0]!.dealt).toBeGreaterThan(0);
-      expect(look(mid)?.intent).toEqual({ k: 'flip' }); // (and not nothing: a face-down waste top is not a closed table)
-    }
-    expect(one(one(one(waste))).players[0]!.dealt).toBe(0);
-    // Once a group is started it is finished: no move is noticed between two cards, an Ace included, at any observance,
-    // and each card counts as a flip (but not while the bot is flagged stuck).
-    const half = one(table({ nertz: ['H1'], work: [['H6'], ['C13'], ['H13'], ['D13']], waste: ['C2'] }));
-    expect(half.players[0]!.dealt).toBeGreaterThan(0);
-    for (const observance of [1, 0]) {
-      expect(look(half, { flips: 7, last: null }, observance)).toEqual({ intent: { k: 'flip' }, memory: { flips: 8, last: null } });
-    }
-    const stuck = { ...half, players: half.players.map((p) => (p.seat === 0 ? { ...p, stuck: true } : p)) };
-    expect(look(stuck, { flips: 7, last: null })).toEqual({ intent: { k: 'flip' }, memory: { flips: 7, last: null } });
+    const flight = [draw(waste)];
+    while (flight.at(-1)!.players[0]!.dealt > 0) flight.push(dealOn(flight.at(-1)!, 0));
+    expect(flight.map((g) => g.players[0]!.dealt)).toEqual([1, 2, 3, 0]);
+    for (const mid of flight.slice(0, -1)) for (const observance of [1, 0]) expect(look(mid, freshMemory(), observance)).toBeNull();
+    expect(look(flight.at(-1)!)).not.toBeNull();
+    // A draw counts as one (but not while the bot is flagged stuck).
+    const nothing = table({ nertz: ['H6'], work: DEAD });
+    expect(look(nothing, { draws: 7, last: null })).toEqual({ intent: { k: 'draw' }, memory: { draws: 8, last: null } });
+    const stuck = { ...nothing, players: nothing.players.map((p) => (p.seat === 0 ? { ...p, stuck: true } : p)) };
+    expect(look(stuck, { draws: 7, last: null })).toEqual({ intent: { k: 'draw' }, memory: { draws: 7, last: null } });
   });
 
-  it('observance 0 only ever flips (and says stuck), but for an Ace; observance 1 always takes the best move', () => {
+  it('observance 0 only ever draws (and says stuck), but for an Ace; observance 1 always takes the best move', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const state = inPlay([0, 1], seeded(seed));
       const rng = seeded(seed + 100);
       // (The one thing it cannot miss is an Ace showing: that goes out to the middle.)
       const blind = look(state, freshMemory(), 0, rng)!.intent;
-      expect(blind.k === 'flip' || (blind.k === 'move' && blind.to.k !== 'work')).toBe(true);
+      expect(blind.k === 'draw' || (blind.k === 'move' && blind.to.k !== 'work')).toBe(true);
       // With observance 1 the choice does not depend on the dice (short of where an Ace starts its pile).
       const a = look(state, freshMemory(), 1, seeded(1))!.intent;
       const b = look(state, freshMemory(), 1, seeded(2))!.intent;
@@ -235,6 +231,7 @@ describe('chooseIntent', () => {
       const memory = new Map(seats.map((s) => [s, freshMemory()]));
       const sinceFlip = new Map(seats.map((s) => [s, 0]));
       for (let step = 0; step < 6000 && isLive(state); step++) {
+        state = stepDraws(state, rng); // (the server's steps of the groups in flight)
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const before = memory.get(seat)!;
         const choice = chooseIntent(viewFor(state, seat), seat, before, rng, observance);
@@ -244,8 +241,8 @@ describe('chooseIntent', () => {
         const { intent } = choice;
         // A run move is never the reverse of the bot's previous run move.
         if (intent.k === 'move' && intent.to.k === 'work' && before.last) expect([intent.cardId, intent.to.i]).not.toEqual([before.last.cardId, before.last.from]);
-        // Between two flips a bot can only make so many moves: nothing goes round in circles.
-        sinceFlip.set(seat, intent.k === 'flip' || intent.k === 'stuck' ? 0 : sinceFlip.get(seat)! + 1);
+        // Between two draws a bot can only make so many moves: nothing goes round in circles.
+        sinceFlip.set(seat, intent.k === 'draw' || intent.k === 'stuck' ? 0 : sinceFlip.get(seat)! + 1);
         expect(sinceFlip.get(seat)).toBeLessThan(40);
         state = resolveStuck(result.state, seats);
         memory.set(seat, choice.memory);
@@ -474,7 +471,7 @@ describe('Room with bots', () => {
     expect(host.last.room.paused).toEqual({ by: 1 });
     const frozen = JSON.stringify(room.game);
     vi.advanceTimersByTime(30_000);
-    room.handle(host, { t: 'intent', seq: 1, intent: { k: 'flip' } });
+    room.handle(host, { t: 'intent', seq: 1, intent: { k: 'draw' } });
     expect(JSON.stringify(room.game)).toBe(frozen); // no bot moved, and nobody can
     room.handle(host, { t: 'pause', on: true }); // already paused: nothing changes
     room.handle(host, { t: 'pause', on: false }); // anyone in the round may unpause it
@@ -489,7 +486,7 @@ describe('Room with bots', () => {
     room.close();
   });
 
-  it("a bot decides at its level's pace (half to one and a half times the mean), but deals the rest of a group at the same quick step whatever its level", () => {
+  it("a bot decides at its level's pace (half to one and a half times the mean), and its draw is dealt by the server at the one step for everyone", () => {
     vi.useFakeTimers();
     for (const level of ['slow', 'medium', 'fast'] as const) {
       const { room, host } = hosted(3);
@@ -498,13 +495,13 @@ describe('Room with bots', () => {
       opening(room, host); // the deal and the count: bots wake when play opens
       const delay = BOTS[level].delayMs;
       const bot = () => room.game!.players.find((p) => p.seat === 1)!;
-      const gaps = { look: [] as number[], card: [] as number[] };
+      const gaps = { look: [] as number[], step: [] as number[] };
       let last = Date.now();
       let flights = 0;
+      let groups = 0;
       for (let i = 0; i < 400; i++) {
-        const stock = bot().stock.length;
-        const midGroup = bot().dealt > 0;
-        const carrying = bot().holding !== null;
+        const was = bot();
+        const carrying = was.holding !== null;
         vi.advanceTimersToNextTimer();
         // A card being carried over (its made-up drag reports, then the drop) is part of the action that picked it up.
         if (carrying) {
@@ -513,9 +510,13 @@ describe('Room with bots', () => {
         }
         const gap = Date.now() - last;
         last = Date.now();
-        const dealtOne = bot().stock.length === stock - 1;
-        if (midGroup && dealtOne && gap === DEAL_STEP_MS) gaps.card.push(gap);
-        else {
+        if (was.dealt > 0) {
+          // Its group in flight: the server's step, and nothing of the bot's own meanwhile (a card more, or the group up).
+          expect(gap).toBe(STOCK_CARD_MS);
+          expect([bot().dealt, was.stock.length - bot().stock.length]).toEqual(was.dealt === DRAW_COUNT || was.stock.length === 0 ? [0, 0] : [was.dealt + 1, 1]);
+          if (bot().dealt === 0) groups++;
+          gaps.step.push(gap);
+        } else {
           expect(gap).toBeGreaterThanOrEqual(delay * 0.5);
           expect(gap).toBeLessThanOrEqual(delay * 1.5);
           gaps.look.push(gap);
@@ -523,7 +524,7 @@ describe('Room with bots', () => {
       }
       const mean = (xs: number[]) => xs.reduce((n, x) => n + x, 0) / xs.length;
       expect(gaps.look.length).toBeGreaterThan(8);
-      expect(gaps.card.length).toBeGreaterThan(20);
+      expect(groups).toBeGreaterThan(5); // one draw each, dealt out by the server
       expect(flights).toBeGreaterThan(3); // it did carry cards over
       expect(mean(gaps.look)).toBeGreaterThan(delay * 0.7);
       expect(mean(gaps.look)).toBeLessThan(delay * 1.3);

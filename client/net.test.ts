@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { roomWith, send as told, startRound } from '../server/testkit';
-import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
+import { applyIntent, checkInvariants, deal as dealRound, dealOn, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
 import { card as c, felt, inPlay, lcg, move, roomOf, table, toPlay, upWork, withPile, work } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { freshSync, hearsCall, hello, onSend, onSnapshot, predict, type Sync } from './net';
@@ -21,6 +21,11 @@ function server(game: GameState, you: number) {
       if (seq !== undefined) ack = seq;
       rev++;
       return r.ok;
+    },
+    /** The server's step of `seat`'s group in flight. */
+    step(seat: number) {
+      game = dealOn(game, seat);
+      rev++;
     },
   };
 }
@@ -44,12 +49,12 @@ describe('prediction', () => {
     expect(predict(sync)).toBe(sync.server);
     expect(sync.server!.game!.players.flatMap((p) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock]).every(isHidden)).toBe(true);
     // What `net.send` asks before sending anything: every intent is refused on the dealing view, so nothing goes out.
-    const intents: Intent[] = [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'hold', cardId: dealt.players[0]!.nertz.at(-1)!.id }, { k: 'nertz' }];
+    const intents: Intent[] = [{ k: 'draw' }, { k: 'stuck', on: true }, { k: 'hold', cardId: dealt.players[0]!.nertz.at(-1)!.id }, { k: 'nertz' }];
     for (const intent of intents) expect(applyIntent(sync.server!.game!, 0, intent).ok).toBe(false);
     // Even an intent that did go out (a hostile or stale client) is refused by both sides: prediction stays the snapshot.
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     expect(predict(sync)).toBe(sync.server);
-    expect(s.apply(0, { k: 'flip' }, sync.seq)).toBe(false);
+    expect(s.apply(0, { k: 'draw' }, sync.seq)).toBe(false);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
 
@@ -74,7 +79,7 @@ describe('prediction', () => {
     const open = server(toPlay(dealt), 0);
     sync = onSnapshot({ ...sync, rev: -1 }, open.snapshot());
     expect(isHidden(sync.server!.game!.players[0]!.nertz.at(-1)!)).toBe(false);
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
   });
 
@@ -97,23 +102,23 @@ describe('prediction', () => {
     expect(blocked.slots[0]!.cards).toHaveLength(13);
     // What `net.send` asks: everything but the clear is refused on the predicted table, before the server has said a word.
     const nertzTop = blocked.players[0]!.nertz.at(-1)!.id;
-    for (const intent of [{ k: 'flip' }, { k: 'stuck', on: true }, { k: 'hold', cardId: nertzTop }, { k: 'nertz' }] as Intent[]) expect(applyIntent(blocked, 0, intent).ok).toBe(false);
+    for (const intent of [{ k: 'draw' }, { k: 'stuck', on: true }, { k: 'hold', cardId: nertzTop }, { k: 'nertz' }] as Intent[]) expect(applyIntent(blocked, 0, intent).ok).toBe(false);
     expect(applyIntent(blocked, 0, { k: 'clear', slot: 0 }).ok).toBe(true);
     // King and clear in flight together; a flip sent between them (a stale client) is dropped by both sides.
-    sync = send(send(sync, { k: 'flip' }), { k: 'clear', slot: 0 });
+    sync = send(send(sync, { k: 'draw' }), { k: 'clear', slot: 0 });
     expect(predict(sync)!.game!.slots[0]).toBeNull();
     expect(predict(sync)!.game!.tray.map((pile) => pile.length)).toEqual([13]);
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0);
     expect(sync.pending.map((p) => s.apply(0, p.intent, p.seq))).toEqual([true, false, true]);
     sync = onSnapshot(sync, s.snapshot());
     expect(predict(sync)).toBe(sync.server);
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
 
     // The other way round: the server refuses my King (the pile is no longer there for it). I am not held up by a pile I never finished.
     const lost = server({ ...rigged, slots: rigged.slots.map(() => null) }, 0);
     sync = onSnapshot(freshSync, s2snap(rigged));
-    sync = send(send(sync, kingMove), { k: 'flip' });
+    sync = send(send(sync, kingMove), { k: 'draw' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0); // predicted: blocked behind my King
     expect(sync.pending.map((p) => lost.apply(0, p.intent, p.seq))).toEqual([false, true]);
     sync = onSnapshot(sync, lost.snapshot());
@@ -129,37 +134,28 @@ describe('prediction', () => {
     expect(predict(sync)).toBe(sync.server);
   });
 
-  it('predicts cards dealt off the stock one by one, face-down, and turns the group up with its faces before the server answers', () => {
+  it('predicts a draw: its first card face-down at once; the rest, and the faces, come with the server\'s steps', () => {
     const s = server(inPlay([0, 1], lcg(2)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     const mine = () => predict(sync)!.game!.players[0]!;
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     expect([mine().waste.length, mine().dealt]).toEqual([1, 1]);
-    sync = send(sync, { k: 'flip' });
-    expect([mine().waste.length, mine().dealt]).toEqual([2, 2]);
-    // The server has the first card only: still face-down and out of play in the snapshot (its owner knows its face),
-    // and the second is still replayed over it.
-    s.apply(0, { k: 'flip' }, 1);
-    sync = onSnapshot(sync, s.snapshot());
-    expect(sync.server!.game!.players[0]!).toMatchObject({ dealt: 1 });
-    expect(sync.server!.game!.players[0]!.waste.some(isHidden)).toBe(false);
-    expect(applyIntent(sync.server!.game!, 0, { k: 'hold', cardId: sync.server!.game!.players[0]!.waste[0]!.id }).ok).toBe(false);
-    expect([mine().waste.length, mine().dealt]).toEqual([2, 2]);
-    // The third is predicted: the group turns up, faces and all, and its top can be played at once.
-    sync = send(sync, { k: 'flip' });
-    const predicted = mine();
-    expect([predicted.waste.length, predicted.dealt]).toEqual([3, 0]);
-    expect(predicted.waste.some(isHidden)).toBe(false);
-    expect(checkInvariants(predict(sync)!.game!)).toBeNull();
-    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: predicted.waste.at(-1)!.id }).ok).toBe(true);
-
-    // The server's answer is exactly what was drawn.
-    s.apply(0, { k: 'flip' }, 2);
-    s.apply(0, { k: 'flip' }, 3);
+    expect(applyIntent(predict(sync)!.game!, 0, { k: 'draw' }).ok).toBe(false); // in flight: nothing more to send
+    s.apply(0, { k: 'draw' }, 1);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
-    expect(mine().waste).toEqual(predicted.waste);
-    expect(mine().dealt).toBe(0);
+    for (const dealt of [2, 3]) {
+      s.step(0);
+      sync = onSnapshot(sync, s.snapshot());
+      expect([mine().waste.length, mine().dealt]).toEqual([dealt, dealt]);
+      expect(mine().waste.every(isHidden)).toBe(true);
+    }
+    s.step(0);
+    sync = onSnapshot(sync, s.snapshot());
+    expect([mine().waste.length, mine().dealt]).toEqual([3, 0]);
+    expect(mine().waste.some(isHidden)).toBe(false);
+    expect(checkInvariants(predict(sync)!.game!)).toBeNull();
+    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: mine().waste.at(-1)!.id }).ok).toBe(true);
   });
 
   it('turns up a buried work card at once for a move between your own piles, and only once confirmed for a move to the middle', () => {
@@ -202,11 +198,11 @@ describe('prediction', () => {
     let sync = onSnapshot(freshSync, s.snapshot());
     const ace = s.game.players[0]!.work[0]!.cards[0]!;
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     expect(sync.pending.map((p) => p.seq)).toEqual([1, 2]);
 
     // The opponent acts first; the snapshot reflects only that.
-    s.apply(1, { k: 'flip' });
+    s.apply(1, { k: 'draw' });
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(2);
     let game = predict(sync)!.game!;
@@ -276,7 +272,7 @@ describe('prediction', () => {
     sync = send(sync, { k: 'hold', cardId: ace.id });
     expect(me().holding).toBe(ace.id);
     // Somebody else's move arrives first: the hold is still pending and still shown.
-    s.apply(1, { k: 'flip' });
+    s.apply(1, { k: 'draw' });
     sync = onSnapshot(sync, s.snapshot());
     expect(me().holding).toBe(ace.id);
 
@@ -353,7 +349,7 @@ describe('prediction', () => {
     expect(inGrace(predict(sync)!.game!)).toEqual([0]);
 
     // A flip is refused locally-replayed too; the held card's move is predicted and empties grace.
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0);
     sync = send(sync, { k: 'move', cardId: ace.id, count: 1, to: { k: 'felt', x: 0, y: 0 } });
     const game = predict(sync)!.game!;
@@ -393,11 +389,11 @@ describe('prediction', () => {
   it('ignores a snapshot older than the last one seen, and accepts an equal rev with a newer ack', () => {
     const s = server(inPlay([0, 1], lcg(3)), 0);
     const old = s.snapshot();
-    s.apply(1, { k: 'flip' });
+    s.apply(1, { k: 'draw' });
     let sync = onSnapshot(freshSync, s.snapshot());
     expect(onSnapshot(sync, old)).toBe(sync);
 
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     const same = { ...s.snapshot(), ack: sync.seq };
     expect(onSnapshot(sync, same).pending).toHaveLength(0);
   });
@@ -405,7 +401,7 @@ describe('prediction', () => {
   it('does not replay outside a round', () => {
     const s = server(inPlay([0, 1], lcg(4)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
-    sync = send(sync, { k: 'flip' });
+    sync = send(sync, { k: 'draw' });
     const results = { rev: 9, ack: -1, room: { ...s.snapshot().room, phase: 'results' as const } };
     sync = onSnapshot(sync, results);
     expect(predict(sync)).toBe(sync.server);
@@ -417,13 +413,13 @@ describe('prediction', () => {
   });
 
   it('a fresh connection starts seq and rev again', () => {
-    let sync = send(send(freshSync, { k: 'flip' }), { k: 'flip' });
+    let sync = send(send(freshSync, { k: 'draw' }), { k: 'draw' });
     expect(sync.seq).toBe(2);
     sync = freshSync;
     const s = server(inPlay([0, 1], lcg(5)), 0);
     sync = onSnapshot(sync, { ...s.snapshot(), rev: 0 }); // e.g. the server restarted: rev is low again
     expect(sync.server).not.toBeNull();
-    expect(send(sync, { k: 'flip' }).pending[0]!.seq).toBe(1);
+    expect(send(sync, { k: 'draw' }).pending[0]!.seq).toBe(1);
   });
 });
 
@@ -463,16 +459,16 @@ describe('against the real Room', () => {
     room.flush();
     let sync = onSnapshot(freshSync, me.last);
     const seat = sync.server!.seat!;
-    const sent = ([{ k: 'flip' }, { k: 'nertz' }, { k: 'flip' }, { k: 'flip' }] as Intent[]).map((intent) => {
+    const sent = ([{ k: 'draw' }, { k: 'nertz' }, { k: 'stuck', on: true }, { k: 'draw' }] as Intent[]).map((intent) => {
       sync = send(sync, intent);
       return { t: 'intent', seq: sync.seq, intent };
     });
     const players = () => predict(sync)!.game!.players;
     const mine = () => players().find((p) => p.seat === seat)!;
     const predicted = mine().waste.map((c) => c.id);
-    expect(predicted).toHaveLength(3);
+    expect(predicted).toHaveLength(1); // (the second draw is refused: the first one's group is in flight)
 
-    expect(told(room, them, { t: 'intent', seq: 1, intent: { k: 'flip' } })).toBe(true); // reaches the Room first
+    expect(told(room, them, { t: 'intent', seq: 1, intent: { k: 'draw' } })).toBe(true); // reaches the Room first
     for (const msg of sent.slice(0, 2)) told(room, me, msg);
     room.flush();
     sync = onSnapshot(sync, me.last);
@@ -486,6 +482,6 @@ describe('against the real Room', () => {
     expect(sync.pending).toEqual([]);
     expect(predict(sync)).toBe(sync.server);
     expect(mine().waste.map((c) => c.id)).toEqual(predicted);
-    expect(mine().waste.some(isHidden)).toBe(false);
+    expect(mine()).toMatchObject({ dealt: 1, stuck: true });
   });
 });
