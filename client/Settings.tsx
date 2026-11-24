@@ -76,27 +76,33 @@ export function Robot() {
   );
 }
 
-/** A card, tilted, with a robot on it: marigold antenna tips, a club and a spade for eyes, a red collar. */
+/**
+ * A card, tilted, with a robot on it: an N in two corners, marigold antenna tips, a club and a spade for eyes, a red
+ * ear and collar. Drawn big and bare (no round button around it), so it is its own button (`Pop`'s `bare`).
+ */
 export function BotCard() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <g transform="rotate(-10 12 12)">
-        <rect x="4.5" y="2" width="15" height="20" rx="2.2" />
-        <path d="M9.8 9V6.6M14.2 9V6.6" />
-        <circle cx="9.8" cy="5.6" r="1.2" stroke="none" style={{ fill: 'var(--marigold)' }} />
-        <circle cx="14.2" cy="5.6" r="1.2" stroke="none" style={{ fill: 'var(--marigold)' }} />
-        <rect x="7.5" y="9" width="9" height="8" rx="1.6" />
-        <g fill="currentColor" stroke="none">
-          <g transform="translate(10 12.3) scale(1.15)">
-            <circle cy="-0.8" r="0.68" />
-            <circle cx="-0.75" cy="0.3" r="0.68" />
-            <circle cx="0.75" cy="0.3" r="0.68" />
-            <path d="M-0.45 1.6 0 0.2 0.45 1.6Z" />
+    <svg className="botcard" viewBox="0 0 24 24" aria-hidden="true">
+      <g transform="rotate(-12 12 12)">
+        <rect className="blank" x="4.5" y="2" width="15" height="20" rx="2" />
+        <path className="letters" d="M6.3 6.2V3.8L8 6.2V3.8M16 20.2v-2.4l1.7 2.4v-2.4" />
+        <path d="M10 8.2V6.4M14 8.2V6.4" />
+        <circle className="bulb" cx="10" cy="5.4" r="1" />
+        <circle className="bulb" cx="14" cy="5.4" r="1" />
+        <rect className="ear" x="6.6" y="10.5" width="1.4" height="3" rx="0.7" />
+        <rect className="blank" x="8" y="8.2" width="8" height="7.4" rx="1.4" />
+        <g className="eyes">
+          <g transform="translate(10.3 11.1) scale(1.15)">
+            <circle cy="-0.75" r="0.6" />
+            <circle cx="-0.68" cy="0.28" r="0.6" />
+            <circle cx="0.68" cy="0.28" r="0.6" />
+            <path d="M-0.4 1.45 0 0.2 0.4 1.45Z" />
           </g>
-          <path transform="translate(14 12.3) scale(1.15)" d="M0-1.5C.9-.5 1.45 0 1.45.65A.72.72 0 0 1 .2 1.05L.45 1.6H-.45L-.2 1.05A.72.72 0 0 1-1.45.65C-1.45 0-.9-.5 0-1.5Z" />
+          <path transform="translate(13.7 11.1) scale(1.15)" d="M0-1.35C.8-.45 1.3 0 1.3.58A.65.65 0 0 1 .18.95L.4 1.45H-.4L-.18.95A.65.65 0 0 1-1.3.58C-1.3 0-.8-.45 0-1.35Z" />
         </g>
-        <path d="M10.6 15h2.8" strokeWidth="1.3" />
-        <path d="M10.2 18.9h3.6" style={{ stroke: 'var(--red)' }} />
+        <path d="M10.6 14h2.8" />
+        <path d="M10.4 15.6v2h3.2v-2" />
+        <path className="collar" d="M10.4 16.4h3.2" />
       </g>
     </svg>
   );
@@ -105,15 +111,16 @@ export function BotCard() {
 /** An eye: standing up from the table to watch. */
 
 /**
- * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away.
+ * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away. (`bare`: the icon
+ * is the button itself, with no circle around it, in a plain square that is its hitbox.)
  */
-export function Pop({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+export function Pop({ icon, label, bare, children }: { icon: ReactNode; label: string; bare?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   useDismiss(root, open, () => setOpen(false));
   return (
     <span className="pop-at" ref={root}>
-      <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} data-tip={label} onClick={() => setOpen(!open)}>
+      <button type="button" className={`icon${bare ? ' bare' : ''}${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} data-tip={label} onClick={() => setOpen(!open)}>
         {icon}
       </button>
       {open && (

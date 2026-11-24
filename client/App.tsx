@@ -211,12 +211,12 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
   );
 }
 
-/** For whoever deals, between rounds and before their Start: a robot-card button that opens a slip for seating a bot. */
+/** For whoever deals, between rounds and before their Start: the robot card, bare, a button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
   const full = freeSeats(room.seats) === 0;
   return (
-    <Pop icon={<BotCard />} label="Add a bot">
+    <Pop icon={<BotCard />} label="Add a bot" bare>
       <h3>Add a bot</h3>
       {full ? (
         <p className="hint">The table is full.</p>
