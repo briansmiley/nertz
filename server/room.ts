@@ -453,6 +453,9 @@ export class Room {
    * played is paused, by nobody at the table, and anyone in it unpauses it as ever; a deal or a count under way is
    * back to waiting for the dealer's Start; the grace after a call is over, and the round scored. It is as it is kept
    * (`kept`), and as it comes back (`restored`).
+   * What anyone had said of a round being played (stuck, or to end it) is unsaid: such a word counts once it is that of
+   * everyone here (`settle`), and the windows go, and come back, one at a time. Kept, it would be everyone's as soon as
+   * whoever said it was the only one here, and the update would end the round, or turn its stocks over.
    */
   halt(): void {
     if (this.phase !== 'playing' || !this.state) return;
@@ -460,7 +463,10 @@ export class Room {
     if (at === 'grace') return this.graceExpired();
     this.stopRoundTimer();
     if (at === 'dealing' || at === 'countdown') this.state = { ...this.state, status: { at: 'ready' } };
-    if (at === 'play') this.stopPlay('update');
+    if (at === 'play') {
+      this.state = { ...this.state, players: this.state.players.map(({ ending, ...p }) => ({ ...p, stuck: false })) };
+      this.stopPlay('update');
+    }
     this.changed();
   }
 

@@ -2486,6 +2486,7 @@ describe('a table kept over a restart of the server', () => {
     startRound(room, a);
     sendIntent(room, a, 1, { k: 'draw' }); // a group in flight off a's stock
     sendIntent(room, b, 1, hold(workTop(room.game!, 1, 0))); // and a card in b's hand
+    sendIntent(room, b, 2, { k: 'end', on: true }); // and b's word that it should end, which is not a's
     room.flush();
     const was = room.game!;
     expect(hand(was, 0).dealt).toBeGreaterThan(0);
@@ -2499,6 +2500,7 @@ describe('a table kept over a restart of the server', () => {
     expect(back.lastRound).toEqual(room.lastRound);
     expect(cards(back.game!)).toEqual(cards(was));
     expect(back.game!.players.map((p) => p.holding)).toEqual([null, null, null]);
+    expect(back.game!.players.some((p) => p.stuck || p.ending)).toBe(false); // (or b, first back, would be everyone here, and it would end)
 
     const b2 = new FakeConn();
     expect(back.join(b2, 'P1', 'tok-0001')).toBeNull(); // (a guest: who they are is their token)
@@ -2566,6 +2568,7 @@ describe('a table kept over a restart of the server', () => {
       const code = a.code;
       await startOver(server.rooms.get(code)!, a, [a, b]);
       const hands = server.rooms.get(code)!.game!.players;
+      await b.did({ k: 'end', on: true }); // (said by one of two: it must not end the round as the other's window goes, nor as Bob's comes back first)
       server.update();
       await vi.waitFor(() => expect([a.closeCode, b.closeCode]).toEqual([CLOSE_UPDATE, CLOSE_UPDATE]));
       expect(a.last.room.paused).toEqual({ by: null });
