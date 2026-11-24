@@ -329,13 +329,6 @@ export interface Stats {
   rounds: number;
   /** Rounds in which nobody scored more than they did (and somebody else played). */
   won: number;
-  /**
-   * Rounds won, against what chance would give: the rounds won (a tie at the top shared among those in it), over the
-   * 1 in n chance would give each at a table of n, both summed over the rounds with someone else in them. 1 is as
-   * chance would have it, 2 twice as often: a win at a table of ten counts five times one at a table of two. Null for
-   * no such round.
-   */
-  odds: number | null;
   /** Rounds they ended by calling Nertz. */
   nertz: number;
   /** Everything they scored, added up; and the most in one round (null with no round played). */

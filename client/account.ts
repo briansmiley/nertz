@@ -205,11 +205,10 @@ export function readStats(status: number, body: unknown): Stats | null {
   const v = body as Partial<Record<keyof Stats, unknown>> | null;
   const most = (n: unknown): n is number | null => n === null || whole(n);
   const share = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && n <= 1);
-  const times = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && Number.isFinite(n));
   if (status !== 200 || !v) return null;
-  const { rounds, won, odds, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
-  if (!whole(rounds) || !whole(won) || !times(odds) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
-  return { rounds, won, odds, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
+  const { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
+  if (!whole(rounds) || !whole(won) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
+  return { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
 }
 
 /** How you have done against someone, as the server says it: null for an answer that is not that. */
