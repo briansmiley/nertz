@@ -6,23 +6,25 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
 import { FOLLOWING_PATH, PICTURE_PATH, PROFILE_PATH, profileHandler } from './profile';
 import { openPictures, PICTURES_PATH } from './pictures';
-import { dataFromEnv, openDb } from './db';
+import { dataFromEnv, openDb, transaction } from './db';
 import { openReports } from './reports';
 import { openRounds } from './rounds';
 import { STATS_PATH, statsHandler, USAGE_PATH, usageHandler } from './stats';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
-import { Room, type Conn, type RoomOptions } from './room';
+import { Room, type Conn, type Kept, type RoomOptions } from './room';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
 const LOBBY_TTL_MS = 60_000; // ...unless it never dealt a round: an abandoned lobby holds nothing worth keeping
 const SWEEP_MS = 60_000;
+const KEEP_MS = 30_000; // a table with a round on is kept this often (see `keep`)
+const UPDATE_MS = 500; // stopping for an update, the server stays this long after closing its sockets, for the windows to hear why
 const HEARTBEAT_MS = 30_000;
 const MAX_ROOMS = 2000;
 const MAX_LISTED = 20; // tables on the home page's list: those where something happened last
@@ -62,6 +64,14 @@ export interface NertzServer {
   rooms: Map<string, Room>;
   /** Deletes rooms that have had no connections for their TTL (shorter for a table that never dealt). Runs on a timer; exposed for tests. */
   sweep(now?: number): void;
+  /** Keeps every table with a round on, as it is now. Runs on a timer; exposed for tests. */
+  keep(): void;
+  /**
+   * Before `close`, when the server is to be started anew (a deploy): every round stands still (`Room.halt`), every
+   * window is shown that and told why as its socket is closed (`CLOSE_UPDATE`), and every table is kept, for the
+   * server that starts next on the same database to bring back.
+   */
+  update(): void;
   close(): Promise<void>;
 }
 
@@ -94,6 +104,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     if (rooms.get(room.code) === room) rooms.delete(room.code);
     idleSince.delete(room);
     room.close(); // its deal or grace timer must not outlive it
+    unkeep(room.code);
   };
 
   /** Call when a connection has gone from `room`: forget it at once if nobody is seated, else start its idle clock. */
@@ -151,8 +162,35 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     rooms.forEach((room) => room.reaccount(account));
   };
   const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone, changed }) : null;
+  // A table is kept in the database from one server to the next: while a round of it is on, every KEEP_MS (so what a
+  // crash costs is the last half minute), and whatever it is doing as the server goes down (`update`). Kept no longer
+  // once that round is scored (what is kept is never a round already in the record) or the table is forgotten.
+  const kept = db && { put: db.prepare('insert or replace into room (code, kept) values (?, ?)'), drop: db.prepare('delete from room where code = ?') };
+  const unkeep = (code: string): void => guard('forgetting a kept table', () => void kept?.drop.run(code));
+  /** Keeps every table that `which` says, as it is now: one write. */
+  const keep = (which: (room: Room) => boolean): void => {
+    if (!db || !kept) return;
+    guard('keeping the tables', () => transaction(db, () => rooms.forEach((room) => which(room) && guard(`table ${room.code}`, () => void kept.put.run(room.code, JSON.stringify(room.kept()))))));
+  };
   /** What every table is told to do with a round that has ended. */
-  const record: RoomOptions['record'] = rounds ? (round) => guard('keeping a round', () => rounds.keep(round)) : undefined;
+  const record: RoomOptions['record'] = rounds
+    ? (round) => {
+        guard('keeping a round', () => rounds.keep(round));
+        unkeep(round.code);
+      }
+    : undefined;
+  const tableOptions: RoomOptions = { hearMs, deal: options.deal, record };
+  // The tables the server before this one kept are back, with nobody at them yet: each is forgotten like any table
+  // nobody comes back to. One that cannot be brought back (kept by a server that kept them otherwise) is kept no longer.
+  for (const { code, kept: was } of (db?.prepare('select code, kept from room').all() ?? []) as { code: string; kept: string }[]) {
+    const room = await attempt(`table ${code} could not be brought back`, () => Room.restored(JSON.parse(was) as Kept, tableOptions));
+    if (!room) {
+      unkeep(code);
+      continue;
+    }
+    rooms.set(code, room);
+    idleSince.set(room, Date.now());
+  }
   const http = createServer((req, res) => {
     try {
       const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
@@ -232,9 +270,11 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   const alive = new WeakSet<WebSocket>();
+  /** Stopping for an update (`update`): no socket is taken any more, so a window that tries again at once waits for the server that starts next. */
+  let updating = false;
 
   http.on('upgrade', (req, socket, head) => {
-    if (req.url?.split('?')[0] !== '/ws') return socket.destroy();
+    if (updating || req.url?.split('?')[0] !== '/ws') return socket.destroy();
     const open = (account: Account | null): void => wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, account));
     // Who a socket is signed in as is what its cookie says as it opens, and stays so for as long as it is open (`signed`).
     if (!accounts || !req.headers.cookie || req.headers.origin !== home) return open(null);
@@ -309,7 +349,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (!target) return over(`Table ${msg.room} not found.`);
           } else {
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
-            target = new Room(freshCode(), { hearMs, deal: options.deal, record });
+            target = new Room(freshCode(), tableOptions);
           }
           const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', signed.get(ws) ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);
@@ -338,13 +378,23 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     }
   }, HEARTBEAT_MS);
   const sweeper = setInterval(() => guard('the sweep', sweep), SWEEP_MS);
+  const keeper = setInterval(() => keep((room) => room.phase === 'playing'), KEEP_MS);
   heartbeat.unref();
   sweeper.unref();
+  keeper.unref();
+
+  const update = (): void => {
+    updating = true;
+    for (const room of rooms.values()) guard(`table ${room.code}`, () => (room.halt(), room.flush()));
+    keep(() => true);
+    for (const ws of wss.clients) ws.close(CLOSE_UPDATE);
+  };
 
   const close = (): Promise<void> =>
     new Promise((done) => {
       clearInterval(heartbeat);
       clearInterval(sweeper);
+      clearInterval(keeper);
       for (const ws of wss.clients) ws.terminate();
       for (const room of rooms.values()) room.close();
       wss.close();
@@ -356,7 +406,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     http.once('error', failed);
     http.listen(options.port ?? 8787, () => {
       const address = http.address();
-      ready({ port: typeof address === 'object' && address ? address.port : 0, kept: !!rounds, accounts: !!accounts, rooms, sweep, close });
+      ready({ port: typeof address === 'object' && address ? address.port : 0, kept: !!rounds, accounts: !!accounts, rooms, sweep, keep: () => keep((room) => room.phase === 'playing'), update, close });
     });
   });
 }
@@ -420,5 +470,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const server = await startServer({ port: Number(process.env.PORT) || 8787, ...fromEnv() });
   const hasClient = existsSync(fileURLToPath(new URL('../dist/index.html', import.meta.url)));
   console.log(`nertz server on http://localhost:${server.port}${hasClient ? '' : ' (websocket only: no dist/ build)'}${server.kept ? `, keeping rounds${server.accounts ? ' and accounts' : ''}` : ''}`);
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => void server.close().then(() => process.exit(0)));
+  // Stopped to be started anew (a deploy): the tables are kept, and the windows have a moment to be told before their sockets are cut.
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => (server.update(), void setTimeout(() => void server.close().then(() => process.exit(0)), UPDATE_MS)));
 }

@@ -16,7 +16,7 @@ import { botAt, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
 import type { Named } from '../shared/chat';
-import { roundOver, Social } from './chat';
+import { roundOver, Social, type KeptSocial } from './chat';
 import { guard } from './guard';
 import type { RoundRecord } from './rounds';
 
@@ -128,6 +128,45 @@ const named = (p: Player): Named => ({ who: p.id, name: p.name });
 const BOT_CONN: Conn = { send: () => {}, close: () => {} };
 const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
+/** Which `Kept` this server writes and reads. Whatever changes what is in one (a field of the room, of a player, of the engine's `GameState`) puts it up by one: a table kept by a server from before is then not brought back. */
+const KEPT = 1;
+
+/** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
+interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {
+  bot?: BotLevel;
+}
+
+/**
+ * A table as it is kept over a restart of the server (server/index.ts, in the database): plain JSON. Everything the
+ * room is but what belongs to a connection or a clock: no socket, no timer, nothing a bot had in mind, and not who
+ * paused it (it comes back with nobody at it, and stopped). Written by `Room.kept` and read by `Room.restored`, and
+ * by nothing else; each field is the room's own of that name.
+ */
+export interface Kept {
+  v: number;
+  code: string;
+  phase: Phase;
+  round: number;
+  lastRound: RoundResult | null;
+  settings: TableSettings;
+  capacity: number;
+  social: KeptSocial;
+  snipes: { by: number; of: number; card: string }[];
+  sitting: string;
+  queue: number;
+  sittings: number;
+  ids: number;
+  state: GameState | null;
+  aside: { hand: PlayerState; from: number }[];
+  dealtTo: number;
+  players: KeptPlayer[];
+  /** Who opened the room: their `Player.id`. */
+  host: number | null;
+  startTold: number;
+  /** What the round's clock had run up. */
+  played: number | null;
+}
+
 export interface RoomOptions {
   rng?: Rng;
   /** How a round's cards are dealt: the engine's `deal` (the default), or one that rigs the hands, for a test. */
@@ -204,8 +243,8 @@ export class Room {
   private steps = new Map<number, ReturnType<typeof setTimeout>>();
   /** The last round whose start the chat was told of. */
   private startTold = 0;
-  /** Who paused the round in play, if it is paused. */
-  private pausedBy: Player | null = null;
+  /** Who paused the round in play, if it is paused: someone in the room, or the server stopping for an update (`halt`). */
+  private pausedBy: Player | 'update' | null = null;
   /** The round's clock: what it had run up before it was last stopped, and since when it is running now (ms epoch; null while it is not). */
   private played: number | null = null;
   private playingSince: number | null = null;
@@ -407,6 +446,78 @@ export class Room {
   close(): void {
     this.stopRoundTimer();
     this.stopBots();
+  }
+
+  /**
+   * The server is stopping, to start anew (a deploy): the round stands still, with nothing of it on a timer. One being
+   * played is paused, by nobody at the table, and anyone in it unpauses it as ever; a deal or a count under way is
+   * back to waiting for the dealer's Start; the grace after a call is over, and the round scored. It is as it is kept
+   * (`kept`), and as it comes back (`restored`).
+   */
+  halt(): void {
+    if (this.phase !== 'playing' || !this.state) return;
+    const { at } = this.state.status;
+    if (at === 'grace') return this.graceExpired();
+    this.stopRoundTimer();
+    if (at === 'dealing' || at === 'countdown') this.state = { ...this.state, status: { at: 'ready' } };
+    if (at === 'play') this.stopPlay('update');
+    this.changed();
+  }
+
+  /** The table as it is now, to keep: see `Kept`. */
+  kept(): Kept {
+    return {
+      v: KEPT,
+      code: this.code,
+      phase: this.phase,
+      round: this.round,
+      lastRound: this.lastRound,
+      settings: this.settings,
+      capacity: this.capacity,
+      snipes: this.snipes,
+      sitting: this.sitting,
+      queue: this.queue,
+      sittings: this.sittings,
+      ids: this.ids,
+      state: this.state,
+      aside: this.aside,
+      dealtTo: this.dealtTo,
+      startTold: this.startTold,
+      social: this.social.kept(),
+      players: this.players.map(({ conn, ack, dirty, drags, bot, ...p }) => ({ ...p, ...(bot ? { bot: bot.level } : {}) })),
+      host: this.host?.id ?? null,
+      played: this.played === null ? null : this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince),
+    };
+  }
+
+  /**
+   * The table that was kept, back in a server started anew: everyone where they were and away (each comes back to
+   * their place by their token, signed in or not), the bots with nothing in mind, and the round stopped (`halt`).
+   * Null for one kept by a server that kept something else (`KEPT`).
+   */
+  static restored(kept: Kept, options: RoomOptions = {}): Room | null {
+    if (kept.v !== KEPT) return null;
+    const room = new Room(kept.code, options);
+    room.phase = kept.phase;
+    room.round = kept.round;
+    room.lastRound = kept.lastRound;
+    room.settings = kept.settings;
+    room.capacity = kept.capacity;
+    room.social.restore(kept.social);
+    room.snipes = kept.snipes;
+    room.sitting = kept.sitting;
+    room.queue = kept.queue;
+    room.sittings = kept.sittings;
+    room.ids = kept.ids;
+    room.state = kept.state;
+    room.aside = kept.aside;
+    room.dealtTo = kept.dealtTo;
+    room.players = kept.players.map(({ bot, ...p }): Player => ({ ...p, conn: bot ? BOT_CONN : null, ack: -1, dirty: false, ...(bot ? { bot: { level: bot, memory: freshMemory(), timer: null, pending: null } } : {}) }));
+    room.host = room.players.find((p) => p.id === kept.host) ?? null;
+    room.startTold = kept.startTold;
+    room.played = kept.played;
+    room.halt();
+    return room;
   }
 
   /** Sends every player who is owed one their latest snapshot. Runs once per event-loop turn. */
@@ -726,11 +837,7 @@ export class Room {
     if (!this.state || !(this.inRound(player) || (!on && player === this.dealer))) return;
     if (on) {
       if (this.pausedBy || !isLive(this.state)) return;
-      this.pausedBy = player;
-      this.stopClock();
-      for (const p of this.players) this.letGo(p);
-      this.stopBots();
-      this.stopDraws();
+      this.stopPlay(player);
     } else {
       if (!this.pausedBy) return;
       this.pausedBy = null;
@@ -739,6 +846,15 @@ export class Room {
       this.draws();
     }
     this.changed();
+  }
+
+  /** The one way a round being played is paused, by `by`: its clock stops, cards in hand go back, and the bots and the groups in flight wait. */
+  private stopPlay(by: Player | 'update'): void {
+    this.pausedBy = by;
+    this.stopClock();
+    for (const p of this.players) this.letGo(p);
+    this.stopBots();
+    this.stopDraws();
   }
 
   /** The round's clock stops (a pause, or the end of the round), keeping what it has run up. */
@@ -1222,7 +1338,7 @@ export class Room {
       game,
       timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
-      paused: this.pausedBy ? { by: this.pausedBy.id } : null,
+      paused: this.pausedBy ? { by: this.pausedBy === 'update' ? null : this.pausedBy.id } : null,
       lastRound: this.lastRound,
     };
   }

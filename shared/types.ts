@@ -284,8 +284,8 @@ export interface RoomView {
    * at what the round took. Null before the first round is under way.
    */
   clock: { ms: number; running: boolean } | null;
-  /** The round is paused (by this player, an `id`): every card is hidden, no move is taken and the bots wait. Null otherwise. */
-  paused: { by: number } | null;
+  /** The round is paused (by this player, an `id`; or by nobody at the table, null: the server stopped for an update): every card is hidden, no move is taken and the bots wait. Null otherwise. */
+  paused: { by: number | null } | null;
   lastRound: RoundResult | null;
 }
 

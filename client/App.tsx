@@ -90,8 +90,8 @@ export function App() {
       <Chat room={room} />
       <Sure room={room} />
       <Ping />
-      {net.status === 'reconnecting' ? (
-        <p className="banner">Connection lost. Reconnecting…</p>
+      {net.status === 'reconnecting' || net.status === 'updating' ? (
+        <p className="banner">{net.status === 'updating' ? 'Updating the game. Back in a moment…' : 'Connection lost. Reconnecting…'}</p>
       ) : (
         spectating && (
           <p className="banner low">

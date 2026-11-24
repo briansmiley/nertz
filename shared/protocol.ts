@@ -260,6 +260,12 @@ export const SILENT_MS = 12_000;
 export const CLOSE_OVER = 4000;
 
 /**
+ * The close code of a connection the server closes as it stops to start anew (a deploy): the websocket's own "service
+ * restart". A dropped line like any other, and the window reconnects; but it knows why, and says so meanwhile.
+ */
+export const CLOSE_UPDATE = 1012;
+
+/**
  * Where a held card (the one named by the sender's `hold`) is, in two frames
  * at once, so that every window can draw it in its own picture of the table:
  * - `h`: how far its centre is from where it lay in its owner's hand, in

@@ -25,7 +25,7 @@ import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
-import { kick, onDrag, onSnipe, pause, playable, post, sit } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, sit, useNet } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -595,6 +595,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const dealing = game.status.at === 'dealing' || replaying;
   /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over). (A card already in hand may still land during grace.) */
   const paused = !!room.paused && !results;
+  /** The line to the table is up: until it is, the card over a paused table offers nothing (an update: the table is on its way back). */
+  const online = useNet().status === 'online';
   /** The key that unpauses, named on the card over a paused table (none on a phone). */
   const pauseKey = hotkeyName(prefs.pauseKey);
   const frozen = replaying || !isLive(game) || paused;
@@ -1110,8 +1112,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     {paused && (
       <div className="paper-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
-        <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
-        {canResume(room) && (
+        <p>{room.paused!.by === null ? 'An update paused the round.' : room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
+        {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
             Unpause {pauseKey && <small>{pauseKey}</small>}
           </button>
