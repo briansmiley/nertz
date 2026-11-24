@@ -6,19 +6,18 @@ import { Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
-import type { OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
+import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
+import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { AddBot, Unseat } from './Seating';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
-import { botBack, create, join, nameBot, passHost, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
-import { Corner, Robot, TableRules } from './Settings';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
+import { Corner, Pop, Robot, TableRules } from './Settings';
 import { Check, Eye, Gear, LinkIcon } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
@@ -86,7 +85,7 @@ export function App() {
   return (
     <>
       <Corner room={room} />
-      {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} />}
+      {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} seats={(close) => <TableSheet room={room} onClose={close} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} />
       <Sure room={room} />
@@ -208,6 +207,42 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
         <span {...backOf(backColour(seat ?? 0), look ? shownBack(look.backs) : 'plain', !!look?.bare, true)} />
       )}
     </span>
+  );
+}
+
+/** For whoever deals, between rounds and before their Start: a robot button that opens a slip for seating a bot. */
+function AddBot({ room }: { room: RoomView }) {
+  const [level, setLevel] = useState<BotLevel>('medium');
+  const full = freeSeats(room.seats) === 0;
+  return (
+    <Pop icon={<Robot />} label="Add a bot">
+      <h3>Add a bot</h3>
+      {full ? (
+        <p className="hint">The table is full.</p>
+      ) : (
+        <div className="bots">
+          <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
+            {BOT_LEVELS.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="plain" onClick={() => addBot(level)}>
+            Add
+          </button>
+        </div>
+      )}
+    </Pop>
+  );
+}
+
+/** A small × beside a name, for whoever deals: a bot is sent away; a person is put out of the table, as if they had left. */
+function Unseat({ who }: { who: PlayerView }) {
+  return (
+    <button type="button" className="unseat" aria-label={`Remove ${who.name}`} data-tip={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>
+      ×
+    </button>
   );
 }
 
@@ -587,9 +622,105 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
   );
 }
 
+/**
+ * The table's sheet: its head (the code, the link, and the tools), everyone at it and watching (`Sitters`), and a foot.
+ * In the lobby the foot deals (`Lobby`); after the deal, until Start, whoever deals has it over the felt with Done
+ * (`TableSheet`). One sheet, so what is done to the table before Start is done where it was done before the deal.
+ */
 function Lobby({ room }: { room: RoomView }) {
+  const me = room.players.find((p) => p.id === room.me);
+  const host = room.players.find((p) => p.isHost);
+  const ready = enoughToDeal(room);
+  return (
+    <main className="solo">
+      <Pad>
+        <TableHead room={room} />
+        <Sitters room={room} />
+        <TableRules room={room} />
+        {me?.isHost ? (
+          <button className="go" disabled={!ready} onClick={start}>
+            {ready ? 'Deal the first round' : 'Waiting for a second player'}
+          </button>
+        ) : (
+          <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
+        )}
+      </Pad>
+    </main>
+  );
+}
+
+/**
+ * The lobby's sheet over the felt, for whoever deals, between the deal and their Start (opened from the names under
+ * Start: Opening.tsx). The same head and seats; not the table's rules, which the round was dealt by (the server takes no
+ * change to them in a round). Done, a press beside the sheet, or Escape puts it away.
+ */
+function TableSheet({ room, onClose }: { room: RoomView; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <main className="solo over" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <Pad>
+        <TableHead room={room} />
+        <Sitters room={room} />
+        <button className="go" autoFocus onClick={onClose}>
+          Done
+        </button>
+      </Pad>
+    </main>
+  );
+}
+
+/** The head of the table's sheet: the tools (a bot, for whoever deals; leaving), and the table's code and its link to copy. */
+function TableHead({ room }: { room: RoomView }) {
   const [copied, setCopied] = useState(false);
   const link = `${location.origin}/?room=${room.code}`;
+  const me = room.players.find((p) => p.id === room.me);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(room.code);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 1500);
+    } catch {
+      // clipboard blocked: the code is there to read
+    }
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard blocked: the link is selectable right there
+    }
+  };
+
+  return (
+    <>
+        <div className="tools top">
+          {me?.isHost && <AddBot room={room} />}
+          <Act id="leave" room={room} />
+        </div>
+        <h2>
+          Table{' '}
+          {/* The code itself is a button: pressed, it is copied (just the code, for saying or typing; the chain after it copies the link). */}
+          <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} data-tip="Copy the code" onClick={copyCode}>
+            {room.code}
+            {codeCopied && <small>Copied</small>}
+          </button>
+          <button type="button" className="invite" onClick={copy} aria-label="Copy the link to this table" data-tip={copied ? 'Copied' : 'Copy the link'}>
+            {copied ? <Check /> : <LinkIcon />}
+          </button>
+        </h2>
+    </>
+  );
+}
+
+/** Everyone at the table and watching: you under the head, the others' places, then who watches; and the backs being chosen. */
+function Sitters({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
   const prefs = usePrefs();
   /** Whose backs are being chosen, if the sheet of backs is open: yours (seated or watching), or a bot's (by its seat). */
@@ -597,8 +728,6 @@ function Lobby({ room }: { room: RoomView }) {
   const picked = room.players.filter(hasSeat).find((p) => p.seat === picking && me?.isHost && p.bot);
   /** The back a bot whose backs are being chosen has now: plain, for a lot not drawn yet. */
   const botHas = (picked && shownBack(picked.look.backs)) ?? 'plain';
-  const host = room.players.find((p) => p.isHost);
-  const ready = enoughToDeal(room);
   const seated = room.players.filter(hasSeat);
   /** Everyone else at the table, in the order they sat down (their seat is their colour, not their place in the list). */
   const rest = seated.filter((p) => p.id !== room.me).sort((a, b) => (a.sat ?? 0) - (b.sat ?? 0));
@@ -637,51 +766,15 @@ function Lobby({ room }: { room: RoomView }) {
     </li>
   );
 
-  const [codeCopied, setCodeCopied] = useState(false);
-  const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(room.code);
-      setCodeCopied(true);
-      setTimeout(() => setCodeCopied(false), 1500);
-    } catch {
-      // clipboard blocked: the code is there to read
-    }
-  };
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard blocked: the link is selectable right there
-    }
-  };
-
   return (
-    <main className="solo">
-      <Pad>
-        <div className="tools top">
-          {me?.isHost && <AddBot room={room} />}
-          <Act id="leave" room={room} />
-        </div>
-        <h2>
-          Table{' '}
-          {/* The code itself is a button: pressed, it is copied (just the code, for saying or typing; the chain after it copies the link). */}
-          <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} data-tip="Copy the code" onClick={copyCode}>
-            {room.code}
-            {codeCopied && <small>Copied</small>}
-          </button>
-          <button type="button" className="invite" onClick={copy} aria-label="Copy the link to this table" data-tip={copied ? 'Copied' : 'Copy the link'}>
-            {copied ? <Check /> : <LinkIcon />}
-          </button>
-        </h2>
+    <>
         {/* Under the title: you. Your colour, your backs (the card, which changes them) and your name; or, watching, the same in grey,
             with a tag that says so. You keep this place whether you sit or watch. */}
         {me && (
           <div className={`top${me.connected ? '' : ' away'}${hasSeat(me) ? '' : ' watcher'}`}>
             {/* Your colour is your seat. Until the first deal it can be changed for any that nobody has: a dot of it, and behind
-                the dot the ones still free. Watching, you have none: the dot is grey and still. */}
-            {room.round === 0 &&
+                the dot the ones still free. Watching, you have none: the dot is grey and still. Not once dealt: your seat is your hand. */}
+            {room.phase === 'lobby' && room.round === 0 &&
               (hasSeat(me) ? (
                 <Colour room={room} seat={me.seat} />
               ) : (
@@ -743,16 +836,7 @@ function Lobby({ room }: { room: RoomView }) {
             onClose={() => setPicking(null)}
           />
         )}
-        <TableRules room={room} />
-        {me?.isHost ? (
-          <button className="go" disabled={!ready} onClick={start}>
-            {ready ? 'Deal the first round' : 'Waiting for a second player'}
-          </button>
-        ) : (
-          <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
-        )}
-      </Pad>
-    </main>
+    </>
   );
 }
 

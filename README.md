@@ -339,8 +339,8 @@ card in hand is over everything.
 ## Bots
 
 Whoever deals can seat bots, so that one person has something to play against. In the lobby, on the score sheet between
-rounds, and after the deal while the table waits for Start (the robot after the names under the Start button, and the ×
-beside each), pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. Before Start a
+rounds, and after the deal while the table waits for Start (whoever deals presses the names under the Start button for the
+lobby's sheet, over the table, and Done puts it away), pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. Before Start a
 bot sits down and gets up as a person does: it is dealt its seat's hand, and taken off, that hand is put aside; nobody
 else's cards change. A bot takes a seat
 with its own back colour and a name ("Bot Ada", "Bot Bix", ...), is marked "bot" in the lobby list and beside its name on

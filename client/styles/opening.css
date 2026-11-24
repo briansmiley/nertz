@@ -303,45 +303,31 @@
   animation: none;
 }
 
-/* Whoever deals, while the table waits: the × beside each name and, after the names, the robot that seats a bot. Chalk on the felt. */
-.opening .readies .unseat {
+/* The names under Start, and the tally. Whoever deals presses them for the table's sheet: a faint ring of chalk on hover. */
+.opening .roster {
+  display: grid;
+  justify-items: center;
+  margin-top: 14px;
+  padding: 4px 16px 9px;
+  border-radius: 14px;
+}
+
+.opening .roster .readies {
+  margin-top: 4px;
+}
+
+.opening .roster.dealer[role='button'] {
   pointer-events: auto;
-  margin: 0 0 0 -2px;
-  padding: 0 2px;
-  color: var(--chalk-dim);
-  font-size: 1.25rem;
-  text-shadow: none;
+  cursor: pointer;
+  transition: box-shadow 120ms, background-color 120ms;
 }
 
-.opening .readies .seat-bot {
-  pointer-events: auto;
+.opening .roster.dealer[role='button']:hover {
+  background: rgba(241, 234, 216, 0.06);
+  box-shadow: inset 0 0 0 1.5px var(--chalk-dim);
 }
 
-.opening .readies .seat-bot .icon {
-  width: 1.9rem;
-  height: 1.9rem;
-  border-color: var(--chalk-dim);
-  color: var(--chalk);
-  background: none;
-}
-
-.opening .readies .seat-bot .icon:hover,
-.opening .readies .seat-bot .icon.on {
-  border-color: var(--chalk);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.opening .readies .seat-bot .icon svg {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-
-/* Its slip opens under it, clear of Start. */
-.opening .readies .seat-bot .pop {
-  right: 50%;
-  bottom: auto;
-  top: calc(100% + 8px);
-  translate: 50% 0;
-  text-shadow: none;
-  font-weight: 400;
+.opening .roster.dealer[role='button']:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: 2px;
 }
