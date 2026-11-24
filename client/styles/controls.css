@@ -1,5 +1,5 @@
 /* The controls every screen uses: the main button, the plain and quiet ones, the round icon buttons and the slips they
-   open, the small pill buttons, and the lines that say what went wrong or what to wait for. */
+   open, the small pill buttons, the dropdown, and the lines that say what went wrong or what to wait for. */
 
 .go {
   padding: 0.75rem 1rem 0.85rem;
@@ -159,4 +159,103 @@
   color: var(--ink);
   background: var(--marigold);
   cursor: pointer;
+}
+
+/* A dropdown (Dropdown.tsx): the one chosen and a caret, a line under it only under the pointer or while open (as
+   under your name); pressed, all of them on a scrap of the same paper, over what is under it. */
+.dropdown {
+  position: relative;
+}
+
+.dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink);
+  background: none;
+  font: 500 0.95rem/1 var(--ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dropdown > button {
+  height: 2rem;
+  padding: 0 0.1rem;
+  border-bottom: 1.5px solid transparent;
+}
+
+.dropdown > button:hover,
+.dropdown > button[aria-expanded='true'] {
+  border-bottom-color: var(--ink);
+}
+
+.dropdown svg.caret {
+  flex: none;
+  width: 0.6rem;
+  height: 0.4rem;
+  margin-left: 0.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: rotate 0.12s;
+}
+
+.dropdown > button[aria-expanded='true'] .caret {
+  rotate: 180deg;
+}
+
+.dropdown [role='listbox'] {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 50%;
+  translate: -50% 0;
+  display: grid;
+  width: max-content;
+  padding: 0.25rem 0;
+  border-radius: 3px;
+  background: var(--paper);
+  box-shadow:
+    0 1px 0 #e3d9bf,
+    0 2px 0 #cfc4a6,
+    0 8px 18px rgba(0, 0, 0, 0.35);
+  rotate: 0.5deg;
+}
+
+.dropdown [role='listbox'].up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.dropdown [role='option'] {
+  height: 2.5rem;
+  padding: 0 1rem 0 0.8rem;
+  color: var(--ink-soft);
+}
+
+.dropdown [role='option']:hover,
+.dropdown [role='option']:focus-visible {
+  color: var(--ink);
+  background: rgba(27, 39, 51, 0.07);
+}
+
+/* (The one chosen: ink, with the pad's red margin down its edge.) */
+.dropdown [role='option'][aria-selected='true'] {
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--red);
+}
+
+.dropdown [role='option']:focus-visible {
+  outline-offset: -3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropdown svg.caret {
+    transition: none;
+  }
 }
