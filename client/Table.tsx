@@ -513,8 +513,10 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       const table = { x: at.p[0], y: at.p[1] };
       const onFelt = offFelt(table, game.players.length) <= 0;
       // Off the felt it runs down rather than starting again: a card held on the felt's edge does not jump back to its line.
-      f.over = onFelt ? f.over + dt : Math.max(0, f.over - 3 * dt);
-      const t = clamp((f.over - (f.ace ? REAL_AFTER.ace : REAL_AFTER.card)) / REAL_AFTER.fade, 0, 1);
+      // It counts no further than the fade's end, so taken back off the felt it is on its line again at once (a third of the fade).
+      const after = f.ace ? REAL_AFTER.ace : REAL_AFTER.card;
+      f.over = onFelt ? Math.min(f.over + dt, after + REAL_AFTER.fade) : Math.max(0, f.over - 3 * dt);
+      const t = clamp((f.over - after) / REAL_AFTER.fade, 0, 1);
       const linger = calm() ? 1 : t * t * (3 - 2 * t);
       const s = home.s + (L.fs - home.s) * Math.max(at.w / 2, linger);
       const seat = L.opponents.find((o) => o.seat === p.seat);
