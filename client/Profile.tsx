@@ -200,34 +200,33 @@ function recordOf(stats: Stats): Figure[] {
   ];
 }
 
-/** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, and each one's points over them. */
+/** You against someone, as one figure: the rounds you finished ahead of them, and behind (none at all: a dash). */
+const winLoss = (v: Versus): string => (v.rounds ? `${written(v.ahead)}–${written(v.behind)}` : '–');
+
+/** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, and your points against theirs over them. */
 function versusOf(v: Versus): Figure[] {
   const level = v.rounds - v.ahead - v.behind;
-  return [
-    [written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'],
-    [written(v.ahead), 'ahead', level ? `${level} level` : undefined, 'good'],
-    [written(v.behind), 'behind', undefined, 'bad'],
-    [written(v.points), 'yours', 'Your points in them'],
-    [written(v.theirs), 'theirs', 'Their points in them'],
-  ];
+  const points: Figure = [v.rounds ? `${written(v.points)}–${written(v.theirs)}` : '–', 'points'];
+  return [[written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'], [winLoss(v), 'W–L', level ? `${level} level` : undefined], points];
 }
 
-/** Your record: the figures, and under each what it counts, over the rounds `among` says, chosen under them (and still there to choose again if an answer fails). */
+/** Your record: the rounds `among` says, chosen over the figures (and still there to choose again if an answer fails), and the figures, under each what it counts. */
 function Record({ among, choose }: { among: Among; choose: (a: Among) => void }) {
   const stats = useStats(among);
   const had = useRef(false);
   had.current ||= stats !== null;
   return (
     <>
-      {stats && <Figures figures={recordOf(stats)} />}
       {had.current && <Which among={among} choose={choose} vs />}
+      {stats && <Figures figures={recordOf(stats)} />}
     </>
   );
 }
 
 /**
- * Someone's page, for you signed in: the name they go by and their record, and under it yours against them (on your
- * own page, nobody to be against); both over the rounds you choose. A page that is nobody's (gone, or never was) says so.
+ * Someone's page, for you signed in: the name they go by, which rounds count (chosen over everything under it), their
+ * record, and under it yours against them (on your own page, nobody to be against). A page that is nobody's (gone, or
+ * never was) says so.
  */
 export function Theirs({ handle, head }: { handle: string; head?: React.ReactNode }) {
   const [among, choose] = useAmong();
@@ -241,8 +240,8 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
         {known && <Follow handle={handle} name={known.name ?? handle} />}
       </div>
-      {known && <Figures figures={recordOf(known.stats)} />}
       {known && <Which among={among} choose={choose} vs />}
+      {known && <Figures figures={recordOf(known.stats)} />}
       {known?.versus && (
         <div className="versus">
           <h3>You vs {known.name ?? 'them'}</h3>
@@ -284,26 +283,62 @@ export function Follow({ handle, name, small }: { handle: string; name: string; 
   );
 }
 
-/** Who you follow, each a link to their page, but for a page that is theirs alone. Nothing, for nobody yet. */
-function Following() {
+/** How many you follow, on your page; pressed, who they are. Nothing, for nobody yet (or not yet known). */
+function FollowingCount({ handle }: { handle: string }) {
   const following = useFollowing();
   if (!following?.length) return null;
   return (
-    <div className="following">
-      <h3>Following</h3>
-      <ul>
-        {following.map(({ name, handle }, i) => (
-          <li key={handle ?? `private ${i}`}>
-            {handle ? (
-              <a className="page" href={`/u/${handle}`} onClick={(e) => !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) && (e.preventDefault(), showPage(handle))}>
-                {name ?? handle}
-              </a>
-            ) : (
-              name
-            )}
-          </li>
-        ))}
-      </ul>
+    <button type="button" className="followingcount" onClick={() => showPage(handle, true)}>
+      <span>Following</span>
+      <b>{following.length}</b>
+      <svg viewBox="0 0 8 12" aria-hidden="true">
+        <path d="M1.5 1.5L6 6l-4.5 4.5" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Who you follow, a line each on the pad's rules, as many as there are (the list scrolls, the head stays): their
+ * picture and name, and you against them over every round; pressed, their page, and back here from it. One whose page
+ * is theirs alone is their name and nothing more.
+ */
+export function FollowingList({ head }: { head?: React.ReactNode }) {
+  const following = useFollowing();
+  return (
+    <div className="profile followinglist">
+      <div className="you">
+        {head}
+        <h2>Following</h2>
+        {!!following?.length && <span className="wl">W–L</span>}
+      </div>
+      {following && (
+        <ul>
+          {following.map(({ name, handle, picture, versus }, i) => {
+            const called = name ?? handle ?? '';
+            return (
+              <li key={handle ?? `private ${i}`}>
+                {handle ? (
+                  <a
+                    href={`/u/${handle}`}
+                    data-tip={versus?.rounds ? `You vs ${called}: ${versus.rounds} ${versus.rounds === 1 ? 'round' : 'rounds'}` : undefined}
+                    onClick={(e) => !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) && (e.preventDefault(), showPage(handle))}
+                  >
+                    <TheirPicture picture={picture} name={called} />
+                    <span className="name">{called}</span>
+                    <span className="wl">{versus ? winLoss(versus) : '–'}</span>
+                  </a>
+                ) : (
+                  <span className="private" data-tip="Private page">
+                    <TheirPicture picture={null} name={called} />
+                    <span className="name">{called}</span>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -521,7 +556,7 @@ export function Profile({ account, head }: { account: Account; head?: React.Reac
         <Private account={account} />
       </div>
       <Record among={among} choose={choose} />
-      <Following />
+      <FollowingCount handle={account.handle} />
       <div className="outs">
         <button type="button" className="gone" onClick={() => setDeleting(true)}>
           Delete account

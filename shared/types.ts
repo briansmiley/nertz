@@ -369,10 +369,15 @@ export interface Page {
   versus: Versus | null;
 }
 
-/** Someone you follow (`GET /profile/following`): the name they go by, and where their page is, null for a page that is theirs alone. */
+/**
+ * Someone you follow (`GET /profile/following`): the name they go by; where their page is, their picture, and you
+ * against them over every round, but for a page that is theirs alone (null, each of them).
+ */
 export interface Followed {
   name: string | null;
   handle: string | null;
+  picture: string | null;
+  versus: Versus | null;
 }
 
 /** How much was played (server/rounds.ts): sittings, rounds, the accounts that played, and hands played as a guest or by a bot. */

@@ -355,6 +355,10 @@ describe('profile', () => {
     const followingOf = async (browser: Browser): Promise<unknown> => (await browser.ask(FOLLOWING)).json();
     const follow = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FOLLOWING}/${handle}`, undefined, { method: 'PUT' });
     const unfollow = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FOLLOWING}/${handle}`, undefined, { method: 'DELETE' });
+    const NONE = { rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0 };
+    /** Someone followed, as listed: a page anyone signed in can see, with you against them (no rounds here), or one that is theirs alone. */
+    const seen = (name: string, handle: string) => ({ name, handle, picture: null, versus: NONE });
+    const hidden = (name: string) => ({ name, handle: null, picture: null, versus: null });
     const CY: Googler = { sub: 'google-789', email: 'cy@example.com', name: 'Cyrus Young' };
 
     it('is by their handle (in any case), and undone again, one way: the one followed is asked nothing', async () => {
@@ -365,15 +369,15 @@ describe('profile', () => {
       expect(await followingOf(ada)).toEqual([]);
       const followed = await follow(ada, 'Bob');
       expect(followed.status).toBe(200);
-      expect(await followed.json()).toEqual([{ name: 'Bob', handle: 'bob' }]);
+      expect(await followed.json()).toEqual([seen('Bob', 'bob')]);
       expect((await follow(ada, 'bob')).status).toBe(200); // (twice is once)
       expect(await (await follow(ada, 'cyrus')).json()).toEqual([
-        { name: 'Bob', handle: 'bob' },
-        { name: 'Cyrus', handle: 'cyrus' },
+        seen('Bob', 'bob'),
+        seen('Cyrus', 'cyrus'),
       ]);
       expect(await followingOf(bob)).toEqual([]);
-      expect(await (await unfollow(ada, 'bob')).json()).toEqual([{ name: 'Cyrus', handle: 'cyrus' }]);
-      expect(await (await unfollow(ada, 'bob')).json()).toEqual([{ name: 'Cyrus', handle: 'cyrus' }]); // (and unfollowing twice is once)
+      expect(await (await unfollow(ada, 'bob')).json()).toEqual([seen('Cyrus', 'cyrus')]);
+      expect(await (await unfollow(ada, 'bob')).json()).toEqual([seen('Cyrus', 'cyrus')]); // (and unfollowing twice is once)
       expect(rows('follow')).toHaveLength(1);
     });
 
@@ -386,13 +390,13 @@ describe('profile', () => {
       await bob.ask('/profile', { private: true }, { method: 'PUT' });
       await cy.ask('/profile', { private: true }, { method: 'PUT' });
       const listed = await ada.ask(FOLLOWING);
-      expect(await listed.clone().json()).toEqual([{ name: 'Bob', handle: null }]);
+      expect(await listed.clone().json()).toEqual([hidden('Bob')]);
       expect(await listed.text()).not.toContain('"bob"'); // (where a private page is, it never says)
       expect((await follow(ada, 'cyrus')).status).toBe(404); // (as for a handle that is nobody's)
       expect((await unfollow(ada, 'cyrus')).status).toBe(200); // (and unfollowing is answered alike)
-      expect(await followingOf(ada)).toEqual([{ name: 'Bob', handle: null }]);
+      expect(await followingOf(ada)).toEqual([hidden('Bob')]);
       await bob.ask('/profile', { private: false }, { method: 'PUT' });
-      expect(await followingOf(ada)).toEqual([{ name: 'Bob', handle: 'bob' }]);
+      expect(await followingOf(ada)).toEqual([seen('Bob', 'bob')]);
     });
 
     it('is nobody\'s for nobody signed in, and not of yourself, of nobody, or from another site', async () => {
@@ -411,6 +415,22 @@ describe('profile', () => {
       expect((await ada.ask(`${FOLLOWING}/bob`)).status).toBe(405);
       expect(await followingOf(ada)).toEqual([]);
       expect(rows('follow')).toEqual([]);
+    });
+
+    it('says you against each one, over every round you both played', async () => {
+      const ada = await signedIn(ADA);
+      await signedIn(BOB);
+      const [a, b] = rows('user').map((u) => u.id as string);
+      for (const [round, adas, bobs] of [
+        [1, 12, 5],
+        [2, 3, 9],
+        [3, 7, 4],
+      ] as const) {
+        write('insert into round (id, created_at, game, code, number, ending, ms) values (?, 0, \'g\', \'ABCD\', ?, \'nertz\', 1000)', round, round);
+        write('insert into hand (round, seat, player, name, account, played, nertz_left, delta, nertz) values (?, 0, 0, \'Ada\', ?, 0, 0, ?, 0)', round, a!, adas);
+        write('insert into hand (round, seat, player, name, account, played, nertz_left, delta, nertz) values (?, 1, 1, \'Bob\', ?, 0, 0, ?, 0)', round, b!, bobs);
+      }
+      expect(await (await follow(ada, 'bob')).json()).toEqual([{ ...seen('Bob', 'bob'), versus: { rounds: 3, ahead: 2, behind: 1, points: 22, theirs: 18 } }]);
     });
 
     it('goes with either account', async () => {

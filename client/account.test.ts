@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { claimedBy, read, readFollowing, readPage, readStats, signedIn, sitter, waysIn } from './account';
-import { pageIn } from './address';
+import { addressIn } from './address';
 
 describe('who the server says is signed in', () => {
   it('is no signing in at all where the server keeps no accounts, or there is no good answer', () => {
@@ -87,11 +87,18 @@ describe("someone's page, as the server says it", () => {
 });
 
 describe('who you follow, as the server says it', () => {
-  it('are each a name and where their page is, none for a private one', () => {
-    expect(readFollowing(200, [{ name: 'Bob', handle: 'bob', extra: 'x' }, { name: 'Cy', handle: null }, { name: null, handle: 'k3f9x2' }])).toEqual([
-      { name: 'Bob', handle: 'bob' },
-      { name: 'Cy', handle: null },
-      { name: null, handle: 'k3f9x2' },
+  const versus = { rounds: 3, ahead: 2, behind: 1, points: 40, theirs: 31 };
+  it('are each a name, and where their page is, their picture and you against them, but for a private page: its name alone', () => {
+    expect(
+      readFollowing(200, [
+        { name: 'Bob', handle: 'bob', picture: '/pictures/0123456789abcdef.webp', versus, extra: 'x' },
+        { name: 'Cy', handle: null, picture: null, versus: null },
+        { name: null, handle: 'k3f9x2', picture: 'https://elsewhere.example/x.png', versus: null },
+      ]),
+    ).toEqual([
+      { name: 'Bob', handle: 'bob', picture: '/pictures/0123456789abcdef.webp', versus },
+      { name: 'Cy', handle: null, picture: null, versus: null },
+      { name: null, handle: 'k3f9x2', picture: null, versus: null }, // (a picture not ours is no picture)
     ]);
     expect(readFollowing(200, [])).toEqual([]);
   });
@@ -99,9 +106,10 @@ describe('who you follow, as the server says it', () => {
   it('are none to show for nobody signed in, or an answer that is not a list of them', () => {
     expect(readFollowing(401, { ways: ['google'] })).toBeNull();
     expect(readFollowing(200, null)).toBeNull();
-    expect(readFollowing(200, [{ name: 'Bob', handle: '../stats' }])).toBeNull(); // (only ever a handle)
-    expect(readFollowing(200, [{ name: 7, handle: 'bob' }])).toBeNull();
+    expect(readFollowing(200, [{ name: 'Bob', handle: '../stats', picture: null, versus: null }])).toBeNull(); // (only ever a handle)
+    expect(readFollowing(200, [{ name: 7, handle: 'bob', picture: null, versus: null }])).toBeNull();
     expect(readFollowing(200, [{ name: 'Bob' }])).toBeNull();
+    expect(readFollowing(200, [{ name: 'Bob', handle: 'bob', picture: null, versus: { rounds: 'many' } }])).toBeNull();
   });
 });
 
@@ -125,6 +133,7 @@ describe('who sits down, on the first page', () => {
 });
 
 describe('whose page the address is', () => {
+  const pageIn = (path: string): string | null => addressIn(path)?.handle ?? null;
   it('is the handle in /u/<handle>, in any case, and nobody\'s for anything else', () => {
     expect(pageIn('/u/0123456789abcdef')).toBe('0123456789abcdef');
     expect(pageIn('/u/k3f9x2')).toBe('k3f9x2');
@@ -138,6 +147,14 @@ describe('whose page the address is', () => {
     expect(pageIn('/u/a--b')).toBeNull();
     expect(pageIn('/u/0123456789abcdef/more')).toBeNull();
     expect(pageIn('/x/0123456789abcdef')).toBeNull();
+  });
+
+  it('is on it who they follow at /u/<handle>/following, and nothing else after the handle', () => {
+    expect(addressIn('/u/Ada/following')).toEqual({ handle: 'ada', following: true });
+    expect(addressIn('/u/ada/following/')).toEqual({ handle: 'ada', following: true });
+    expect(addressIn('/u/ada')).toEqual({ handle: 'ada', following: false });
+    expect(addressIn('/u/ada/followers')).toBeNull();
+    expect(addressIn('/u/ab/following')).toBeNull();
   });
 });
 

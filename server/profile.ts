@@ -5,7 +5,7 @@
 // account goes everything kept as theirs, their picture and who they follow too (and who follows them); the rounds they played and the reports they sent stay, as nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanName, handleOf } from '../shared/protocol';
-import type { Account } from '../shared/types';
+import type { Account, Followed } from '../shared/types';
 import type { Accounts } from './accounts';
 import { MAX_SENT_BYTES, type Pictures } from './pictures';
 import { transaction, type Db } from './db';
@@ -78,7 +78,7 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
   };
 
   /**
-   * GET who you follow; PUT someone's handle (in any case) to follow them, DELETE it to unfollow them: answered with who
+   * GET who you follow (with you against each one, for a page that is not theirs alone); PUT someone's handle (in any case) to follow them, DELETE it to unfollow them: answered with who
    * you follow as it now is. Only someone whose page you can see is anyone to follow: a handle that is nobody's, or a
    * private page's, is 404, as at `/stats/<handle>`; your own, 400. Unfollowing is answered alike whoever the handle is.
    */
@@ -97,7 +97,8 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
       accounts.follow(me.id, them.id, true);
     }
     if (method === 'DELETE' && them) accounts.follow(me.id, them.id, false);
-    json(200, accounts.following(me.id));
+    const followed: Followed[] = accounts.following(me.id).map(({ id, name, handle, picture }) => ({ name, handle, picture, versus: handle && rounds ? rounds.versus(me.id, id) : null }));
+    json(200, followed);
   }
 
   /** PUT a picture of yourself, or DELETE yours: answered with your profile as it now is. */

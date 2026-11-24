@@ -475,12 +475,8 @@
   border-bottom: 1.5px solid transparent;
 }
 
-/* (On a page, on the rule straight under the figures, and the ways out straight under it.) */
+/* (On a page, on the rule straight under the head: the rounds counted in everything under it.) */
 .profile > .among {
-  margin-top: -0.6rem;
-}
-
-.profile > .among + .outs {
   margin-top: -0.6rem;
 }
 
@@ -760,26 +756,126 @@
   }
 }
 
-/* Who you follow: their names in a line under your record, each one's page under the pointer. */
-.profile .following {
-  display: grid;
-  gap: 0.3rem;
-  margin-top: 0.6rem;
-}
-
-.profile .following h3 {
-  margin: 0;
-  font: 600 0.95rem/1.3rem var(--ui);
-}
-
-.profile .following ul {
+/* How many you follow, on your page: a line of the pad to itself, the word at one end and the count at the other;
+   pressed, who they are. */
+.profile .followingcount {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 1.1rem;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 400 1rem/2rem var(--ui);
+  cursor: pointer;
+}
+
+.profile .followingcount span {
+  flex: 1;
+  text-align: left;
+}
+
+.profile .followingcount b {
+  font: 700 1.05rem/1 var(--num);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile .followingcount svg {
+  width: 0.45rem;
+  height: 0.7rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--ink-soft);
+}
+
+.profile .followingcount:hover span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Who you follow: a line each, written on the pad's own rules, the head staying put while they scroll by (each
+   coming to rest on a rule). On one column, where the page itself scrolls, the pad is as long as the list. */
+.followinglist .you {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'back name private';
+}
+
+.followinglist .you > h2 {
+  grid-area: name;
+  grid-row: auto;
+}
+
+.followinglist .wl {
+  font: 700 1rem/1 var(--num);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.followinglist .you > .wl {
+  grid-area: private;
+  justify-self: end;
+  font: 400 0.85rem/1 var(--ui);
+  color: var(--ink-soft);
+}
+
+.followinglist ul {
+  max-height: min(30rem, 100dvh - 14rem);
   margin: 0;
   padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
   list-style: none;
-  font: 400 1rem/1.5 var(--ui);
+}
+
+.followinglist li {
+  scroll-snap-align: start;
+}
+
+.followinglist li > * {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  height: 2rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .followinglist ul {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+.followinglist .theirpicture {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.followinglist .theirpicture i {
+  font-size: 0.8rem;
+}
+
+.followinglist .name {
+  overflow: hidden;
+  font: 400 1.05rem/1.4 var(--ui);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.followinglist a:hover .name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.followinglist .private {
+  color: var(--ink-soft);
 }
 
 /* You against them: a line of its own under their record. */

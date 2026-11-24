@@ -23,7 +23,7 @@ import { emailOTP } from 'better-auth/plugins/email-otp';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { cleanName, isHandle, MAX_HANDLE_LENGTH } from '../shared/protocol';
-import type { Account, Followed, Way } from '../shared/types';
+import type { Account, Way } from '../shared/types';
 import { transaction, type Db } from './db';
 import { pictureUrl } from './pictures';
 
@@ -57,10 +57,10 @@ export interface Accounts {
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
   repicture(account: string, id: string | null): string | null;
   /**
-   * Who `account` follows, by name: where each one's page is, but for a page that is theirs alone (and one of those
-   * with no name to list it by is not listed).
+   * Who `account` follows, by name: who each one is, and where their page is and their picture, but for a page that is
+   * theirs alone (and one of those with no name to list it by is not listed).
    */
-  following(account: string): Followed[];
+  following(account: string): { id: string; name: string | null; handle: string | null; picture: string | null }[];
   /** `account` follows `followed`, or unfollows them. */
   follow(account: string, followed: string, on: boolean): void;
   /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
@@ -301,7 +301,7 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
   // (A private page's handle is not said even to whoever follows it, as it is not at a table.)
   const following = db.prepare(
-    'select name, case when private then null else handle end as handle from follow join profile on profile.account = follow.followed where follow.account = ? and not (private and name is null) order by lower(coalesce(name, handle)), handle',
+    'select profile.account as id, name, case when private then null else handle end as handle, case when private then null else picture end as picture from follow join profile on profile.account = follow.followed where follow.account = ? and not (private and name is null) order by lower(coalesce(name, handle)), handle',
   );
   const follow = db.prepare('insert into follow (account, followed) values (?, ?) on conflict do nothing');
   const unfollow = db.prepare('delete from follow where account = ? and followed = ?');
@@ -348,7 +348,8 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       setPicture.run(id, account);
       return had;
     },
-    following: (account) => following.all(account) as unknown as Followed[],
+    following: (account) =>
+      (following.all(account) as { id: string; name: string | null; handle: string | null; picture: string | null }[]).map((f) => ({ ...f, picture: f.picture && pictureUrl(f.picture) })),
     follow: (account, followed, on) => void (on ? follow : unfollow).run(account, followed),
     signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
     forget: (account) => forgets.forEach((f) => f.run(account)),

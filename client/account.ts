@@ -3,7 +3,7 @@
 // nothing of its own: it asks. The same for their record (`/stats`), someone's page (`/stats/<handle>`), who they follow
 // (`/profile/following`), and for an admin how much the game is played (`/usage`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { goHome, moved, pageIn } from './address';
+import { addressIn, goBack, moved } from './address';
 import { handleOf } from '../shared/protocol';
 import type { Account, Among, Followed, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
@@ -123,7 +123,7 @@ export async function enterCode(email: string, otp: string): Promise<Entered> {
 /** Off your own page, if it is up: signed out, it is nobody's you can see. */
 function leaveYourPage(): void {
   const you = signedIn(signed);
-  if (you && pageIn(location.pathname) === you.handle) goHome();
+  if (you && addressIn(location.pathname)?.handle === you.handle) goBack();
 }
 
 export async function signOut(): Promise<void> {
@@ -280,14 +280,23 @@ export function usePage(handle: string, among: Among): Page | 'nobody' | 'none' 
   return page?.of === handle ? page.page : undefined;
 }
 
-/** What an answer about who you follow comes to: null for none to show (nobody signed in, no good answer). */
+/**
+ * What an answer about who you follow comes to: null for none to show (nobody signed in, no good answer). Where a page
+ * is theirs alone, nothing but their name is heard.
+ */
 export function readFollowing(status: number, body: unknown): Followed[] | null {
-  const reads = (f: unknown): f is Followed => {
-    const v = f as { name?: unknown; handle?: unknown } | null;
-    return !!v && (v.name === null || typeof v.name === 'string') && (v.handle === null || (typeof v.handle === 'string' && handleOf(v.handle) === v.handle));
+  if (status !== 200 || !Array.isArray(body)) return null;
+  const read = (f: unknown): Followed | null => {
+    const v = f as { name?: unknown; handle?: unknown; picture?: unknown; versus?: unknown } | null;
+    if (!v || (v.name !== null && typeof v.name !== 'string')) return null;
+    const name = v.name || null;
+    if (v.handle === null) return { name, handle: null, picture: null, versus: null };
+    if (typeof v.handle !== 'string' || handleOf(v.handle) !== v.handle) return null;
+    const versus = v.versus === null ? null : readVersus(v.versus);
+    return v.versus !== null && !versus ? null : { name, handle: v.handle, picture: ownPicture(v.picture), versus };
   };
-  if (status !== 200 || !Array.isArray(body) || !body.every(reads)) return null;
-  return body.map(({ name, handle }) => ({ name: name || null, handle }));
+  const list = body.map(read);
+  return list.every((f) => f !== null) ? list : null;
 }
 
 const FOLLOWING = `${PROFILE}/following`;
