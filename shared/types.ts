@@ -355,6 +355,11 @@ export interface Versus {
   /** Rounds they scored more than the other did, and rounds the other scored more (the rest were level). */
   ahead: number;
   behind: number;
+  /**
+   * How far ahead of the other they finished, on average over those rounds: the places between them over the size of
+   * the table less one, a tie counting half (−1 to 1; 0 with no rounds).
+   */
+  edge: number;
   /** Everything they scored in those rounds, and everything the other did. */
   points: number;
   theirs: number;

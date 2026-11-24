@@ -79,15 +79,25 @@ export function openRounds(db: Db): Rounds {
        from mine
       where ${counted('mine.round')}`,
   );
+  // Edge: how far ahead of the other someone finished, round by round, as the difference of how far ahead each did (as
+  // above): the places between them over the size of the table, a tie counting half. 1 for first to their last at any
+  // table, 1/9 for first to their second at ten; averaged over the rounds both played.
   const versus = db.prepare(
-    `select count(*) as rounds,
+    `with place as (
+       select h.round, h.seat, h.account, h.delta,
+              (select count(*) from hand o where o.round = h.round) as hands,
+              (select count(*) from hand o where o.round = h.round and o.delta > h.delta) as above,
+              (select count(*) from hand o where o.round = h.round and o.seat <> h.seat and o.delta = h.delta) as level
+         from hand h where h.account in ($account, $other))
+     select count(*) as rounds,
             coalesce(sum(m.delta > o.delta), 0) as ahead,
             coalesce(sum(m.delta < o.delta), 0) as behind,
+            coalesce(avg((o.above + o.level / 2.0 - m.above - m.level / 2.0) / (m.hands - 1)), 0) as edge,
             coalesce(sum(m.delta), 0) as points,
             coalesce(sum(o.delta), 0) as theirs,
             coalesce(sum((select count(*) from snipe s where s.round = m.round and s.by_seat = m.seat and s.of_seat = o.seat)), 0) as snipes,
             coalesce(sum((select count(*) from snipe s where s.round = m.round and s.by_seat = o.seat and s.of_seat = m.seat)), 0) as sniped
-       from hand m join hand o on o.round = m.round
+       from place m join place o on o.round = m.round
       where m.account = $account and o.account = $other
         and ${counted('m.round')}`,
   );
@@ -124,7 +134,7 @@ export function openRounds(db: Db): Rounds {
     },
     versus: (account, other, among = 'all') => {
       const v = versus.get({ $account: account, $other: other, $among: among }) as unknown as Versus;
-      return { rounds: v.rounds, ahead: v.ahead, behind: v.behind, points: v.points, theirs: v.theirs, snipes: v.snipes, sniped: v.sniped };
+      return { rounds: v.rounds, ahead: v.ahead, behind: v.behind, edge: v.edge, points: v.points, theirs: v.theirs, snipes: v.snipes, sniped: v.sniped };
     },
     usage: (offset = 0, among = 'all', now = Date.now()) => {
       const date = (t: number): string => new Date(t).toISOString().slice(0, 10);

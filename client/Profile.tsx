@@ -214,9 +214,15 @@ const winLoss = (v: Versus): React.ReactNode => pair(v, v.ahead, v.behind);
 /** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, your points against theirs over them, and your snipes on them against theirs on you. */
 function versusOf(v: Versus): Figure[] {
   const level = v.rounds - v.ahead - v.behind;
+  const percent = Math.round(v.edge * 100);
+  const edge: Figure = [
+    v.rounds ? <span className={percent > 0 ? 'vs-you' : percent < 0 ? 'vs-them' : undefined}>{percent > 0 ? '+' : ''}{written(percent)}%</span> : '–',
+    'edge',
+    'How far ahead of them you finish on average, as a share of the table',
+  ];
   const points: Figure = [pair(v, v.points, v.theirs), 'points'];
   const snipes: Figure = [pair(v, v.snipes, v.sniped), 'snipes'];
-  return [[written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'], [winLoss(v), 'W–L', level ? `${level} level` : undefined], points, snipes];
+  return [[written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'], [winLoss(v), 'W–L', level ? `${level} level` : undefined], edge, points, snipes];
 }
 
 /** Your record: the rounds `among` says, chosen over the figures (and still there to choose again if an answer fails), and the figures, under each what it counts. */

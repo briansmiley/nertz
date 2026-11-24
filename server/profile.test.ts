@@ -355,7 +355,7 @@ describe('profile', () => {
     const followingOf = async (browser: Browser): Promise<unknown> => (await browser.ask(FOLLOWING)).json();
     const follow = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FOLLOWING}/${handle}`, undefined, { method: 'PUT' });
     const unfollow = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FOLLOWING}/${handle}`, undefined, { method: 'DELETE' });
-    const NONE = { rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 };
+    const NONE = { rounds: 0, ahead: 0, behind: 0, edge: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 };
     /** Someone followed, as listed: a page anyone signed in can see, with you against them (no rounds here), or one that is theirs alone. */
     const seen = (name: string, handle: string) => ({ name, handle, picture: null, versus: NONE });
     const hidden = (name: string) => ({ name, handle: null, picture: null, versus: null });
@@ -430,7 +430,7 @@ describe('profile', () => {
         write('insert into hand (round, seat, player, name, account, played, nertz_left, delta, nertz) values (?, 0, 0, \'Ada\', ?, 0, 0, ?, 0)', round, a!, adas);
         write('insert into hand (round, seat, player, name, account, played, nertz_left, delta, nertz) values (?, 1, 1, \'Bob\', ?, 0, 0, ?, 0)', round, b!, bobs);
       }
-      expect(await (await follow(ada, 'bob')).json()).toEqual([{ ...seen('Bob', 'bob'), versus: { rounds: 3, ahead: 2, behind: 1, points: 22, theirs: 18, snipes: 0, sniped: 0 } }]);
+      expect(await (await follow(ada, 'bob')).json()).toEqual([{ ...seen('Bob', 'bob'), versus: { rounds: 3, ahead: 2, behind: 1, edge: 1 / 3, points: 22, theirs: 18, snipes: 0, sniped: 0 } }]);
     });
 
     it('goes with either account', async () => {

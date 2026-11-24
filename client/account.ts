@@ -215,9 +215,10 @@ export function readStats(status: number, body: unknown): Stats | null {
 function readVersus(body: unknown): Versus | null {
   const v = body as Partial<Record<keyof Versus, unknown>> | null;
   if (!v) return null;
-  const { rounds, ahead, behind, points, theirs, snipes, sniped } = v;
-  if (!whole(rounds) || !whole(ahead) || !whole(behind) || !whole(points) || !whole(theirs) || !whole(snipes) || !whole(sniped)) return null;
-  return { rounds, ahead, behind, points, theirs, snipes, sniped };
+  const { rounds, ahead, behind, edge, points, theirs, snipes, sniped } = v;
+  const signedShare = (n: unknown): n is number => typeof n === 'number' && n >= -1 && n <= 1;
+  if (!whole(rounds) || !whole(ahead) || !whole(behind) || !signedShare(edge) || !whole(points) || !whole(theirs) || !whole(snipes) || !whole(sniped)) return null;
+  return { rounds, ahead, behind, edge, points, theirs, snipes, sniped };
 }
 
 /**

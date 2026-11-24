@@ -891,7 +891,7 @@ first, 0 for last and ½ for the middle of a table of any size (an average place
 six). Your page shows it as a percentage, and the sums as so much a round.
 
 `GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
-them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null
+them (`Versus`: the rounds both played signed in, how many each finished ahead in, the edge (how far ahead of the other the asker finished on average: the places between them over the table less one, a tie counting half, shown as a signed percentage), and each one's points over them; null
 on one's own page). The handle may come in any case. 401 for nobody signed in, before anything is looked up, so nobody else can tell whether a handle is
 anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it), and for a private page asked
 for by anyone but its owner, so that it cannot be told from one that is nobody's.

@@ -66,19 +66,28 @@ describe('rounds kept', () => {
     }
   });
 
+  it('says how far ahead of another someone finished: the places between them over the table, the same at any size', () => {
+    const rounds = openRounds(db);
+    rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)])); // first to last at two: +1
+    rounds.keep(round([hand(0, 'ada', 9), hand(1, 'bob', 8), ...[2, 3, 4, 5, 6, 7, 8, 9].map((s) => hand(s, null, s - 2))], undefined, 2)); // first to second at ten: +1/9
+    rounds.keep(round([hand(0, 'ada', 1), hand(1, 'bob', 1), hand(2, null, 9)], undefined, 3)); // level: 0
+    expect(rounds.versus('ada', 'bob').edge).toBeCloseTo((1 + 1 / 9 + 0) / 3);
+    expect(rounds.versus('bob', 'ada').edge).toBeCloseTo(-(1 + 1 / 9 + 0) / 3);
+  });
+
   it("says how one person has done against another, over the rounds they both played: who finished ahead, and each one's points", () => {
     const rounds = openRounds(db);
     rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)])); // ada ahead
     rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4), hand(2, null, 1)], undefined, 2)); // bob ahead
     rounds.keep(round([hand(0, 'ada', 3), hand(1, 'bob', 3), hand(2, null, 9, 'slow')], undefined, 3)); // level, with a bot
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], undefined, 4)); // (without bob)
-    expect(rounds.versus('ada', 'bob')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 11, theirs: 28, snipes: 0, sniped: 0 });
-    expect(rounds.versus('bob', 'ada')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 28, theirs: 11, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'bob')).toEqual({ rounds: 3, ahead: 1, behind: 1, edge: 0, points: 11, theirs: 28, snipes: 0, sniped: 0 });
+    expect(rounds.versus('bob', 'ada')).toEqual({ rounds: 3, ahead: 1, behind: 1, edge: 0, points: 28, theirs: 11, snipes: 0, sniped: 0 });
     // Of one kind: no bots (the first two); two people and a bot (the third); one person and bots (none of theirs).
-    expect(rounds.versus('ada', 'bob', 'humans')).toEqual({ rounds: 2, ahead: 1, behind: 1, points: 8, theirs: 25, snipes: 0, sniped: 0 });
-    expect(rounds.versus('ada', 'bob', 'mixed')).toEqual({ rounds: 1, ahead: 0, behind: 0, points: 3, theirs: 3, snipes: 0, sniped: 0 });
-    expect(rounds.versus('ada', 'bob', 'bots')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 });
-    expect(rounds.versus('ada', 'cy')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'bob', 'humans')).toEqual({ rounds: 2, ahead: 1, behind: 1, edge: 0, points: 8, theirs: 25, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'bob', 'mixed')).toEqual({ rounds: 1, ahead: 0, behind: 0, edge: 0, points: 3, theirs: 3, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'bob', 'bots')).toEqual({ rounds: 0, ahead: 0, behind: 0, edge: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'cy')).toEqual({ rounds: 0, ahead: 0, behind: 0, edge: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 });
     // Gone, an account's rounds are nobody's: nobody has played them against it.
     rounds.forget('bob');
     expect(rounds.versus('ada', 'bob')).toMatchObject({ rounds: 0 });
@@ -392,7 +401,7 @@ describe('over the wire', () => {
       name: 'Bob',
       picture: null, // (none put up: Google's is never shown to anyone else)
       stats: await (await bob.ask('/stats')).json(),
-      versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), points: line(a), theirs: line(b), snipes: 0, sniped: 0 },
+      versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), edge: expect.any(Number), points: line(a), theirs: line(b), snipes: 0, sniped: 0 },
     });
     expect(((await (await bob.ask(`/stats/${adas}?among=humans`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a), snipes: 0, sniped: 0 });
     // One's own: one's record, and nobody to be against.
