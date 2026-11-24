@@ -21,14 +21,21 @@ const DOUBLE = 350;
 /** How long a wave runs, from the first card's start to the last one's landing (ms). */
 const WAVE = (CARDS - 1) * STAGGER + 2 * HALF * 1000;
 
-/** Once the picture of `back` is in (or has failed, or taken too long), so that a card turned over never lands blank. */
-function loaded(back: Back): Promise<unknown> {
+/** Sends for the picture of `back`: settled once it is in (or has failed). */
+function fetched(back: Back): Promise<unknown> {
   const art = backArt(back, true);
   if (!art) return Promise.resolve();
   const img = new Image();
   img.src = art.src;
-  return Promise.race([img.decode().catch(() => {}), new Promise((done) => setTimeout(done, 600))]);
+  return img.decode().catch(() => {});
 }
+
+/** The back a card lands as when next turned, drawn a turn ahead and its picture sent for then. */
+type Ahead = { back: Back; ready: Promise<unknown> };
+const draw = (from: Back): Ahead => {
+  const back = anotherBack(from);
+  return { back, ready: fetched(back) };
+};
 
 /** One back of the hand: what it shows, and its turn over when pressed or when a wave reaches it. A press while it turns is
  *  let go. */
@@ -36,15 +43,23 @@ function Card({ seat, wave }: { seat: number; wave: number }) {
   const [back, setBack] = useState<Back>('plain');
   const [scope, animate] = useAnimate<HTMLSpanElement>();
   const turning = useRef(false);
+  // Drawn a turn ahead, so a press turns over a card whose picture is already in: six pictures sent for at a time, not all.
+  const ahead = useRef<Ahead | null>(null);
+  useEffect(() => {
+    ahead.current = draw('plain');
+  }, []);
 
   const turn = async () => {
     if (turning.current) return;
-    const next = anotherBack(back);
+    const { back: next, ready } = ahead.current!;
+    ahead.current = draw(next);
     turning.current = true;
     const still = calm(); // reduced motion: the new back, without the turn
     deal(still ? 0 : HALF - SNAP); // on the audio clock, so the flick lands just as the card comes edge-on
+    // Once its picture is in (or has failed, or taken too long), so that a card turned over never lands blank.
+    const shown = Promise.race([ready, new Promise((done) => setTimeout(done, 600))]);
     try {
-      await Promise.all([loaded(next), still || animate(scope.current, { rotateY: 90 }, { duration: HALF, ease: 'easeIn' })]);
+      await Promise.all([shown, still || animate(scope.current, { rotateY: 90 }, { duration: HALF, ease: 'easeIn' })]);
       setBack(next);
       if (!still && scope.current) await animate(scope.current, { rotateY: [-90, 0] }, { duration: HALF, ease: 'easeOut' });
     } catch {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -2056,6 +2056,19 @@ describe('server over real sockets', () => {
     expect((await get('/%00')).status).toBe(200); // falls back to the app, does not throw
     expect((await get('/%E0%A4%A')).status).toBe(400); // undecodable path
     expect((await get('/ws')).status).toBe(200); // plain GET on the socket path is just an app route
+  });
+
+  it('lets the browser keep what is asked for by its issue (built assets, back pictures), and nothing else', async () => {
+    const get = (path: string) => fetch(`http://127.0.0.1:${server.port}${path}`);
+    for (const dir of ['assets', 'cards/backs', 'cards/classic']) mkdirSync(join(dist, dir), { recursive: true });
+    writeFileSync(join(dist, 'assets/index-abc123.js'), '');
+    writeFileSync(join(dist, 'cards/backs/tartan.png'), '');
+    writeFileSync(join(dist, 'cards/classic/AS.svg'), '');
+    const keep = 'public, max-age=31536000, immutable';
+    expect((await get('/assets/index-abc123.js')).headers.get('cache-control')).toBe(keep);
+    expect((await get('/cards/backs/tartan.png?v=2')).headers.get('cache-control')).toBe(keep);
+    expect((await get('/cards/classic/AS.svg')).headers.get('cache-control')).toBe('no-cache'); // faces carry no issue
+    expect((await get('/')).headers.get('cache-control')).toBe('no-cache');
   });
 
   it('create makes a table with a server-chosen code; joining a code that does not exist is an error, not a new table', async () => {
