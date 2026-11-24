@@ -31,6 +31,14 @@ On your own? In the lobby press **Add bot** and deal: one person and one bot mak
 player because identity lives in `sessionStorage`. Reloading a window keeps its seat and hand. Use a new window or tab for a
 second player, not "Duplicate tab": a duplicate copies the identity, takes over the seat, and the original tab is told so.
 
+Trying things out, locally and on [previews](#previews) (wherever the server has `TESTING=1`, or any `NODE_ENV` but
+`production`; never on staging or production):
+
+- `?deal=aces`, `?deal=two-piles` or `?deal=out` in the address: the dealer's Start deals every hand that set-up (Aces
+  and 2s up; an A♠ to put down with a 2♠ that two A♠ piles would take; a nertz pile of just two Aces). It stays in the
+  address when the table's code is added.
+- **Shift+D** replays the deal in this window; **Shift+N**, for whoever deals, has a bot go out now.
+
 Controls:
 
 | Do this | To |
@@ -314,18 +322,18 @@ their screen; in your window it has to come from wherever they sit.
 - `p`: the card's centre in table space: the same point of the felt on every screen.
 - `h`: how far the card is from its pile, in widths of its owner's cards: along the row, and towards the middle.
   Right near the hand, wherever and however large a window draws that hand.
-- `w`: how far the card has come of the way to a pile in the middle that would take it, from 0 when it has just left
-  its own pile (or has no such pile to go to: an Ace) to 1 when it is over that pile.
-- `f`: how far it has come of the way from where it was taken to the edge of the felt, 0 to 1, measured by the
-  pointer (a finger carries the card risen above it from the start). Bots' made-up reports carry it too.
+- `w`: how far along its way the card is, one number: 0 where it was taken, 1 at the edge of the felt (measured by
+  the pointer: a finger carries the card risen above it from the start), 2 over a pile in the middle that would take
+  it (the rest of the way measured by the card itself: under a finger it is over the felt, and on its pile, before the
+  finger is). A card with no such pile to go to (an Ace) stops at 1. Bots' made-up reports say it the same way.
 
 A receiving window (`aloftAt` in `client/layout.ts`) starts the card at `h` in its own picture of that hand: so a
-card going from pile to pile within a hand is seen doing just that. A card on its way to the felt is drawn `f` of the
-way from that hand, as your window draws it, straight towards the nearest point of the felt's edge (and one pulled
-back away from the felt goes as far the other way). Its sideways movement along the row counts for less the nearer
-the felt it is, and none at the edge: which way is sideways on its owner's screen says nothing about where on the
-felt it is going from yours. From there a card with a pile to go to is drawn `w` of
-the way along the straight line to that pile, so it arrives as its owner does. After 0.6 s over the felt (0.15 s
+card going from pile to pile within a hand is seen doing just that. From there it is drawn `w` along one path. Up to
+1 that is the way from that hand, as your window draws it, straight towards the nearest point of the felt's edge (and
+one pulled back away from the felt goes as far the other way). Its sideways movement along the row counts for less
+the nearer the felt it is, and none at the edge: which way is sideways on its owner's screen says nothing about where
+on the felt it is going from yours. From 1 to 2 it is the straight line from the felt's edge to the pile it is going
+to, so it reaches the felt, and its pile, as its owner does. After 0.6 s over the felt (0.15 s
 for an Ace, which has no pile to go by) it moves over to where it really is, `p`, taking 0.8 s, and stays with it
 while it is over the felt; put down sooner, it flies to its place when it lands. It grows from hand size to pile
 size on the way. So from every seat a card is seen to travel a nearly straight line from its owner's hand to
@@ -725,6 +733,8 @@ is a few kilobytes and a busy table is a few messages a second.
 - What does not work there: **Google sign-in** (Google only sends people back to redirect addresses registered in advance,
   and one cannot be registered per preview; sign in by emailed code instead, which needs `RESEND_API_KEY`), and
   **feedback**, which is sent nowhere: a preview has no `FEEDBACK_WEBHOOK`, `LINEAR_*` or `ANTHROPIC_API_KEY`.
+- What works there and nowhere else deployed: the aids for [trying things out](#run-the-two-window-demo) (`?deal=`, Shift+D,
+  Shift+N). The workflow sets `TESTING=1` with the app's other secrets; staging and production never have it.
 - Setup, once:
   1. `fly tokens create org -o personal -n "nertz previews"`: a token for the whole org, since app tokens cannot make
      apps. (It can also deploy or destroy `nertz` and `nertz-staging`; the workflow only ever names `nertz-pr-<number>`.)

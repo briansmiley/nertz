@@ -31,6 +31,7 @@ import {
   resolveStuck,
   scoreRound,
   seatedPeople,
+  setUpDeal,
   snipedBy,
   startCountdown,
   viewFor,
@@ -40,7 +41,8 @@ import {
   type Result,
   type Rng,
 } from './engine';
-import { allCards, card as c, cards as cs, downs, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seeded, slot, stepDraws, deals, table, untilReached, work, type Hand } from './testkit';
+import { allCards, card as c, cards as cs, downs, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seats, seeded, slot, stepDraws, deals, table, toPlay, untilReached, work, type Hand } from './testkit';
+import { SET_UPS } from './protocol';
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
@@ -265,6 +267,58 @@ describe('deal', () => {
     expect(checkInvariants(two)).toBeNull();
     const counting = startCountdown(two);
     expect(withHands(counting, [late])).toBe(counting); // "1, 2, 3": the cards lie where they are
+  });
+});
+
+describe('a set-up deal', () => {
+  const face = (x: AnyCard) => (isHidden(x) ? '?' : `${x.suit}${x.rank}`);
+  const tops = (p: PlayerState) => [face(p.nertz.at(-1)!), ...p.work.map((w) => face(w.cards.at(-1)!))];
+  const spots = (p: PlayerState) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].map((x) => x.id);
+  const fly = (g: GameState, seat: number, id: string) => legalDrops(g, seat, id).find((to) => to.k === 'felt')!;
+  const id = (g: GameState, seat: number, f: string) => allCards(g).find((x) => x.owner === seat && face(x) === f)!.id;
+
+  it('rearranges each hand within itself, keeps every invariant and leaves the rest as dealt', () => {
+    for (const n of [2, 3, 4, 6]) {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const dealt = deepFreeze(dealRound(seats(n), seeded(seed)));
+        for (const name of SET_UPS) {
+          const set = setUpDeal(dealt, name);
+          expect(checkInvariants(set)).toBeNull();
+          expect(set.status).toEqual(dealt.status);
+          for (const [i, p] of set.players.entries()) {
+            const was = dealt.players[i]!;
+            expect(p.work.map((w) => [w.cards.length, w.down])).toEqual(was.work.map((w) => [w.cards.length, w.down]));
+            expect(p.nertz.length + p.stock.length).toBe(was.nertz.length + was.stock.length);
+            expect([...spots(p)].sort()).toEqual([...spots(was)].sort());
+            // With what `out` put under the stock back on the nertz pile, every card lies where it was dealt but those named and those they were swapped with.
+            const back = name === 'out' ? { ...p, nertz: [...p.stock.slice(0, 11), ...p.nertz], stock: p.stock.slice(11) } : p;
+            expect(spots(back).filter((x, j) => x !== spots(was)[j]).length).toBeLessThanOrEqual(name === 'aces' ? 8 : 4);
+          }
+        }
+      }
+    }
+  });
+
+  it('aces: an Ace to put down and a 2 to put on it, in spades and in hearts, on top of every hand', () => {
+    const g = toPlay(setUpDeal(dealRound(seats(3), seeded(9)), 'aces'));
+    for (const p of g.players) expect(tops(p).slice(1)).toEqual(['S1', 'S2', 'H1', 'H2']);
+    const down = ok(applyIntent(g, 1, move(id(g, 1, 'S1'), fly(g, 1, id(g, 1, 'S1')))));
+    ok(applyIntent(down, 1, move(id(g, 1, 'S2'), slot(0))));
+  });
+
+  it('two-piles: once two Aces of spades are down, every 2 of spades on a nertz pile has both to go to', () => {
+    let g = toPlay(setUpDeal(dealRound(seats(2), seeded(4)), 'two-piles'));
+    for (const p of g.players) expect(tops(p)[0]).toBe('S2');
+    for (const p of g.players) expect(tops(p)[1]).toBe('S1');
+    for (const seat of [0, 1]) g = ok(applyIntent(g, seat, move(id(g, seat, 'S1'), fly(g, seat, id(g, seat, 'S1')))));
+    for (const seat of [0, 1]) expect(legalDrops(g, seat, id(g, seat, 'S2')).filter((to) => to.k === 'slot')).toEqual([slot(0), slot(1)]);
+  });
+
+  it('out: two Aces left in the nertz pile, put down in two moves, and Nertz can be called', () => {
+    let g = toPlay(setUpDeal(dealRound(seats(2), seeded(6)), 'out'));
+    for (const p of g.players) expect(p.nertz.map(face)).toEqual(['C1', 'D1']);
+    for (const f of ['D1', 'C1']) g = ok(applyIntent(g, 0, move(id(g, 0, f), fly(g, 0, id(g, 0, f)))));
+    expect(calledBy(ok(applyIntent(g, 0, NERTZ)))).toBe(0);
   });
 });
 

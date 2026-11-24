@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { legalDrops } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
-import type { Pt } from '../shared/table';
+import { offFelt, type Pt } from '../shared/table';
 import { hold, move, pile, slot, table, work } from '../shared/testkit';
 import type { GameState, Intent } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -511,7 +511,7 @@ describe('telling the others where the card is', () => {
     expect(out).toEqual(['a', 'c']);
   });
 
-  it('a carried card is reported as it goes: how far from its pile in cards of the hand, where on the table, and how far along to a pile of the middle that takes it', () => {
+  it('a carried card is reported as it goes: how far from its pile in cards of the hand, where on the table, and how far along its way to a pile of the middle that takes it', () => {
     vi.useFakeTimers();
     const t = seatAt(game());
     const from = t.at('0:S2');
@@ -521,24 +521,37 @@ describe('telling the others where the card is', () => {
     expect(t.reports).toHaveLength(1);
     expect(t.reports[0]).toMatchObject({ id: '0:S2', h: [1, 2] });
     expect(t.reports[0]!.w).toBeGreaterThan(0);
-    expect(t.reports[0]!.w).toBeLessThan(1);
+    expect(t.reports[0]!.w).toBeLessThan(2); // (1 is the felt's edge, 2 the pile)
     t.move(by(t.slot(0), 0, 40));
     t.move(t.slot(0));
     expect(t.reports).toHaveLength(1); // not yet: too soon after the last
     vi.advanceTimersByTime(1000 / DRAG_HZ + 1);
     expect(t.reports).toHaveLength(2);
     const there = toTable(t.L.felt, t.slot(0).x, t.slot(0).y);
-    expect(t.reports[1]).toMatchObject({ id: '0:S2', w: 1, p: [expect.closeTo(there.x, 2), expect.closeTo(there.y, 2)] });
+    expect(t.reports[1]).toMatchObject({ id: '0:S2', w: 2, p: [expect.closeTo(there.x, 2), expect.closeTo(there.y, 2)] });
     t.move(by(t.slot(0), 0, 5));
     t.up(by(t.slot(0), 0, 5));
     vi.advanceTimersByTime(1000);
     expect(t.reports).toHaveLength(2); // the hand is open: the report that was waiting is not sent
   });
 
+  it('under a finger the card is over the felt before the finger is: it is on its way to a pile at the near edge all the same, and there when the card is', () => {
+    const near = table([{ nertz: 'C3 DQ', work: ['S5', 'H4', 'DA', 'CK'], waste: 'S2' }, { waste: 'S2' }], { slots: [{ cards: pile('S1', 1), x: 0, y: 0.7 }] });
+    const t = seatAt(near, phone);
+    t.down(t.at('0:S2'));
+    bring(t, by(t.slot(0), 0, t.L.fs * CARD_W * 0.35 + 2)); // two pixels short of the pile
+    const finger = t.hand?.phase === 'carried' ? { x: t.hand.px, y: t.hand.py } : off;
+    expect(offFelt(toTable(t.L.felt, finger.x, finger.y), 2)).toBeGreaterThan(0);
+    expect(t.sight!.report!.w).toBeGreaterThan(1);
+    expect(t.sight!.report!.w).toBeLessThan(2);
+    bring(t, t.slot(0));
+    expect(t.sight!.report!.w).toBe(2);
+  });
+
   it('a card that stands tapped is reported where it stands, and one with no pile of the middle to go to has come no way', () => {
     vi.useFakeTimers();
     const t = seatAt(game());
     t.tap(t.at('0:H4'));
-    expect(t.reports).toEqual([{ id: '0:H4', w: 0, h: [0, expect.closeTo(0.16 * (CARD_H / CARD_W), 2)], p: expect.anything(), f: 0 }]); // (standing where it was: no way out to the felt)
+    expect(t.reports).toEqual([{ id: '0:H4', w: 0, h: [0, expect.closeTo(0.16 * (CARD_H / CARD_W), 2)], p: expect.anything() }]); // (standing where it was: no way out to the felt)
   });
 });
