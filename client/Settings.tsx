@@ -8,7 +8,7 @@
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
 // - `TableRules`: the house rules on the lobby sheet, for everyone to read.
-// Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`, `BotCard`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
@@ -63,17 +63,41 @@ function Info({ children }: { children: ReactNode }) {
   );
 }
 
-/** A robot's head; with a plus beside it (to add one) unless `plain`. */
-export function Robot({ plain }: { plain?: boolean } = {}) {
+/** A robot's head. */
+export function Robot() {
   return (
-    <svg viewBox={plain ? '0 2 15.5 17.5' : '0 0 24 24'} aria-hidden="true">
+    <svg viewBox="0 2 15.5 17.5" aria-hidden="true">
       <rect x="2" y="8" width="11.5" height="10" rx="2.5" />
       <path d="M7.75 8V5" />
       <circle cx="7.75" cy="4.2" r="1.1" fill="currentColor" stroke="none" />
       <circle cx="5.7" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
       <circle cx="9.8" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
-      {/* the plus, clear of the head */}
-      {!plain && <path d="M19.8 10v5M17.3 12.5h5" />}
+    </svg>
+  );
+}
+
+/** A card, tilted, with a robot on it: marigold antenna tips, a club and a spade for eyes, a red collar. */
+export function BotCard() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <g transform="rotate(-10 12 12)">
+        <rect x="4.5" y="2" width="15" height="20" rx="2.2" />
+        <path d="M9.8 9V6.6M14.2 9V6.6" />
+        <circle cx="9.8" cy="5.6" r="1.2" stroke="none" style={{ fill: 'var(--marigold)' }} />
+        <circle cx="14.2" cy="5.6" r="1.2" stroke="none" style={{ fill: 'var(--marigold)' }} />
+        <rect x="7.5" y="9" width="9" height="8" rx="1.6" />
+        <g fill="currentColor" stroke="none">
+          <g transform="translate(10 12.3) scale(1.15)">
+            <circle cy="-0.8" r="0.68" />
+            <circle cx="-0.75" cy="0.3" r="0.68" />
+            <circle cx="0.75" cy="0.3" r="0.68" />
+            <path d="M-0.45 1.6 0 0.2 0.45 1.6Z" />
+          </g>
+          <path transform="translate(14 12.3) scale(1.15)" d="M0-1.5C.9-.5 1.45 0 1.45.65A.72.72 0 0 1 .2 1.05L.45 1.6H-.45L-.2 1.05A.72.72 0 0 1-1.45.65C-1.45 0-.9-.5 0-1.5Z" />
+        </g>
+        <path d="M10.6 15h2.8" strokeWidth="1.3" />
+        <path d="M10.2 18.9h3.6" style={{ stroke: 'var(--red)' }} />
+      </g>
     </svg>
   );
 }
