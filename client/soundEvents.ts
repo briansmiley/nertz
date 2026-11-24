@@ -21,6 +21,8 @@ export type Cue =
   | { k: 'deal'; work: number }
   /** A card (or run) was picked up. */
   | { k: 'pickup'; who: Who }
+  /** Before play opens, a hand was reburied: `n` face-down cards moved between its stock and its work piles. */
+  | { k: 'rebury'; n: number }
   /** A card or run landed on a work pile. */
   | { k: 'work'; who: Who }
   /** One card off the stock, face-down onto the waste. */
@@ -115,10 +117,16 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
+  let reburied = 0;
   for (const [id, to] of after) {
     const from = before.get(id);
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
     moved.add(id);
+    // Before play opens the only cards that move between a hand's stock and work piles are face-downs reburied for a changed table.
+    if (!hasOpened(b.game) && from.seat === to.seat && ((from.pile === 'stock' && to.pile === 'work') || (from.pile === 'work' && to.pile === 'stock'))) {
+      reburied++;
+      continue;
+    }
     if (to.pile === 'slot') {
       if (from.seat < 0) continue;
       const pile = b.game.slots[to.i]!;
@@ -139,6 +147,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
       if (!reshuffled) add({ k: 'recycle', who: who(to.seat) });
     }
   }
+
+  if (reburied > 0) add({ k: 'rebury', n: reburied });
 
   for (const p of b.game.players) {
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;
