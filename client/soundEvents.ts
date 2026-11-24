@@ -123,8 +123,9 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
     moved.add(id);
     // Before play opens the only cards that move between a hand's stock and work piles are face-downs reburied for a changed table.
+    // Only your own hand's are heard.
     if (!hasOpened(b.game) && from.seat === to.seat && ((from.pile === 'stock' && to.pile === 'work') || (from.pile === 'work' && to.pile === 'stock'))) {
-      reburied++;
+      if (to.seat === you) reburied++;
       continue;
     }
     if (to.pile === 'slot') {
