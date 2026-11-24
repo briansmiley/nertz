@@ -31,6 +31,14 @@ On your own? In the lobby press **Add bot** and deal: one person and one bot mak
 player because identity lives in `sessionStorage`. Reloading a window keeps its seat and hand. Use a new window or tab for a
 second player, not "Duplicate tab": a duplicate copies the identity, takes over the seat, and the original tab is told so.
 
+Trying things out, locally and on [previews](#previews) (wherever the server has `TESTING=1`, or any `NODE_ENV` but
+`production`; never on staging or production):
+
+- `?deal=aces`, `?deal=two-piles` or `?deal=out` in the address: the dealer's Start deals every hand that set-up (Aces
+  and 2s up; an A♠ to put down with a 2♠ that two A♠ piles would take; a nertz pile of just two Aces). It stays in the
+  address when the table's code is added.
+- **Shift+D** replays the deal in this window; **Shift+N**, for whoever deals, has a bot go out now.
+
 Controls:
 
 | Do this | To |
@@ -725,6 +733,8 @@ is a few kilobytes and a busy table is a few messages a second.
 - What does not work there: **Google sign-in** (Google only sends people back to redirect addresses registered in advance,
   and one cannot be registered per preview; sign in by emailed code instead, which needs `RESEND_API_KEY`), and
   **feedback**, which is sent nowhere: a preview has no `FEEDBACK_WEBHOOK`, `LINEAR_*` or `ANTHROPIC_API_KEY`.
+- What works there and nowhere else deployed: the aids for [trying things out](#run-the-two-window-demo) (`?deal=`, Shift+D,
+  Shift+N). The workflow sets `TESTING=1` with the app's other secrets; staging and production never have it.
 - Setup, once:
   1. `fly tokens create org -o personal -n "nertz previews"`: a token for the whole org, since app tokens cannot make
      apps. (It can also deploy or destroy `nertz` and `nertz-staging`; the workflow only ever names `nertz-pr-<number>`.)
