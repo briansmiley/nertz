@@ -1,13 +1,14 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: your settings at the top, under their
 // own head, and across the bottom what there is to do, a round button each (its name a tooltip): sound on or off, the table's actions (which are
-// open to you, and what each does, is actions.ts), and the way to feedback, which opens in the same place.
+// open to you, and what each does, is actions.ts), the way to feedback, which opens in the same place, and for an admin
+// how much the game is played (Usage.tsx), likewise.
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
-import { Again, Bug, Door, Eye, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Again, Bug, Chart, Door, Eye, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
 
-/** What the corner has open: the menu (your settings in it), or feedback, which it leads to. */
-export type Panel = 'menu' | 'feedback';
+/** What the corner has open: the menu (your settings in it), or feedback or how much the game is played, which it leads to. */
+export type Panel = 'menu' | 'feedback' | 'usage';
 
 /** The one slip the corner has open, or none: the ☰ opens the menu, and so does the score sheet's gear. */
 let panel: Panel | null = null;
@@ -40,10 +41,10 @@ export function Back({ onClick }: { onClick: () => void }) {
 
 /**
  * Your settings (`children`) over the lines of what to do. Muting and the vote leave the slip up (what they did is on
- * it); anything else puts it away (`onDone`) or opens feedback (`onFeedback`). One that cannot be undone puts it away
- * and asks (`Sure`).
+ * it); anything else puts it away (`onDone`) or opens feedback (`onFeedback`), or for an admin how much the game is
+ * played (`onUsage`, none for anyone else). One that cannot be undone puts it away and asks (`Sure`).
  */
-export function Menu({ room, actions, muted, onMute, onFeedback, onDone, children }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; onFeedback: () => void; onDone: () => void; children: ReactNode }) {
+export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone, children }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; onFeedback: () => void; onUsage?: () => void; onDone: () => void; children: ReactNode }) {
   return (
     <section className="slip menu" id="menu" aria-label="Menu">
       {children}
@@ -73,6 +74,11 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onDone, childre
               </button>
             );
           })}
+        {onUsage && (
+          <button type="button" className="icon" aria-label="Played" data-tip="Played" onClick={onUsage}>
+            <Chart />
+          </button>
+        )}
         <button type="button" className="icon" aria-label="Feedback" data-tip="Feedback" onClick={onFeedback}>
           <Bug />
         </button>

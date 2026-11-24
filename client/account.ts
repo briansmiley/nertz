@@ -1,9 +1,10 @@
 // Who is signed in on this browser, and who they are at the table, as the server says (server/profile.ts). Signing in
 // is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
-// nothing of its own: it asks. The same for their record (`/stats`), and someone's page (`/stats/<handle>`).
+// nothing of its own: it asks. The same for their record (`/stats`), someone's page (`/stats/<handle>`), and for an
+// admin how much the game is played (`/usage`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { goHome, moved, pageIn } from './address';
-import type { Account, Among, Page, Stats, Versus, Way } from '../shared/types';
+import type { Account, Among, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
 /**
  * `unknown` until the server has answered; `off` when there is no signing in (it keeps no accounts, or gave no good
@@ -45,9 +46,9 @@ export function read(status: number, body: unknown): Signed {
     const ways = (Array.isArray(said) ? said : []).filter((w): w is Way => w === 'google' || w === 'email');
     return ways.length ? { ways } : 'off';
   }
-  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown; handle?: unknown; private?: unknown } | null;
+  const v = body as { id?: unknown; name?: unknown; image?: unknown; picture?: unknown; handle?: unknown; private?: unknown; admin?: unknown } | null;
   if (status !== 200 || !v || typeof v.id !== 'string' || typeof v.handle !== 'string') return 'off';
-  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture), handle: v.handle, private: v.private === true };
+  return { id: v.id, name: typeof v.name === 'string' && v.name ? v.name : null, image: typeof v.image === 'string' ? v.image : null, picture: ownPicture(v.picture), handle: v.handle, private: v.private === true, ...(v.admin === true && { admin: true as const }) };
 }
 
 const PROFILE = '/profile';
@@ -203,11 +204,10 @@ export function readStats(status: number, body: unknown): Stats | null {
   const v = body as Partial<Record<keyof Stats, unknown>> | null;
   const most = (n: unknown): n is number | null => n === null || whole(n);
   const share = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && n <= 1);
-  const times = (n: unknown): n is number | null => n === null || (typeof n === 'number' && n >= 0 && Number.isFinite(n));
   if (status !== 200 || !v) return null;
-  const { rounds, won, odds, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
-  if (!whole(rounds) || !whole(won) || !times(odds) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
-  return { rounds, won, odds, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
+  const { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped } = v;
+  if (!whole(rounds) || !whole(won) || !whole(nertz) || !whole(points) || !most(bestPoints) || !whole(cards) || !most(bestCards) || !whole(nertzLeft) || !share(ahead) || !whole(snipes) || !whole(sniped)) return null;
+  return { rounds, won, nertz, points, bestPoints, cards, bestCards, nertzLeft, ahead, snipes, sniped };
 }
 
 /** How you have done against someone, as the server says it: null for an answer that is not that. */
@@ -277,4 +277,22 @@ export function usePage(handle: string, among: Among): Page | 'nobody' | 'none' 
     return () => void (stale = true);
   }, [handle, among, who]);
   return page?.of === handle ? page.page : undefined;
+}
+
+/**
+ * How much the game is played, for an admin (`GET /usage`), its days as dates here, over the rounds `among` says:
+ * asked for each time something that shows it comes up, or changes which. Undefined until it is known; null for no
+ * good answer.
+ */
+export function useUsage(among: Among): Usage | null | undefined {
+  const [usage, setUsage] = useState<Usage | null>();
+  useEffect(() => {
+    let stale = false;
+    fetch(`/usage?tz=${new Date().getTimezoneOffset()}&among=${among}`, { credentials: 'same-origin', cache: 'no-store' })
+      .then(async (res) => (res.ok ? ((await res.json()) as Usage) : null))
+      .catch(() => null)
+      .then((u) => stale || setUsage(u && Array.isArray(u.days) && Array.isArray(u.games) && u.total ? u : null));
+    return () => void (stale = true);
+  }, [among]);
+  return usage;
 }

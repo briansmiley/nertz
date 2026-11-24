@@ -287,8 +287,9 @@ function Cute({ suit, rank, colour, theme }: { suit: Suit; rank: number; colour:
 
 /**
  * The face of one card. `mini` picks the large-print rendition. A card belongs to its owner's deck, and is drawn as
- * they chose for everyone (`deck` and `night`: whoever draws the card says which, so that a change to your other settings does
- * not draw every card on the table again).
+ * they chose for everyone, or as you chose for every card (yours or Big print) (`deck` and `night`: whoever draws the
+ * card says which, client/prefs.ts `seenLook`, so that a change to your other settings does not draw every card on
+ * the table again).
  */
 export const Face = memo(function Face({ suit, rank, mini, deck, night }: { suit: Suit; rank: number; mini: boolean; deck: Deck; night: boolean }) {
   // (A deck of pictures has no dark pictures: the light ones are turned inside out, and their colours turned back.)

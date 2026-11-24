@@ -6,14 +6,13 @@
   gap: 0.6rem;
 }
 
-/* The head: the way back, the picture, the name and under it the address (which has the line to its end, for the Set
-   beside it); at the end of the name's line which rounds the record counts, and under it Private. Too narrow for them
-   beside the name, they go to a line of their own under it. */
+/* The head: the way back, the picture, the name (which has its line to itself) and under it the address (with room for
+   the Set beside it), and at the end of that line Private. Too narrow for it there, it goes to a line of its own. */
 .profile .you {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'back picture name among'
+    'back picture name name'
     'back picture handle private';
   align-items: center;
   column-gap: 0.6rem;
@@ -54,29 +53,16 @@
   justify-self: end;
 }
 
-.profile .you > .among {
-  grid-area: among;
-}
-
-/* (In the head the drawings say which by their tooltips: no word under them to make the line taller.) */
-.profile .you > .among small {
-  display: none;
-}
-
 @container (max-width: 16rem) {
   .profile .you {
     grid-template-areas:
       'back picture name name'
       'back picture handle handle'
-      'private private private among';
+      'private private private private';
   }
 
   .profile .you > .private {
     justify-self: start;
-    margin-top: 0.8rem;
-  }
-
-  .profile .you > .among {
     margin-top: 0.8rem;
   }
 }
@@ -461,49 +447,54 @@
   box-shadow: 0 4px 0 #8f1622;
 }
 
-/* Which rounds the record counts: three small drawings, the one chosen in ink. */
+/* Which rounds are counted (Profile.tsx `Which`; on the Played slip too): the choice's drawing and word, a line under
+   it only under the pointer or while open (as under your name); pressed, all four on a scrap of the same paper, over
+   what is under it. */
 .among {
-  justify-self: end;
-  display: grid;
-  justify-items: center;
-  gap: 0.1rem;
-}
-
-.among > div {
-  display: flex;
-  gap: 0.15rem;
-}
-
-.among small {
-  font: 400 0.8rem/1rem var(--ui);
-  color: var(--ink-soft);
+  position: relative;
+  justify-self: center;
 }
 
 .among button {
-  display: grid;
-  place-items: center;
-  width: 2rem;
-  height: 1.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0;
   border: 0;
-  border-radius: 6px;
-  color: var(--ink-soft);
+  border-radius: 0;
+  color: var(--ink);
   background: none;
-  opacity: 0.45;
+  font: 500 0.95rem/1 var(--ui);
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.among button:hover {
-  opacity: 0.8;
+.among > button {
+  height: 2rem;
+  padding: 0 0.1rem;
+  border-bottom: 1.5px solid transparent;
 }
 
-.among button[aria-checked='true'] {
-  color: var(--ink);
-  opacity: 1;
-  background: rgba(27, 39, 51, 0.07);
+/* (On a page, on the rule straight under the figures, and the ways out straight under it.) */
+.profile > .among {
+  margin-top: -0.6rem;
+}
+
+.profile > .among + .outs {
+  margin-top: -0.6rem;
+}
+
+.among .vs {
+  color: var(--ink-soft);
+}
+
+.among > button:hover,
+.among > button[aria-expanded='true'] {
+  border-bottom-color: var(--ink);
 }
 
 .among svg {
+  flex: none;
   width: 1.45rem;
   height: 1.45rem;
   fill: none;
@@ -511,6 +502,68 @@
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.among svg.caret {
+  width: 0.6rem;
+  height: 0.4rem;
+  margin-left: 0.1rem;
+  transition: rotate 0.12s;
+}
+
+.among > button[aria-expanded='true'] .caret {
+  rotate: 180deg;
+}
+
+.among [role='listbox'] {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 50%;
+  translate: -50% 0;
+  display: grid;
+  width: max-content;
+  padding: 0.25rem 0;
+  border-radius: 3px;
+  background: var(--paper);
+  box-shadow:
+    0 1px 0 #e3d9bf,
+    0 2px 0 #cfc4a6,
+    0 8px 18px rgba(0, 0, 0, 0.35);
+  rotate: 0.5deg;
+}
+
+.among [role='listbox'].up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.among [role='option'] {
+  height: 2.5rem;
+  padding: 0 1rem 0 0.8rem;
+  color: var(--ink-soft);
+}
+
+.among [role='option']:hover,
+.among [role='option']:focus-visible {
+  color: var(--ink);
+  background: rgba(27, 39, 51, 0.07);
+}
+
+/* (The one chosen: ink, with the pad's red margin down its edge.) */
+.among [role='option'][aria-selected='true'] {
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--red);
+}
+
+.among [role='option']:focus-visible {
+  outline-offset: -3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .among svg.caret {
+    transition: none;
+  }
 }
 
 /* The way back to the home pad: as at the head of a slip. */

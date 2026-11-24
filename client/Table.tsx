@@ -9,7 +9,7 @@
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, wentOut } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reshuffledSince, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
 import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
@@ -22,7 +22,7 @@ import { nag, send, useClearFirst } from './clearFirst';
 import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, mover, moving, whoseOf, IN_PILE, type Doing, type Whose } from './level';
 import { Opening } from './Opening';
-import { ending, stageOf, stepAtMount, unrevealed } from './stage';
+import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
 import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
@@ -31,7 +31,7 @@ import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { calm, hotkeyName, lookOf, usePrefs } from './prefs';
+import { calm, hotkeyName, lookOf, seenLook, usePrefs } from './prefs';
 import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -40,16 +40,16 @@ const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
 /**
- * A card turned up by your own move before its face has come (`unseen`): it starts over at once, slower than a flip,
- * and waits at AJAR (degrees; 180 is face-down, 90 edge-on) with its back still showing. When the face comes it
- * finishes the turn (FINISH); if the move is refused it settles back down.
+ * A card turned up by your own move before its face has come (`unseen`): a soft spring draws it towards EDGE (degrees;
+ * 180 is face-down, 90 edge-on), ever slower, its back still showing. When the face comes a stiff spring carries it on
+ * from there, at the speed it had; if the move is refused it settles back down.
  */
-const AJAR = 125;
-const OPENING = () => ({ duration: calm() ? 0 : 0.22, ease: 'easeOut' }) as const;
-const FINISH = () => ({ duration: calm() ? 0 : 0.12, ease: 'easeIn' }) as const;
-const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? AJAR : 180);
+const EDGE = 100;
+const UNSEEN = () => (calm() ? { duration: 0 } : ({ type: 'spring', stiffness: 120, damping: 30 } as const));
+const FINISH = () => (calm() ? { duration: 0 } : ({ type: 'spring', stiffness: 500, damping: 45 } as const));
+const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? EDGE : 180);
 /** How a card turns from showing `was` to showing `face`: the one place that is decided. */
-const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? OPENING() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
+const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? UNSEEN() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
@@ -313,9 +313,15 @@ interface Flight {
   dwell: number;
 }
 
+/** What is said across the middle of the felt while a round is played: a snipe you were in, or the table's stocks turned over because everyone was stuck. */
+type Said = { k: 'snipe'; by: number; of: number } | { k: 'reshuffle' };
+
 /** A running total, with a real minus sign. */
 const points = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
-/** How wide the name line of a neighbour whose hand runs down the side may be. */
+/**
+ * How wide the name line of a neighbour whose hand runs down the side may be. It is wider than the turned hand under
+ * it, so the line is only as long as what is on it, from the hand's outer edge: nothing on it stands off by itself.
+ */
 const TAG_SIDE_W = 210;
 /** A plain place: just where and how large. */
 const box0 = (r: Rect): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h });
@@ -367,9 +373,9 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const results = room.phase === 'results';
   const { W, H, pad } = useWindow();
   const prefs = usePrefs();
-  // Whatever decks are at the table are fetched before their cards are turned up.
-  const decks = room.players.map((p) => p.look.deck).join();
-  useEffect(() => room.players.forEach((p) => warm(p.look.deck)), [decks]);
+  // Whatever decks are at the table, as you see them, are fetched before their cards are turned up.
+  const decks = room.players.map((p) => seenLook(prefs, p.look).deck);
+  useEffect(() => decks.forEach((d) => warm(d)), [decks.join()]);
   /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
   const clears = isTall(W, H) || isLow(W, H);
   const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
@@ -436,10 +442,13 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
   const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
+  // The round's hands at the table: once the score sheet is up, only of those still sitting where they played them.
+  const kept = handsAt(stage, room).join();
+  const hands = useMemo(() => game.players.filter((g) => kept.split(',').includes(`${g.seat}`)), [game, kept]);
   // What stands round the cards (the buttons in the corners, the clock, your name, "I'm stuck" and the vote) is placed
   // by the layout too, and the cards round it: nothing here is measured off the page or put down by hand.
   const fit = useFittings(room);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting, fit), [W, H, game, you, stage, peek, groupHeld, pad, sitting, fit]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting, fit, hands), [W, H, game, you, stage, peek, groupHeld, pad, sitting, fit, hands]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const handles = useRef<Handles>(new Map()).current;
   /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
@@ -447,8 +456,8 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   const [held, setHeld] = useState<Held | null>(null);
   /** The finished pile in hand is over the tray. */
   const [hot, setHot] = useState(false);
-  /** Snipes the server told of, as they stack on the felt while they last: those you were in, across the middle, and those between others, small along its lower edge (feed.ts). */
-  const [snipes, addSnipe, snipeDone] = useFeed<{ by: number; of: number }>(room.round);
+  /** What the table says, as it stacks on the felt while it lasts (feed.ts). Across the middle: the snipes you were in, and the reshuffle. Small along its lower edge: the snipes between others. */
+  const [said, tell, saidDone] = useFeed<Said>(room.round);
   const [asides, addAside, asideDone] = useFeed<{ by: number; of: number }>(room.round);
   useEffect(
     () =>
@@ -456,10 +465,18 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         if (by === you) snipeSound('me');
         else if (of === you) beaten();
         else snipeSound('other');
-        (by === you || of === you ? addSnipe : addAside)({ by, of });
+        if (by === you || of === you) tell({ k: 'snipe', by, of });
+        else addAside({ by, of });
       }),
-    [you, addSnipe, addAside],
+    [you, tell, addAside],
   );
+  // Everyone was stuck and the stocks were turned over, in this round and while this window was looking: the table says so.
+  const seen = useRef({ round: room.round, game });
+  useEffect(() => {
+    const was = seen.current;
+    seen.current = { round: room.round, game };
+    if (was.round === room.round && reshuffledSince(was.game, game)) tell({ k: 'reshuffle' });
+  }, [room.round, game, tell]);
   /** The outline of where the Ace in hand would start its pile. Moved by hand, not by React. */
   const preview = useRef<HTMLDivElement>(null);
 
@@ -570,7 +587,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
     if (aloft.size > 0 || flights.size > 0) watch(); // a snapshot can start a hold, or end one
   });
 
-  const mine = game.players.find((p) => p.seat === you);
+  const mine = hands.find((p) => p.seat === you);
   /** Nertz has been called: the round is in grace, or over by the call. */
   const called = calledBy(game) !== null;
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
@@ -640,18 +657,19 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   /**
    * Whose faces and backs the cards from `seat` have: yours, if it is yours; the player's who sits there, as they have them now; but on the
    * finished table, if whoever played the round has left (the seat is empty, or someone else's by now), as they were
-   * when the round ended.
+   * when the round ended. All as you see them: with your faces or Big print, if you have every card so (`Prefs.faces`).
    */
-  const dress = (seat: number): Look | undefined => {
-    if (seat === you) return myLook;
+  const dress = (seat: number): Look => {
     const l = line(seat);
     const p = info(seat);
-    return p && (!l || p.id === l.id) ? p.look : l?.look;
+    return seenLook(prefs, seat === you ? myLook : (p && (!l || p.id === l.id) ? p.look : l?.look) ?? PLAIN_LOOK);
   };
-  const name = (seat: number) => line(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
+  /** The line the place at `seat` goes by: its hand's, while that is at the table (`hands`); else none, and the place is whoever sits there. */
+  const placed = (seat: number) => (hands.some((g) => g.seat === seat) ? line(seat) : undefined);
+  const name = (seat: number) => placed(seat)?.name ?? info(seat)?.name ?? `Seat ${seat + 1}`;
   /** The total beside a name. The round's points are not added until the score sheet is up: the wash and the sort reveal them. */
   const total = (seat: number) => {
-    const l = line(seat);
+    const l = placed(seat);
     return l ? l.total - (stage === 'sheet' ? 0 : l.delta) : (info(seat)?.score ?? 0);
   };
   /** The finished pile waiting for you to carry it to the tray. */
@@ -861,7 +879,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
   // large enough to read at any seat, and kept inside the window.
   const stamps = out.flatMap((seat) => {
     const pile = seat === you ? me?.nertz : L.opponents.find((o) => o.seat === seat)?.nertz;
-    if (!pile) return [];
+    if (!pile || !hands.some((g) => g.seat === seat)) return []; // (not on a place whose hand has gone from the table)
     const size = Math.max(22, Math.min(pile.w * 0.78, 60));
     return [{ seat, size, x: clamp(pile.x + pile.w / 2 - size * 2, 4, Math.max(4, W - size * 4 - 4)), y: pile.y, w: size * 4, h: pile.h }];
   });
@@ -906,12 +924,12 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
 
       {L.opponents.map((o) => {
         const p = info(o.seat);
-        const st = game.players.find((g) => g.seat === o.seat);
+        const st = hands.find((g) => g.seat === o.seat);
         return (
           <div key={o.seat} className={st ? undefined : 'vacant'}>
             <div
-              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}${o.turn === -90 ? ' end' : ''}`}
-              style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, width: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
+              className={`tag${p?.connected === false || p?.left || p?.standing ? ' away' : ''}`}
+              style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, maxWidth: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <PictureBy picture={p?.picture} seat={o.seat} />
               {hosting && p && !p.bot && !p.left && !results ? (
@@ -1052,7 +1070,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
             face={replaying ? 'down' : c.face}
             // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
             mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
-            {...drawn(dress(c.card.owner) ?? PLAIN_LOOK)}
+            {...drawn(dress(c.card.owner))}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             pile={`${c.pile} ${c.at}`}
             cls={cardClass(c)}
@@ -1071,14 +1089,20 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
           <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
         </div>
       )}
-      {/* Snipes you were in: who by, or whom, across the middle, each there and gone in under a second; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
-      {snipes.length > 0 && !called && (
+      {/* Snipes you were in (who by, or whom) and the reshuffle of a table that was stuck: across the middle, each there and gone in a second or so; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
+      {said.length > 0 && !called && (
         <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
-          {snipes.map((s) => (
-            <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && snipeDone(s.id)}>
-              {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
-            </motion.span>
-          ))}
+          {said.map((s) =>
+            s.k === 'reshuffle' ? (
+              <motion.span layout="position" key={s.id} className="reshuffle" onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
+                Reshuffle!
+              </motion.span>
+            ) : (
+              <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
+                {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
+              </motion.span>
+            ),
+          )}
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies; more at once stack upward. */}
@@ -1106,7 +1130,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
         />
       )}
 
-      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={name} stage={stage} looks={dress} />}
+      {finale && room.lastRound && <Finale L={L} game={game} scores={room.lastRound.scores} name={(seat) => line(seat)?.name ?? name(seat)} stage={stage} looks={dress} />}
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // Level with the menu's button, on every screen (so clear of what the screen keeps at its bottom, as that is). On

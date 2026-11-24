@@ -71,6 +71,8 @@ export interface AccountsOptions {
   google: { id: string; secret: string } | null;
   /** Signing in with a code sent to one's email, if there is a Resend key to send it with, and who it is sent from. */
   email: { resend: string; from: string } | null;
+  /** The addresses of those who can see how much the game is played (`Account.admin`, server/stats.ts), in lower case: nobody's, unless said. */
+  admins?: readonly string[];
 }
 
 /**
@@ -128,7 +130,8 @@ export function accountsFromEnv(env: NodeJS.ProcessEnv = process.env): AccountsO
     !url && 'PUBLIC_URL',
   ].filter((name) => typeof name === 'string');
   if (missing.length || !url || !secret) return { missing, asked: !!(id || googleSecret || resend || secret) };
-  return { url: url.replace(/\/+$/, ''), secret, google, email };
+  const admins = (env.ADMIN_EMAILS ?? '').split(',').map((a) => a.trim().toLowerCase()).filter(Boolean);
+  return { url: url.replace(/\/+$/, ''), secret, google, email, admins };
 }
 
 /** The name a profile starts from: the first of the names Google gives, null for none. */
@@ -299,7 +302,8 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       // (Asking gone wrong is nobody signed in; said in the log, since a hand played meanwhile is then nobody's.)
       const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) }).catch((err: unknown) => (console.error('accounts: asking who is signed in', err), null));
       const profile = session && (named.get(session.user.id) as { name: string | null; picture: string | null; handle: string; private: number } | undefined);
-      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle, private: profile.private === 1 } : null;
+      const admin = !!session && !!options.admins?.includes(session.user.email.toLowerCase());
+      return profile ? { id: session.user.id, name: profile.name, image: session.user.image ?? null, picture: profile.picture && pictureUrl(profile.picture), handle: profile.handle, private: profile.private === 1, ...(admin && { admin: true as const }) } : null;
     },
     whose: (handle) => {
       const them = whose.get(handle) as { id: string; name: string | null; picture: string | null; private: number } | undefined;

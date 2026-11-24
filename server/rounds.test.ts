@@ -1,15 +1,15 @@
-// Rounds kept, and one person's record of them: the table by itself, a room handing its rounds over, and the whole way
-// round over the wire (signed in, a round played, the record asked for).
+// Rounds kept, one person's record of them, and how much the game is played: the table by itself, a room handing its
+// rounds over, and the whole way round over the wire (signed in, a round played, the record asked for).
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deal, type Rng } from '../shared/engine';
 import { rig } from '../shared/testkit';
-import type { Account, GameState, Page, Stats } from '../shared/types';
+import type { Account, GameState, Page, Stats, Usage } from '../shared/types';
 import { openDb, type Db } from './db';
 import { startServer, type NertzServer } from './index';
-import { openRounds, type RoundRecord } from './rounds';
+import { openRounds, USAGE_DAYS, type RoundRecord } from './rounds';
 import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, rows, signedAs, startOver, startRound } from './testkit';
 
 /** A hand of a round, said shortly: who (an account, a bot, or with neither a guest), and what they scored. */
@@ -24,7 +24,7 @@ describe('rounds kept', () => {
   afterEach(() => db.close());
 
   it('someone who has played nothing has a record of noughts', () => {
-    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
+    expect(openRounds(db).stats('ada')).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 } satisfies Stats);
   });
 
   it("adds up one person's rounds: how many, their points, cards played and nertz left, the most of each, and the ones they got Nertz in", () => {
@@ -32,8 +32,8 @@ describe('rounds kept', () => {
     rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)], { by: 'nertz', seat: 0, out: [0] }));
     rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4)], { by: 'nertz', seat: 0, out: [0, 1] }, 2)); // (ada went out too, without calling)
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], { by: 'jam' }, 3));
-    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, odds: 4 / 3, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
-    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, odds: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
+    expect(rounds.stats('ada')).toEqual({ rounds: 3, won: 2, nertz: 2, points: 15, bestPoints: 12, cards: 19, bestCards: 12, nertzLeft: 2, ahead: 2 / 3, snipes: 0, sniped: 0 });
+    expect(rounds.stats('bob')).toEqual({ rounds: 2, won: 1, nertz: 1, points: 25, bestPoints: 20, cards: 25, bestCards: 20, nertzLeft: 0, ahead: 0.5, snipes: 0, sniped: 0 });
   });
 
   it('a round is won by everyone with its best score, against a guest or a bot as against anyone; alone, by nobody', () => {
@@ -66,23 +66,6 @@ describe('rounds kept', () => {
     }
   });
 
-  it('weighs a win by the odds against it: a round won at a table of ten counts five times one won at two, and a tie at the top is shared', () => {
-    const rounds = openRounds(db);
-    rounds.keep(round([hand(0, 'ada', 20), ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => hand(s, null, s))])); // won, against 1 in 10
-    rounds.keep(round([hand(0, 'ada', 1), hand(1, 'bob', 5)], undefined, 2)); // lost, against 1 in 2
-    rounds.keep(round([hand(0, 'ada', 30)], undefined, 3)); // (alone: nothing to win)
-    expect(rounds.stats('ada')).toMatchObject({ won: 1 });
-    expect(rounds.stats('ada').odds).toBeCloseTo(1 / (0.1 + 0.5));
-    expect(rounds.stats('bob').odds).toBe(2); // won the one round, against 1 in 2
-    // Two of three level at the top: each has half a win, against a third of one.
-    rounds.keep(round([hand(0, 'cy', 6), hand(1, 'di', 6), hand(2, null, 2)], undefined, 4));
-    expect(rounds.stats('cy')).toMatchObject({ won: 1 });
-    expect(rounds.stats('cy').odds).toBeCloseTo(1.5);
-    // No round, or only one played alone: no odds to be against.
-    rounds.keep(round([hand(0, 'zed', 9)], undefined, 5));
-    expect([rounds.stats('eve').odds, rounds.stats('zed').odds]).toEqual([null, null]);
-  });
-
   it("says how one person has done against another, over the rounds they both played: who finished ahead, and each one's points", () => {
     const rounds = openRounds(db);
     rounds.keep(round([hand(0, 'ada', 12), hand(1, 'bob', 5)])); // ada ahead
@@ -91,22 +74,28 @@ describe('rounds kept', () => {
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], undefined, 4)); // (without bob)
     expect(rounds.versus('ada', 'bob')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 11, theirs: 28 });
     expect(rounds.versus('bob', 'ada')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 28, theirs: 11 });
-    expect(rounds.versus('ada', 'bob', 'people')).toEqual(rounds.versus('ada', 'bob'));
-    expect(rounds.versus('ada', 'bob', 'no-bots')).toEqual({ rounds: 2, ahead: 1, behind: 1, points: 8, theirs: 25 });
+    // Of one kind: no bots (the first two); two people and a bot (the third); one person and bots (none of theirs).
+    expect(rounds.versus('ada', 'bob', 'humans')).toEqual({ rounds: 2, ahead: 1, behind: 1, points: 8, theirs: 25 });
+    expect(rounds.versus('ada', 'bob', 'mixed')).toEqual({ rounds: 1, ahead: 0, behind: 0, points: 3, theirs: 3 });
+    expect(rounds.versus('ada', 'bob', 'bots')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0 });
     expect(rounds.versus('ada', 'cy')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0 });
     // Gone, an account's rounds are nobody's: nobody has played them against it.
     rounds.forget('bob');
     expect(rounds.versus('ada', 'bob')).toMatchObject({ rounds: 0 });
   });
 
-  it('counts every round, only those with someone else there who is no bot, or only those with no bot at all', () => {
+  it('counts every round, or one kind: no bots; someone else and bots; alone with bots', () => {
     const rounds = openRounds(db);
-    rounds.keep(round([hand(0, 'ada', 1), hand(1, null, 2, 'slow')])); // ada and a bot
-    rounds.keep(round([hand(0, 'ada', 2), hand(1, null, 1), hand(2, null, 9, 'slow')], undefined, 2)); // ada, a guest, a bot
-    rounds.keep(round([hand(0, 'ada', 4), hand(1, 'bob', 3)], undefined, 3)); // ada and bob
-    expect(rounds.stats('ada', 'all')).toMatchObject({ rounds: 3, points: 7 });
-    expect(rounds.stats('ada', 'people')).toMatchObject({ rounds: 2, points: 6 });
-    expect(rounds.stats('ada', 'no-bots')).toMatchObject({ rounds: 1, points: 4, won: 1, ahead: 1 });
+    rounds.keep(round([hand(0, 'ada', 1), hand(1, null, 2, 'slow')])); // ada and a bot: bots
+    rounds.keep(round([hand(0, 'ada', 5), hand(1, null, 2, 'slow'), hand(2, null, 9, 'slow')], undefined, 2)); // ada and two bots: bots
+    rounds.keep(round([hand(0, 'ada', 2), hand(1, null, 1), hand(2, null, 9, 'slow')], undefined, 3)); // ada, a guest, a bot: mixed
+    rounds.keep(round([hand(0, 'ada', 4), hand(1, 'bob', 3)], undefined, 4)); // ada and bob: humans
+    rounds.keep(round([hand(0, 'ada', 3)], undefined, 5)); // ada alone, no bot: humans, but nobody beaten or beating her
+    expect(rounds.stats('ada', 'all')).toMatchObject({ rounds: 5, points: 15 });
+    expect(rounds.stats('ada', 'bots')).toMatchObject({ rounds: 2, points: 6, won: 0, ahead: 0.25 });
+    expect(rounds.stats('ada', 'mixed')).toMatchObject({ rounds: 1, points: 2, won: 0, ahead: 0.5 });
+    expect(rounds.stats('ada', 'humans')).toMatchObject({ rounds: 2, points: 7, won: 1, ahead: 1 });
+    expect(rounds.stats('bob', 'mixed')).toMatchObject({ rounds: 0 });
   });
 
   it('keeps the round and every hand of it, or none of it', () => {
@@ -147,6 +136,70 @@ describe('rounds kept', () => {
     expect(db.isTransaction).toBe(true);
     db.exec('COMMIT');
     expect(db.prepare('select count(*) as n from round').get()).toEqual({ n: 1 });
+  });
+
+  it('says how much the game is played: all told, day by day where the asker is, and the latest sittings and who was at them', () => {
+    const rounds = openRounds(db);
+    const now = Date.parse('2026-11-22T15:00:00Z'); // (10am in New York, 300 minutes behind)
+    // A sitting this morning: two rounds, Ada throughout, a guest and a bot in the first, Bob come for the second.
+    rounds.keep(round([hand(0, 'ada', 4), hand(1, null, 2), hand(2, null, 6, 'slow')]), now - 60 * 60_000);
+    rounds.keep(round([hand(0, 'ada', 3), { ...hand(1, 'bob', 5), player: 4 }], undefined, 2), now - 30 * 60_000);
+    // Last night in New York (but already the 22nd by UTC): Bob and a guest.
+    rounds.keep({ ...round([hand(0, 'bob', 1), hand(1, null, 7)]), game: 'g2', code: 'NITE' }, Date.parse('2026-11-22T03:00:00Z'));
+    // A month ago: on the totals, but on none of the days.
+    rounds.keep({ ...round([hand(0, 'ada', 9)]), game: 'g3', code: 'OLDE' }, now - 30 * 24 * 60 * 60_000);
+
+    const usage = rounds.usage(300, undefined, now);
+    expect(usage.total).toEqual({ games: 3, rounds: 4, players: 2, guests: 2, bots: 1 });
+    expect(usage.days).toHaveLength(USAGE_DAYS);
+    expect(usage.days[0]!.day).toBe('2026-11-09');
+    expect(usage.days.slice(-2)).toEqual([
+      { day: '2026-11-21', games: 1, rounds: 1, players: 1, guests: 1, bots: 0 },
+      { day: '2026-11-22', games: 1, rounds: 2, players: 2, guests: 1, bots: 1 },
+    ]);
+    expect(usage.days.slice(0, -2).every((d) => d.games === 0 && d.rounds === 0)).toBe(true);
+    // By UTC's days, last night's is this morning's.
+    expect(rounds.usage(0, undefined, now).days.at(-1)).toMatchObject({ day: '2026-11-22', games: 2, rounds: 3 });
+    expect(usage.games).toEqual([
+      { at: now - 30 * 60_000, code: 'TEST', rounds: 2, ms: 120_000, players: [{ name: 'ada', as: 'account' }, { name: 'Guest', as: 'guest' }, { name: 'Bot', as: 'bot' }, { name: 'bob', as: 'account' }] },
+      { at: Date.parse('2026-11-22T03:00:00Z'), code: 'NITE', rounds: 1, ms: 60_000, players: [{ name: 'bob', as: 'account' }, { name: 'Guest', as: 'guest' }] },
+      { at: now - 30 * 24 * 60 * 60_000, code: 'OLDE', rounds: 1, ms: 60_000, players: [{ name: 'ada', as: 'account' }] },
+    ] satisfies Usage['games']);
+    // An account gone leaves its hands as a guest's, and no name to list.
+    rounds.forget('bob');
+    expect(rounds.usage(300, undefined, now).total).toEqual({ games: 3, rounds: 4, players: 1, guests: 4, bots: 1 });
+    expect(rounds.usage(300, undefined, now).games[1]!.players).toEqual([{ name: 'Guest', as: 'guest' }]);
+  });
+
+  it('one kind of game at a time, by who held hands in each round: no bots; two people or more and bots; one person or none and bots', () => {
+    const rounds = openRounds(db);
+    const now = Date.parse('2026-11-22T15:00:00Z');
+    const at = (code: string, hands: RoundRecord['hands'], minutes: number, number = 1) => rounds.keep({ ...round(hands, undefined, number), game: code, code }, now - minutes * 60_000);
+    at('HOME', [hand(0, 'ada', 4), hand(1, 'bob', 2)], 60); // no bots: humans
+    at('HOME', [hand(0, 'ada', 4), hand(1, 'bob', 2), hand(2, null, 1, 'slow')], 50, 2); // two people and a bot: mixed (the same sitting)
+    at('SOLO', [hand(0, 'ada', 4), hand(1, null, 2, 'slow'), hand(2, null, 1, 'slow')], 40); // one person and bots: bots
+    at('GEST', [hand(0, null, 4), hand(1, null, 2, 'slow')], 30); // a guest is a person: bots
+    at('BOTS', [hand(0, null, 4, 'slow'), hand(1, null, 2, 'slow')], 20); // nobody: bots
+    at('PALS', [hand(0, 'ada', 4), hand(1, null, 2)], 10); // a guest and Ada: humans
+
+    expect(rounds.usage(0, undefined, now).total).toEqual({ games: 5, rounds: 6, players: 2, guests: 2, bots: 6 });
+    // Each round counts whole, for its kind: the bots and all.
+    const humans = rounds.usage(0, 'humans', now);
+    const mixed = rounds.usage(0, 'mixed', now);
+    const bots = rounds.usage(0, 'bots', now);
+    expect([humans.total, mixed.total, bots.total]).toEqual([
+      { games: 2, rounds: 2, players: 2, guests: 1, bots: 0 },
+      { games: 1, rounds: 1, players: 2, guests: 0, bots: 1 },
+      { games: 3, rounds: 3, players: 1, guests: 1, bots: 5 },
+    ]);
+    expect(mixed.days.at(-1)).toEqual({ day: '2026-11-22', ...mixed.total });
+    // A sitting that changed kind is under each, with its rounds of that kind and whoever played them.
+    expect(humans.games.map((g) => [g.code, g.rounds, g.players.map((p) => p.name)])).toEqual([
+      ['PALS', 1, ['ada', 'Guest']],
+      ['HOME', 1, ['ada', 'bob']],
+    ]);
+    expect(mixed.games).toEqual([{ at: now - 50 * 60_000, code: 'HOME', rounds: 1, ms: 60_000, players: [{ name: 'ada', as: 'account' }, { name: 'bob', as: 'account' }, { name: 'Bot', as: 'bot' }] }] satisfies Usage['games']);
+    expect(bots.games.map((g) => g.code)).toEqual(['BOTS', 'GEST', 'SOLO']);
   });
 
   it('the tables are made once: a database opened again has what it had', () => {
@@ -284,8 +337,9 @@ describe('over the wire', () => {
     const [ada, bob, guest] = [new Browser(server.port), new Browser(server.port), new Browser(server.port)];
     await ada.signIn(ADA);
     await bob.signIn(BOB);
-    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, odds: null, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
-    expect(await (await ada.ask('/stats?among=no-bots')).json()).toMatchObject({ rounds: 0 });
+    expect(await (await ada.ask('/stats')).json()).toEqual({ rounds: 0, won: 0, nertz: 0, points: 0, bestPoints: null, cards: 0, bestCards: null, nertzLeft: 0, ahead: null, snipes: 0, sniped: 0 });
+    expect(await (await ada.ask('/stats?among=humans')).json()).toMatchObject({ rounds: 0 });
+    expect((await ada.ask('/stats?among=no-bots')).status).toBe(400); // (as it once was said)
     expect((await ada.ask('/stats?among=robots')).status).toBe(400);
     expect((await guest.ask('/stats')).status).toBe(401);
 
@@ -337,7 +391,7 @@ describe('over the wire', () => {
       stats: await (await bob.ask('/stats')).json(),
       versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), points: line(a), theirs: line(b) },
     });
-    expect(((await (await bob.ask(`/stats/${adas}?among=no-bots`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a) });
+    expect(((await (await bob.ask(`/stats/${adas}?among=humans`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a) });
     // One's own: one's record, and nobody to be against.
     expect(await (await ada.ask(`/stats/${adas}`)).json()).toEqual({ name: 'Ada', picture: null, stats: await (await ada.ask('/stats')).json(), versus: null });
 
@@ -431,6 +485,32 @@ describe('over the wire', () => {
     g.ws.terminate();
   });
 
+  it('how much the game is played is for an admin alone: anyone else signed in is told there is no such thing', async () => {
+    const admins = await startServer({ port: 0, dist: '/nonexistent', data: join(dir, 'admins.db'), accounts: { ...ACCOUNTS, admins: [ADA.email] } });
+    try {
+      const [ada, bob, guest] = [new Browser(admins.port), new Browser(admins.port), new Browser(admins.port)];
+      await ada.signIn(ADA);
+      await bob.signIn(BOB);
+      expect(await (await ada.ask('/profile')).json()).toMatchObject({ admin: true });
+      expect(await (await bob.ask('/profile')).json()).not.toHaveProperty('admin');
+      const usage = (await (await ada.ask('/usage?tz=300')).json()) as Usage;
+      expect(usage.total).toEqual({ games: 0, rounds: 0, players: 0, guests: 0, bots: 0 });
+      expect([usage.days.length, usage.games]).toEqual([USAGE_DAYS, []]);
+      expect((await ada.ask('/usage')).status).toBe(200);
+      expect((await ada.ask('/usage?tz=300&among=mixed')).status).toBe(200);
+      expect((await ada.ask('/usage?among=people')).status).toBe(400);
+      expect((await ada.ask('/usage?tz=later')).status).toBe(400);
+      expect((await bob.ask('/usage')).status).toBe(404);
+      expect((await guest.ask('/usage')).status).toBe(401);
+      // Nobody is an admin unless the server is told who.
+      const there = new Browser(server.port);
+      await there.signIn(ADA);
+      expect((await there.ask('/usage')).status).toBe(404);
+    } finally {
+      await admins.close();
+    }
+  });
+
   it('with nothing kept, or nobody able to sign in, there are no records to ask for', async () => {
     const bare = await startServer({ port: 0, dist: '/nonexistent' });
     const kept = await startServer({ port: 0, dist: '/nonexistent', data: ':memory:' });
@@ -438,6 +518,7 @@ describe('over the wire', () => {
       expect([bare.kept, kept.kept, kept.accounts]).toEqual([false, true, false]);
       expect((await fetch(`http://localhost:${bare.port}/stats`)).status).toBe(404);
       expect((await fetch(`http://localhost:${kept.port}/stats`)).status).toBe(404);
+      expect((await fetch(`http://localhost:${kept.port}/usage`)).status).toBe(404);
     } finally {
       await bare.close();
       await kept.close();

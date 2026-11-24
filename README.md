@@ -124,7 +124,7 @@ What you see around a round:
   largest the net score for the round; when the last pile is in, the round's best is picked out in gold ("★ ... wins the
   round") and the others dim. The labels are placed so that they cover no hand, no name, not the tray, not the NERTZ!
   stamp and not each other. Then the score sheet. The sequence takes about four seconds, a second and a half per
-  player, and a pause of six and a half seconds to read it; a click skips it, and with "reduce motion" switched on it
+  player, and a pause of three and a quarter seconds to read it; a click skips it, and with "reduce motion" switched on it
   is skipped altogether. The totals beside the names do not change until the sheet is up.
 
 Other scripts:
@@ -191,7 +191,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   way only: a hand that can get somewhere is never taken for dead. If nobody can, **the table is jammed** and the round ends there,
   scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
-  flags clear, and the round counts one more reshuffle. Making any move clears your own flag.
+  flags clear, and the round counts one more reshuffle. The table says so as it happens: **Reshuffle!** across the
+  middle for a moment, to the riffle of a shuffle. Making any move clears your own flag.
 - **Voting to end a round**: in the menu (☰), while a round is on, anyone can vote to end it where it stands. When
   every connected person who plays the round has voted (bots go along), it ends and is scored as usual. A vote can be
   taken back. Once a round has been reshuffled three times, or once anyone has voted, the same vote stands on the
@@ -214,7 +215,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   instead; the role returns when they are back. A round is dealt only to players who are connected at that moment. Someone
   who was away keeps their seat and score, watches if they return mid-round, and is dealt in next round. Whoever comes to a table
   sits down at it if a seat is free and no round is being played, as whoever opens it does; otherwise they come in to
-  watch, and have a seat by asking for one ("Take a seat"). A
+  watch, and have a seat by asking for one ("Take a seat"): the line that says so stands along the foot of their window, and
+  the table is laid out above it, so it lies on nobody's cards. A
   seat asked for is given at once if one is free and no round is being played, and otherwise by the queue, first asked
   first, when the round is over or a seat comes free; whoever asked can think again and just watch, and anyone at the
   table can stand up between rounds. In a round under way, **Stand up** in the menu stands you up for now: you are
@@ -224,6 +226,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   comes back by then is dealt in, the round being dealt over.) The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
+  On that sheet the line of anyone no longer at the table (stood up to watch, waiting for a seat again, or gone) is
+  faint, its name slanted and its chip only the outline of the colour they played in.
 - **Standing someone up, sending someone away.** Whoever deals can do either to anyone else at any time, a round in
   play included: pressing a name at the table (or the eye and the × beside it on the lobby and the score sheet). Standing
   up gives the seat up to watch; sending away puts them out of the table altogether, and back by the same window they
@@ -409,8 +413,9 @@ soft flick for each card dealt off the stock (the group turning up makes no soun
 for every card played to the middle whatever its rank, a two-note chime for a King, a slide for a pile going to the
 tray, a dull tap when a card goes back (put down nowhere, or beaten to its pile, or tried while a finished pile of
 yours is waiting for the tray), a knock for each of "1, 2, 3" and a bright light hit on the opening "NERTZ!", one loud
-hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, and a
-riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
+hit when Nertz is called at the end, a tick each second of the grace window for whoever still holds a card, a quick
+riffle when a table that was stuck has its stocks turned over (the one sound for it, in place of a slide for each waste
+that goes back), and a riffle, flicks and a small flourish through the end-of-round sequence. Your own cards sound at full level, everyone
 else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 
 - The card noises are recordings from Kenney's CC0 "Casino Audio" pack, cut down to 13 short MP3s (66 kB in all); the
@@ -423,13 +428,19 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
 
 **Your settings** (from the menu, bottom left on every screen, and the gear on the score sheet, which opens the same
-slip): sound on or off, the levels, reduce motion. Whoever hosts has the table's own settings at the bottom of theirs:
+slip): sound on or off, the levels, reduce motion, card faces. Whoever hosts has the table's own settings at the bottom of theirs:
 text and voice chat, and between rounds the table rules. Nobody else sees them there.
 Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
-bot's spoken "Nertz"), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
+bot's spoken "Nertz", the reshuffle), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
 opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
-Reduce motion follows the system setting until you touch it, then overrules it either way. Kept in `localStorage`; without
-storage they last until the page closes.
+Reduce motion follows the system setting until you touch it, then overrules it either way.
+**Card faces** (`Prefs.faces`: **Owner's**, the default, **Mine** or **Big print**) is whose faces every card has on your
+screen: each card in its owner's style, every card in the style you chose for your own deck, or every card in Big print
+(light or dark as yours are, in both of the last two), your own hand included: for when somebody's deck is hard to read.
+It is yours alone: the table is not told, nobody else sees a thing of it, and the backs stay their owners' (a back says
+whose a card is). It can be changed at any time, in the middle of a round too.
+`seenLook` (`client/prefs.ts`) is the one place a player's `Look` becomes what you see of it.
+Your settings are kept in `localStorage`; without storage they last until the page closes.
 
 **Table rules** (on the lobby sheet for everyone, read-only but for the host; and at the bottom of the host's settings between rounds): set by the host, stored in the room and sent in
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
@@ -611,7 +622,7 @@ by ear), and not in Safari or Firefox or across real networks.
 shared/   rules engine and wire protocol. Pure TypeScript, no IO, RNG injected. Used by server and client.
   types.ts      Card, GameState, Intent, RoomView
   table.ts      the felt everyone shares: its shape, the size of a card, which piles clash and which lie on it, where a new pile may go
-  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, yetToHear, resolveStuck, viewFor, scoreRound, checkInvariants
+  engine.ts     deal, finishDeal, startCountdown, openPlay, applyIntent, mustClear, refused, snipedBy, legalDrops, feltFree, expireGrace, isLive, hasOpened, isOver, calledBy, inGrace, yetToHear, resolveStuck, reshuffledSince, viewFor, scoreRound, checkInvariants
   protocol.ts   message types (the `drag` report among them), limits, parsing and validation
   settings.ts   table settings (house rules): the object, its defaults, validation
   chat.ts       chat and voice messages, their limits and validation
@@ -866,17 +877,18 @@ a page is private, and a guest not even that. Only a socket opened from a page o
 page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
 (`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
 
-`GET /stats?among=all|people|no-bots` answers whoever asks, by their cookie, with their own record (`Stats`,
-shared/types.ts) over every round, those with someone else there who is no bot, or those with no bot at all: rounds
+`GET /stats?among=all|humans|mixed|bots` answers whoever asks, by their cookie, with their own record (`Stats`,
+shared/types.ts) over every round, or those of one kind (`GameKind`, by who held hands in the round, a guest counting as
+a person): no bots (humans; a round played alone is one too, though nobody is beaten in it), two people or more and bots
+(mixed: you, someone else and bots), or one person or none with the rest bots (bots: you alone with bots). Your page and
+someone else's choose among them under the record: the one chosen, as its drawing and its word (All, Humans, Humans and
+bots, Bots), and pressed, all four to choose from; the choice is remembered in the browser. A record counts rounds
 played, rounds won (nobody in the round scored more, and somebody else played), rounds they called Nertz in, points and
 cards played to the middle in all and the most of each in one round, nertz cards left in all, how far ahead they finish,
 and snipes made and suffered. 401 for nobody signed in; 404 where there are no accounts. How far ahead is the share of
 the others in a round who scored less, a tie counting half, averaged over the rounds with someone else in them: 1 for
 first, 0 for last and ½ for the middle of a table of any size (an average place would mean something else at two than at
-six). Your page shows it as a percentage, and the sums as so much a round. Rounds won against the odds (`odds`) weighs
-each win by the table: the rounds won (a tie at the top shared among those in it) over the 1 in n chance gives each at a
-table of n, both summed over the rounds with someone else in them; 1× is chance, and a win at a table of ten counts five
-times one at a table of two.
+six). Your page shows it as a percentage, and the sums as so much a round.
 
 `GET /stats/<handle>?among=...` is someone's page (`Page`): the name they go by, the picture they put up, their record, and the asker's against
 them (`Versus`: the rounds both played signed in, how many each finished ahead in, and each one's points over them; null
@@ -932,6 +944,12 @@ A volume belongs to one machine, which is what each app already runs. Fly keeps 
 ## Feedback
 
 The bug button posts to `/feedback` (server/feedback.ts).
+
+With the words goes where they were sent from (the report's `Where`): the screen, how many at the table, the window's
+size, and the browser, its system and its chip (client/device.ts). Those last are what the browser says when asked, in
+Chrome and its kin (`navigator.userAgentData`): "Google Chrome 157.0.7432.12, macOS 26.1.0, arm 64-bit". The user agent
+does not say: every Mac's reads "Intel Mac OS X 10_15_7". Safari and Firefox are not to be asked, so of theirs the user
+agent is given with that part left out: the browser and its version, but not which Mac or what it runs.
 
 A report is **kept** first, where there is a database (see [What is kept](#what-is-kept); `server/reports.ts`): a row of
 the `report` table, written before the sender is answered, with the report as it came and the account of whoever sent

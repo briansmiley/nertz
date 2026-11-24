@@ -1,5 +1,6 @@
 // Where the table is in its life (see `Stage`), worked out while rendering from the room and the one thing this
 // window keeps of its own: how far it has got through the end of a round, and which round that was.
+import type { RoomView } from '../shared/types';
 import { revealed, type Stage } from './layout';
 
 /** The step of the end of round this window is at, and the round it is of: a step of any other round means nothing. */
@@ -26,3 +27,16 @@ export const ending = (stage: Stage): boolean => stage !== 'live' && stage !== '
 
 /** The round whose result this window has yet to show: the one being played, or the one whose end is playing out until its winner is marked. */
 export const unrevealed = (stage: Stage, round: number): number | null => (revealed(stage) ? null : round);
+
+/**
+ * The seats whose hands of the round are at the table at `stage`: every one while it is played and while its end plays
+ * out (whoever has gone since left their cards where they lie). Once the score sheet is up, the table is who is at it
+ * now: a hand is there only while whoever played it still sits where they did. (Their seat, empty or someone else's by
+ * now, is no longer theirs.)
+ */
+export function handsAt(stage: Stage, room: RoomView): number[] {
+  const seats = room.game?.players.map((g) => g.seat) ?? [];
+  if (stage !== 'sheet') return seats;
+  const played = (seat: number) => room.lastRound?.scores.find((s) => s.seat === seat)?.id;
+  return seats.filter((seat) => room.players.some((p) => p.seat === seat && p.id === played(seat)));
+}

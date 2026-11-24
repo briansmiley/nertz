@@ -13,7 +13,7 @@ import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
 import { LOW, MINI_BELOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
-export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 6500 };
+export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 3250 };
 /**
  * On a phone the table is cleared between the wash and the sorting: the hands and the felt fade out, then the places
  * the piles will be gathered at fade in, each with its name, and only then are the cards sorted. This long in all.

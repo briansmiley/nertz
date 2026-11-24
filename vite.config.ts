@@ -15,6 +15,7 @@ export default defineConfig({
       '/profile': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/pictures': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/feedback': `http://localhost:${Number(process.env.PORT) || 8787}`,
+      '/usage': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/tables': `http://localhost:${Number(process.env.PORT) || 8787}`,
       '/ws': { target: `ws://localhost:${Number(process.env.PORT) || 8787}`, ws: true },
     },

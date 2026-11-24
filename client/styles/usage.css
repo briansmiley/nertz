@@ -1,0 +1,188 @@
+/* How much the game is played, for an admin (Usage.tsx): the totals in a line of figures, a bar of games for each of
+   the last days on a rule, and the latest sittings one to a line. Plain paper, as feedback's. */
+.slip.usage {
+  width: min(24rem, calc(100vw - 24px));
+  min-height: 16rem; /* (before there are figures, room for the list of which rounds) */
+  align-content: start;
+  max-height: calc(100dvh - 72px);
+  overflow-y: auto;
+  padding-top: 1.1rem;
+}
+
+.slip.usage::before {
+  display: none;
+}
+
+.usage .none {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* Which rounds: the choice a record has (profile.css `.among`), at the head's end, its list hung from there. */
+.usage .among {
+  margin-left: auto;
+}
+
+.usage .among [role='listbox'] {
+  left: auto;
+  right: 0;
+  translate: none;
+}
+
+/* The totals: each figure big, its word small under it. */
+.usage .totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin: 0;
+}
+
+.usage .totals div {
+  display: grid;
+}
+
+.usage .totals dd {
+  margin: 0;
+  font: 700 1.45rem/1 var(--num);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage .totals dt {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+/* The days: a bar each, standing on the rule, its count over it. */
+.usage .days {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  align-items: end;
+  gap: 3px;
+  height: 5.5rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.usage .days li {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  padding-top: 0.9rem; /* (room for the tallest one's count) */
+}
+
+.usage .days span {
+  position: relative;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--ink);
+}
+
+.usage .days b {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  translate: -50% -2px;
+  font: 700 0.72rem/1 var(--num);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.usage .days li:last-child span {
+  background: var(--red);
+}
+
+/* Under the rule: a notch for each day, its date under it (today's red, as its bar), the month under the first and a 1st. */
+.usage .dates {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 3px;
+  margin: -0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+  font: 600 0.68rem/1 var(--num);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.usage .dates li {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.usage .dates li::before {
+  content: '';
+  width: 1.5px;
+  height: 4px;
+  background: var(--ink);
+}
+
+.usage .dates li:last-child {
+  color: var(--red);
+}
+
+.usage .dates small {
+  justify-self: start;
+  font: inherit;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* The latest sittings: when, the table, how much; who was at it under that. */
+.usage .games {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.usage .games li {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.6rem;
+  align-items: baseline;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+}
+
+.usage .games time {
+  font-weight: 600;
+}
+
+.usage .games .code {
+  font: 700 0.9rem/1 var(--num);
+  letter-spacing: 0.08em;
+}
+
+.usage .games .long {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage .games .who {
+  display: block; /* (lobby.css's `.top .who` is a grid, and on a phone held upright the corner is `.top` too) */
+  flex-basis: 100%;
+}
+
+.usage .who span + span::before {
+  content: ', ';
+  color: var(--ink-soft);
+  font-style: normal;
+}
+
+.usage .who .guest {
+  color: var(--ink-soft);
+}
+
+.usage .who .bot {
+  color: var(--ink-soft);
+  font-style: italic;
+}

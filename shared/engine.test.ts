@@ -25,6 +25,7 @@ import {
   dragsOn,
   RESHUFFLES_BEFORE_VOTE,
   endVote,
+  reshuffledSince,
   resolveEndVote,
   resolveStuck,
   scoreRound,
@@ -733,6 +734,7 @@ describe('everyone stuck: a table where nothing can move ends the round', () => 
     expect(r.status).toEqual({ at: 'over', end: { by: 'jam' } });
     expect(r.players.every((p) => !p.stuck)).toBe(true);
     expect(ids(r.players[0]!.stock)).toEqual(ids(s.players[0]!.stock)); // nothing is moved: it is scored as it lies
+    expect(reshuffledSince(s, r)).toBe(false); // (so it is no reshuffle)
     expect(resolveStuck(r, [0, 1])).toBe(r);
   });
 
@@ -1026,6 +1028,8 @@ describe('a half-dealt group, the stuck rotation and the Nertz call', () => {
     expect(ids(r.players[0]!.stock)).toEqual(['0:SA', ...under(start, 0, 7), '0:S7', '0:S6', '0:S5', '0:S4', '0:S3', '0:S2']); // the old top went to the bottom
     expect(ids(r.players[1]!.stock)).toEqual(['1:D7', ...under(start, 1, 3), '1:D9', '1:D8']);
     expect(checkInvariants(r)).toBeNull();
+    // That is a reshuffle, between the state before it and the one after; what is played next is not another.
+    expect([reshuffledSince(base, r), reshuffledSince(r, flips(r, 0, 1)), reshuffledSince(start, base)]).toEqual([true, false, false]);
     // The next group starts from scratch.
     expect(flips(r, 0, 1).players[0]!.dealt).toBe(1);
     expect(ids(flips(r, 0, 3).players[0]!.waste)).toEqual(['0:S2', '0:S3', '0:S4']);

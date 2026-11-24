@@ -591,6 +591,14 @@ export function seating(others: number, W: number, H: number): { left: number; t
  * felt has the middle of it.
  */
 const U = { top: 12 + COUNTDOWN.h + 4, share: 0.17 } as const;
+/**
+ * Whoever watches without a seat has no hand of their own along the bottom edge: the line that says they are watching
+ * stands there instead (App.tsx, `.banner.low` in base.css: one line 40 high, in the middle, 12 above the bottom). `h` is
+ * kept for it over those 12 (the line, and 10 clear above it), and the table is laid out over that: the hand they watch
+ * from behind, the felt, the right-hand column of a crowded table. (The left-hand column comes down beside the line as
+ * it does beside a hand, as far as the menu's button: LOW.)
+ */
+export const WATCH = { h: 50 } as const;
 
 /** What the screen keeps for itself at its edges (a notch at the side of a phone on its side, the bar at the bottom): nothing is put there. */
 export interface Insets {
@@ -866,16 +874,18 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS, hands: PlayerState[] = game.players): Layout {
   const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
   const n = game.players.length; // (the felt and its cards are sized for those in the round)
-  // Whoever sits at the table without being in the round (`sitting`: they came in the middle of it, or were away at
-  // the deal) has a place round it all the same, in seat order with the rest: a hand with no cards in it.
-  const empty = sitting.filter((seat) => !game.players.some((p) => p.seat === seat));
+  // The round's hands that are at the table (`hands`: all of them, but on the score sheet, see stage.ts `handsAt`) each
+  // have a place round it. Whoever sits at the table without one of them (`sitting`: they came in the middle of the
+  // round, were away at the deal, or sat down since it ended) has a place all the same, in seat order with the rest: a
+  // hand with no cards in it.
+  const empty = sitting.filter((seat) => !hands.some((p) => p.seat === seat));
   const ring: PlayerState[] = empty.length
-    ? [...game.players, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
-    : game.players;
+    ? [...hands, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
+    : hands;
   const mine = ring.find((p) => p.seat === you);
   const open: Open = { work: game.status.at !== 'dealing', nertz: hasOpened(game) };
   // Someone who has no seat at the table at all watches from the first player's chair.
@@ -892,7 +902,8 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   /** Upright: the second row, where the nertz pile, the stock and the waste lie. */
   const rowY = H - 10 - oh;
   // Room below the row for work piles to fan into is kept short: a long pile squeezes, or rises into the cloth above.
-  const ownTop = !mine ? H - 12 : tall ? rowY - oh * (TALL.between + TALL.room + 1) : H - 12 - oh * 1.85;
+  // (Watching without a seat: where the table ends, above the line that says so.)
+  const ownTop = !mine ? H - 12 - WATCH.h : tall ? rowY - oh * (TALL.between + TALL.room + 1) : H - 12 - oh * 1.85;
   const handX = tall ? edge : (W - OWN_UNITS * ow) / 2;
 
   // Everyone else, by the side of the felt they sit at (`seating`) and the direction their seat lies in as seen from
@@ -930,7 +941,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // then the hands of the others, as large as their columns and the number in each allow.
   const sideL = Math.max(8, keep.l);
   const sideR = Math.max(8, keep.r);
-  const col = { u: 0, w: 0, topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: (mine ? ownTop : H - 12) - 6 };
+  const col = { u: 0, w: 0, topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: ownTop - 6 };
   // Where a column that stops above your hand ends: above the count on your nertz pile too, which may stand at the
   // pile's top corner.
   const ends = Math.min(H - LOW.knobs, col.botR - (mine ? (0.5 + COUNT_OUT) * countD(ow) + 2 : 0));
@@ -938,7 +949,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const each = (room: number, k: number) => (k ? (room / k - TAG_H - 6) / (RATIO * 1.85) : Infinity);
   if (low) {
     const most = W - sideL - sideR - 2 * (LOW.col + CLEAR);
-    col.u = Math.max(40, Math.min(most / (2 * hw), ((mine ? ownTop : H - 12) - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
+    col.u = Math.max(40, Math.min(most / (2 * hw), (ownTop - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const width = (botL: number) => Math.min(wide / OPP_UNITS, each(botL - col.topL, round.left), each(col.botR - col.topR, round.right), mine ? ow * 0.62 : OPP_MAX);
     // The left column runs down to the menu's button only beside your hand, clear of it (a phone's hand is narrow and
@@ -977,7 +988,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const rows = tall ? Math.ceil(seats.length / grid.cols) : 1;
   // The band of the window the felt may use: under the top row, above your hand.
   const bandTop = tall ? topY + (rows - 1) * rowStep + handH + CLEAR : low ? 6 : tops.length ? topY + handH + CLEAR : 30;
-  const bandBottom = (mine ? ownTop : seats.some((s) => s.where === 'bottom') ? H - 12 - handH - TAG_H : H - 12) - CLEAR - 4;
+  const bandBottom = (!mine && seats.some((s) => s.where === 'bottom') ? ownTop - handH - TAG_H : ownTop) - CLEAR - 4;
   const cy = (bandTop + bandBottom) / 2;
   // The top row is spread out when there is room (three across the top sit shoulder to shoulder), and stays out of the corners.
   const xs = tops.map((s) => s.x).sort((a, b) => a - b);
@@ -1009,7 +1020,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     if (sides && (where === 'left' || where === 'right')) {
       // A neighbour sits beside the felt, their hand turned to face it: level with its middle if they are straight to
       // one side, lower down the nearer they are to you. Clear of the chat button above and your hand below.
-      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, (mine ? ownTop : H - 12) - 8 - span);
+      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, ownTop - 8 - span);
       const local: Placed[] = [];
       const seat = placeHand(p, spec, local);
       const turned = turnHand(seat, local, where === 'left' ? 90 : -90, where === 'left' ? edge : W - edge - handH, y);
@@ -1036,7 +1047,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       const x0 = W / 2 - (inRow * handW + (inRow - 1) * 14) / 2;
       return placeHand(p, { ...spec, x: x0 + (i - row * grid.cols) * (handW + 14), y: topY + row * rowStep }, cards);
     }
-    return placeHand(p, { ...spec, x: W / 2 + (where === 'top' ? x * spread : 0) - handW / 2, y: where === 'top' ? topY : H - 12 - handH }, cards);
+    return placeHand(p, { ...spec, x: W / 2 + (where === 'top' ? x * spread : 0) - handW / 2, y: where === 'top' ? topY : ownTop - handH }, cards);
   });
 
   // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than

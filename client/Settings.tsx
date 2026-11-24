@@ -11,7 +11,7 @@
 // Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
-import { fewestSeats, MAX_PLAYERS } from '../shared/protocol';
+import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { setSeats, setTableSettings } from './net';
 import { pauseKeyAction, perform, tableActions } from './actions';
@@ -20,15 +20,24 @@ import { Gear, MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
+import { UsageSlip } from './Usage';
+import { signedIn, useAccount } from './account';
 import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Prefs } from './prefs';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
 const HOTKEY_LABELS: Record<Hotkey, string> = { soundKey: 'Mute sound', voiceKey: 'Mute mic', pauseKey: 'Pause' };
+
+/** Each choice of whose faces you see on every card, as the settings list it, and as its (i) says it. */
+const FACES_SAID: Record<Faces, [string, string]> = {
+  owner: ["Owner's", "the style its owner chose"],
+  mine: ['Mine', 'every card in your style (consistent)'],
+  big: [DECKS.big, `every card in ${DECKS.big} (legible)`],
+};
 
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
@@ -103,11 +112,10 @@ function Glasses() {
   );
 }
 
-/** The switch for those only watching: a pair of glasses, lit (yellow) while they are let in, faint while not. */
+/** The switch for those only watching: a pair of glasses, lit (yellow) while they are let in, faint while not. (`what`: the thing switched, for a screen reader, which is told on or off by `aria-pressed`.) */
 function Specs({ on, disabled, what, onChange }: { on: boolean; disabled: boolean; what: string; onChange: (on: boolean) => void }) {
-  const says = on ? `Spectators can ${what} too. Press to keep them out` : `Spectators cannot ${what}. Press to let them`;
   return (
-    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={says} data-tip={says} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
+    <button type="button" className={`specs${on ? ' on' : ''}`} aria-pressed={on} aria-label={`${what} for spectators`} data-tip={`${on ? 'Enabled' : 'Disabled'} for spectators`} disabled={disabled} onClick={(e) => (onChange(!on), e.currentTarget.blur())}>
       <Glasses />
     </button>
   );
@@ -225,8 +233,9 @@ export function Clock({ clock, at }: { clock: NonNullable<RoomView['clock']>; at
 /** The corner controls. Rendered once, by App, over whatever screen is up. */
 export function Corner({ room }: { room?: RoomView | null }) {
   const prefs = usePrefs();
-  /** The slip that is open: the menu, or feedback (which it leads to). One at a time. */
+  /** The slip that is open: the menu, or feedback or how much the game is played (which it leads to). One at a time. */
   const open = useCorner();
+  const admin = !!signedIn(useAccount())?.admin;
   useEffect(() => () => openCorner(null), []); // (a slip does not follow you from one screen's corner to the next)
   const root = useRef<HTMLDivElement>(null);
 
@@ -264,11 +273,12 @@ export function Corner({ room }: { room?: RoomView | null }) {
         <SaidWord said={said} />
       </button>
       {open === 'menu' && (
-        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onDone={() => openCorner(null)}>
+        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onUsage={admin ? () => openCorner('usage') : undefined} onDone={() => openCorner(null)}>
           <YourSettings room={room} prefs={prefs} />
         </Menu>
       )}
       {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
+      {open === 'usage' && admin && <UsageSlip back={() => openCorner('menu')} />}
     </div>
   );
 }
@@ -321,6 +331,28 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
         <span>Reduce motion</span>
       </label>
+      {/* (Any time, a round or not: it changes the cards for nobody but you.) */}
+      <div className="faces">
+        <span id="faces-label">
+          Card faces{' '}
+          <Info>
+            How card faces display:
+            {FACES.map((f) => (
+              <span key={f} className="line">
+                {FACES_SAID[f][0]}: {FACES_SAID[f][1]}
+              </span>
+            ))}
+            <span className="line">Card backs don't change.</span>
+          </Info>
+        </span>
+        <span role="radiogroup" aria-labelledby="faces-label">
+          {FACES.map((f) => (
+            <button key={f} type="button" role="radio" aria-checked={prefs.faces === f} className={prefs.faces === f ? 'on' : ''} onClick={(e) => (setPrefs({ faces: f }), e.currentTarget.blur())}>
+              {FACES_SAID[f][0]}
+            </button>
+          ))}
+        </span>
+      </div>
       {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
       <div className={`level${styling ? '' : ' locked'}`}>
         <span>Card back</span>
@@ -353,14 +385,14 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
               <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
               <span>Allow text chat</span>
             </label>
-            <Specs on={social.text && social.watchText} disabled={!social.text} what="use text chat" onChange={(watchText) => setSocial({ watchText })} />
+            <Specs on={social.text && social.watchText} disabled={!social.text} what="Text chat" onChange={(watchText) => setSocial({ watchText })} />
           </div>
           <div className="allow">
             <label className="check">
               <input type="checkbox" checked={social.voice} onChange={(e) => setSocial({ voice: e.target.checked })} />
               <span>Allow voice chat</span>
             </label>
-            <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="join voice" onChange={(watchVoice) => setSocial({ watchVoice })} />
+            <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
           </div>
           {room.phase !== 'playing' && (
             <div className="rules">
