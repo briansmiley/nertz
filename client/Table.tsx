@@ -484,10 +484,10 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   /**
    * One animation frame of everybody else's held cards. A card is drawn on its
    * way from its owner's hand, as this window seats them, to its place on the
-   * felt (`aloftAt` in layout.ts). A card with a pile to go to says how far it
-   * has come (`w` of its report), and is drawn that far along the line to the
-   * pile. One with none (an Ace on its way to bare felt) comes over to where
-   * it really is while it lingers over the felt. Either way it closes on its
+   * felt (`aloftAt` in layout.ts): as far along the path out to the felt's
+   * edge and on to its pile as its report says (`w`). One with no pile (an Ace
+   * on its way to bare felt) stops at the edge, and any card comes over to
+   * where it really is while it lingers over the felt. Either way it closes on its
    * place smoothly, so 18 reports a second (or fewer, if some are lost) look
    * like one movement. When the hold ends the card is released from wherever
    * it has got to and the ordinary animation takes it to its pile or home.
@@ -521,14 +521,16 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       const table = { x: at.p[0], y: at.p[1] };
       const onFelt = offFelt(table, game.players.length) <= 0;
       // Off the felt it runs down rather than starting again: a card held on the felt's edge does not jump back to its line.
-      f.over = onFelt ? f.over + dt : Math.max(0, f.over - 3 * dt);
-      const t = clamp((f.over - (f.ace ? REAL_AFTER.ace : REAL_AFTER.card)) / REAL_AFTER.fade, 0, 1);
+      // It counts no further than the fade's end, so taken back off the felt it is on its line again at once (a third of the fade).
+      const after = f.ace ? REAL_AFTER.ace : REAL_AFTER.card;
+      f.over = onFelt ? Math.min(f.over + dt, after + REAL_AFTER.fade) : Math.max(0, f.over - 3 * dt);
+      const t = clamp((f.over - after) / REAL_AFTER.fade, 0, 1);
       const linger = calm() ? 1 : t * t * (3 - 2 * t);
-      const s = home.s + (L.fs - home.s) * Math.max(at.w, linger);
+      const s = home.s + (L.fs - home.s) * Math.max(at.w / 2, linger);
       const seat = L.opponents.find((o) => o.seat === p.seat);
       // The pile it is going to: of those in the middle that would take it, the nearest to where it is.
       let pile: { x: number; y: number } | undefined;
-      if (at.w > 0 && f.ids.length === 1) {
+      if (at.w > 1 && f.ids.length === 1) {
         const there = toScreen(L.felt, table);
         const off = (q: { x: number; y: number }) => Math.hypot(q.x - there.x, q.y - there.y);
         L.slots.forEach((r, i) => {
@@ -537,7 +539,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
           if (!pile || off(q) < off(pile)) pile = q;
         });
       }
-      const c = aloftAt(L.felt, game.players.length, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, pile ? linger : Math.max(at.w, linger));
+      const c = aloftAt(L.felt, game.players.length, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, linger);
       f.x += (c.x - (s * CARD_W) / 2 - f.x) * k;
       f.y += (c.y - (s * CARD_H) / 2 - f.y) * k;
       f.s += (s - f.s) * k;
