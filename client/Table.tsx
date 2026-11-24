@@ -57,13 +57,13 @@ const ALOFT = 0.58;
 /** Your own card while it is over the felt: the pile underneath shows through. */
 const OVER_FELT = 0.74;
 /**
- * Someone else's card that has no pile to go to (an Ace above all) is drawn where it really is once it has been
- * over the felt, going slowly, for about this long (ms); "slowly" is under SLOW table units a millisecond.
+ * Someone else's card over the felt is first drawn on its way from their hand, as this window seats them, to the pile
+ * it is going to; after this long over the felt (ms; sooner for an Ace, which has no pile to go by) it moves over to
+ * where it really is, taking `fade` ms, and stays there while it is over the felt.
  */
-const DWELL_MS = 240;
-const SLOW = 0.002;
+const REAL_AFTER = { card: 600, ace: 150, fade: 800 } as const;
 /** How quickly another player's card closes on the last place it was reported at (ms to cover about two thirds of the way). */
-const GLIDE_MS = 70;
+const GLIDE_MS = 80;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -309,8 +309,8 @@ interface Flight {
   x: number;
   y: number;
   s: number;
-  /** How long it has been over the felt going slowly, as a share of DWELL_MS: at 1 it is drawn where it really is. */
-  dwell: number;
+  /** How long it has been over the felt, ms: after a while (`REAL_AFTER`) it is drawn where it really is. */
+  over: number;
 }
 
 /** What is said across the middle of the felt while a round is played: a snipe you were in, or the table's stocks turned over because everyone was stuck. */
@@ -468,8 +468,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   }, [game, you]);
   const now = useRef({ game, L, byId, you, stage });
   now.current = { game, L, byId, you, stage };
-  /** The last report from each seat, when it came, and how fast the card was then going (table units a millisecond). */
-  const reports = useRef(new Map<number, DragAt & { at: number; v: number }>()).current;
+  /** The last report from each seat, and when it came. */
+  const reports = useRef(new Map<number, DragAt & { at: number }>()).current;
   const flights = useRef(new Map<number, Flight>()).current;
   const loop = useRef({ frame: 0, last: 0 }).current;
   /**
@@ -504,15 +504,16 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       let f = flights.get(p.seat);
       if (!f) {
         if (time - at.at > STALE_MS) continue;
-        f = { id: p.holding, ids: grab(game, p.seat, p.holding)?.cards.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, dwell: 0 };
+        f = { id: p.holding, ids: grab(game, p.seat, p.holding)?.cards.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, over: 0 };
         flights.set(p.seat, f);
       }
       const hw = home.s * CARD_W;
       const table = { x: at.p[0], y: at.p[1] };
-      // Lingering: a report that has had no successor for a while means the card is being held still.
-      const speed = time - at.at > 150 ? 0 : at.v;
-      f.dwell = clamp(f.dwell + (offFelt(table, game.players.length) <= 0 ? clamp(1 - speed / SLOW, 0, 1) : -2) * (dt / DWELL_MS), 0, 1);
-      const linger = calm() ? 1 : f.dwell * f.dwell * (3 - 2 * f.dwell);
+      const onFelt = offFelt(table, game.players.length) <= 0;
+      f.over = onFelt ? f.over + dt : 0;
+      const ace = f.ids.length === 1 && grab(game, p.seat, f.id)?.cards[0]?.rank === 1;
+      const t = clamp((f.over - (ace ? REAL_AFTER.ace : REAL_AFTER.card)) / REAL_AFTER.fade, 0, 1);
+      const linger = calm() ? 1 : t * t * (3 - 2 * t);
       const s = home.s + (L.fs - home.s) * Math.max(at.w, linger);
       const seat = L.opponents.find((o) => o.seat === p.seat);
       // The pile it is going to: of those in the middle that would take it, the nearest to where it is.
@@ -526,7 +527,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
           if (!pile || off(q) < off(pile)) pile = q;
         });
       }
-      const c = aloftAt(L.felt, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, pile ? linger : Math.max(at.w, linger));
+      const c = aloftAt(L.felt, game.players.length, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, pile ? linger : Math.max(at.w, linger));
       f.x += (c.x - (s * CARD_W) / 2 - f.x) * k;
       f.y += (c.y - (s * CARD_H) / 2 - f.y) * k;
       f.s += (s - f.s) * k;
@@ -550,10 +551,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   };
   useEffect(() => {
     const stop = onDrag((m) => {
-      const now = performance.now();
-      const was = reports.get(m.seat);
-      const v = was?.id === m.id ? Math.hypot(m.p[0] - was.p[0], m.p[1] - was.p[1]) / Math.max(1, now - was.at) : Infinity;
-      reports.set(m.seat, { ...m, at: now, v });
+      reports.set(m.seat, { ...m, at: performance.now() });
       watch();
     });
     return () => {

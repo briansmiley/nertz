@@ -950,8 +950,8 @@ describe("another player's card in the air", () => {
       return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const };
     };
     const end = toScreen(mine.felt, P);
-    const path = seats(41).map((i) => aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(i / 40), w: pile ? i / 40 : 0 }, pile ? end : undefined, 0));
-    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(1), w: 0 }, undefined, i / 20));
+    const path = seats(41).map((i) => aloftAt(mine.felt, n, home, hand.nertz.w, hand, { ...report(i / 40), w: pile ? i / 40 : 0 }, pile ? end : undefined, 0));
+    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, n, home, hand.nertz.w, hand, { ...report(1), w: 0 }, undefined, i / 20));
     return { path, home, end, felt: mine.felt };
   }
   /** How much longer the path is than the straight line, and how far it ever backs away from where it ends (px). */
@@ -1012,7 +1012,7 @@ describe("another player's card in the air", () => {
         const to = { x: own.work[2]!.x + own.work[2]!.w / 2, y: from.y };
         const p = toTable(theirs.felt, to.x, to.y);
         const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
-        const drawn = aloftAt(mine.felt, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
+        const drawn = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
         // It is over that hand's third work pile here, whichever way round (or turned) the hand is drawn.
         const pile = { x: hand.workAt[2]!.x + hand.workAt[2]!.w / 2, y: hand.workAt[2]!.y + hand.workAt[2]!.h / 2 };
         expect(Math.hypot(drawn.x - pile.x, drawn.y - pile.y)).toBeLessThan(hand.nertz.w * 0.35);

@@ -316,17 +316,19 @@ their screen; in your window it has to come from wherever they sit.
   Right near the hand, wherever and however large a window draws that hand.
 - `w`: how far the card has come of the way to a pile in the middle that would take it, from 0 when it has just left
   its own pile (or has no such pile to go to: an Ace) to 1 when it is over that pile.
+- `f`: how far it has come of the way from its pile to the edge of the felt, 0 to 1.
 
 A receiving window (`aloftAt` in `client/layout.ts`) starts the card at `h` in its own picture of that hand: so a
-card going from pile to pile within a hand is seen doing just that. A card that leaves the hand for the felt is
-lifted a little way out of the hand towards the middle. From there a card with a pile to go to is drawn `w` of the
-way along the straight line to that pile, so it arrives as its owner does; and a card with none (an Ace on its way
-to bare felt) comes over to where it really is, `p`, when it has lingered over the felt for a quarter of a second
-or so (or, if it is put down without lingering, flies there from the hand when it lands). It grows from hand size to
-pile size on the way. So from every seat a card is seen to travel a nearly straight line from its owner's hand to
+card going from pile to pile within a hand is seen doing just that. A card on its way to the felt is drawn `f` of the
+way from that hand, as your window draws it, to the felt's edge (and one pulled back away from the felt goes as far
+the other way), keeping its sideways movement along the row. From there a card with a pile to go to is drawn `w` of
+the way along the straight line to that pile, so it arrives as its owner does. After 0.6 s over the felt (0.15 s
+for an Ace, which has no pile to go by) it moves over to where it really is, `p`, taking 0.8 s, and stays with it
+while it is over the felt; put down sooner, it flies to its place when it lands. It grows from hand size to pile
+size on the way. So from every seat a card is seen to travel a nearly straight line from its owner's hand to
 its place (checked for every seat of 2 to 6 players: at most 1.3 times the straight line, never doubling back), and
 a card that is held still over the felt is drawn exactly where it is. Between reports the card closes on its place
-smoothly (about two thirds of the way every 70 ms), so 18 reports a second, or fewer if some are late or lost, look
+smoothly (about two thirds of the way every 80 ms), so 18 reports a second, or fewer if some are late or lost, look
 like one movement. When the snapshot says the hold is over, the card is released from wherever it has got to and
 the ordinary animation takes it to its pile, or home if the move was refused. A player who disconnects mid-drag
 loses the hold on the server, so the card goes home on everyone's screen. A run moves as one. Carrying a finished
@@ -785,11 +787,11 @@ would still need one of the options above, and serving both from one origin is s
 - **The middle is not turned to your chair.** Every pile is at the same place of the felt for everyone, so a pile
   that is right in front of you is at the far side from the player drawn opposite you, although on their own screen
   it is right in front of them too. It is what makes "is there room here" the same question on every screen.
-- **Another player's Ace is not drawn where it is until it lingers.** A card with a pile to go to is seen travelling
-  there. An Ace may be going anywhere on the felt, and where it is on its owner's screen on the way (coming up from
-  the bottom of theirs) says little about that; so it is drawn lifted out of their hand, and comes over to its true
-  place when they hold it still over the felt for a moment, or flies there when it lands. A card moved quickly is
-  mostly seen as that last flight.
+- **Another player's card is not drawn where it is at first.** Where it is on its owner's screen on the way (coming up
+  from the bottom of theirs) says little about where it is going from your seat; so it is drawn coming from their
+  hand towards its pile (an Ace: towards the felt), and only after a moment over the felt (0.6 s; an Ace 0.15 s)
+  does it move over to where it really is. A card held there longer can be seen to turn as it does, since for a
+  player across the table their left is your right but the felt is the same way round for both of you.
 - **The felt has one shape per table size** (2.8 times as wide as high up to three players, 2.2 times from four
   on), the same for every window: a window much taller or wider than 16:9 leaves some of its room unused, and a
   window narrower than 1280 px leaves the felt little between the side hands.

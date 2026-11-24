@@ -4,7 +4,7 @@
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
 import { DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/engine';
-import { cardSize, feltHw, pileGap, TABLE, type Pt } from '../shared/table';
+import { cardSize, feltHw, offFelt, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 
@@ -1208,10 +1208,11 @@ const LIFT = 1.2;
  */
 export function aloftAt(
   felt: Felt,
+  n: number,
   home: Pt,
   hw: number,
   hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined,
-  at: { h: readonly [number, number]; p: readonly [number, number]; w: number },
+  at: { h: readonly [number, number]; p: readonly [number, number]; w: number; f?: number },
   pile: Pt | undefined,
   linger: number,
 ): Pt {
@@ -1222,12 +1223,15 @@ export function aloftAt(
   // Along the row (a hand across the table is drawn the other way round) counts for a card going from pile to pile,
   // not for one that is on its way out of the hand: which way is sideways on its owner's screen says nothing about
   // where on the felt it is going.
-  const along = at.h[0] * clamp(1 - at.h[1] / 0.8, 0, 1);
+  // With `f`, sideways is kept all the way out to the felt: along their row as this window draws it.
+  const along = at.f !== undefined ? at.h[0] : at.h[0] * clamp(1 - at.h[1] / 0.8, 0, 1);
   // Which way the row runs here: across, the other way round for a hand across the table, down or up for a turned one.
   const row = hand?.turn === 90 ? { x: 0, y: 1 } : hand?.turn === -90 ? { x: 0, y: -1 } : { x: hand?.flip ? -1 : 1, y: 0 };
   // Towards the middle: as far as its owner has it, up to a card's width or so out of the hand, and never most of the
   // way to where it really is. (No further: how far up its owner's screen it is says little about where it is going.)
-  const out = Math.min(at.h[1], LIFT, (0.6 * Math.hypot(there.x - home.x, there.y - home.y)) / hw);
+  // With `f`: the same share of the way from the hand to the felt's edge as its owner has it.
+  // (Pulled back away from the felt, it goes as far the other way: there is no edge to measure that by.)
+  const out = at.f !== undefined ? (at.h[1] < 0 ? at.h[1] : (at.f * offFelt(toTable(felt, home.x, home.y), n) * felt.u) / hw) : Math.min(at.h[1], LIFT, (0.6 * Math.hypot(there.x - home.x, there.y - home.y)) / hw);
   let x = home.x + (along * row.x + (out * to.x) / len) * hw;
   let y = home.y + (along * row.y + (out * to.y) / len) * hw;
   if (pile) [x, y] = [x + (pile.x - x) * at.w, y + (pile.y - y) * at.w];
