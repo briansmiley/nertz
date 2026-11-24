@@ -111,6 +111,7 @@ interface CardProps {
   /** Whose the place it lies in is: one of your own piles, someone else's, or the table's. */
   whose: Whose;
   face: Showing;
+  /** Small enough on screen for the large-print drawing, as the layout places it. */
   mini: boolean;
   /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
   deck: Deck;
@@ -145,6 +146,11 @@ const CardView = memo(function CardView(p: CardProps) {
   const pile = useRef(p.pile);
   const flight = useRef(0);
   const faceWas = useRef(p.face);
+  /**
+   * In someone else's hand, or on its way out of it until it lies in a pile again: drawn at the size of the cards in
+   * the middle, wherever it came from (see `tick`), so in its full drawing, not the small one of the hand it left.
+   */
+  const [carried, setCarried] = useState(false);
   const el = useRef<HTMLDivElement>(null);
   /** When this card leaves the deck (performance clock), if it is in one. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0).current;
@@ -172,6 +178,7 @@ const CardView = memo(function CardView(p: CardProps) {
     setTimeout(() => {
       if (flight.current !== n) return;
       be(IN_PILE);
+      setCarried(false);
       o.set(1); // landed: solid again, whatever it was in the air
       el.current?.removeAttribute('data-passing');
     }, move.duration * 1000 + 30);
@@ -231,6 +238,7 @@ const CardView = memo(function CardView(p: CardProps) {
     const take = (k: 'held' | 'carried', i: number) => {
       flight.current++; // whatever flight it was on is over
       be({ k, i });
+      if (k === 'carried') setCarried(true);
     };
     const settle = () => {
       // Out of your hand or someone else's: that hand's, on its way to its place.
@@ -245,8 +253,8 @@ const CardView = memo(function CardView(p: CardProps) {
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: turnedTo(p.face) }} transition={turnOf(faceWas.current, p.face, p.slow)}>
-        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} night={p.night} /> : null}</div>
-        <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini)} />
+        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini && !carried} deck={p.deck} night={p.night} /> : null}</div>
+        <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini && !carried)} />
       </motion.div>
     </motion.div>
   );
@@ -1031,8 +1039,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
             rot={c.rot}
             whose={whoseOf(c)}
             face={replaying ? 'down' : c.face}
-            // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
-            mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
+            mini={c.s * CARD_W < MINI_BELOW}
             {...drawn(dress(c.card.owner))}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             pile={`${c.pile} ${c.at}`}
