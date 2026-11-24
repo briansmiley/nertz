@@ -91,7 +91,7 @@ export function App() {
       <Sure room={room} />
       <Ping />
       {net.status === 'reconnecting' || net.status === 'updating' ? (
-        <p className="banner">{net.status === 'updating' ? 'Updating the game. Back in a moment…' : 'Connection lost. Reconnecting…'}</p>
+        <p className="banner">{net.status === 'updating' ? 'Updating the game…' : 'Connection lost. Reconnecting…'}</p>
       ) : (
         spectating && (
           <p className="banner low">

@@ -695,7 +695,7 @@ is a few kilobytes and a busy table is a few messages a second.
 - **What a deploy or restart does to live games:** the process is replaced, and the tables come back with it. Told to
   stop (SIGTERM or SIGINT; `kill_timeout` in `fly.toml` gives it time), the server pauses every round, writes each open
   table to the database on the volume (`room`, one row of JSON a table: seats, cards, scores, settings, chat; no card in
-  hand, no timer) and closes every socket saying why. The windows say "Updating the game" and keep trying; the next
+  hand, no timer) and closes every socket saying why. The windows say "Updating the game…" and keep trying; the next
   server brings the tables back with everyone away, and each window sits back down by its token, signed in or not, at
   a round still paused: anyone in it unpauses. A table with a round on is also written every 30 seconds if it has
   changed, so a crash costs at most that much of the round. A table nobody comes back to is forgotten as ever, and one
