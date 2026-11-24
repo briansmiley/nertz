@@ -2,7 +2,7 @@
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them (net.ts).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, resolveStuck, startCountdown } from '../shared/engine';
+import { applyIntent, deal as dealRound, dealOn, expireGrace, finishDeal, inGrace, refused, resolveStuck, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, upWork, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
@@ -131,32 +131,37 @@ describe('sound cues from rendered state', () => {
     const four = s.game.players[0]!.waste.at(-1)!.id;
     s.me({ k: 'hold', cardId: four });
     expect(s.me(move(four, work(3)))).toEqual([{ k: 'work', who: 'me' }]);
-    // Three cards, three flicks, each at the moment it is predicted: the confirmation, which brings the faces, is silent.
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
+    // One draw, three flicks: the first card as it is predicted (its confirmation is silent), the others as the
+    // server's steps deal them. The group turning up makes no sound of its own.
+    const step = (seat: number) => s.server((g) => dealOn(g, seat));
+    expect(s.me({ k: 'draw' })).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.confirm()).toEqual([]);
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
-    expect(s.confirm()).toEqual([]);
+    expect(step(0)).toEqual([{ k: 'stock', who: 'me' }]);
+    expect(step(0)).toEqual([{ k: 'stock', who: 'me' }]);
+    expect(step(0)).toEqual([]);
     expect(s.frame.room!.game!.players[0]).toMatchObject({ dealt: 0 });
 
     expect(s.them({ k: 'hold', cardId: s.game.players[1]!.waste.at(-1)!.id })).toEqual([{ k: 'pickup', who: 'other' }]);
     expect(s.them(move(s.game.players[1]!.waste.at(-1)!.id, work(3)))).toEqual([{ k: 'work', who: 'other' }]);
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
-    // Four of their cards in one snapshot (a slow connection): a flick each.
-    for (let i = 0; i < 3; i++) s.act(1, { k: 'flip' });
-    expect(s.them({ k: 'flip' })).toEqual(Array<Cue>(4).fill({ k: 'stock', who: 'other' }));
-    expect(s.game.players[1]!.dealt).toBe(1);
+    expect(s.them({ k: 'draw' })).toEqual([{ k: 'stock', who: 'other' }]);
+    expect(step(1)).toEqual([{ k: 'stock', who: 'other' }]);
+    expect(step(1)).toEqual([{ k: 'stock', who: 'other' }]);
+    expect(step(1)).toEqual([]);
+    // Three of their cards in one snapshot (a slow connection): a flick each.
+    s.act(1, { k: 'draw' });
+    expect(s.server((g) => dealOn(dealOn(g, 1), 1))).toEqual(Array<Cue>(3).fill({ k: 'stock', who: 'other' }));
+    expect(s.game.players[1]!.dealt).toBe(3);
     // A run of two cards moved together is one drop, not two.
     const run = s.game.players[0]!.work[3]!.cards[0]!.id;
     s.me({ k: 'hold', cardId: run });
     expect(s.game.players[0]!.work[3]!.cards).toHaveLength(2);
-    // Deal until the stock is gone, then once more: the waste goes back under.
-    let cues: Cue[] = [];
-    for (let i = 0; i < 60 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) cues = s.me({ k: 'flip' });
-    expect(cues).toEqual([{ k: 'stock', who: 'me' }]);
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'recycle', who: 'me' }]);
+    // Draw until the stock is gone, then once more: the waste goes back under.
+    for (let i = 0; i < 60 && s.frame.room!.game!.players[0]!.stock.length > 0; i++) {
+      expect(s.me({ k: 'draw' })).toEqual([{ k: 'stock', who: 'me' }]);
+      s.confirm();
+      while (s.game.players[0]!.dealt > 0) step(0);
+    }
+    expect(s.me({ k: 'draw' })).toEqual([{ k: 'recycle', who: 'me' }]);
   });
 
   it('a table that is stuck has its stocks turned over to one sound, the table\'s own: not a slide for each waste that goes back', () => {
@@ -174,7 +179,7 @@ describe('sound cues from rendered state', () => {
     expect(s.game.reshuffles).toBe(1);
     // Once: nothing more of it afterwards, and the stock deals as ever.
     expect(s.server(everyone)).toEqual([]);
-    expect(s.me({ k: 'flip' })).toEqual([{ k: 'stock', who: 'me' }]);
+    expect(s.me({ k: 'draw' })).toEqual([{ k: 'stock', who: 'me' }]);
   });
 
   it('a reshuffle sounds though nobody had a card on the waste to go back', () => {
@@ -208,7 +213,7 @@ describe('sound cues from rendered state', () => {
   it('Nertz is announced once, to everyone, whoever called it', () => {
     const s = session(rigged([1]));
     expect(s.them({ k: 'nertz' })).toEqual([{ k: 'nertz' }]);
-    expect(s.them({ k: 'flip' })).toEqual([]); // the table is frozen: nothing more
+    expect(s.them({ k: 'draw' })).toEqual([]); // the table is frozen: nothing more
     const mine = session(rigged([0]));
     expect(mine.me({ k: 'nertz' })).toEqual([{ k: 'nertz' }]);
     expect(mine.confirm()).toEqual([]);
@@ -230,13 +235,13 @@ describe('sound cues from rendered state', () => {
     s.me(move(ace, felt(0, 0))); // predicted, never reaches the server
     const [dropped, back] = s.reconnect(() => {
       s.act(1, move(workTop(s.game, 1, 0), felt(0.5, 0)));
-      s.act(1, { k: 'flip' });
+      s.act(1, { k: 'draw' });
       s.act(1, move(workTop(s.game, 1, 1), slot(0)));
     });
     expect(dropped).toEqual([]); // my lost prediction snapping back is not a refusal
     expect(back).toEqual([]);
-    // And from there on the table is live again.
-    expect(s.them({ k: 'flip' })).toEqual([{ k: 'stock', who: 'other' }]);
+    // And from there on the table is live again: their draw deals on.
+    expect(s.server((g) => dealOn(g, 1))).toEqual([{ k: 'stock', who: 'other' }]);
   });
 
   it('a first render, a reload into a running round, and re-rendering the same state are silent', () => {

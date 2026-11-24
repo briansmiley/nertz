@@ -3,7 +3,7 @@
 // intent, or nothing. The Room owns the timers and submits the intent through
 // the same path as a human's, so the engine may still refuse it (a lost race):
 // the bot then simply looks again later.
-import { completedBy, faceUp, feltFree, isHidden, isLive, legalDrops, type Rng } from '../shared/engine';
+import { completedBy, DRAW_COUNT, faceUp, feltFree, isHidden, isLive, legalDrops, type Rng } from '../shared/engine';
 import { feltHw, type Pt } from '../shared/table';
 import type { AnyCard, BotLevel, GameState, Intent, PileRef } from '../shared/types';
 
@@ -34,29 +34,22 @@ const NERTZ_FOCUS = 0.5;
 /** ...and plays to the middle from the waste or a work pile a bit less. Both are exponents on the observance. */
 const CENTRE_FOCUS = 1.25;
 
-/**
- * Dealing a group off the stock goes at one speed for every bot: once it has dealt the first card of a group, the
- * rest follow this many ms apart, like a quick hand tapping the stock. A bot's level only sets how long it takes to
- * decide on an action (a move, or starting a group).
- */
-export const DEAL_STEP_MS = 170;
-
 /** What a bot carries from one look to the next. */
 export interface BotMemory {
-  /** Cards dealt off the stock (and turns of the waste) since its last real move. Not counted while it is flagged stuck, so a reshuffle starts a fresh count. */
-  flips: number;
+  /** Draws off the stock (and turns of the waste) since its last real move. Not counted while it is flagged stuck, so a reshuffle starts a fresh count. */
+  draws: number;
   /** Its last run move between work piles (the bottom card of the run and the pile it left), so it is never undone. */
   last: { cardId: string; from: number } | null;
 }
 
-export const freshMemory = (): BotMemory => ({ flips: 0, last: null });
+export const freshMemory = (): BotMemory => ({ draws: 0, last: null });
 
 const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
 
 /**
  * One look at the table. Rules in priority order; every candidate move is
- * noticed with a probability, and the highest-priority noticed one is taken. A group once started is finished first:
- * with a card or two of it dealt, a bot does nothing but a and b (which it cannot put off) until the third lands.
+ * noticed with a probability, and the highest-priority noticed one is taken. While its draw is in flight it does
+ * nothing but a and b: it waits to see what comes up (the Room has it look again when the group is up).
  *
  *   a. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
  *   b. nertz pile empty: call Nertz (always noticed)
@@ -66,7 +59,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  *      (an Ace, in c or e, is always noticed: nobody deals past an Ace)
  *   f. a work pile's whole face-up run onto another pile, if that turns over a face-down card or empties the pile
  *   g. waste top onto a work pile it builds down on
- *   h. deal one card off the stock (always noticed; the three of a group go one after another); after a whole fruitless cycle, say "stuck" instead
+ *   h. draw off the stock (always noticed); after a whole fruitless cycle, say "stuck" instead
  *
  * Returns the intent and the memory to keep IF the intent is accepted, or null
  * when there is nothing to do: play has not opened, the round is called, it is
@@ -76,14 +69,14 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const me = view.players.find((p) => p.seat === seat);
   if (!me || !isLive(view)) return null;
   const nertz = top(me.nertz);
-  const waste = me.dealt > 0 ? undefined : top(me.waste); // a group is half-dealt: the waste's top is face-down and out of play
+  const waste = top(me.waste);
   // Cards that are face-up in play but hidden in this view: the table is not open yet. Look again later.
-  if ([nertz, waste, ...me.work.map((w) => top(w.cards))].some((c) => c && isHidden(c))) return null;
+  if ([nertz, ...(me.dealt > 0 ? [] : [waste]), ...me.work.map((w) => top(w.cards))].some((c) => c && isHidden(c))) return null;
 
   const noticed = (focus = 1): boolean => rng() < observance ** focus;
   /** Nobody overlooks an Ace: it always goes out to the middle. */
   const ace = (card: AnyCard): boolean => !isHidden(card) && card.rank === 1;
-  const acted = (intent: Intent, last: BotMemory['last'] = null) => ({ intent, memory: { flips: 0, last } });
+  const acted = (intent: Intent, last: BotMemory['last'] = null) => ({ intent, memory: { draws: 0, last } });
   const move = (card: AnyCard, to: PileRef, count = 1): Intent => ({ k: 'move', cardId: card.id, count, to });
   const drops = (card: AnyCard) => legalDrops(view, seat, card.id);
   /** The work pile a single card should go to: one it builds down on, else an empty one. */
@@ -117,8 +110,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   if (finished >= 0) return acted({ k: 'clear', slot: finished });
   // b
   if (!nertz) return acted({ k: 'nertz' });
-  // A group half-dealt: it deals on. No chance to notice or play anything else, and no cycle check (it is not stuck mid-group).
-  if (me.dealt > 0) return { intent: { k: 'flip' }, memory: me.stuck ? memory : { ...memory, flips: memory.flips + 1 } };
+  if (me.dealt > 0) return null;
   // c
   const out = slotFor(nertz);
   if (out && (ace(nertz) || noticed(NERTZ_FOCUS))) return acted(move(nertz, out));
@@ -144,10 +136,10 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const shelf = waste && drops(waste).find((to) => to.k === 'work' && me.work[to.i]!.cards.length > 0);
   if (shelf && noticed()) return acted(move(waste, shelf));
   // h
-  if (me.stuck) return me.stock.length + me.waste.length > 0 ? { intent: { k: 'flip' }, memory } : null;
-  // From any point, this many flips (one per card, and one to turn the waste over) bring the stock and waste back to
+  if (me.stuck) return me.stock.length + me.waste.length > 0 ? { intent: { k: 'draw' }, memory } : null;
+  // From any point, this many draws (one per group, and one to turn the waste over) bring the stock and waste back to
   // the same state: every waste top has been seen.
-  const cycle = me.stock.length + me.waste.length + 1;
-  if (memory.flips >= cycle || cycle === 1) return { intent: { k: 'stuck', on: true }, memory: { ...memory, flips: 0 } };
-  return { intent: { k: 'flip' }, memory: { ...memory, flips: memory.flips + 1 } };
+  const cycle = Math.ceil(me.stock.length / DRAW_COUNT) + Math.ceil(me.waste.length / DRAW_COUNT) + 1;
+  if (memory.draws >= cycle || cycle === 1) return { intent: { k: 'stuck', on: true }, memory: { ...memory, draws: 0 } };
+  return { intent: { k: 'draw' }, memory: { ...memory, draws: memory.draws + 1 } };
 }

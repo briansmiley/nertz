@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, STOCK_CARD_MS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
@@ -27,7 +27,6 @@ const HEARTBEAT_MS = 30_000;
 const MAX_ROOMS = 2000;
 const MAX_LISTED = 20; // tables on the home page's list: those where something happened last
 const MAX_BUFFERED_BYTES = 1 << 20; // a client this far behind on snapshots is dropped
-const FLIP_SLACK_MS = 100; // two cards sent STOCK_CARD_MS apart may arrive a little closer together than that
 const RATE_PER_SECOND = 60; // sustained messages per connection; far above what a hand can do
 // The burst has to hold a whole table joining voice at once: to each of five others an offer and a
 // dozen or two candidates, on top of the reports of a card being carried. (At 3 seconds of 40 a table of six could
@@ -73,8 +72,6 @@ export interface ServerOptions {
   dist?: string;
   /** Messages per second one connection may sustain before it is closed. */
   rate?: number;
-  /** Least time between two cards one person deals off their stock (ms). Defaults to a little under the client's pace. */
-  flipMs?: number;
   /** The longest a Nertz call waits to reach the others' windows (see `RoomOptions.hearMs`). Defaults to HEAR_MS. */
   hearMs?: number;
   /** How every table deals a round (see `RoomOptions.deal`): the engine's, unless a test rigs the hands. */
@@ -90,7 +87,6 @@ export interface ServerOptions {
 export async function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const dist = resolve(options.dist ?? fileURLToPath(new URL('../dist', import.meta.url)));
   const rate = options.rate ?? RATE_PER_SECOND;
-  const flipMs = options.flipMs ?? STOCK_CARD_MS - FLIP_SLACK_MS;
   const hearMs = options.hearMs ?? HEAR_MS;
   const rooms = new Map<string, Room>();
   const idleSince = new Map<Room, number>();
@@ -313,7 +309,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
             if (!target) return over(`Table ${msg.room} not found.`);
           } else {
             if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
-            target = new Room(freshCode(), { flipMs, hearMs, deal: options.deal, record });
+            target = new Room(freshCode(), { hearMs, deal: options.deal, record });
           }
           const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', signed.get(ws) ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
           if (refusal) return over(refusal);

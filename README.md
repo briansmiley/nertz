@@ -22,8 +22,8 @@ Then open **http://localhost:5173** in two browser windows (two tabs of the same
 2. Window 2: paste the invite link (or open the home page and type the code, or pick the table under **Tables**), type a different name, press **Join table**.
    A code that no table has is refused with a message; it never opens a new table.
 3. Window 1: press **Deal the first round**. The cards are dealt and the table waits.
-4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays. Cards come off the stock one at a
-   time: drag the top one onto the waste, three times for a group of three (or click, if the host set the table so).
+4. Window 1: press **Start** (or Space). "1, 2, 3, NERTZ!" and everyone plays. Click the stock (or press Space) to
+   draw: three cards come off it one at a time and turn up together.
 
 On your own? In the lobby press **Add bot** and deal: one person and one bot make a round (see [Bots](#bots)).
 
@@ -41,7 +41,7 @@ Controls:
 | Drag a finished pile (one you put the King on) to the tray, bottom right (or tap or click it, then the tray, if the table moves without dragging) | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
-| Click the stock, or press Space | deal a group of three: they come off one at a time, a quarter of a second apart, and turn up together |
+| Click the stock, or press Space | draw a group of three: they come off one at a time, a sixth of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Unpause**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (from Start, for now; before it, to watch: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot, picked with the picture beside Send or dropped or pasted onto the slip; Tab from the words goes to Send) |
@@ -89,8 +89,8 @@ What you see around a round:
   nobody's card is shown moving. With "reduce motion" the numbers do not bounce.
 - **The stock and the waste.** The stock shows one edge for every three cards left, so you can see it getting thin. The
   waste is one squared-up pile: you see its top card and nothing of what is under it, in your own hand and in everyone
-  else's (mirrored with the rest of the hand for the players across the table). While a group is being dealt its cards
-  lie squarely on it face-down, and all turn over when the third lands.
+  else's (mirrored with the rest of the hand for the players across the table). While a group is in flight its cards
+  are held face-down over the stock, and all turn over onto the waste a beat after the third.
 - **Face-down work cards** lie under each work pile, yours and everyone's, and turn over when the cards above them leave.
 - **A long work pile** of yours may start a little higher up, into what room there is between your hand and the felt
   (and short of anyone's hand above it). Past that the oldest cards of the pile narrow to slivers and the newest keep
@@ -175,23 +175,21 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   pick anything up since.
 - You can play: the top of your nertz pile or of your waste to a work pile or the middle; the top of a work pile to the
   middle; a run from one work pile to another.
-- **Stock**: one click on the stock (or Space) deals a group of three, and dealing takes time, as it does with real
-  cards: they come off one at a time, a quarter of a second apart (`STOCK_CARD_MS`), face-down onto the waste, and the
-  group turns face-up when the third lands (or the stock runs out first). The next group cannot be started sooner than
-  that after the last card, so going round the stock costs about three quarters of a second a group however fast you
-  click. While a group is coming off the waste is out of play (its top is face-down, and nobody is shown those cards,
-  their owner included); the nertz pile and the work piles play on. When the stock is empty, a click turns the whole
-  waste back over into the stock.
-- **The pace is the server's.** A group is three one-card intents sent by the client on that schedule; the server takes
-  one card per intent and refuses a card that arrives too soon after the same player's last one, so a doctored client
-  gains nothing.
+- **Stock**: one click on the stock (or Space) is a draw: a group of three, and dealing takes time, as it does with
+  real cards: they come off one at a time, `STOCK_CARD_MS` (170 ms) apart, face-down, and the group turns face-up onto
+  the waste one step after the third (or after the last card, if the stock runs out first). A draw takes half a
+  second, and the next can start once its group is up, however fast you click. While a group is in flight the waste
+  is out of play (its top is covered, and nobody is shown those cards, their owner included); the nertz pile and the
+  work piles play on. When the stock is empty, a click turns the whole waste back over into the stock.
+- **The pace is the server's.** A draw is one intent; the server deals its group on its own timer, and refuses a
+  draw while one is in flight, so a doctored client gains nothing.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player who plays the round is stuck (not anyone
   who has got up from their cards: see table management), the server (which knows every card) checks whether any hand
   still played, here or away, can ever get anywhere (`canProgress`): put a card in the middle, or take one off its nertz
   pile, now or however many moves on (stock cards onto work piles, runs between them, face-down cards turned up; any
   card of the stock counts: shifting it brings any card up). A move that leads to neither does not count. It errs one
   way only: a hand that can get somewhere is never taken for dead. If nobody can, **the table is jammed** and the round ends there,
-  scored as it stands. Otherwise each player's waste (a half-dealt group included) goes back onto their stock, the top
+  scored as it stands. Otherwise each player's waste (a group in flight included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
   flags clear, and the round counts one more reshuffle. The table says so as it happens: **Reshuffle!** across the
   middle for a moment, to the riffle of a shuffle. Making any move clears your own flag.
@@ -205,8 +203,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   least one legal place to go, gets up to 4 seconds to release it on a legal spot: exactly one move, with that card only.
   If the card has nowhere to go, or loses its last spot to another player's grace move, the drag is cancelled. Letting go
   anywhere is that one move: if the spot was taken a moment earlier, the card goes back and that player is done. The round
-  is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A stock card on its way to
-  the waste is not such a card: it goes back, and a group left half-dealt at the call stays as it lies, face-down.
+  is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A group in flight at the call
+  is not such a card: the server deals no more of it, and it stays as it lies, face-down.
   "The moment of the call" is when it reaches your screen, not the server: a card you take up while the call is on its
   way to you (or whose taking up is on its way to the server as the call is made) was in your hand at the call. So the
   round waits for each player's window to say it has the call, a round trip, at most 1 second (`HEAR_MS`); a window that
@@ -381,11 +379,10 @@ the first of these that applies:
 6. A work pile's whole face-up run onto another pile, but only if that turns over a face-down card or empties the pile.
    It never moves a run that gains nothing, and never undoes its own last run move.
 7. Waste top onto a work pile it builds down on (empty piles are kept for the nertz card).
-8. Otherwise deal one card off the stock (or turn the waste over). A group it has started it finishes: the rest of it
-   follows card after card, and until the last one is up it looks for nothing in 3 to 7 (a move the group buries is a
-   miss); the waste is out of play until the group is up, as for anyone. Once
-   it has dealt all the way round to where it started without making a single move, it says "I'm stuck" (and keeps
-   dealing, in case the middle changes). Any move starts the count again.
+8. Otherwise draw (or turn the waste over): one intent, like anyone's, and the server deals the group. While it is in
+   flight the bot looks for nothing; it looks the table over again the moment the group is up. Once it has drawn all
+   the way round to where it started without making a single move, it says "I'm stuck" (and keeps drawing, in case the
+   middle changes). Any move starts the count again.
 
 Note 3 before 4: given the choice, it puts its nertz card on a work pile rather than in the middle.
 
@@ -397,13 +394,12 @@ Note 3 before 4: given the choice, it puts its nertz card on a work pile rather 
 | medium | 2.2 s | 0.75 |
 | fast | 1.4 s | 0.9 |
 
-The pause is jittered between half and one and a half times the mean. After a card it dealt off the stock the next look
-comes after half the usual pause (`DEAL_PACE`), so a group of three costs one and a half looks where a flip of three used
-to cost one: 0.8 s, 0.5 s and 0.3 s a card on average at the three levels, about what dragging them takes. *Observance* is how human it is: on each look, every
+The pause is jittered between half and one and a half times the mean, and a draw costs a look and the half second
+its group takes, whatever the level. *Observance* is how human it is: on each look, every
 move it could make is noticed, independently, with that probability, and it takes the first one in the list above that it
 noticed. A move it missed gets a fresh chance at the next look, so it finds things late rather than never. Moves with its own
 nertz card are noticed more reliably (probability `observance ^ 0.5`, which about halves the misses) and plays to the middle
-from the waste or a work pile a little less (`observance ^ 1.25`). Clearing its finished pile, calling Nertz and dealing
+from the waste or a work pile a little less (`observance ^ 1.25`). Clearing its finished pile, calling Nertz and drawing
 from the stock are never missed. A bot never deals and never presses Start: it wakes when play opens, on the word, like everyone.
 
 A bot does not drag: its card is placed in the instant it decides. So it never sends `hold`, and can never be in the
@@ -479,7 +475,7 @@ never move a card that was not picked up.
 
 **Opaque ids and redacted views.** Card ids are random strings generated per round and say nothing about suit or rank. Each
 player is sent a full snapshot in which face-down cards (all stocks, everything under the top of each nertz pile, the
-face-down cards at the bottom of each work pile and the cards of a group half-dealt onto a waste, the owner's included) are reduced to `{ id, owner, hidden: true }`. The id stays the same when a card is revealed, so a card animates continuously from
+face-down cards at the bottom of each work pile and the cards of a group in flight onto a waste, the owner's included) are reduced to `{ id, owner, hidden: true }`. The id stays the same when a card is revealed, so a card animates continuously from
 back to face, and nobody can read hidden cards off the wire.
 
 **Snapshots, seq and ack.** Every client message that plays a card carries a sequence number. Every server message is a
@@ -505,8 +501,7 @@ the server may file it under a different slot than the client predicted, at the 
 `{ k: 'hold', cardId }` when a drag starts (accepted only for a card that seat could pick up), `{ k: 'release' }` when it
 ends without a move. A move ends the hold by itself whether it is accepted or refused (`refused` in the engine: a drop that
 lost a race still emptied the hand, and the client that sent it does not know yet that it lost), and so does losing the
-connection. So the server never believes in a held card that went home. (A stock card being dragged to the waste is
-not a hold: it is face-down and cannot be played, so nothing is sent until it lands, and then only `{ k: 'flip' }`.) `PlayerState.holding` is part of every view, and
+connection. So the server never believes in a held card that went home. `PlayerState.holding` is part of every view, and
 the client's replay applies the same rule. All the rules of grace live in the pure engine:
 
 - `nertz` takes the round's status to `grace` (with who called, and `unheard`: below), and the hold of everyone whose
@@ -571,12 +566,16 @@ predicted King nothing else is even sent; `client/clearFirst.tsx` only turns suc
 `lastRound` (how it ended, and per player the name, the cards played, the nertz cards left and the running total), so the
 client can play the end-of-round sequence and draw the score sheet from it, even if a player has left since.
 
-**One card per `flip`.** `{ k: 'flip' }` moves the top stock card onto the waste and counts it in `PlayerState.dealt`
-(0 to 2: how many cards of an unfinished group lie face-down on top of the waste). The third card, or the last of the
-stock, sets it back to 0: the group is up. `viewFor` redacts the top `dealt` waste cards for everyone, and `grab` refuses
-the waste while it is above 0. On a client's redacted view the same reducer predicts each card; the faces arrive with
-the snapshot that confirms the third, and the three cards (same ids) turn over where they lie. On an empty stock the same
-intent turns the waste over, which can only happen with `dealt` at 0. Dragging and clicking send the same message.
+**One intent per draw; the server deals the group.** `{ k: 'draw' }` takes the top stock card face-down onto the waste
+and starts a group in flight: `PlayerState.dealt` (1 to 3) counts its cards on top of the waste. From then on the server
+takes each step of it (`dealOn`, one place for the transition, shared with the draw's own first card), `STOCK_CARD_MS`
+apart: the next card, until three are off (or the stock is out), then one more step turns the group up and `dealt` is
+0 again. The steps are the room's timers (`draws`), called off with the round's timer and by a pause, and they run
+only while the round is live: a group in flight at a call stays as it lies. A draw while one is in flight is refused.
+`viewFor` redacts the top `dealt` waste cards for everyone, and `grab` refuses the waste while it is above 0. The
+group is part of the state, so a reload or reconnect mid-draw is sent it as it lies and the steps go on. A client
+predicts only the first card of its own draw; the rest, and the faces, come with the snapshots of the server's steps.
+On an empty stock the same intent turns the waste over, which can only happen with `dealt` at 0.
 
 **Tables.** `{ t: 'create', name, token }` opens a table and the server picks the code, which comes back in the first
 snapshot. `{ t: 'join', room, name, token }` sits down at an existing table; a code that does not exist is answered with an
@@ -588,8 +587,7 @@ its seat back and a fresh snapshot; sequence numbers and pending intents belong 
 first snapshot arrives the client sends and predicts nothing: the table stays on screen as it was, and input is ignored.
 
 **Hardening.** Every inbound message is parsed into a clean copy or dropped. Frames are capped at 2 KB, names at 20
-characters, connections at 40 messages a second sustained with a burst of 120 (dealing a
-card is one message; a whole lap of the stock in one instant is 33). A slow client that falls 1 MB behind is disconnected. A table
+characters, connections at 40 messages a second sustained with a burst of 120 (a draw is one message). A slow client that falls 1 MB behind is disconnected. A table
 with nobody connected is deleted after 10 minutes, or after 1 minute if it never dealt a round; a lobby everyone has left
 is deleted at once. There is a cap of 2000 tables and no limit per address: someone opening sockets in bulk could still
 fill it for about a minute at a time.
@@ -807,9 +805,7 @@ would still need one of the options above, and serving both from one origin is s
   label higher or lower beside it, instead of level with it; each has its player's colour chip. Label placement is
   checked for 2 to 6 players at 1280 x 720 and 1440 x 900; in a smaller window labels may overlap something. The
   NERTZ! stamp across your own hand is large and stays up through the sequence.
-- **Face-down cards of a half-dealt group** at the call stay face-down on the waste through the end of the round.
-- **In drag mode nothing on the table says the stock must be dragged**: a click on a stock that still has cards does
-  nothing. The rule is only in this file.
+- **Face-down cards of a group in flight** at the call stay face-down on the waste through the end of the round.
 - **The wash is a canvas.** At the end of a round up to ~300 card backs move at once, so they are drawn on one canvas
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late

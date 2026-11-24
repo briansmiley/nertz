@@ -180,7 +180,7 @@ export function Chat({ room }: { room: RoomView }) {
       className={`chat${holding ? ' aside' : ''}${at.shape === 'tall' ? ' top' : ''}`}
       style={{ left: at.chat.x, top: at.chat.y }}
       aria-label="Chat"
-      // Keys typed here are not game hotkeys (Space flips the stock), and a button pressed here must not keep the focus for the same reason.
+      // Keys typed here are not game hotkeys (Space draws off the stock), and a button pressed here must not keep the focus for the same reason.
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Escape') setOpen(null);

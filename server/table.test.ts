@@ -104,7 +104,7 @@ describe('card positions while dragging', () => {
     // The card has not moved as far as the rules know: it is still on its pile, and held.
     expect(room.game!.players[0]!.nertz.at(-1)!.id).toBe(held);
     expect(room.game!.players[0]!.holding).toBe(held);
-    room.handle(b, { t: 'intent', seq: 1, intent: { k: 'flip' } });
+    room.handle(b, { t: 'intent', seq: 1, intent: { k: 'draw' } });
     room.flush();
     expect(JSON.stringify(b.states.at(-1))).not.toMatch(/"t":"drag"|"w":|"p":\[/);
     room.close();
@@ -280,7 +280,7 @@ describe('bots starting piles', () => {
     expect(chooseIntent(seven, 0, freshMemory(), () => 0.999)!.intent).toMatchObject({ k: 'move', cardId: ace, to: { k: 'felt' } }); // (every glance lands off in a corner)
     // All eight slots in use: the Ace has nowhere to go, so the bot does something else (here: flips).
     const full = { ...crowded, slots: crowded.slots.map((s, i) => s ?? pile(i, { x: -2 + 0.01 * i, y: 0, r: 0 })) };
-    expect(chooseIntent(full, 0, freshMemory(), seeded(1))!.intent).toEqual({ k: 'flip' });
+    expect(chooseIntent(full, 0, freshMemory(), seeded(1))!.intent).toEqual({ k: 'draw' });
   });
 
   it('tables of 2 to 6 bots play rounds out, every pile in a legal place throughout', () => {

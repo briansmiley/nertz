@@ -309,8 +309,6 @@ interface HandSpec {
   flip?: boolean;
   /** A work pile being looked at (hovered, or tapped on a touch screen): fanned out in full, rising as far as it needs to over the felt. */
   peek?: number | null;
-  /** A group just completed, this many cards, still drawn held for a beat before it turns over (see STOCK_TURN_MS). */
-  hold?: number;
   /** Whether the tops lie face-up yet: a work pile's once the deal is done, the nertz pile's once play opens. */
   open: Open;
   /**
@@ -429,11 +427,11 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // Every third card shows an edge, and so does the top one. A card's height in the stack depends only on how many
   // cards lie under it, so taking cards off the top never moves the ones that stay: the stack just gets lower.
   //
-  // A group being dealt (the server takes its cards one at a time) is counted off the stock into the hand, as with
+  // A group in flight (the server deals its cards one at a time) is counted off the stock into the hand, as with
   // real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just above the
   // stock, not quite square, so three separate cards are seen to be pulled. The complete group is held there a beat
-  // longer (`hold`, kept by Table.tsx), then lands on the waste, every card turning over as it goes, the last on top.
-  const lifted = Math.min(p.waste.length, Math.max(p.dealt, h.hold ?? 0));
+  // (the server's last step), then lands on the waste, every card turning over as it goes, the last on top.
+  const lifted = p.dealt;
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
@@ -874,7 +872,7 @@ const OPP_SIZE = [0, 0.062, 0.056, 0.046, 0.04, 0.035];
  * left and right edges for your neighbours. The felt is as large as fits
  * between all the hands.
  */
-export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, held?: ReadonlyMap<number, number>, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS, hands: PlayerState[] = game.players): Layout {
+export function computeLayout(W: number, fullH: number, game: GameState, you: number, stage: Stage = 'live', peek: number | null = null, keep: Insets = NO_INSETS, sitting: readonly number[] = [], fit: Fittings = NO_FITTINGS, hands: PlayerState[] = game.players): Layout {
   const H = fullH - keep.b; // the strip at the bottom that the screen keeps is simply not used
   const cards: Placed[] = [];
   const n = game.players.length; // (the felt and its cards are sized for those in the round)
@@ -1014,7 +1012,6 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       mine: false,
       // Across the table a hand is seen from the other side: its owner's left is your right.
       flip: where === 'top',
-      hold: held?.get(p.seat),
       open,
     };
     if (sides && (where === 'left' || where === 'right')) {
@@ -1102,7 +1099,6 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     mine: true,
     open,
     peek,
-    hold: held?.get(you),
   };
   // A pile rises as far as the cloth over it is clear: up to the felt, or to the bottom of a hand above it (a column
   // of hands that stops above yours). (Not once the wash begins: the labels of the sorted piles are placed clear of

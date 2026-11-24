@@ -94,7 +94,7 @@ describe('what stands round the cards', () => {
           for (const [said, chat] of Object.entries(CHATS)) {
             for (const vote of [false, true]) {
               const fit: Fittings = { chat, clock: true, vote, name: nameWidth('Brian', '120') };
-              const L = computeLayout(W, H, game, 0, 'live', null, undefined, keep, [], fit);
+              const L = computeLayout(W, H, game, 0, 'live', null, keep, [], fit);
               const found = wrong(L, W, H, keep, vote);
               if (found.length) bad.push(`${W}x${H}, ${n} players${keep.l || keep.b ? ', notched' : ''}, ${said}${vote ? ', vote' : ''}: ${found.join('; ')}`);
             }
@@ -111,7 +111,7 @@ describe('what stands round the cards', () => {
       for (let n = 2; n <= 10; n++) {
         for (const keep of insetsOf(W, H)) {
           const fit: Fittings = { chat: CHATS.out, clock: true, vote: true, name: nameWidth('Brian', '120') };
-          const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, undefined, keep, [], fit);
+          const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, keep, [], fit);
           const { others, chat: _, ...yours } = things(L, W, H, true);
           const hit = Object.entries(yours).filter(([, rs]) => rs.some((r) => others!.some((o) => meets(r, o))));
           if (hit.length) bad.push(`${W}x${H}, ${n} players${keep.l || keep.b ? ', notched' : ''}: ${hit.map(([name]) => name).join(', ')}`);
@@ -126,7 +126,7 @@ describe('what stands round the cards', () => {
       for (const n of PLAYERS) {
         for (const chat of [CHATS.out, CHATS.voice]) {
           const fit: Fittings = { chat, clock: true, vote: false, name: nameWidth('Brian', '120') };
-          const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, undefined, { l: 0, r: 0, b: 34 }, [], fit);
+          const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, { l: 0, r: 0, b: 34 }, [], fit);
           const where = `${W}x${H}, ${n} players, ${chat.join(' ')}`;
           expect(L.tall, where).toBe(true);
           expect(L.clock, where).not.toBeNull();
@@ -146,7 +146,7 @@ describe('what stands round the cards', () => {
           for (const vote of [false, true]) {
             for (const total of ['-13', '120', '-104']) {
               const fit: Fittings = { chat: CHATS.voice, clock: true, vote, name: nameWidth('Brian', total) };
-              const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, undefined, keep, [], fit);
+              const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, keep, [], fit);
               const where = `${W}x${H}, ${n} players${keep.l ? ', notched' : ''}${vote ? ', vote' : ''}, ${total}`;
               expect(L.name, where).not.toBeNull();
               if (!L.name!.full) expect(L.name!.w, where).toBe(fit.name);

@@ -10,22 +10,22 @@
 import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reshuffledSince, wentOut } from '../shared/engine';
-import { PLAIN_LOOK, shownBack, STOCK_CARD_MS, STOCK_TURN_MS, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
+import { PLAIN_LOOK, shownBack, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE } from '../shared/table';
-import type { Intent, PlayerView, RoomView, Suit } from '../shared/types';
+import type { PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
 import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
-import { cardDue, decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
+import { decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type Hand, type Held, type InHand, type Scene } from './hand';
 import { inHand, levelOf, mover, moving, whoseOf, IN_PILE, type Doing, type Whose } from './level';
 import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
-import { kick, onDrag, onSnipe, pause, playable, post, send as play, sit } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, sit } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -418,39 +418,6 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const [peek, setPeek] = useState<number | null>(null);
   const peekWait = useRef<{ i: number; t: number } | null>(null);
   useEffect(() => () => void (peekWait.current && clearTimeout(peekWait.current.t)), []);
-  // A group that has just been completed is drawn held over the stock for a beat before it turns over onto the waste
-  // (one, two, three... and over). Worked out while rendering, from one game state to the next, so the cards never
-  // start for the waste first.
-  const turning = useRef<{ game: typeof game | null; holds: Map<number, { n: number; waste: number; until: number }> }>({ game: null, holds: new Map() }).current;
-  const [turned, setTurned] = useState(0);
-  const groupHeld = useMemo(() => {
-    const was = turning.game;
-    const now = performance.now();
-    if (was !== game) {
-      turning.game = game;
-      for (const p of game.players) {
-        const q = was?.players.find((o) => o.seat === p.seat);
-        const grown = q ? p.waste.length - q.waste.length : 0;
-        // Cards came off the stock and none is left face-down: the group is whole.
-        if (stage === 'live' && !calm() && q && grown > 0 && p.dealt === 0 && q.stock.length - p.stock.length === grown) {
-          turning.holds.set(p.seat, { n: q.dealt + grown, waste: p.waste.length, until: now + STOCK_TURN_MS });
-        } else if (turning.holds.get(p.seat)?.waste !== p.waste.length || p.dealt > 0) turning.holds.delete(p.seat);
-      }
-    }
-    const out = new Map<number, number>();
-    for (const [seat, h] of turning.holds) {
-      if (h.until > now) out.set(seat, h.n);
-      else turning.holds.delete(seat);
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, stage, turned, turning]);
-  useEffect(() => {
-    if (!groupHeld.size) return;
-    const until = Math.max(...[...turning.holds.values()].map((h) => h.until));
-    const t = setTimeout(() => setTurned((n) => n + 1), Math.max(0, until - performance.now()) + 1);
-    return () => clearTimeout(t);
-  }, [groupHeld, turning]);
   // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
   const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
@@ -460,7 +427,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   // What stands round the cards (the buttons in the corners, the clock, your name, "I'm stuck" and the vote) is placed
   // by the layout too, and the cards round it: nothing here is measured off the page or put down by hand.
   const fit = useFittings(room);
-  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, groupHeld, pad, sitting, fit, hands), [W, H, game, you, stage, peek, groupHeld, pad, sitting, fit, hands]);
+  const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, pad, sitting, fit, hands), [W, H, game, you, stage, peek, pad, sitting, fit, hands]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   const handles = useRef<Handles>(new Map()).current;
   /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
@@ -692,25 +659,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const tapToMove = room.settings.tapToMove;
   const scene: Scene = { game, you, L, byId, live: stage === 'live', playingOut, frozen, tapToMove, waiting: must.slot, plays: playable };
 
-  // Dealing off the stock takes time. One click (or Space) starts a group of three; the cards then come off one at a
-  // time, STOCK_CARD_MS apart, and the next group cannot start sooner than that after the last card. The server
-  // holds everyone to the same pace, so there is nothing to gain by clicking faster.
-  /** When the last card that went came off the stock. */
-  const flipped = useRef(0);
-  const dealNow = useCallback((by: (intent: Intent) => boolean) => {
-    if (by({ k: 'flip' })) flipped.current = performance.now();
-  }, []);
-  /** A click on the stock, or Space: starts a group (or turns the waste back over), unless one is still coming off. */
-  const dealGroup = useCallback(() => {
-    if (performance.now() - flipped.current >= STOCK_CARD_MS) dealNow(send);
-  }, [dealNow]);
-  const due = cardDue(scene);
-  // (A flip the server refuses is undone by its snapshot: the stock is as it was again, and this runs again.)
-  useEffect(() => {
-    if (!due) return;
-    const t = setTimeout(() => dealNow(play), Math.max(0, flipped.current + STOCK_CARD_MS - performance.now()));
-    return () => clearTimeout(t);
-  }, [due, mine?.dealt, mine?.stock.length, dealNow]);
+  /** A click on the stock, or Space: one draw (or the waste turned back over). The server deals its group, on its own time. */
+  const dealGroup = useCallback(() => send({ k: 'draw' }), []);
   useEffect(() => {
     if (frozen) return;
     const onKey = (e: KeyboardEvent) => {

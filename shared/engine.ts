@@ -11,8 +11,8 @@ import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef,
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
 export const NERTZ_SIZE = 13;
-/** Cards in a group dealt off the stock: each is one action, and the group turns face-up when the last one lands. */
-export const FLIP_COUNT = 3;
+/** Cards in a group dealt off the stock by one `draw`. */
+export const DRAW_COUNT = 3;
 const DECK_SIZE = 52;
 const KING = 13;
 
@@ -137,7 +137,7 @@ export const feltFree = (state: GameState, at: Pt): boolean =>
 
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
- * or waste (not while a group is half-dealt onto it: its top is face-down), or a face-up card in one of their work piles together with
+ * or waste (not while a group is in flight onto it: its top is face-down), or a face-up card in one of their work piles together with
  * everything on top of it. Null if the card is not theirs to move, is
  * face-down, or its face is not known in this (redacted) state.
  */
@@ -248,17 +248,11 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
   let next: GameState = state;
 
   switch (intent.k) {
-    case 'flip': {
-      if (me.stock.length === 0) {
-        if (me.waste.length === 0) return 'Nothing to flip';
-        me.stock = me.waste.reverse(); // turn the waste over: first card dealt is on top again
-        me.waste = [];
-        me.dealt = 0; // (it was: a group is never left half-dealt on an empty stock)
-      } else {
-        // One card per action, face-down onto the waste. The third of a group, or the last of the stock, turns the group up.
-        me.waste.push(me.stock.pop()!);
-        me.dealt = me.dealt + 1 === FLIP_COUNT || me.stock.length === 0 ? 0 : me.dealt + 1;
-      }
+    case 'draw': {
+      if (me.dealt > 0) return 'A draw is under way';
+      if (me.stock.length > 0) dealStep(me);
+      else if (me.waste.length > 0) [me.stock, me.waste] = [me.waste.reverse(), []]; // turn the waste over: first card dealt is on top again
+      else return 'Nothing to draw';
       break;
     }
     case 'stuck': {
@@ -330,6 +324,31 @@ function play(state: GameState, index: number, intent: Intent): GameState | stri
   // Dealing a card onto the waste buries the card being held; a hold never outlives the card being pickable.
   if (me.holding !== null && !grab(next, seat, me.holding)) me.holding = null;
   return next;
+}
+
+/**
+ * The one step of a group in flight off `me`'s stock, the first one a `draw`'s and each after it the server's
+ * (`dealOn`), STOCK_CARD_MS apart: the next card off the stock, face-down onto the waste; or, the group all dealt
+ * (`DRAW_COUNT` cards, or the stock ran out), the group turns up together, and the draw is over.
+ */
+function dealStep(me: PlayerState): void {
+  if (me.dealt === DRAW_COUNT || (me.dealt > 0 && me.stock.length === 0)) me.dealt = 0;
+  else {
+    me.waste = [...me.waste, me.stock.pop()!];
+    me.dealt++;
+  }
+}
+
+/**
+ * The server's step of `seat`'s group in flight (`dealStep`), while the round is live. The state as it was if there
+ * is none, or the round is not live (a group in flight at the call stays as it is). Never mutates `state`.
+ */
+export function dealOn(state: GameState, seat: number): GameState {
+  const old = state.players.find((p) => p.seat === seat);
+  if (!old || old.dealt === 0 || !isLive(state)) return state;
+  const me: PlayerState = { ...old, stock: [...old.stock] };
+  dealStep(me);
+  return { ...state, players: state.players.map((p) => (p === old ? me : p)) };
 }
 
 /** The round is over, in the one way every round ends: whatever is in anyone's hand goes back, and nothing changes after. */
@@ -556,7 +575,7 @@ export function canProgress(state: GameState, seat: number): boolean {
  *   (over by a `jam`), to be scored as it stands;
  *   With no hand played at all it is jammed whoever has or has not said so.
  * - otherwise every player's waste is turned back onto their stock (restoring the original order; a half-dealt group
- *   is waste like the rest), then the top stock card moves to the bottom so the next flips come up differently,
+ *   is waste like the rest), then the top stock card moves to the bottom so the next draws come up differently,
  *   all flags clear, and the round has one more reshuffle to its count (`GameState.reshuffles`).
  * Returns the SAME state object when nothing happens (always, unless the round is live).
  */
@@ -626,7 +645,7 @@ const hide = (c: AnyCard): HiddenCard => (isHidden(c) ? c : { id: c.id, owner: c
  * The state as a player may see it: same shape and same card ids, with every
  * face-down card redacted: stocks, everything under the top of each nertz pile,
  * the face-down cards at the bottom of each work pile and the cards of a group
- * still being dealt onto a waste (`dealt`), your own included.
+ * in flight onto a waste (`dealt`), your own included.
  * While the cards are being dealt that is every card, and until play opens
  * (`ready`, `countdown`) it is still every nertz top: nobody gets a head start.
  *
@@ -651,7 +670,7 @@ export function viewFor(state: GameState, seat: number): GameState {
         nertz: p.nertz.map((c, i) => ((i === p.nertz.length - 1 && opened) || shown.has(c.id) ? c : hide(c))),
         work: p.work.map(({ cards, down }) => ({ cards: cards.map((c, j) => (dealing ? hide(c) : j < down ? show(c) : c)), down })),
         stock: p.stock.map(show),
-        waste: p.waste.map((c, i) => (dealing ? hide(c) : i >= p.waste.length - p.dealt ? show(c) : c)),
+        waste: p.waste.map((c, i) => (dealing || i >= p.waste.length - p.dealt ? hide(c) : c)),
       };
     }),
   };
@@ -660,15 +679,13 @@ export function viewFor(state: GameState, seat: number): GameState {
 const NONE: ReadonlySet<string> = new Set();
 
 /**
- * The face-down cards a hand's next move could turn over: the card under its nertz top, the group under way off its
- * stock (what is dealt of it, and the rest; or the whole next group), and the face-down card at the top of each work
- * pile's buried part.
+ * The face-down cards a hand's next move could turn over: the card under its nertz top and the face-down card at the
+ * top of each work pile's buried part. (A draw turns nothing over by itself: its group turns up on the server's step,
+ * in the snapshot that says so.)
  */
 function comingUp(p: PlayerState): ReadonlySet<string> {
   return new Set([
     ...p.nertz.slice(-2, -1),
-    ...p.stock.slice(-(FLIP_COUNT - p.dealt)),
-    ...p.waste.slice(p.waste.length - p.dealt),
     ...p.work.flatMap((w) => (w.down > 0 ? [w.cards[w.down - 1]!] : [])),
   ].map((c) => c.id));
 }
@@ -729,8 +746,7 @@ export function checkInvariants(state: GameState): string | null {
         if (!stacksOn(above, below)) return `${at} work ${i}: not a descending alternating run`;
       }
     }
-    if (!Number.isInteger(p.dealt) || p.dealt < 0 || p.dealt >= FLIP_COUNT || p.dealt > p.waste.length) return `${at}: bad half-dealt group`;
-    if (p.dealt > 0 && p.stock.length === 0) return `${at}: a group left half-dealt on an empty stock`;
+    if (!Number.isInteger(p.dealt) || p.dealt < 0 || p.dealt > DRAW_COUNT || p.dealt > p.waste.length) return `${at}: bad group in flight`;
     if (p.holding !== null && !grab(state, p.seat, p.holding)) return `${at}: holding a card they cannot pick up`;
   }
   if (state.slots.length !== SLOTS_PER_PLAYER * state.players.length) return 'wrong number of centre slots';
