@@ -64,7 +64,7 @@ export interface NertzServer {
   rooms: Map<string, Room>;
   /** Deletes rooms that have had no connections for their TTL (shorter for a table that never dealt). Runs on a timer; exposed for tests. */
   sweep(now?: number): void;
-  /** Keeps every table with a round on, as it is now. Runs on a timer; exposed for tests. */
+  /** Keeps every table with a round on that has changed since it was last kept, as it is now. Runs on a timer; exposed for tests. */
   keep(): void;
   /**
    * Before `close`, when the server is to be started anew (a deploy): every round stands still (`Room.halt`), every
@@ -162,15 +162,28 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     rooms.forEach((room) => room.reaccount(account));
   };
   const profile = db && accounts && home ? profileHandler({ db, accounts, rounds, reports, pictures, home, gone, changed }) : null;
-  // A table is kept in the database from one server to the next: while a round of it is on, every KEEP_MS (so what a
-  // crash costs is the last half minute), and whatever it is doing as the server goes down (`update`). Kept no longer
-  // once that round is scored (what is kept is never a round already in the record) or the table is forgotten.
+  // A table is kept in the database from one server to the next: while a round of it is on, every KEEP_MS if anything
+  // at it has changed since (so what a crash costs is the last half minute), and whatever it is doing as the server
+  // goes down (`update`). Kept no longer once that round is scored (what is kept is never a round already in the
+  // record) or the table is forgotten.
   const kept = db && { put: db.prepare('insert or replace into room (code, kept) values (?, ?)'), drop: db.prepare('delete from room where code = ?') };
+  /** The `rev` each table was last kept at. */
+  const keptAt = new WeakMap<Room, number>();
   const unkeep = (code: string): void => guard('forgetting a kept table', () => void kept?.drop.run(code));
-  /** Keeps every table that `which` says, as it is now: one write. */
-  const keep = (which: (room: Room) => boolean): void => {
+  /** Keeps the tables as they are now, in one write: those with a round on that have changed since they were last kept, or `all` of them. */
+  const keep = (all = false): void => {
     if (!db || !kept) return;
-    guard('keeping the tables', () => transaction(db, () => rooms.forEach((room) => which(room) && guard(`table ${room.code}`, () => void kept.put.run(room.code, JSON.stringify(room.kept()))))));
+    guard('keeping the tables', () =>
+      transaction(db, () => {
+        for (const room of rooms.values()) {
+          if (!all && (room.phase !== 'playing' || keptAt.get(room) === room.rev)) continue;
+          guard(`table ${room.code}`, () => {
+            kept.put.run(room.code, JSON.stringify(room.kept()));
+            keptAt.set(room, room.rev);
+          });
+        }
+      }),
+    );
   };
   /** What every table is told to do with a round that has ended. */
   const record: RoomOptions['record'] = rounds
@@ -338,6 +351,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       if (allowance < 0) return ws.close(CLOSE_FLOOD, 'Too many messages'); // the client reconnects and resumes its seat
       alive.add(ws); // (anything it sends says it is there, as a pong does)
       guard('a message', () => {
+        if (updating) return; // (the tables are kept as they stood: nothing said after that moves them)
         const msg = isBinary ? null : parseClientMsg(data.toString());
         if (msg?.t === 'ping') return send(msg.at === undefined ? { t: 'pong' } : { t: 'pong', at: msg.at });
         if (!msg) return room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
@@ -378,7 +392,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     }
   }, HEARTBEAT_MS);
   const sweeper = setInterval(() => guard('the sweep', sweep), SWEEP_MS);
-  const keeper = setInterval(() => keep((room) => room.phase === 'playing'), KEEP_MS);
+  const keeper = setInterval(() => keep(), KEEP_MS);
   heartbeat.unref();
   sweeper.unref();
   keeper.unref();
@@ -386,7 +400,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   const update = (): void => {
     updating = true;
     for (const room of rooms.values()) guard(`table ${room.code}`, () => (room.halt(), room.flush()));
-    keep(() => true);
+    keep(true);
     for (const ws of wss.clients) ws.close(CLOSE_UPDATE);
   };
 
@@ -406,7 +420,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     http.once('error', failed);
     http.listen(options.port ?? 8787, () => {
       const address = http.address();
-      ready({ port: typeof address === 'object' && address ? address.port : 0, kept: !!rounds, accounts: !!accounts, rooms, sweep, keep: () => keep((room) => room.phase === 'playing'), update, close });
+      ready({ port: typeof address === 'object' && address ? address.port : 0, kept: !!rounds, accounts: !!accounts, rooms, sweep, keep: () => keep(), update, close });
     });
   });
 }
@@ -471,5 +485,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const hasClient = existsSync(fileURLToPath(new URL('../dist/index.html', import.meta.url)));
   console.log(`nertz server on http://localhost:${server.port}${hasClient ? '' : ' (websocket only: no dist/ build)'}${server.kept ? `, keeping rounds${server.accounts ? ' and accounts' : ''}` : ''}`);
   // Stopped to be started anew (a deploy): the tables are kept, and the windows have a moment to be told before their sockets are cut.
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => (server.update(), void setTimeout(() => void server.close().then(() => process.exit(0)), UPDATE_MS)));
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => (guard('stopping for an update', server.update), void setTimeout(() => void server.close().then(() => process.exit(0)), UPDATE_MS)));
 }
