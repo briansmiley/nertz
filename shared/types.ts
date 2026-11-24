@@ -356,9 +356,17 @@ export interface Versus {
   /** Rounds they scored more than the other did, and rounds the other scored more (the rest were level). */
   ahead: number;
   behind: number;
+  /**
+   * How far ahead of the other they finished, on average over those rounds: the places between them over the size of
+   * the table less one, a tie counting half (−1 to 1; 0 with no rounds).
+   */
+  edge: number;
   /** Everything they scored in those rounds, and everything the other did. */
   points: number;
   theirs: number;
+  /** Times they sniped the other in those rounds, and times the other sniped them. */
+  snipes: number;
+  sniped: number;
 }
 
 /** Someone's page, as someone signed in sees it (`GET /stats/<handle>`): the name they go by, their record, and yours against them (null on your own). */
@@ -367,6 +375,17 @@ export interface Page {
   /** The picture they put up (server/pictures.ts), if they did: never Google's, as at a table. */
   picture: string | null;
   stats: Stats;
+  versus: Versus | null;
+}
+
+/**
+ * Someone you follow (`GET /profile/following`): the name they go by; where their page is, their picture, and you
+ * against them over every round, but for a page that is theirs alone (null, each of them).
+ */
+export interface Followed {
+  name: string | null;
+  handle: string | null;
+  picture: string | null;
   versus: Versus | null;
 }
 

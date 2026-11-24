@@ -1,8 +1,8 @@
 // Screens around the table: home, lobby, round results.
 import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount, waysIn } from './account';
-import { goHome, showPage, useAddressed } from './address';
+import { goBack, showPage, useAddressed, type Addressed } from './address';
 import { SignIn } from './SignIn';
-import { Profile, Theirs } from './Profile';
+import { Follow, FollowingList, Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
@@ -52,11 +52,11 @@ export function App() {
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (Whose it is, yours or not, is not known until the server says who is signed in.)
-  if (!room && page && page !== signedInAs(account)?.handle) return account === 'unknown' ? null : <Someone handle={page} />;
+  if (!room && page && page.handle !== signedInAs(account)?.handle) return account === 'unknown' ? null : <Someone handle={page.handle} />;
   if (!room) {
     return (
       <>
-        <Home error={net.error} busy={net.status !== 'idle'} yours={page !== null} />
+        <Home error={net.error} busy={net.status !== 'idle'} yours={page} />
         <Corner />
       </>
     );
@@ -116,7 +116,7 @@ export function App() {
 function Someone({ handle }: { handle: string }) {
   const account = useAccount();
   const ways = waysIn(account);
-  const home = <Back onClick={goHome} />;
+  const home = <Back onClick={() => goBack()} />;
   return (
     <main className="solo">
       <Pad>{signedInAs(account) ? <Theirs handle={handle} head={home} /> : ways ? <SignIn ways={ways} head={home} /> : null}</Pad>
@@ -466,8 +466,8 @@ function Avatar({ image, name }: { image: string | null; name: string | null }) 
   return <i aria-hidden="true">{[...name][0]!.toUpperCase()}</i>;
 }
 
-/** The home page; `yours`, with the pad turned over to your page (the address is yours: `useAddressed`). */
-function Home({ error, busy, yours }: { error: string | null; busy: boolean; yours: boolean }) {
+/** The home page; `yours`, with the pad turned over to your page, or on it who you follow (the address is yours: `useAddressed`). */
+function Home({ error, busy, yours }: { error: string | null; busy: boolean; yours: Addressed | null }) {
   const invited = roomInUrl();
   /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. */
   const [name, setName] = useState(rememberedName);
@@ -493,8 +493,8 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
   useEffect(() => {
     if (signedIn && wayIn) (setWayIn(false), showPage(signedIn.handle));
   }, [signedIn, wayIn]);
-  /** The side of the pad up: the form, your page, or the way in. */
-  const side = yours && signedIn ? 'page' : wayIn && ways ? 'in' : 'form';
+  /** The side of the pad up: the form, your page, who you follow, or the way in. */
+  const side = yours && signedIn ? (yours.following ? 'following' : 'page') : wayIn && ways ? 'in' : 'form';
   /** Sign in: the ways in, on the pad; or straight to Google, where it is the only way. */
   const signInNow = () => (ways?.length === 1 && ways[0] === 'google' ? void signIn() : setWayIn(true));
   const [code, setCode] = useState(invited);
@@ -537,8 +537,10 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
       </div>
 
       <Pad side={side}>
-        {side === 'page' && signedIn ? (
-          <Profile account={signedIn} head={<Back onClick={goHome} />} />
+        {side === 'following' && signedIn ? (
+          <FollowingList head={<Back onClick={() => goBack(signedIn.handle)} />} />
+        ) : side === 'page' && signedIn ? (
+          <Profile account={signedIn} head={<Back onClick={() => goBack()} />} />
         ) : side === 'in' && ways ? (
           <SignIn ways={ways} head={<Back onClick={() => setWayIn(false)} />} />
         ) : (
@@ -760,6 +762,7 @@ function Sitters({ room }: { room: RoomView }) {
         )}
       </span>
       <span className="deeds">
+        {p.handle && <Follow handle={p.handle} name={p.name} small />}
         {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
         {me?.isHost && p.id !== room.me && <Unseat who={p} />}
       </span>
@@ -949,6 +952,7 @@ function Results({ room }: { room: RoomView }) {
                   <Name host={p?.isHost} className="nm">
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{s.name}</Named>}
                   </Name>
+                  {p?.handle && <Follow handle={p.handle} name={p.name} small />}
                   {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
@@ -986,6 +990,7 @@ function Results({ room }: { room: RoomView }) {
                     <Name host={p.isHost} className="nm">
                       <Named who={p}>{p.name}</Named>
                     </Name>
+                    {p.handle && <Follow handle={p.handle} name={p.name} small />}
                     {!p.bot && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                     {me?.isHost && p.id !== room.me && <Unseat who={p} />}
                     </span>

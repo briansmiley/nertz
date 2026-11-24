@@ -1,10 +1,11 @@
 // One's own profile, by one's cookie (server/accounts.ts): GET it, PUT a new name to go by, a handle of one's own (where
 // one's page is), or whether one's page is private (any of them, together or not), DELETE the account; and at
-// PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it. With the account goes everything
-// kept as theirs, their picture too; the rounds they played and the reports they sent stay, as nobody's.
+// PICTURE_PATH, PUT a picture of oneself (the image itself, as the body) or DELETE it; and at FOLLOWING_PATH, GET who
+// one follows, or at FOLLOWING_PATH/<handle> PUT to follow whoever's page that is or DELETE to unfollow them. With the
+// account goes everything kept as theirs, their picture and who they follow too (and who follows them); the rounds they played and the reports they sent stay, as nobody's.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanName, handleOf } from '../shared/protocol';
-import type { Account } from '../shared/types';
+import type { Account, Followed } from '../shared/types';
 import type { Accounts } from './accounts';
 import { MAX_SENT_BYTES, type Pictures } from './pictures';
 import { transaction, type Db } from './db';
@@ -13,6 +14,7 @@ import type { Rounds } from './rounds';
 
 export const PROFILE_PATH = '/profile';
 export const PICTURE_PATH = '/profile/picture';
+export const FOLLOWING_PATH = '/profile/following';
 /** A name, and room to spare. */
 const MAX_BODY_BYTES = 1024;
 
@@ -36,6 +38,7 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     const json = (status: number, body: unknown): void => void res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
     const method = req.method ?? 'GET';
     if (path === PICTURE_PATH) return picture(req, res, json);
+    if (path === FOLLOWING_PATH || path.startsWith(`${FOLLOWING_PATH}/`)) return following(req, res, path, json);
     if (method !== 'GET' && method !== 'PUT' && method !== 'DELETE') return void res.writeHead(405, { allow: 'GET, PUT, DELETE' }).end();
     if (method !== 'GET' && req.headers.origin !== home) return json(403, null);
     const said = method === 'PUT' ? await read(req) : null;
@@ -73,6 +76,30 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
     const forgotten = await accounts.signOut(req.headers).catch((err: unknown) => (console.error('profile: signing out a deleted account', err), []));
     res.writeHead(204, { 'cache-control': 'no-store', 'set-cookie': forgotten }).end();
   };
+
+  /**
+   * GET who you follow (with you against each one, for a page that is not theirs alone); PUT someone's handle (in any case) to follow them, DELETE it to unfollow them: answered with who
+   * you follow as it now is. Only someone whose page you can see is anyone to follow: a handle that is nobody's, or a
+   * private page's, is 404, as at `/stats/<handle>`; your own, 400. Unfollowing is answered alike whoever the handle is.
+   */
+  async function following(req: IncomingMessage, res: ServerResponse, path: string, json: (status: number, body: unknown) => void): Promise<void> {
+    const method = req.method ?? 'GET';
+    const at = path === FOLLOWING_PATH ? null : path.slice(FOLLOWING_PATH.length + 1);
+    if (at === null ? method !== 'GET' : method !== 'PUT' && method !== 'DELETE') return void res.writeHead(405, { allow: at === null ? 'GET' : 'PUT, DELETE' }).end();
+    if (method !== 'GET' && req.headers.origin !== home) return json(403, null);
+    const me = await accounts.who(req.headers);
+    if (!me) return json(401, { ways: accounts.ways });
+    const handle = at === null ? null : handleOf(at);
+    const them = handle === null ? null : accounts.whose(handle);
+    if (method === 'PUT') {
+      if (!them || (them.private && them.id !== me.id)) return json(404, null);
+      if (them.id === me.id) return json(400, null);
+      accounts.follow(me.id, them.id, true);
+    }
+    if (method === 'DELETE' && them) accounts.follow(me.id, them.id, false);
+    const followed: Followed[] = accounts.following(me.id).map(({ id, name, handle, picture }) => ({ name, handle, picture, versus: handle && rounds ? rounds.versus(me.id, id) : null }));
+    json(200, followed);
+  }
 
   /** PUT a picture of yourself, or DELETE yours: answered with your profile as it now is. */
   async function picture(req: IncomingMessage, res: ServerResponse, json: (status: number, body: unknown) => void): Promise<void> {

@@ -104,6 +104,16 @@ const MIGRATIONS: string[] = [
   // Whether they chose their handle themselves (PUT /profile). Until they do it is the one made for them, from their
   // name, and a profile made with no name has its handle follow the first name it is given (server/accounts.ts).
   `alter table profile add column handle_chosen integer not null default 0 check (handle_chosen in (0, 1));`,
+  // Who someone follows (server/profile.ts): one way, theirs alone to follow and unfollow, and nothing the one followed
+  // is asked or told. Both are rows of Better Auth's `user`, as for `hand`, and go with either account
+  // (server/accounts.ts). (Not declared as rows of `profile`: an account deleted by hand, with foreign keys off, would
+  // leave rows that a later migration's check refuses.)
+  `create table follow (
+     account text not null,
+     followed text not null,
+     primary key (account, followed),
+     check (account <> followed)
+   ) strict, without rowid;`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

@@ -179,11 +179,13 @@
 }
 
 .seats .standup,
-.seats .unseat {
+.seats .unseat,
+.seats .follow {
   margin-left: 0;
 }
 
-.seats .standup svg {
+.seats .standup svg,
+.seats .follow svg {
   width: 16px;
   height: 16px;
 }

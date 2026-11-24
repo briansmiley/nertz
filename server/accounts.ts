@@ -56,9 +56,16 @@ export interface Accounts {
   setPrivate(account: string, on: boolean): void;
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
   repicture(account: string, id: string | null): string | null;
+  /**
+   * Who `account` follows, by name: who each one is, and where their page is and their picture, but for a page that is
+   * theirs alone (and one of those with no name to list it by is not listed).
+   */
+  following(account: string): { id: string; name: string | null; handle: string | null; picture: string | null }[];
+  /** `account` follows `followed`, or unfollows them. */
+  follow(account: string, followed: string, on: boolean): void;
   /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
   signOut(headers: IncomingHttpHeaders): Promise<string[]>;
-  /** Everything accounts keep of `account`: its profile, its sessions, its link to Google, and it. (Run it in a transaction, with whatever else of theirs goes too.) */
+  /** Everything accounts keep of `account`: its profile, whoever it follows and whoever follows it, its sessions, its link to Google, and it. (Run it in a transaction, with whatever else of theirs goes too.) */
   forget(account: string): void;
 }
 
@@ -292,7 +299,13 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   const rehandle = db.prepare('update profile set handle = ?, handle_chosen = 1 where account = ?');
   const setPrivate = db.prepare('update profile set private = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
-  const forgets = ['delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
+  // (A private page's handle is not said even to whoever follows it, as it is not at a table.)
+  const following = db.prepare(
+    'select profile.account as id, name, case when private then null else handle end as handle, case when private then null else picture end as picture from follow join profile on profile.account = follow.followed where follow.account = ? and not (private and name is null) order by lower(coalesce(name, handle)), handle',
+  );
+  const follow = db.prepare('insert into follow (account, followed) values (?, ?) on conflict do nothing');
+  const unfollow = db.prepare('delete from follow where account = ? and followed = ?');
+  const forgets = ['delete from follow where ? in (account, followed)', 'delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
   const auth = betterAuth(config);
   const handler = toNodeHandler(auth);
   return {
@@ -335,6 +348,9 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       setPicture.run(id, account);
       return had;
     },
+    following: (account) =>
+      (following.all(account) as { id: string; name: string | null; handle: string | null; picture: string | null }[]).map((f) => ({ ...f, picture: f.picture && pictureUrl(f.picture) })),
+    follow: (account, followed, on) => void (on ? follow : unfollow).run(account, followed),
     signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
     forget: (account) => forgets.forEach((f) => f.run(account)),
   };

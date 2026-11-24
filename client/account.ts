@@ -1,10 +1,11 @@
 // Who is signed in on this browser, and who they are at the table, as the server says (server/profile.ts). Signing in
 // is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
-// nothing of its own: it asks. The same for their record (`/stats`), someone's page (`/stats/<handle>`), and for an
-// admin how much the game is played (`/usage`).
+// nothing of its own: it asks. The same for their record (`/stats`), someone's page (`/stats/<handle>`), who they follow
+// (`/profile/following`), and for an admin how much the game is played (`/usage`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { goHome, moved, pageIn } from './address';
-import type { Account, Among, Page, Stats, Usage, Versus, Way } from '../shared/types';
+import { addressIn, goBack, moved } from './address';
+import { handleOf } from '../shared/protocol';
+import type { Account, Among, Followed, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
 /**
  * `unknown` until the server has answered; `off` when there is no signing in (it keeps no accounts, or gave no good
@@ -122,7 +123,7 @@ export async function enterCode(email: string, otp: string): Promise<Entered> {
 /** Off your own page, if it is up: signed out, it is nobody's you can see. */
 function leaveYourPage(): void {
   const you = signedIn(signed);
-  if (you && pageIn(location.pathname) === you.handle) goHome();
+  if (you && addressIn(location.pathname)?.handle === you.handle) goBack();
 }
 
 export async function signOut(): Promise<void> {
@@ -214,9 +215,10 @@ export function readStats(status: number, body: unknown): Stats | null {
 function readVersus(body: unknown): Versus | null {
   const v = body as Partial<Record<keyof Versus, unknown>> | null;
   if (!v) return null;
-  const { rounds, ahead, behind, points, theirs } = v;
-  if (!whole(rounds) || !whole(ahead) || !whole(behind) || !whole(points) || !whole(theirs)) return null;
-  return { rounds, ahead, behind, points, theirs };
+  const { rounds, ahead, behind, edge, points, theirs, snipes, sniped } = v;
+  const signedShare = (n: unknown): n is number => typeof n === 'number' && n >= -1 && n <= 1;
+  if (!whole(rounds) || !whole(ahead) || !whole(behind) || !signedShare(edge) || !whole(points) || !whole(theirs) || !whole(snipes) || !whole(sniped)) return null;
+  return { rounds, ahead, behind, edge, points, theirs, snipes, sniped };
 }
 
 /**
@@ -277,6 +279,71 @@ export function usePage(handle: string, among: Among): Page | 'nobody' | 'none' 
     return () => void (stale = true);
   }, [handle, among, who]);
   return page?.of === handle ? page.page : undefined;
+}
+
+/**
+ * What an answer about who you follow comes to: null for none to show (nobody signed in, no good answer). Where a page
+ * is theirs alone, nothing but their name is heard.
+ */
+export function readFollowing(status: number, body: unknown): Followed[] | null {
+  if (status !== 200 || !Array.isArray(body)) return null;
+  const read = (f: unknown): Followed | null => {
+    const v = f as { name?: unknown; handle?: unknown; picture?: unknown; versus?: unknown } | null;
+    if (!v || (v.name !== null && typeof v.name !== 'string')) return null;
+    const name = v.name || null;
+    if (v.handle === null) return { name, handle: null, picture: null, versus: null };
+    if (typeof v.handle !== 'string' || handleOf(v.handle) !== v.handle) return null;
+    const versus = v.versus === null ? null : readVersus(v.versus);
+    return v.versus !== null && !versus ? null : { name, handle: v.handle, picture: ownPicture(v.picture), versus };
+  };
+  const list = body.map(read);
+  return list.every((f) => f !== null) ? list : null;
+}
+
+const FOLLOWING = `${PROFILE}/following`;
+/** Who you follow as last heard, and who you are. */
+let following: { of: string; list: Followed[] } | null = null;
+const followingListeners = new Set<() => void>();
+const subscribeFollowing = (l: () => void): (() => void) => (followingListeners.add(l), () => void followingListeners.delete(l));
+/** How often who you follow has been asked about: only the last answer is heard (a follow answered after a later unfollow must not undo it). */
+let followingAsks = 0;
+/** Whose following is being asked for just now: everything that shows it, come up together, asks once. */
+let askingFollowing: string | null = null;
+
+/** Asks who `who` follows, or (`handle`, `on`) follows or unfollows someone: whether the server took it. */
+async function askFollowing(who: string, change?: { handle: string; on: boolean }): Promise<boolean> {
+  const n = ++followingAsks;
+  const res = await fetch(change ? `${FOLLOWING}/${change.handle}` : FOLLOWING, { method: change ? (change.on ? 'PUT' : 'DELETE') : 'GET', credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
+  const list = res && readFollowing(res.status, await res.json().catch(() => null));
+  if (!list) return false;
+  if (n === followingAsks && signedIn(signed)?.id === who) {
+    following = { of: who, list };
+    for (const l of followingListeners) l();
+  }
+  return true;
+}
+
+/** Whoever's page `handle` is, followed or unfollowed: whether it was taken. */
+export async function follow(handle: string, on: boolean): Promise<boolean> {
+  const who = signedIn(signed)?.id;
+  return !!who && (await askFollowing(who, { handle, on }));
+}
+
+/**
+ * Who whoever is signed in follows, asked for afresh each time something that shows it comes up (what was last heard
+ * staying up meanwhile): null until it is known, and if there is none to know.
+ */
+export function useFollowing(): Followed[] | null {
+  const who = signedIn(useAccount())?.id ?? null;
+  const known = useSyncExternalStore(subscribeFollowing, () => following);
+  useEffect(() => {
+    if (!who || askingFollowing === who) return;
+    askingFollowing = who;
+    void askFollowing(who).finally(() => {
+      if (askingFollowing === who) askingFollowing = null;
+    });
+  }, [who]);
+  return known?.of === who ? known.list : null;
 }
 
 /**

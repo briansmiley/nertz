@@ -350,6 +350,101 @@ describe('profile', () => {
     });
   });
 
+  describe('following', () => {
+    const FOLLOWING = '/profile/following';
+    const followingOf = async (browser: Browser): Promise<unknown> => (await browser.ask(FOLLOWING)).json();
+    const follow = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FOLLOWING}/${handle}`, undefined, { method: 'PUT' });
+    const unfollow = (browser: Browser, handle: string): Promise<Response> => browser.ask(`${FOLLOWING}/${handle}`, undefined, { method: 'DELETE' });
+    const NONE = { rounds: 0, ahead: 0, behind: 0, edge: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 };
+    /** Someone followed, as listed: a page anyone signed in can see, with you against them (no rounds here), or one that is theirs alone. */
+    const seen = (name: string, handle: string) => ({ name, handle, picture: null, versus: NONE });
+    const hidden = (name: string) => ({ name, handle: null, picture: null, versus: null });
+    const CY: Googler = { sub: 'google-789', email: 'cy@example.com', name: 'Cyrus Young' };
+
+    it('is by their handle (in any case), and undone again, one way: the one followed is asked nothing', async () => {
+      fakeGoogle([ADA, BOB, CY]);
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      await signedIn(CY);
+      expect(await followingOf(ada)).toEqual([]);
+      const followed = await follow(ada, 'Bob');
+      expect(followed.status).toBe(200);
+      expect(await followed.json()).toEqual([seen('Bob', 'bob')]);
+      expect((await follow(ada, 'bob')).status).toBe(200); // (twice is once)
+      expect(await (await follow(ada, 'cyrus')).json()).toEqual([
+        seen('Bob', 'bob'),
+        seen('Cyrus', 'cyrus'),
+      ]);
+      expect(await followingOf(bob)).toEqual([]);
+      expect(await (await unfollow(ada, 'bob')).json()).toEqual([seen('Cyrus', 'cyrus')]);
+      expect(await (await unfollow(ada, 'bob')).json()).toEqual([seen('Cyrus', 'cyrus')]); // (and unfollowing twice is once)
+      expect(rows('follow')).toHaveLength(1);
+    });
+
+    it('lists one whose page is private by name alone, and nobody to follow', async () => {
+      fakeGoogle([ADA, BOB, CY]);
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      const cy = await signedIn(CY);
+      await follow(ada, 'bob');
+      await bob.ask('/profile', { private: true }, { method: 'PUT' });
+      await cy.ask('/profile', { private: true }, { method: 'PUT' });
+      const listed = await ada.ask(FOLLOWING);
+      expect(await listed.clone().json()).toEqual([hidden('Bob')]);
+      expect(await listed.text()).not.toContain('"bob"'); // (where a private page is, it never says)
+      expect((await follow(ada, 'cyrus')).status).toBe(404); // (as for a handle that is nobody's)
+      expect((await unfollow(ada, 'cyrus')).status).toBe(200); // (and unfollowing is answered alike)
+      expect(await followingOf(ada)).toEqual([hidden('Bob')]);
+      await bob.ask('/profile', { private: false }, { method: 'PUT' });
+      expect(await followingOf(ada)).toEqual([seen('Bob', 'bob')]);
+    });
+
+    it('is nobody\'s for nobody signed in, and not of yourself, of nobody, or from another site', async () => {
+      const ada = await signedIn(ADA);
+      await signedIn(BOB);
+      const guest = new Browser(server.port);
+      expect((await guest.ask(FOLLOWING)).status).toBe(401);
+      expect((await follow(guest, 'bob')).status).toBe(401);
+      expect((await unfollow(guest, 'bob')).status).toBe(401);
+      expect((await follow(ada, 'ada')).status).toBe(400);
+      expect((await follow(ada, 'nobody-here')).status).toBe(404);
+      expect((await follow(ada, 'x')).status).toBe(404); // (no handle at all)
+      expect((await ada.ask(`${FOLLOWING}/bob`, undefined, { method: 'PUT', origin: 'https://evil.example' })).status).toBe(403);
+      expect((await ada.ask(`${FOLLOWING}/bob`, undefined, { method: 'DELETE', origin: 'https://evil.example' })).status).toBe(403);
+      expect((await ada.ask(FOLLOWING, undefined, { method: 'PUT' })).status).toBe(405);
+      expect((await ada.ask(`${FOLLOWING}/bob`)).status).toBe(405);
+      expect(await followingOf(ada)).toEqual([]);
+      expect(rows('follow')).toEqual([]);
+    });
+
+    it('says you against each one, over every round you both played', async () => {
+      const ada = await signedIn(ADA);
+      await signedIn(BOB);
+      const [a, b] = rows('user').map((u) => u.id as string);
+      for (const [round, adas, bobs] of [
+        [1, 12, 5],
+        [2, 3, 9],
+        [3, 7, 4],
+      ] as const) {
+        write('insert into round (id, created_at, game, code, number, ending, ms) values (?, 0, \'g\', \'ABCD\', ?, \'nertz\', 1000)', round, round);
+        write('insert into hand (round, seat, player, name, account, played, nertz_left, delta, nertz) values (?, 0, 0, \'Ada\', ?, 0, 0, ?, 0)', round, a!, adas);
+        write('insert into hand (round, seat, player, name, account, played, nertz_left, delta, nertz) values (?, 1, 1, \'Bob\', ?, 0, 0, ?, 0)', round, b!, bobs);
+      }
+      expect(await (await follow(ada, 'bob')).json()).toEqual([{ ...seen('Bob', 'bob'), versus: { rounds: 3, ahead: 2, behind: 1, edge: 1 / 3, points: 22, theirs: 18, snipes: 0, sniped: 0 } }]);
+    });
+
+    it('goes with either account', async () => {
+      const ada = await signedIn(ADA);
+      const bob = await signedIn(BOB);
+      await follow(ada, 'bob');
+      await follow(bob, 'ada');
+      expect(rows('follow')).toHaveLength(2);
+      expect((await bob.ask('/profile', undefined, { method: 'DELETE' })).status).toBe(204);
+      expect(rows('follow')).toEqual([]);
+      expect(await followingOf(ada)).toEqual([]);
+    });
+  });
+
   it('is made for anyone who signed up before there were profiles', async () => {
     await signedIn(ADA);
     await server.close();
@@ -365,6 +460,7 @@ describe('profile', () => {
     // (The database as it was before the migration that makes them: and one with no name, from signing in by email.)
     write("update profile set name = null where name = '李'");
     write("update \"user\" set createdAt = '2026-01-0' || (case email when 'ada@example.com' then 1 when 'bob@example.com' then 2 when 'ada2@example.com' then 3 else 4 end) || 'T00:00:00.000Z'");
+    write('drop table follow');
     write('alter table profile drop column handle_chosen');
     write('alter table profile drop column private');
     write('drop index profile_handle');
@@ -382,6 +478,7 @@ describe('profile', () => {
     await ada.ask('/profile', { private: true }, { method: 'PUT' });
     await server.close();
     // (The database as it was before the migration that adds the switch.)
+    write('drop table follow');
     write('alter table profile drop column handle_chosen');
     write('alter table profile drop column private');
     write('pragma user_version = 6');
