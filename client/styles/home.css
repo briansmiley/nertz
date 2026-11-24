@@ -271,7 +271,9 @@
 @media (max-width: 760px) {
   .home {
     grid-template-columns: 1fr;
-    align-content: center;
+    /* From the top, not centred: the pad's sides are not one height (your page is short until its figures come, then
+       long), and the name over it stays where it is as the pad turns. */
+    align-content: start;
   }
 
   .spread {
