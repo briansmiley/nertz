@@ -2,9 +2,9 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useDismiss } from './dismiss';
 
 /**
- * One of a few choices: the one chosen, and pressed, all of them on a slip over what is under it (above it where there
- * is no room below), put away by choosing, by Esc, or by a press anywhere else. `label` says what is chosen, `said` an
- * option in words, `show` how it is drawn (its words, unless told otherwise); `lead` goes before the one chosen.
+ * One of a few choices. The one chosen; pressed, all of them on a slip over what is under it (above it where there is
+ * no room below), put away by choosing, by Esc, or by a press anywhere else. `label` names what is being chosen, `said`
+ * an option in words, `show` how it is drawn (its words, unless told otherwise); `lead` goes before the one chosen.
  */
 export function Dropdown<T extends string>({
   value,
