@@ -137,29 +137,45 @@ describe('what stands round the cards', () => {
     }
   });
 
-  it('has the clock on a phone on its side with five at the table: failing its other places, in line after the menu\'s button', () => {
+  it('has the clock in line after the menu\'s button but on a phone held upright, where it leaves your own line and the pills as whole as they are without it', () => {
     // (Five at the table on a phone on its side, under a browser's bar: the hands down the left took the place above
-    // the menu's button, the felt the one after the chat's, and there was no clock.)
-    const low: [number, number][] = [[844, 340], [852, 330], [667, 320], ...WINDOWS.filter(([w, h]) => w > h && h < 500)];
-    for (const [W, H] of low) {
-      for (const keep of insetsOf(W, H)) {
-        for (const chat of [CHATS.out, CHATS.voice]) {
-          for (const vote of [false, true]) {
-            const fit: Fittings = { chat, clock: true, vote, name: nameWidth('Brian', '120') };
-            const L = computeLayout(W, H, longPiles(5, 8), 0, 'live', null, keep, [], fit);
-            const where = `${W}x${H}${keep.l ? ', notched' : ''}, ${chat.join(' ')}${vote ? ', vote' : ''}`;
-            expect(L.at.shape, where).toBe('low');
-            expect(L.clock, where).not.toBeNull();
-            expect(wrong(L, W, H, keep, vote), where).toEqual([]);
+    // the menu's button, the felt the one after the chat's, and there was no clock. Then, put in line after the
+    // button at 667x320, it cut your own line down to the picture and the total.)
+    const sizes: [number, number][] = [[667, 320], [844, 340], [852, 330], [932, 430], ...WINDOWS.filter(([w, h]) => w > h)];
+    // Where there is the room for it there, by the hand and your line, this is where it is.
+    const after: [number, number][] = [[844, 340], [852, 330], [844, 390], [932, 430], [1024, 520], [1280, 600], [1366, 625], [1280, 800], [1920, 1080]];
+    for (const [W, H] of sizes) {
+      for (const n of [2, 5, 6, 7, 8]) {
+        const game = longPiles(n, 8);
+        for (const keep of insetsOf(W, H)) {
+          for (const chat of [CHATS.out, CHATS.voice]) {
+            for (const vote of [false, true]) {
+              const fit: Fittings = { chat, clock: true, vote, name: nameWidth('Brian', '120') };
+              const L = computeLayout(W, H, game, 0, 'live', null, keep, [], fit);
+              const bare = computeLayout(W, H, game, 0, 'live', null, keep, [], { ...fit, clock: false });
+              const where = `${W}x${H}, ${n} players${keep.l ? ', notched' : ''}, ${chat.join(' ')}${vote ? ', vote' : ''}`;
+              expect(L.at.shape, where).not.toBe('tall');
+              expect(wrong(L, W, H, keep, vote), where).toEqual([]);
+              // The clock costs your line and the pills nothing: as much of them is written as without it.
+              expect(L.name?.full, where).toBe(bare.name?.full);
+              expect(L.name?.w ?? 0, where).toBeGreaterThanOrEqual(Math.min(bare.name?.w ?? 0, fit.name));
+              expect(L.stuck!.w, where).toBeGreaterThanOrEqual(bare.stuck!.w);
+              if (vote) expect(L.vote!.w, where).toBeGreaterThanOrEqual(bare.vote!.w);
+              // From a small phone on its side up, your line is written whole.
+              if (W >= 667) {
+                expect(L.name, where).not.toBeNull();
+                if (!L.name!.full) expect(L.name!.w, where).toBe(fit.name);
+              }
+              if (after.some(([w, h]) => w === W && h === H)) {
+                expect(L.clock, where).not.toBeNull();
+                expect(L.clock!.x, where).toBeGreaterThan(L.at.knobs.x + L.at.knobs.w);
+                expect(L.clock!.y + L.clock!.h / 2, where).toBeCloseTo(L.at.knobs.y + L.at.knobs.h / 2);
+              }
+            }
           }
         }
       }
     }
-    // Where it is after the menu's button, it is in line with it.
-    const fit: Fittings = { chat: CHATS.voice, clock: true, vote: false, name: nameWidth('Brian', '120') };
-    const L = computeLayout(844, 340, longPiles(5, 8), 0, 'live', null, { l: 47, r: 47, b: 21 }, [], fit);
-    expect(L.clock!.x).toBeGreaterThan(L.at.knobs.x + L.at.knobs.w);
-    expect(L.clock!.y + L.clock!.h / 2).toBeCloseTo(L.at.knobs.y + L.at.knobs.h / 2);
   });
 
   it('writes your own line whole on a phone on its side and wider: clear of the count on your nertz pile, it moves left rather than be cut short', () => {

@@ -617,7 +617,8 @@ const ownWidth = (W: number, H: number, tall: boolean): number =>
 // The buttons in the corners, the round's clock, your own name, "I'm stuck" and the vote beside it are placed here
 // too, by one rule: each has a place of its own, clear of the others and inside the window, and your cards are then
 // laid out round them (a work pile fans down as far as the first thing under it, and no further). When a window has
-// not the room for all of it, what gives way is said here as well: the clock first, then your name.
+// not the room for all of it, what gives way is said here as well: the clock first, then your name. (The clock stands
+// only where your line and the pills are as whole as they are without it: `computeLayout`.)
 
 /** One of the chat's buttons (Chat.tsx), by what is on it: the word, an icon, an icon and a count (of one digit, or two), the microphone, the small badge that says the sound is off. */
 export type ChatButton = 'text' | 'icon' | 'count' | 'count2' | 'mute' | 'badge';
@@ -647,7 +648,7 @@ const CHAT_W: Record<ChatButton, readonly [number, number]> = { text: [49, 57], 
 const CHAT = { gap: 6, h: 29, barH: 36 } as const;
 /** The one button of the corner, the menu (Settings.tsx `Corner`): `size` across. */
 export const KNOB = { size: 36 } as const;
-/** The room the clock is given: above the menu's button or in line after it (large figures), or in line after the chat's buttons (small ones). */
+/** The room the clock is given: in line after the menu's button or above it (large figures), or in line after the chat's buttons (small ones). */
 const CLOCK = { above: { w: 58, h: 22 }, beside: { w: 44, h: 16 } } as const;
 /** "I'm stuck" and the vote: as small pills (`h` high, `gap` apart, each as wide as its longest wording; under `min` the wording is cut short; never lower than `low`) or, where there is room under your stock, full buttons. */
 export const PILL = { stuck: 124, vote: 112, h: 32, gap: 6, min: 84, low: 24, full: { h: 39, gap: 8, min: 150, drop: 16 } } as const;
@@ -661,7 +662,7 @@ export interface Corners {
   chatParts: number[];
   /** The menu's button: bottom left, or at the right of the bar across the top of an upright phone. */
   knobs: Rect;
-  /** The places the round's clock may stand, the best first: the table takes the first with nothing else there (`Layout.clock`). `small`: in small figures. */
+  /** The places the round's clock may stand, the best first: the table takes the first with nothing else there that leaves your line and the pills whole (`Layout.clock`). `small`: in small figures. */
   clocks: ClockAt[];
 }
 
@@ -675,8 +676,8 @@ export interface ClockAt extends Rect {
  * Upright, both are in the bar across the top, the chat's buttons from the left and the menu's from the right. When
  * the bar is too narrow for the chat's as they are there (larger, for a thumb), they are no larger than elsewhere, and
  * narrower still they are squeezed; the clock stands between them, by the menu's. Otherwise the chat is top left and the menu's button
- * bottom left; the clock would stand above that, or else after the chat's buttons, or else (on a phone on its side, where
- * the hands down the sides take both) in line after the menu's button.
+ * bottom left; the clock would stand in line after that, or else above it (where your hand or your line is in the way
+ * after it), or else after the chat's buttons.
  */
 export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit: Fittings = NO_FITTINGS): Corners {
   const H = fullH - keep.b;
@@ -700,10 +701,10 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
   }
   const chat: Rect = { x: Math.max(10, keep.l), y: 10, w: across(parts(0)), h: CHAT.h };
   const knobs: Rect = { x: Math.max(12, keep.l), y: H - 10 - KNOB.size, w: KNOB.size, h: KNOB.size };
+  const after = { x: knobs.x + knobs.w + 10, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
   const above = { x: knobs.x, y: knobs.y - 8 - CLOCK.above.h, ...CLOCK.above, small: false };
   const beside = { x: chat.x + chat.w + 8, y: chat.y + (chat.h - CLOCK.beside.h) / 2, ...CLOCK.beside, small: true };
-  const after = { x: knobs.x + knobs.w + 10, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
-  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? (shape === 'low' ? [above, beside, after] : [above, beside]) : [] };
+  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? [after, above, beside] : [] };
 }
 
 /** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
@@ -748,6 +749,8 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  *   the end of the nertz pile, or short of the count on the pile or a pill where one of them is in its row; where that
  *   would put it on the button, right after the button (or the clock in line after it), and only then cut short, by
  *   whatever is in its way (too little room for a name: none).
+ * - Where the clock is in line after the button, all of this starts after the clock instead. `computeLayout` puts it
+ *   there only where your line and the pills are then as whole as without it (otherwise it tries the clock's next place).
  * - The count on your nertz pile is placed first, and all of this keeps clear of it; where its place under the pile's
  *   corner is the menu's button, it stands at the top corner instead.
  */
@@ -1115,10 +1118,22 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   });
   // What stands by it is placed first, and the work piles fan down as far as that leaves them room.
   const at = corners(W, fullH, keep, fit);
-  // The clock stands in the first of its places where nothing of the table is: the felt, someone's hand and name, your own cards.
+  // The clock stands in the first of its places where nothing of the table is (the felt, someone's hand and name, your
+  // own cards), and that leaves your line and the pills as whole as they are without it: it gives way, not they.
   const taken = [...opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H })), ...(mine ? [{ x: handX, y: ownTop - 6, w: OWN_UNITS * ow, h: H - ownTop + 6 }] : [])];
-  const clock = at.clocks.find((c) => !taken.some((r) => meets(r, c, 4)) && !onFelt(felt, hw, c)) ?? null;
-  const by = mine ? furnish(W, H, keep, at, clock, fit, own, tray.x) : null;
+  const furnished = (c: ClockAt | null) => (mine ? furnish(W, H, keep, at, c, fit, own, tray.x) : null);
+  const bare = furnished(null);
+  const need = clamp(fit.name, NAME.min, NAME.max);
+  const whole = (f: Furniture | null): boolean => {
+    if (!f || !bare) return true;
+    const [n, b] = [f.name, bare.name];
+    const named = !b || (!!n && n.full === b.full && Math.min(n.w, need) >= Math.min(b.w, need));
+    return named && f.stuck.w >= bare.stuck.w && (!fit.vote || f.vote.w >= bare.vote.w);
+  };
+  const free = at.clocks.filter((c) => !taken.some((r) => meets(r, c, 4)) && !onFelt(felt, hw, c));
+  const placed = free.map((c) => ({ c, f: furnished(c) })).find(({ f }) => whole(f));
+  const clock = placed?.c ?? null;
+  const by = placed ? placed.f : bare;
   const me = mine ? placeHand(mine, { ...own, rooms: by?.rooms, countUp: by?.countUp }, cards) : null;
 
   // The middle's cards. In play only the top two of a pile are drawn: the one underneath stays visible while the next
