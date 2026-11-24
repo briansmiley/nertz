@@ -9,9 +9,9 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, yetToHear, type Rng } from '../shared/engine';
+import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
-import type { Account, BotLevel, GameState, Intent, Phase, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
+import type { Account, BotLevel, GameState, Intent, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, DEAL_STEP_MS, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -180,6 +180,15 @@ export class Room {
   private sittings = 0;
   private ids = 0;
   private state: GameState | null = null;
+  /**
+   * The rest of the round's deal, beside the hands on the table (`state.players`). A hand is its seat's for the round:
+   * shuffled once, at the deal or when someone first sits down there before the dealer's Start, and buried as deep as
+   * the round was dealt (`dealtTo`: to how many). Getting up before Start puts it aside here (`from`: who got up, a
+   * `Player.id`) and sitting down there puts it back, so nobody else's cards change, and nobody has other cards by
+   * getting up and sitting down again. Kept until Start (`go`), or a deal over.
+   */
+  private aside: { hand: PlayerState; from: number }[] = [];
+  private dealtTo = 0;
 
   private players: Player[] = []; // everyone in the room, in the order they came
   private conns = new Map<Conn, Player>();
@@ -302,7 +311,7 @@ export class Room {
         const who = msg.id === undefined ? player : this.players.find((p) => p.id === msg.id);
         if (!who || who.bot || who.out || (who !== player && player !== this.dealer)) return;
         // Someone getting up from their own cards in a round under way stands, and may sit back down until it is over.
-        // (Before the dealer's Start, and whoever deals standing someone else up, is for good: `upFrom`, below.)
+        // (Before the dealer's Start they give the seat up, their hand put aside; whoever deals standing someone else up is for good: `upFrom`, below.)
         if (who === player && this.holds(who) && !this.unplayed) {
           if (msg.on === !who.standing) return;
           if (msg.on) delete who.standing;
@@ -466,21 +475,23 @@ export class Room {
   }
 
   /**
-   * The cards of the round are dealt to everyone who is here. Also a second time, if someone sits down (or comes
-   * back) after the deal but before the dealer has said Start: nothing has been played, so the round is simply
-   * dealt again with them in it.
+   * The cards of the round are dealt to everyone who is here: at Start in the lobby or on the score sheet, and when
+   * whoever deals says to deal it over. Never otherwise: whoever sits down (or comes back) after the deal but before
+   * the dealer has said Start is dealt into it as it lies (`fill`).
    */
   private dealOut(): void {
     // The cards of whatever round there was are gone with it. So nobody is `out` any more (that is only ever said of
     // cards in play), and with no round on the queue sits down. Done here, where a round is replaced, and in `settle`,
     // where one ends: the only two places a round goes away, so that no caller has to remember.
     this.sendOff();
+    this.aside = [];
     this.seatQueue();
     const dealt = this.table.filter((p) => p.conn);
     this.snipes = [];
     for (const p of this.players) delete p.ready;
     for (const p of this.players) this.draw(p); // (whoever is on a lot with nothing drawn: dealt in or not, here or away)
     this.state = this.deal(dealt.map((p) => p.seat), this.rng);
+    this.dealtTo = dealt.length;
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!
@@ -506,6 +517,7 @@ export class Room {
   private go(player: Player): void {
     if (player !== this.dealer || this.state?.status.at !== 'ready' || this.players.filter((p) => this.inRound(p)).length < MIN_PLAYERS) return;
     this.state = startCountdown(this.state);
+    this.aside = []; // (from here on nobody sits down at a hand)
     this.timeRound(START_MS, () => this.opened());
     this.changed();
   }
@@ -834,6 +846,9 @@ export class Room {
   private seatFor(p?: Player): number | null {
     if (freeSeats(this.seats) === 0) return null;
     const free = (seat: number) => !this.players.some((q) => q.seat === seat);
+    // (Before any of that, the seat they got up from since the deal: sitting back down is back at the same cards.)
+    const left = p && this.aside.find((a) => a.from === p.id)?.hand.seat;
+    if (left !== undefined && free(left)) return left;
     const own = p && this.lastRound?.scores.find((l) => l.id === p.id)?.seat;
     if (own !== undefined && free(own)) return own;
     for (let seat = 0; seat < MAX_PLAYERS; seat++) if (free(seat)) return seat;
@@ -842,15 +857,19 @@ export class Room {
 
   /**
    * The one place where anyone sits down. Free seats go to those in the queue who are here, first come first (someone
-   * away keeps their place in it). Not while a round is being played: then when it is over. And cards that are dealt
-   * but not yet played are dealt again, if someone at the table has none: whoever sits down, or comes back, before
-   * the dealer's Start is in the round.
+   * away keeps their place in it). Not while a round is being played: then when it is over. And whoever sits down, or
+   * comes back, before the dealer's Start is in the round: their seat's hand goes on the table, the one put aside
+   * there (`aside`) or, the first time anyone has sat there since the deal, one shuffled now. No other hand is touched.
    */
   private fill(): void {
     if (this.roundOn) return;
     this.seatQueue();
-    const game = this.state;
-    if (this.phase === 'playing' && game && this.present >= MIN_PLAYERS && this.table.some((p) => p.conn && !game.players.some((g) => g.seat === p.seat))) this.dealOut();
+    if (!this.unplayed) return;
+    for (const p of this.table.filter((q) => q.conn && !this.holds(q))) {
+      const i = this.aside.findIndex((a) => a.hand.seat === p.seat);
+      const hand = i < 0 ? this.deal([p.seat], this.rng, this.dealtTo).players[0]! : this.aside.splice(i, 1)[0]!.hand;
+      this.state = withHands(this.state!, [...this.state!.players, hand]);
+    }
   }
 
   private seatQueue(): void {
@@ -877,21 +896,29 @@ export class Room {
   /**
    * The one place where anyone gets up from their cards in a round not over: stood up, left, or sent away (`out`, which
    * also says what becomes of them when it is). A card in their hand goes home first; and whoever remains may now all
-   * be stuck, or all have voted to end it. Before the dealer's Start nothing has been played, so if enough remain the
-   * cards are simply dealt again without them (which is a round gone: `dealOut` puts them where `out` says).
+   * be stuck, or all have voted to end it. Before the dealer's Start nothing has been played, so nothing lies there
+   * and nothing waits: their hand comes off the table and is put aside (`aside`), nobody else's is touched, and they
+   * are where `out` says at once.
    */
   private upFrom(p: Player, how: NonNullable<Player['out']>): void {
     this.letGo(p);
     p.out = how;
     delete p.standing; // (for good, now)
     if (gone(p)) this.social.left(p, this.players);
-    if (this.unplayed && this.present >= MIN_PLAYERS) return this.dealOut();
+    if (this.unplayed) {
+      const game = this.state!;
+      const hand = game.players.find((g) => g.seat === p.seat)!;
+      this.aside.push({ hand, from: p.id });
+      delete p.ready; // (ready for the hand they had, not whichever they sit down to)
+      this.state = withHands(game, game.players.filter((g) => g !== hand));
+      this.sendOff();
+    }
     this.fill(); // (whoever waits for a seat has the one this frees, once no round is being played)
     this.settle();
     this.changed();
   }
 
-  /** The round is over (or dealt over): whoever got up from their cards in it is where their `out` said, now. */
+  /** The round is over (or dealt over), or not yet started: whoever got up from their cards in it is where their `out` said, now. */
   private sendOff(): void {
     for (const p of this.players.filter((q) => q.out)) {
       if (p.out === 'stood') {
@@ -933,8 +960,13 @@ export class Room {
     return botAt(bot.level, this.state?.players.length ?? 2);
   }
 
+  /**
+   * Whoever deals seats a bot, and takes one off (`removeBot`): in the lobby, on the score sheet, and before their
+   * Start, never once it is pressed. A bot sits down and gets up the way a person does: before Start it is dealt its
+   * seat's hand (`fill`), and taken off it puts that hand aside (`gone`, `upFrom`). Nobody else's cards change.
+   */
   private addBot(by: Player, level: BotLevel): void {
-    if (by !== this.dealer || this.phase === 'playing') return;
+    if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed)) return;
     const seat = this.seatFor();
     if (seat === null) return;
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
@@ -943,6 +975,7 @@ export class Room {
     const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
     this.players.push(bot);
     this.sitDown(bot, seat);
+    this.fill(); // (before Start, its seat's hand goes on the table)
     this.changed();
   }
 
@@ -989,10 +1022,8 @@ export class Room {
 
   private removeBot(by: Player, seat: number): void {
     const player = this.players.find((p) => p.seat === seat);
-    if (by !== this.dealer || this.phase === 'playing' || !player?.bot) return;
-    this.remove(player, true); // (its line of the last round stays for the cards it left on the table, but off the score sheet: a bot sent away is gone)
-    this.fill(); // its seat is free: the first in the queue has it
-    this.changed();
+    if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed) || !player?.bot) return;
+    this.gone(player, 'kicked'); // (its line of the last round stays for the cards it left on the table, but off the score sheet: a bot sent away is gone)
   }
 
   /**

@@ -3,7 +3,7 @@
 // (Menu.tsx), the pause key, the card over a paused table and the "End round" button at the table all ask it here. One that
 // cannot be undone is asked first (`press`), wherever it was pressed: the menu or the score sheet.
 import { useSyncExternalStore } from 'react';
-import { dragsOn, endVote, inRound, isLive, plays, seatedPeople } from '../shared/engine';
+import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
 import { leave, pause, redeal, resetTable, sit } from './net';
@@ -22,13 +22,14 @@ export function canResume(room: RoomView): boolean {
 }
 
 /**
- * Standing up from your cards for now, or sitting back down: while a round is under way (from Start), if you play it.
- * Standing, you are as good as away; you sit back down by saying so, or by playing; and at the round's end you watch.
+ * Standing up from your cards, or sitting back down: from the deal until Nertz is called, if you play at the table.
+ * From Start it is for now: standing, you are as good as away; you sit back down by saying so, or by playing; and at
+ * the round's end you watch. Before Start you watch at once, and take a seat again as anyone watching does.
  * Null if neither is open to you; otherwise whether you are standing.
  */
 export function standing(room: RoomView): boolean | null {
   const me = meOf(room);
-  return room.phase === 'playing' && !!room.game && isLive(room.game) && !!me && plays(me) && !me.bot ? !!me.standing : null;
+  return room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
 }
 
 /** Can you deal the round over? Whoever deals, at any point of a round. */

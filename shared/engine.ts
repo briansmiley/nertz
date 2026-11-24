@@ -81,8 +81,10 @@ export const faceUp = (pile: WorkPile): AnyCard[] => pile.cards.slice(pile.down)
  * A small table buries fewer cards (`faceDown` in settings.ts): with two seats
  * no work pile has a face-down card (4 cards in the work piles, 35 in the
  * stock), with three they have 0/0/1/2 (7 and 32), from four up 0/1/2/3.
+ * (`dealtTo`: how many the round was dealt to, for a hand dealt into it
+ * afterwards (`withHands`): it is buried as deep as the others were.)
  */
-export function deal(seats: readonly number[], rng: Rng): GameState {
+export function deal(seats: readonly number[], rng: Rng, dealtTo = seats.length): GameState {
   const pick = (n: number) => Math.min(n - 1, Math.max(0, Math.floor(rng() * n)));
   const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const used = new Set<string>();
@@ -103,7 +105,7 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
     }
     const nertz = deck.splice(0, NERTZ_SIZE);
-    const work = faceDown(seats.length).slice(0, WORK_PILES).map((down): WorkPile => ({ cards: deck.splice(0, down + 1), down }));
+    const work = faceDown(dealtTo).slice(0, WORK_PILES).map((down): WorkPile => ({ cards: deck.splice(0, down + 1), down }));
     return { seat, nertz, work, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
@@ -357,6 +359,16 @@ function settleGrace(state: GameState): GameState {
 /** The deal is over (the server's deal timer fired): the work piles show their tops and the table waits for the dealer. */
 export function finishDeal(state: GameState): GameState {
   return state.status.at === 'dealing' ? { ...state, status: { at: 'ready' } } : state;
+}
+
+/**
+ * `hands` are the ones on the table of a round dealt and not yet started, with the middle's four slots for each. Until
+ * the dealer's Start nothing has been played, so a hand comes off with whoever gets up from it and goes on with whoever
+ * sits down there, and no other hand is touched. Same state from the count on: from then cards lie where they are.
+ */
+export function withHands(state: GameState, hands: readonly PlayerState[]): GameState {
+  if (state.status.at !== 'dealing' && state.status.at !== 'ready') return state;
+  return { ...state, players: hands.toSorted((a, b) => a.seat - b.seat), slots: Array.from({ length: SLOTS_PER_PLAYER * hands.length }, () => null) };
 }
 
 /** The dealer pressed Start: "1, 2, 3...". */

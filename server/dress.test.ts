@@ -195,13 +195,12 @@ describe('sitting down after the deal', () => {
     expect(seats()).toEqual([0, 1]);
     const dealtTo = room.game;
     expect(room.join(new FakeConn(), 'Late', 'tok-late', true)).toBeNull();
-    expect(seats()).toEqual([0, 1, 2]); // the round is dealt again, with them in it
-    expect(room.game).not.toBe(dealtTo);
-    expect(room.round).toBe(1); // and is the same round
+    expect(seats()).toEqual([0, 1, 2]); // they are dealt into the round
+    expect(room.game!.players.slice(0, 2)).toEqual(dealtTo!.players); // as it was dealt: nobody else's cards change
+    expect(room.round).toBe(1);
     vi.advanceTimersByTime(DEAL_MS); // the cards are down: the table waits for Start
     expect(room.join(new FakeConn(), 'Later', 'tok-later', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2, 3]);
-    vi.advanceTimersByTime(DEAL_MS); // (dealt over again: down once more)
     send(room, a, { t: 'go' });
     expect(room.join(new FakeConn(), 'Latest', 'tok-latest', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2, 3]); // "1, 2, 3" has been said: they watch this one
@@ -217,7 +216,7 @@ describe('coming back', () => {
     expect(room.join(new FakeConn(), 'P2', 'tok-another-window', true)).toBeNull(); // the name of someone away, and a new token
     expect(everyone()).toHaveLength(4);
     expect(everyone().filter((p) => p.name === 'P2').map((p) => [p.seat, p.connected])).toEqual([[2, false], [3, true]]); // prettier-ignore
-    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 3]); // (before Start: dealt in, to their own seat; the one away is not)
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2, 3]); // (before Start: dealt in, to their own seat; the one away keeps the cards they were dealt)
     expect(room.join(c, 'P2', 'tok-0002')).toBeNull(); // and the one who was away is back by their token: in their seat
     expect(kept(2).seat).toBe(2);
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2, 3]);

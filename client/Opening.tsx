@@ -2,7 +2,7 @@
 // button while the table waits, "1, 2, 3" while the server counts, and the word
 // as play opens. It decides nothing: the button sends `go`, the numbers are
 // read off `timerMs`, and the word appears when the snapshot that opens play does.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { hasSay, plays } from '../shared/engine';
 import { MIN_PLAYERS, START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { PlayerView, RoomView } from '../shared/types';
@@ -59,8 +59,11 @@ function useBeat(startMs: number | null): number {
   return beat;
 }
 
-/** `at` is the middle of the table (the centre of the felt), in the table's own coordinates. */
-export function Opening({ room, at }: { room: RoomView; at: { x: number; y: number } }) {
+/**
+ * `at` is the middle of the table (the centre of the felt), in the table's own coordinates. `onSeats`: for whoever deals,
+ * to lay the table's sheet over it; absent while it is up (and Start's keys are the sheet's).
+ */
+export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number; y: number }; onSeats?: () => void }) {
   const stage = room.game?.status.at;
   const dealer = room.players.find((p) => p.isHost);
   const mine = stage === 'ready' && dealer?.id === room.me;
@@ -113,9 +116,9 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
 
   // Space or Enter is the dealer's Start. (A focused button or the chat box keeps its own keys.)
   useEffect(() => {
-    if (!mine) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.code !== 'Space' && e.code !== 'Enter') || e.repeat || (e.target as Element).closest?.('input,textarea,button')) return;
+    if (!mine || !onSeats) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.code !== 'Space' && e.code !== 'Enter') || e.repeat || (e.target as Element).closest?.('input,textarea,button,[role=button]')) return;
       e.preventDefault();
       press();
     };
@@ -126,9 +129,7 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
   const inner =
     stage === 'ready' ? (
       <>
-        {mine && !enough ? (
-          <p className="waiting">Waiting for a second player</p>
-        ) : mine ? (
+        {mine && !enough ? null : mine ? (
           <>
             {warned && <p className="waitfor">Waiting for {late.map((p) => p.name).join(', ')}</p>}
             <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
@@ -143,31 +144,35 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
         ) : (
           <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
         )}
-        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick. Under them, how many have. */}
-        {waiting.length > 0 && (
-          <>
-            <ul className="readies" aria-label="Who is ready">
-              {waiting.map((p) => (
-                <li key={p.id} className={p.ready ? 'on' : warned && late.includes(p) ? 'late' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
-                  <i style={{ background: backColour(p.seat ?? 0) }} />
-                  {p.name}
-                  {p.ready ? (
-                    <b className="tick">✓</b>
-                  ) : (
-                    <span className="dots" aria-hidden="true">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <p className={`tally${warned ? ' late' : ''}`}>
-              {waiting.filter((p) => p.ready).length}/{waiting.length}
-            </p>
-          </>
-        )}
+        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick. Under them, how many have.
+            The dealer's opens the table's sheet (`onSeats`), the lobby's, to seat and unseat as there; alone, so does the line that says so. */}
+        <div className={`roster${mine ? ' dealer' : ''}`} {...(mine && onSeats ? { role: 'button', tabIndex: 0, 'data-tip': 'Seats', onClick: onSeats, onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSeats()) } : {})}>
+          {mine && !enough && <p className="waiting">Waiting for a second player</p>}
+          {waiting.length > 0 && (
+            <>
+              <ul className="readies" aria-label="Who is ready">
+                {waiting.map((p) => (
+                  <li key={p.id} className={p.ready ? 'on' : warned && late.includes(p) ? 'late' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
+                    <i style={{ background: backColour(p.seat ?? 0) }} />
+                    {p.name}
+                    {p.ready ? (
+                      <b className="tick">✓</b>
+                    ) : (
+                      <span className="dots" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className={`tally${warned ? ' late' : ''}`}>
+                {waiting.filter((p) => p.ready).length}/{waiting.length}
+              </p>
+            </>
+          )}
+        </div>
       </>
     ) : stage === 'countdown' && beat ? (
       <b key={beat} className="beat">
