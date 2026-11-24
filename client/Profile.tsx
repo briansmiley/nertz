@@ -75,13 +75,13 @@ const AMONG_KEY = 'nertz.among';
 const rememberedAmong = (): Among => {
   try {
     const was = localStorage.getItem(AMONG_KEY);
-    return was === 'no-bots' ? 'humans' : (AMONG.find((a) => a === was) ?? 'all'); // (as 'no-bots' was once said; 'people' is now none)
+    return was === 'no-bots' ? 'humans' : (AMONG.find((a) => a === was) ?? 'humans'); // (as 'no-bots' was once said; 'people' is now none)
   } catch {
-    return 'all';
+    return 'humans';
   }
 };
 
-/** Which rounds a record counts, as last chosen in this browser (one choice, for anyone's record). */
+/** Which rounds a record counts, as last chosen in this browser (one choice, for anyone's record), and `humans` until one is made. */
 function useAmong(): [Among, (a: Among) => void] {
   const [among, setAmong] = useState(rememberedAmong);
   const choose = (a: Among): void => {
