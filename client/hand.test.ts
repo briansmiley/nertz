@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { legalDrops } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
-import type { Pt } from '../shared/table';
+import { offFelt, type Pt } from '../shared/table';
 import { hold, move, pile, slot, table, work } from '../shared/testkit';
 import type { GameState, Intent } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -533,6 +533,19 @@ describe('telling the others where the card is', () => {
     t.up(by(t.slot(0), 0, 5));
     vi.advanceTimersByTime(1000);
     expect(t.reports).toHaveLength(2); // the hand is open: the report that was waiting is not sent
+  });
+
+  it('under a finger the card is over the felt before the finger is: it is on its way to a pile at the near edge all the same, and there when the card is', () => {
+    const near = table([{ nertz: 'C3 DQ', work: ['S5', 'H4', 'DA', 'CK'], waste: 'S2' }, { waste: 'S2' }], { slots: [{ cards: pile('S1', 1), x: 0, y: 0.7 }] });
+    const t = seatAt(near, phone);
+    t.down(t.at('0:S2'));
+    bring(t, by(t.slot(0), 0, t.L.fs * CARD_W * 0.35 + 2)); // two pixels short of the pile
+    const finger = t.hand?.phase === 'carried' ? { x: t.hand.px, y: t.hand.py } : off;
+    expect(offFelt(toTable(t.L.felt, finger.x, finger.y), 2)).toBeGreaterThan(0);
+    expect(t.sight!.report!.w).toBeGreaterThan(1);
+    expect(t.sight!.report!.w).toBeLessThan(2);
+    bring(t, t.slot(0));
+    expect(t.sight!.report!.w).toBe(2);
   });
 
   it('a card that stands tapped is reported where it stands, and one with no pile of the middle to go to has come no way', () => {

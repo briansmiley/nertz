@@ -215,21 +215,20 @@ function whereabouts(d: InHand, piles: readonly Target[], { L, byId, game }: Sce
   const at = toTable(L.felt, centre.x, centre.y);
   // How far out to the felt, by the pointer: not the card, which a finger carries risen above it from the start.
   const n = game.players.length;
-  const ptr = d.phase === 'carried' ? { x: d.px, y: d.py } : { x: d.sx, y: d.sy };
-  /** How far off the felt the line from the pointer (0) back to where it went down (1) is at `k`. */
-  const off = (k: number) => offFelt(toTable(L.felt, ptr.x + (d.sx - ptr.x) * k, ptr.y + (d.sy - ptr.y) * k), n);
-  const [now, start] = [off(0), off(1)];
+  const start = offFelt(toTable(L.felt, d.sx, d.sy), n);
+  const now = d.phase === 'carried' ? offFelt(toTable(L.felt, d.px, d.py), n) : start;
   const out = start > 0 ? clamp(1 - now / start, 0, 1) : 1;
-  // And on from the felt's edge to the pile: how far the pointer has come over the felt (as much of that line as lies
-  // on it) against how far the card is still short of the pile.
+  // And on to the pile, by the card: under a finger it is over the felt, and on a pile at the near edge, before the
+  // finger is. How far it has come over the felt (as much of the line back to where it lay as lies on it) against how
+  // far it is still short of the pile.
   let [lo, hi] = [0, 1];
-  if (now < 0 && start > 0)
+  if (offFelt(at, n) < 0)
     for (let i = 0; i < 12; i++) {
       const mid = (lo + hi) / 2;
-      if (off(mid) < 0) lo = mid;
+      if (offFelt(toTable(L.felt, centre.x + (home.x - centre.x) * mid, centre.y + (home.y - centre.y) * mid), n) < 0) lo = mid;
       else hi = mid;
     }
-  const over = lo * Math.hypot(d.sx - ptr.x, d.sy - ptr.y);
+  const over = lo * Math.hypot(home.x - centre.x, home.y - centre.y);
   // Within a third of a card of the pile's middle it has arrived.
   const there = L.fs * CARD_W * 0.35;
   let on = 0;
@@ -239,7 +238,7 @@ function whereabouts(d: InHand, piles: readonly Target[], { L, byId, game }: Sce
   }
   return {
     id: d.held.id,
-    w: round3(on === 1 ? 2 : out + on),
+    w: round3(out + on * (2 - out)),
     h: [round3(clamp((centre.x - home.x) / hw, -60, 60)), round3(clamp((home.y - centre.y) / hw, -60, 60))],
     p: [round3(clamp(at.x, -8, 8)), round3(clamp(at.y, -8, 8))],
   };

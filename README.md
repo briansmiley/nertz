@@ -316,7 +316,8 @@ their screen; in your window it has to come from wherever they sit.
   Right near the hand, wherever and however large a window draws that hand.
 - `w`: how far along its way the card is, one number: 0 where it was taken, 1 at the edge of the felt (measured by
   the pointer: a finger carries the card risen above it from the start), 2 over a pile in the middle that would take
-  it. A card with no such pile to go to (an Ace) stops at 1. Bots' made-up reports say it the same way.
+  it (the rest of the way measured by the card itself: under a finger it is over the felt, and on its pile, before the
+  finger is). A card with no such pile to go to (an Ace) stops at 1. Bots' made-up reports say it the same way.
 
 A receiving window (`aloftAt` in `client/layout.ts`) starts the card at `h` in its own picture of that hand: so a
 card going from pile to pile within a hand is seen doing just that. From there it is drawn `w` along one path. Up to
