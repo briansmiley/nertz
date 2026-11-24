@@ -263,7 +263,7 @@ describe('deal', () => {
       expect(tops(p)).toEqual(tops(was)); // face-ups and the nertz pile as they were
       expect(cardsOf(p)).toEqual(cardsOf(was));
       expect(p.stock).toHaveLength(32);
-      expect(p.stock.slice(3)).toEqual(was.stock.slice(3)); // the three now face-down came off the bottom of the stock
+      expect(p.stock).toEqual(was.stock.slice(3)); // the three now face-down came off the bottom of the stock
       expect(p.work.flatMap((w) => w.cards.slice(0, w.down))).toEqual(was.stock.slice(0, 3));
     }
     expect(three.slots).toEqual(Array.from({ length: 12 }, () => null));
