@@ -958,10 +958,14 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const width = (botL: number) => Math.min(wide / OPP_UNITS, each(botL - col.topL, round.left), each(col.botR - col.topR, round.right), mine ? ow * 0.62 : OPP_MAX);
     // The left column runs down to the menu's button only beside your hand, clear of it (a phone's hand is narrow and
-    // leaves it the room); otherwise it stops above your hand, as the right one does. Whichever has its hands larger.
-    const beside = Math.min(width(H - LOW.knobs), (handX - CLEAR - sideL) / OPP_UNITS);
-    const above = width(ends);
-    if (beside >= Math.max(above, OPP_LEAST)) col.w = beside;
+    // leaves it the room); otherwise it stops above your hand, as the right one does. Whichever has its hands larger as
+    // they are drawn, which is never smaller than OPP_LEAST: where neither has the room for hands that small, the longer
+    // column, whose hands then lie over each other the less.
+    const byHand = handX - CLEAR - sideL; // the width beside your hand
+    const drawn = (w: number) => clamp(w, OPP_LEAST, OPP_MAX);
+    const beside = drawn(Math.min(width(H - LOW.knobs), byHand / OPP_UNITS));
+    const above = drawn(width(ends));
+    if (beside >= above && beside <= byHand / OPP_UNITS) col.w = beside;
     else Object.assign(col, { w: above, botL: ends });
   } else if (cols) Object.assign(col, { topL: U.top, topR: U.top, botL: ends, botR: ends }); // a U: both stop above your hand
   const tops = seats.filter((s) => s.where === 'top');
@@ -969,7 +973,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const mw = tall
     ? clamp(grid.w, OPP_LEAST, OPP_MAX)
     : low
-      ? clamp(col.w, OPP_LEAST, OPP_MAX)
+      ? col.w // (as drawn already: see `beside` and `above`)
       : clamp(
     Math.min(
       H * OPP_SIZE[Math.min(5, others.length)]!,

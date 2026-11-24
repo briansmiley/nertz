@@ -178,6 +178,33 @@ describe('what stands round the cards', () => {
     }
   });
 
+  it('writes everyone\'s name clear of the cards above it in the columns of a phone on its side, up to four in a column', () => {
+    // (Eight at the table on an iPhone on its side under a browser's bar, 844x340: the four down the left stopped above
+    // your hand, pressed together, each name under the cards above it, with the room beside your hand left empty.)
+    // (A smaller phone on its side, 568x320, has not the height for four at the smallest cards: they lie over each other.)
+    const sides: [number, number][] = [[667, 375], [736, 414], [844, 390], [844, 340], [932, 430]];
+    const bad: string[] = [];
+    for (const [W, H] of sides) {
+      for (const n of PLAYERS.filter((n) => n <= 9)) {
+        for (const keep of insetsOf(W, H)) {
+          const game = inPlay(seats(n), lcg(n));
+          const L = computeLayout(W, H, game, 0, 'live', null, keep);
+          expect(L.low).toBe(true);
+          for (const left of [true, false]) {
+            const column = L.opponents.filter((o) => (o.box.x < W / 2) === left).sort((a, b) => a.box.y - b.box.y);
+            column.slice(1).forEach((o, i) => {
+              const above = column[i]!;
+              const tag: Rect = { x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: TAG_H };
+              const cards = L.cards.filter((c) => c.card.owner === above.seat).map((c) => ({ x: c.x, y: c.y, w: c.s * CARD_W, h: c.s * CARD_H }));
+              if (cards.some((c) => meets(tag, c))) bad.push(`${W}x${H}, ${n} players${keep.l ? ', notched' : ''}: ${o.seat}'s name on ${above.seat}'s cards`);
+            });
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('writes your own line whole on a phone on its side and wider: clear of the count on your nertz pile, it moves left rather than be cut short', () => {
     // (Six at the table on an iPhone on its side, 852x393: the count hung over the end of the line, and cut off the total.)
     const sides: [number, number][] = [[844, 390], [852, 393], [932, 430], ...WINDOWS.filter(([w, h]) => w >= 800 && h < w)];

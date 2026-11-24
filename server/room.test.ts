@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -9,7 +9,7 @@ import { CLOSE_OVER, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoom
 import { downs, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
-import { Room, type Conn } from './room';
+import { Room, testing, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
@@ -45,6 +45,35 @@ describe('Room', () => {
     expect(view.game).toEqual(wire(viewFor(room.game!, 1)));
     expect(checkInvariants(room.game!)).toBeNull();
     expect(JSON.stringify(b.states) + JSON.stringify(conns[0]!.states)).not.toMatch(/tok-/);
+  });
+
+  it('deals the set-up Start asks for (`?deal=`) where testing is on (locally, or TESTING=1), never in production otherwise', () => {
+    vi.useFakeTimers();
+    const tops = (room: Room) => room.game!.players.map((p) => p.work.map((w) => w.cards.at(-1) as Card).map((c) => `${c.suit}${c.rank}`));
+    const dev = roomWith(2);
+    expect(send(dev.room, dev.conns[0]!, { t: 'start', deal: 'aces' })).toBe(true);
+    expect(tops(dev.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+    expect(checkInvariants(dev.room.game!)).toBeNull();
+    const plain = roomWith(2);
+    send(plain.room, plain.conns[0]!, { t: 'start', deal: 'no-such-set-up' });
+    const dealt = tops(plain.room);
+    expect([testing({ NODE_ENV: 'production' }), testing({ NODE_ENV: 'production', TESTING: '1' }), testing({ NODE_ENV: 'development' }), testing({})]).toEqual([false, true, true, true]);
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const prod = roomWith(2);
+      send(prod.room, prod.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(prod.room)).toEqual(dealt); // the same random deal as with no set-up at all
+      prod.room.flush();
+      expect(prod.conns[0]!.last.room.testing).toBe(false);
+      vi.stubEnv('TESTING', '1'); // a preview
+      const preview = roomWith(2);
+      send(preview.room, preview.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(preview.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+      preview.room.flush();
+      expect(preview.conns[0]!.last.room.testing).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
@@ -2056,6 +2085,19 @@ describe('server over real sockets', () => {
     expect((await get('/%00')).status).toBe(200); // falls back to the app, does not throw
     expect((await get('/%E0%A4%A')).status).toBe(400); // undecodable path
     expect((await get('/ws')).status).toBe(200); // plain GET on the socket path is just an app route
+  });
+
+  it('lets the browser keep what is asked for by its issue (built assets, back pictures), and nothing else', async () => {
+    const get = (path: string) => fetch(`http://127.0.0.1:${server.port}${path}`);
+    for (const dir of ['assets', 'cards/backs', 'cards/classic']) mkdirSync(join(dist, dir), { recursive: true });
+    writeFileSync(join(dist, 'assets/index-abc123.js'), '');
+    writeFileSync(join(dist, 'cards/backs/tartan.png'), '');
+    writeFileSync(join(dist, 'cards/classic/AS.svg'), '');
+    const keep = 'public, max-age=31536000, immutable';
+    expect((await get('/assets/index-abc123.js')).headers.get('cache-control')).toBe(keep);
+    expect((await get('/cards/backs/tartan.png?v=2')).headers.get('cache-control')).toBe(keep);
+    expect((await get('/cards/classic/AS.svg')).headers.get('cache-control')).toBe('no-cache'); // faces carry no issue
+    expect((await get('/')).headers.get('cache-control')).toBe('no-cache');
   });
 
   it('create makes a table with a server-chosen code; joining a code that does not exist is an error, not a new table', async () => {
