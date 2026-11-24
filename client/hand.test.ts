@@ -511,7 +511,7 @@ describe('telling the others where the card is', () => {
     expect(out).toEqual(['a', 'c']);
   });
 
-  it('a carried card is reported as it goes: how far from its pile in cards of the hand, where on the table, and how far along to a pile of the middle that takes it', () => {
+  it('a carried card is reported as it goes: how far from its pile in cards of the hand, where on the table, and how far along its way to a pile of the middle that takes it', () => {
     vi.useFakeTimers();
     const t = seatAt(game());
     const from = t.at('0:S2');
@@ -521,14 +521,14 @@ describe('telling the others where the card is', () => {
     expect(t.reports).toHaveLength(1);
     expect(t.reports[0]).toMatchObject({ id: '0:S2', h: [1, 2] });
     expect(t.reports[0]!.w).toBeGreaterThan(0);
-    expect(t.reports[0]!.w).toBeLessThan(1);
+    expect(t.reports[0]!.w).toBeLessThan(2); // (1 is the felt's edge, 2 the pile)
     t.move(by(t.slot(0), 0, 40));
     t.move(t.slot(0));
     expect(t.reports).toHaveLength(1); // not yet: too soon after the last
     vi.advanceTimersByTime(1000 / DRAG_HZ + 1);
     expect(t.reports).toHaveLength(2);
     const there = toTable(t.L.felt, t.slot(0).x, t.slot(0).y);
-    expect(t.reports[1]).toMatchObject({ id: '0:S2', w: 1, p: [expect.closeTo(there.x, 2), expect.closeTo(there.y, 2)] });
+    expect(t.reports[1]).toMatchObject({ id: '0:S2', w: 2, p: [expect.closeTo(there.x, 2), expect.closeTo(there.y, 2)] });
     t.move(by(t.slot(0), 0, 5));
     t.up(by(t.slot(0), 0, 5));
     vi.advanceTimersByTime(1000);
@@ -539,6 +539,6 @@ describe('telling the others where the card is', () => {
     vi.useFakeTimers();
     const t = seatAt(game());
     t.tap(t.at('0:H4'));
-    expect(t.reports).toEqual([{ id: '0:H4', w: 0, h: [0, expect.closeTo(0.16 * (CARD_H / CARD_W), 2)], p: expect.anything(), f: 0 }]); // (standing where it was: no way out to the felt)
+    expect(t.reports).toEqual([{ id: '0:H4', w: 0, h: [0, expect.closeTo(0.16 * (CARD_H / CARD_W), 2)], p: expect.anything() }]); // (standing where it was: no way out to the felt)
   });
 });

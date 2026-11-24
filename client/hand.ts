@@ -202,8 +202,9 @@ function feltUnder(d: Grip, centre: Pt, { game, you, L }: Scene): { to: PileRef;
 
 /**
  * Where the card in hand is, for the others: its centre as a distance from its pile (along your row, and towards the
- * middle) in cards of your hand, and as a point of the table, with how far it has come of the way to a pile in the
- * middle that would take it (`piles`; nothing if there is none).
+ * middle) in cards of your hand, and as a point of the table, with how far along its way it is: 0 to 1 out to the
+ * felt's edge, and from there to 2 on to a pile in the middle that would take it (`piles`; no further than 1 if there
+ * is none).
  */
 function whereabouts(d: InHand, piles: readonly Target[], { L, byId, game }: Scene): DragAt | null {
   const c = byId.get(d.lead);
@@ -212,21 +213,33 @@ function whereabouts(d: InHand, piles: readonly Target[], { L, byId, game }: Sce
   const hw = c.s * CARD_W;
   const home = { x: d.base[0]!.x + hw / 2, y: d.base[0]!.y + (c.s * CARD_H) / 2 };
   const at = toTable(L.felt, centre.x, centre.y);
-  // Within a third of a card of the pile's middle it has arrived.
-  const there = L.fs * CARD_W * 0.35;
-  let come = 0;
-  for (const t of piles) {
-    const to = { x: t.rect.x + t.rect.w / 2, y: t.rect.y + t.rect.h / 2 };
-    come = Math.max(come, 1 - (Math.hypot(to.x - centre.x, to.y - centre.y) - there) / Math.max(1, Math.hypot(to.x - home.x, to.y - home.y) - there));
-  }
   // How far out to the felt, by the pointer: not the card, which a finger carries risen above it from the start.
   const n = game.players.length;
-  const start = offFelt(toTable(L.felt, d.sx, d.sy), n);
-  const now = d.phase === 'carried' ? offFelt(toTable(L.felt, d.px, d.py), n) : start;
+  const ptr = d.phase === 'carried' ? { x: d.px, y: d.py } : { x: d.sx, y: d.sy };
+  /** How far off the felt the line from the pointer (0) back to where it went down (1) is at `k`. */
+  const off = (k: number) => offFelt(toTable(L.felt, ptr.x + (d.sx - ptr.x) * k, ptr.y + (d.sy - ptr.y) * k), n);
+  const [now, start] = [off(0), off(1)];
+  const out = start > 0 ? clamp(1 - now / start, 0, 1) : 1;
+  // And on from the felt's edge to the pile: how far the pointer has come over the felt (as much of that line as lies
+  // on it) against how far the card is still short of the pile.
+  let [lo, hi] = [0, 1];
+  if (now < 0 && start > 0)
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      if (off(mid) < 0) lo = mid;
+      else hi = mid;
+    }
+  const over = lo * Math.hypot(d.sx - ptr.x, d.sy - ptr.y);
+  // Within a third of a card of the pile's middle it has arrived.
+  const there = L.fs * CARD_W * 0.35;
+  let on = 0;
+  for (const t of piles) {
+    const left = Math.hypot(t.rect.x + t.rect.w / 2 - centre.x, t.rect.y + t.rect.h / 2 - centre.y) - there;
+    on = Math.max(on, left <= 0 ? 1 : over / (over + left));
+  }
   return {
     id: d.held.id,
-    w: round3(clamp(come, 0, 1)),
-    f: round3(start > 0 ? clamp(1 - now / start, 0, 1) : 1),
+    w: round3(on === 1 ? 2 : out + on),
     h: [round3(clamp((centre.x - home.x) / hw, -60, 60)), round3(clamp((home.y - centre.y) / hw, -60, 60))],
     p: [round3(clamp(at.x, -8, 8)), round3(clamp(at.y, -8, 8))],
   };

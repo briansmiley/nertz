@@ -662,7 +662,7 @@ export class Room {
     drags.at = now;
     if (drags.left < 1) return;
     drags.left--;
-    const msg: ServerMsg = { t: 'drag', seat: player.seat, id: where.id, w: where.w, h: where.h, p: where.p, ...(where.f === undefined ? {} : { f: where.f }) };
+    const msg: ServerMsg = { t: 'drag', seat: player.seat, id: where.id, w: where.w, h: where.h, p: where.p };
     for (const p of this.players) if (p !== player) p.conn?.send(msg);
   }
 

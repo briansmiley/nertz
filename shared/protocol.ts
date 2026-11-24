@@ -270,20 +270,19 @@ export const CLOSE_OVER = 4000;
  *   screen and down, or sideways, on everyone else's).
  * - `p`: its centre in table space (shared/table.ts): the same point of the
  *   felt on every screen. Right once it is where it is going.
- * - `w`: how far it has come of the way to a pile in the middle that would
- *   take it, from 0 (it has just left its own pile, or there is no such pile:
- *   an Ace above all) to 1 (it is over that pile). A window draws the card
- *   that far along the line from that player's hand, wherever the window
- *   seats them, to the pile (`aloftAt` in client/layout.ts, which also says
- *   how a card with no pile to go by gets to `p`).
+ * - `w`: how far along its way it is, one number: 0 where it was taken, 1 at
+ *   the edge of the felt, 2 over a pile in the middle that would take it (a
+ *   card with no such pile, an Ace above all, stops at 1). A window draws the
+ *   card that far along one path: out from that player's hand, wherever the
+ *   window seats them, to the felt's edge, and on to the pile (`aloftAt` in
+ *   client/layout.ts, which also says how a card with no pile to go by gets
+ *   to `p`).
  */
 export interface DragAt {
   id: string;
   w: number;
   h: [number, number];
   p: [number, number];
-  /** How far it has come of the way from its pile to the edge of the felt, 0 to 1 (a window draws it that share of the way out from that player's hand to the felt). */
-  f?: number;
 }
 
 /** How often a dragging client reports its card (per second), and what the server lets through per player. */
@@ -384,8 +383,7 @@ function parseDrag(v: Record<string, unknown>): DragAt | null {
     Array.isArray(raw) && raw.length === 2 && isCoord(raw[0], max) && isCoord(raw[1], max) ? [round3(raw[0]), round3(raw[1])] : null;
   const h = pair(v.h, 60);
   const p = pair(v.p, 8);
-  if (!(isId(v.id) && isCoord(v.w, 1) && v.w >= 0 && h && p)) return null;
-  return isCoord(v.f, 1) && v.f >= 0 ? { id: v.id, w: round3(v.w), h, p, f: round3(v.f) } : { id: v.id, w: round3(v.w), h, p };
+  return isId(v.id) && isCoord(v.w, 2) && v.w >= 0 && h && p ? { id: v.id, w: round3(v.w), h, p } : null;
 }
 
 /** Returns a clean copy of a well-formed intent, or null. Never throws. */
