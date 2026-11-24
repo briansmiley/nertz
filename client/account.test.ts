@@ -65,7 +65,7 @@ describe('the record the server says is theirs', () => {
 
 describe("someone's page, as the server says it", () => {
   const stats = { rounds: 3, won: 1, nertz: 0, points: 12, bestPoints: 9, cards: 30, bestCards: 14, nertzLeft: 6, ahead: 0.5, snipes: 1, sniped: 2 };
-  const versus = { rounds: 2, ahead: 1, behind: 0, points: 10, theirs: 4 };
+  const versus = { rounds: 2, ahead: 1, behind: 0, points: 10, theirs: 4, snipes: 0, sniped: 0 };
 
   it('is their name, their record and yours against them; on your own, nobody to be against', () => {
     const picture = '/pictures/0123456789abcdef.webp';
@@ -87,7 +87,7 @@ describe("someone's page, as the server says it", () => {
 });
 
 describe('who you follow, as the server says it', () => {
-  const versus = { rounds: 3, ahead: 2, behind: 1, points: 40, theirs: 31 };
+  const versus = { rounds: 3, ahead: 2, behind: 1, points: 40, theirs: 31, snipes: 0, sniped: 0 };
   it('are each a name, and where their page is, their picture and you against them, but for a private page: its name alone', () => {
     expect(
       readFollowing(200, [

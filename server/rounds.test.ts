@@ -72,13 +72,13 @@ describe('rounds kept', () => {
     rounds.keep(round([hand(0, 'bob', 20), hand(1, 'ada', -4), hand(2, null, 1)], undefined, 2)); // bob ahead
     rounds.keep(round([hand(0, 'ada', 3), hand(1, 'bob', 3), hand(2, null, 9, 'slow')], undefined, 3)); // level, with a bot
     rounds.keep(round([hand(0, 'ada', 7), hand(1, null, 3)], undefined, 4)); // (without bob)
-    expect(rounds.versus('ada', 'bob')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 11, theirs: 28 });
-    expect(rounds.versus('bob', 'ada')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 28, theirs: 11 });
+    expect(rounds.versus('ada', 'bob')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 11, theirs: 28, snipes: 0, sniped: 0 });
+    expect(rounds.versus('bob', 'ada')).toEqual({ rounds: 3, ahead: 1, behind: 1, points: 28, theirs: 11, snipes: 0, sniped: 0 });
     // Of one kind: no bots (the first two); two people and a bot (the third); one person and bots (none of theirs).
-    expect(rounds.versus('ada', 'bob', 'humans')).toEqual({ rounds: 2, ahead: 1, behind: 1, points: 8, theirs: 25 });
-    expect(rounds.versus('ada', 'bob', 'mixed')).toEqual({ rounds: 1, ahead: 0, behind: 0, points: 3, theirs: 3 });
-    expect(rounds.versus('ada', 'bob', 'bots')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0 });
-    expect(rounds.versus('ada', 'cy')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0 });
+    expect(rounds.versus('ada', 'bob', 'humans')).toEqual({ rounds: 2, ahead: 1, behind: 1, points: 8, theirs: 25, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'bob', 'mixed')).toEqual({ rounds: 1, ahead: 0, behind: 0, points: 3, theirs: 3, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'bob', 'bots')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 });
+    expect(rounds.versus('ada', 'cy')).toEqual({ rounds: 0, ahead: 0, behind: 0, points: 0, theirs: 0, snipes: 0, sniped: 0 });
     // Gone, an account's rounds are nobody's: nobody has played them against it.
     rounds.forget('bob');
     expect(rounds.versus('ada', 'bob')).toMatchObject({ rounds: 0 });
@@ -110,12 +110,15 @@ describe('rounds kept', () => {
     ]);
   });
 
-  it('counts the snipes someone made and suffered, and keeps each hand under its name and each round in its sitting', () => {
+  it('counts the snipes someone made and suffered (and between two people, who sniped whom), and keeps each hand under its name and each round in its sitting', () => {
     const rounds = openRounds(db);
     rounds.keep(round([hand(0, 'ada', 5), hand(1, 'bob', 3), hand(2, null, 1)], undefined, 1, [{ by: 0, of: 1, card: 'H3' }, { by: 0, of: 2, card: 'S7' }, { by: 1, of: 0, card: 'D2' }]));
     rounds.keep(round([hand(0, 'bob', 5), hand(1, 'ada', 3)], undefined, 2, [{ by: 1, of: 0, card: 'C9' }]));
     expect(rounds.stats('ada')).toMatchObject({ snipes: 3, sniped: 1 });
     expect(rounds.stats('bob')).toMatchObject({ snipes: 1, sniped: 2 });
+    // Between two of them: only the snipes one made on the other (not ada's on the guest).
+    expect(rounds.versus('ada', 'bob')).toMatchObject({ snipes: 2, sniped: 1 });
+    expect(rounds.versus('bob', 'ada')).toMatchObject({ snipes: 1, sniped: 2 });
     expect(db.prepare('select name, account from hand order by round, seat').all()).toEqual([
       { name: 'ada', account: 'ada' },
       { name: 'bob', account: 'bob' },
@@ -389,9 +392,9 @@ describe('over the wire', () => {
       name: 'Bob',
       picture: null, // (none put up: Google's is never shown to anyone else)
       stats: await (await bob.ask('/stats')).json(),
-      versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), points: line(a), theirs: line(b) },
+      versus: { rounds: 1, ahead: Number(line(a) > line(b)), behind: Number(line(a) < line(b)), points: line(a), theirs: line(b), snipes: 0, sniped: 0 },
     });
-    expect(((await (await bob.ask(`/stats/${adas}?among=humans`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a) });
+    expect(((await (await bob.ask(`/stats/${adas}?among=humans`)).json()) as Page).versus).toMatchObject({ rounds: 1, points: line(b), theirs: line(a), snipes: 0, sniped: 0 });
     // One's own: one's record, and nobody to be against.
     expect(await (await ada.ask(`/stats/${adas}`)).json()).toEqual({ name: 'Ada', picture: null, stats: await (await ada.ask('/stats')).json(), versus: null });
 

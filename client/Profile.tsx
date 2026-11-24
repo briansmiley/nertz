@@ -165,14 +165,14 @@ export function Which({ among, choose, vs }: { among: Among; choose: (a: Among) 
   );
 }
 
-/** A figure, what it counts, (where the word alone may not say) a little more about it, and a tint for one that is good or bad for whoever's it is. */
-type Figure = [string, string, string?, ('good' | 'bad')?];
+/** A figure, what it counts, and (where the word alone may not say) a little more about it. */
+type Figure = [string, string, string?];
 
 function Figures({ figures }: { figures: Figure[] }) {
   return (
     <dl className="record">
-      {figures.map(([n, what, more, tint]) => (
-        <div key={what} data-tip={more} className={[tint, more && 'explained'].filter(Boolean).join(' ') || undefined}>
+      {figures.map(([n, what, more]) => (
+        <div key={what} data-tip={more} className={more ? 'explained' : undefined}>
           <dt>{what}</dt>
           <dd>{n}</dd>
         </div>
@@ -195,19 +195,19 @@ function recordOf(stats: Stats): Figure[] {
     [per(stats.cards), 'avg cards'],
     [stats.bestCards === null ? '–' : written(stats.bestCards), 'best cards'],
     [per(stats.nertzLeft), 'avg nertz left'],
-    [written(stats.snipes), stats.snipes === 1 ? 'snipe' : 'snipes', undefined, 'good'],
-    [written(stats.sniped), 'sniped', undefined, 'bad'],
+    [stats.rounds ? `${written(stats.snipes)}–${written(stats.sniped)}` : '–', 'snipes'],
   ];
 }
 
 /** You against someone, as one figure: the rounds you finished ahead of them, and behind (none at all: a dash). */
 const winLoss = (v: Versus): string => (v.rounds ? `${written(v.ahead)}–${written(v.behind)}` : '–');
 
-/** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, and your points against theirs over them. */
+/** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, your points against theirs over them, and your snipes on them against theirs on you. */
 function versusOf(v: Versus): Figure[] {
   const level = v.rounds - v.ahead - v.behind;
   const points: Figure = [v.rounds ? `${written(v.points)}–${written(v.theirs)}` : '–', 'points'];
-  return [[written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'], [winLoss(v), 'W–L', level ? `${level} level` : undefined], points];
+  const snipes: Figure = [v.rounds ? `${written(v.snipes)}–${written(v.sniped)}` : '–', 'snipes'];
+  return [[written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'], [winLoss(v), 'W–L', level ? `${level} level` : undefined], points, snipes];
 }
 
 /** Your record: the rounds `among` says, chosen over the figures (and still there to choose again if an answer fails), and the figures, under each what it counts. */

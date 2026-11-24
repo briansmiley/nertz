@@ -358,6 +358,9 @@ export interface Versus {
   /** Everything they scored in those rounds, and everything the other did. */
   points: number;
   theirs: number;
+  /** Times they sniped the other in those rounds, and times the other sniped them. */
+  snipes: number;
+  sniped: number;
 }
 
 /** Someone's page, as someone signed in sees it (`GET /stats/<handle>`): the name they go by, their record, and yours against them (null on your own). */
