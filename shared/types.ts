@@ -369,8 +369,8 @@ export interface Page {
   versus: Versus | null;
 }
 
-/** Someone you added as a friend (`GET /profile/friends`): the name they go by, and where their page is, null for a page that is theirs alone. */
-export interface Friend {
+/** Someone you follow (`GET /profile/following`): the name they go by, and where their page is, null for a page that is theirs alone. */
+export interface Followed {
   name: string | null;
   handle: string | null;
 }

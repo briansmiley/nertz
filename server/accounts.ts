@@ -23,7 +23,7 @@ import { emailOTP } from 'better-auth/plugins/email-otp';
 import { getMigrations } from 'better-auth/db/migration';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { cleanName, isHandle, MAX_HANDLE_LENGTH } from '../shared/protocol';
-import type { Account, Friend, Way } from '../shared/types';
+import type { Account, Followed, Way } from '../shared/types';
 import { transaction, type Db } from './db';
 import { pictureUrl } from './pictures';
 
@@ -57,15 +57,15 @@ export interface Accounts {
   /** Gives `account` picture `id` (server/pictures.ts), or none: the id of the one it had, null for none. */
   repicture(account: string, id: string | null): string | null;
   /**
-   * Who `account` has added as friends, by name: where each one's page is, but for a page that is theirs alone (and
-   * one of those with no name to list it by is not listed).
+   * Who `account` follows, by name: where each one's page is, but for a page that is theirs alone (and one of those
+   * with no name to list it by is not listed).
    */
-  friends(account: string): Friend[];
-  /** Adds `friend` to `account`'s friends, or takes them off. */
-  befriend(account: string, friend: string, on: boolean): void;
+  following(account: string): Followed[];
+  /** `account` follows `followed`, or unfollows them. */
+  follow(account: string, followed: string, on: boolean): void;
   /** Signs out whoever the cookie in `headers` is: the Set-Cookie lines that forget them in their browser. */
   signOut(headers: IncomingHttpHeaders): Promise<string[]>;
-  /** Everything accounts keep of `account`: its profile, its friends and whoever has it as one, its sessions, its link to Google, and it. (Run it in a transaction, with whatever else of theirs goes too.) */
+  /** Everything accounts keep of `account`: its profile, whoever it follows and whoever follows it, its sessions, its link to Google, and it. (Run it in a transaction, with whatever else of theirs goes too.) */
   forget(account: string): void;
 }
 
@@ -299,13 +299,13 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
   const rehandle = db.prepare('update profile set handle = ?, handle_chosen = 1 where account = ?');
   const setPrivate = db.prepare('update profile set private = ? where account = ?');
   const setPicture = db.prepare('update profile set picture = ? where account = ?');
-  // (A private page's handle is not said even to its friends, as it is not at a table.)
-  const friends = db.prepare(
-    'select name, case when private then null else handle end as handle from friend join profile on profile.account = friend.friend where friend.account = ? and not (private and name is null) order by lower(coalesce(name, handle)), handle',
+  // (A private page's handle is not said even to whoever follows it, as it is not at a table.)
+  const following = db.prepare(
+    'select name, case when private then null else handle end as handle from follow join profile on profile.account = follow.followed where follow.account = ? and not (private and name is null) order by lower(coalesce(name, handle)), handle',
   );
-  const befriend = db.prepare('insert into friend (account, friend) values (?, ?) on conflict do nothing');
-  const unfriend = db.prepare('delete from friend where account = ? and friend = ?');
-  const forgets = ['delete from friend where ? in (account, friend)', 'delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
+  const follow = db.prepare('insert into follow (account, followed) values (?, ?) on conflict do nothing');
+  const unfollow = db.prepare('delete from follow where account = ? and followed = ?');
+  const forgets = ['delete from follow where ? in (account, followed)', 'delete from profile where account = ?', 'delete from session where userId = ?', 'delete from account where userId = ?', 'delete from "user" where id = ?'].map((sql) => db.prepare(sql));
   const auth = betterAuth(config);
   const handler = toNodeHandler(auth);
   return {
@@ -348,8 +348,8 @@ export async function openAccounts(db: Db, options: AccountsOptions): Promise<Ac
       setPicture.run(id, account);
       return had;
     },
-    friends: (account) => friends.all(account) as unknown as Friend[],
-    befriend: (account, friend, on) => void (on ? befriend : unfriend).run(account, friend),
+    following: (account) => following.all(account) as unknown as Followed[],
+    follow: (account, followed, on) => void (on ? follow : unfollow).run(account, followed),
     signOut: async (headers) => (await auth.api.signOut({ headers: fromNodeHeaders(headers), returnHeaders: true })).headers.getSetCookie(),
     forget: (account) => forgets.forEach((f) => f.run(account)),
   };

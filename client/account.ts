@@ -1,11 +1,11 @@
 // Who is signed in on this browser, and who they are at the table, as the server says (server/profile.ts). Signing in
 // is with Google or with a code sent to one's email; the server keeps the session in a cookie, so this file holds
-// nothing of its own: it asks. The same for their record (`/stats`), someone's page (`/stats/<handle>`), their friends
-// (`/profile/friends`), and for an admin how much the game is played (`/usage`).
+// nothing of its own: it asks. The same for their record (`/stats`), someone's page (`/stats/<handle>`), who they follow
+// (`/profile/following`), and for an admin how much the game is played (`/usage`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { goHome, moved, pageIn } from './address';
 import { handleOf } from '../shared/protocol';
-import type { Account, Among, Friend, Page, Stats, Usage, Versus, Way } from '../shared/types';
+import type { Account, Among, Followed, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
 /**
  * `unknown` until the server has answered; `off` when there is no signing in (it keeps no accounts, or gave no good
@@ -280,9 +280,9 @@ export function usePage(handle: string, among: Among): Page | 'nobody' | 'none' 
   return page?.of === handle ? page.page : undefined;
 }
 
-/** What an answer about your friends comes to: null for none to show (nobody signed in, no good answer). */
-export function readFriends(status: number, body: unknown): Friend[] | null {
-  const reads = (f: unknown): f is Friend => {
+/** What an answer about who you follow comes to: null for none to show (nobody signed in, no good answer). */
+export function readFollowing(status: number, body: unknown): Followed[] | null {
+  const reads = (f: unknown): f is Followed => {
     const v = f as { name?: unknown; handle?: unknown } | null;
     return !!v && (v.name === null || typeof v.name === 'string') && (v.handle === null || (typeof v.handle === 'string' && handleOf(v.handle) === v.handle));
   };
@@ -290,47 +290,47 @@ export function readFriends(status: number, body: unknown): Friend[] | null {
   return body.map(({ name, handle }) => ({ name: name || null, handle }));
 }
 
-const FRIENDS = `${PROFILE}/friends`;
-/** Your friends as last heard, and whose they are. */
-let friends: { of: string; list: Friend[] } | null = null;
-const friendListeners = new Set<() => void>();
-const subscribeFriends = (l: () => void): (() => void) => (friendListeners.add(l), () => void friendListeners.delete(l));
-/** How often friends have been asked about: only the last answer is heard (an add answered after a later take-off must not undo it). */
-let friendAsks = 0;
-/** Whose friends are being asked for just now: everything that shows them, come up together, asks once. */
-let askingFriends: string | null = null;
+const FOLLOWING = `${PROFILE}/following`;
+/** Who you follow as last heard, and who you are. */
+let following: { of: string; list: Followed[] } | null = null;
+const followingListeners = new Set<() => void>();
+const subscribeFollowing = (l: () => void): (() => void) => (followingListeners.add(l), () => void followingListeners.delete(l));
+/** How often who you follow has been asked about: only the last answer is heard (a follow answered after a later unfollow must not undo it). */
+let followingAsks = 0;
+/** Whose following is being asked for just now: everything that shows it, come up together, asks once. */
+let askingFollowing: string | null = null;
 
-/** Asks about `who`'s friends, or (`handle`, `on`) changes them: whether the server took it. */
-async function askFriends(who: string, change?: { handle: string; on: boolean }): Promise<boolean> {
-  const n = ++friendAsks;
-  const res = await fetch(change ? `${FRIENDS}/${change.handle}` : FRIENDS, { method: change ? (change.on ? 'PUT' : 'DELETE') : 'GET', credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
-  const list = res && readFriends(res.status, await res.json().catch(() => null));
+/** Asks who `who` follows, or (`handle`, `on`) follows or unfollows someone: whether the server took it. */
+async function askFollowing(who: string, change?: { handle: string; on: boolean }): Promise<boolean> {
+  const n = ++followingAsks;
+  const res = await fetch(change ? `${FOLLOWING}/${change.handle}` : FOLLOWING, { method: change ? (change.on ? 'PUT' : 'DELETE') : 'GET', credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
+  const list = res && readFollowing(res.status, await res.json().catch(() => null));
   if (!list) return false;
-  if (n === friendAsks && signedIn(signed)?.id === who) {
-    friends = { of: who, list };
-    for (const l of friendListeners) l();
+  if (n === followingAsks && signedIn(signed)?.id === who) {
+    following = { of: who, list };
+    for (const l of followingListeners) l();
   }
   return true;
 }
 
-/** Whoever's page `handle` is, added to your friends or taken off: whether it was taken. */
-export async function befriend(handle: string, on: boolean): Promise<boolean> {
+/** Whoever's page `handle` is, followed or unfollowed: whether it was taken. */
+export async function follow(handle: string, on: boolean): Promise<boolean> {
   const who = signedIn(signed)?.id;
-  return !!who && (await askFriends(who, { handle, on }));
+  return !!who && (await askFollowing(who, { handle, on }));
 }
 
 /**
- * The friends of whoever is signed in, asked for afresh each time something that shows them comes up (what was last
- * heard staying up meanwhile): null until they are known, and if there are none to know.
+ * Who whoever is signed in follows, asked for afresh each time something that shows it comes up (what was last heard
+ * staying up meanwhile): null until it is known, and if there is none to know.
  */
-export function useFriends(): Friend[] | null {
+export function useFollowing(): Followed[] | null {
   const who = signedIn(useAccount())?.id ?? null;
-  const known = useSyncExternalStore(subscribeFriends, () => friends);
+  const known = useSyncExternalStore(subscribeFollowing, () => following);
   useEffect(() => {
-    if (!who || askingFriends === who) return;
-    askingFriends = who;
-    void askFriends(who).finally(() => {
-      if (askingFriends === who) askingFriends = null;
+    if (!who || askingFollowing === who) return;
+    askingFollowing = who;
+    void askFollowing(who).finally(() => {
+      if (askingFollowing === who) askingFollowing = null;
     });
   }, [who]);
   return known?.of === who ? known.list : null;

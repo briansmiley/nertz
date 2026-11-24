@@ -716,15 +716,22 @@
 /* Their name, written as yours is on your page, but not yours to change. */
 .theirs .you h2 {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   font: 400 1.6rem/1.2 var(--display);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Them added to your friends, or taken off: a word at the far end of the head's line, where Private is on your own. */
-.profile .you > .befriend {
-  grid-area: private;
+/* (Short of the far end, which is Follow's: a long name is cut short of it, not written under it.) */
+.theirs .you > h2 {
+  grid-column: 3;
+}
+
+/* Follow them, or unfollow them: a word at the far end of the head's line, level with their name. */
+.profile .you > .follow {
+  grid-column: 4;
+  grid-row: 1 / span 2;
   justify-self: end;
   padding: 0;
   border: 0;
@@ -737,30 +744,35 @@
   cursor: pointer;
 }
 
-.profile .you > .befriend:hover {
+.profile .you > .follow:hover {
   color: var(--ink);
 }
 
 @container (max-width: 16rem) {
-  .profile .you > .befriend {
+  .theirs .you > h2 {
+    grid-column: 3 / span 2;
+  }
+
+  .profile .you > .follow {
+    grid-area: private;
     justify-self: start;
     margin-top: 0.8rem;
   }
 }
 
-/* Your friends: their names in a line under your record, each one's page under the pointer. */
-.profile .friends {
+/* Who you follow: their names in a line under your record, each one's page under the pointer. */
+.profile .following {
   display: grid;
   gap: 0.3rem;
   margin-top: 0.6rem;
 }
 
-.profile .friends h3 {
+.profile .following h3 {
   margin: 0;
   font: 600 0.95rem/1.3rem var(--ui);
 }
 
-.profile .friends ul {
+.profile .following ul {
   display: flex;
   flex-wrap: wrap;
   gap: 0.2rem 1.1rem;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claimedBy, read, readFriends, readPage, readStats, signedIn, sitter, waysIn } from './account';
+import { claimedBy, read, readFollowing, readPage, readStats, signedIn, sitter, waysIn } from './account';
 import { pageIn } from './address';
 
 describe('who the server says is signed in', () => {
@@ -86,22 +86,22 @@ describe("someone's page, as the server says it", () => {
   });
 });
 
-describe('your friends, as the server says them', () => {
+describe('who you follow, as the server says it', () => {
   it('are each a name and where their page is, none for a private one', () => {
-    expect(readFriends(200, [{ name: 'Bob', handle: 'bob', extra: 'x' }, { name: 'Cy', handle: null }, { name: null, handle: 'k3f9x2' }])).toEqual([
+    expect(readFollowing(200, [{ name: 'Bob', handle: 'bob', extra: 'x' }, { name: 'Cy', handle: null }, { name: null, handle: 'k3f9x2' }])).toEqual([
       { name: 'Bob', handle: 'bob' },
       { name: 'Cy', handle: null },
       { name: null, handle: 'k3f9x2' },
     ]);
-    expect(readFriends(200, [])).toEqual([]);
+    expect(readFollowing(200, [])).toEqual([]);
   });
 
   it('are none to show for nobody signed in, or an answer that is not a list of them', () => {
-    expect(readFriends(401, { ways: ['google'] })).toBeNull();
-    expect(readFriends(200, null)).toBeNull();
-    expect(readFriends(200, [{ name: 'Bob', handle: '../stats' }])).toBeNull(); // (only ever a handle)
-    expect(readFriends(200, [{ name: 7, handle: 'bob' }])).toBeNull();
-    expect(readFriends(200, [{ name: 'Bob' }])).toBeNull();
+    expect(readFollowing(401, { ways: ['google'] })).toBeNull();
+    expect(readFollowing(200, null)).toBeNull();
+    expect(readFollowing(200, [{ name: 'Bob', handle: '../stats' }])).toBeNull(); // (only ever a handle)
+    expect(readFollowing(200, [{ name: 7, handle: 'bob' }])).toBeNull();
+    expect(readFollowing(200, [{ name: 'Bob' }])).toBeNull();
   });
 });
 

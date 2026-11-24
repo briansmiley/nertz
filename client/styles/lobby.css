@@ -180,12 +180,12 @@
 
 .seats .standup,
 .seats .unseat,
-.seats .befriend {
+.seats .follow {
   margin-left: 0;
 }
 
 .seats .standup svg,
-.seats .befriend svg {
+.seats .follow svg {
   width: 16px;
   height: 16px;
 }

@@ -188,8 +188,8 @@
   stroke-linejoin: round;
 }
 
-/* Beside someone's name: add them to your friends (a figure and a plus), or, a friend (a tick), take them off. */
-.befriend.small {
+/* Beside someone's name: follow them (a figure and a plus), or, followed (a tick), unfollow them. */
+.follow.small {
   display: inline-grid;
   flex: none;
   place-items: center;
@@ -202,13 +202,13 @@
   cursor: pointer;
 }
 
-.befriend.small:hover,
-.befriend.small[aria-pressed='true'] {
+.follow.small:hover,
+.follow.small[aria-pressed='true'] {
   opacity: 1;
   color: var(--ink);
 }
 
-.befriend.small svg {
+.follow.small svg {
   width: 18px;
   height: 18px;
   fill: none;
