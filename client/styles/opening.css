@@ -302,3 +302,32 @@
 .calm .opening .readies li.late {
   animation: none;
 }
+
+/* The names under Start, and the tally. Whoever deals presses them for the table's sheet: a faint ring of chalk on hover. */
+.opening .roster {
+  display: grid;
+  justify-items: center;
+  margin-top: 14px;
+  padding: 4px 16px 9px;
+  border-radius: 14px;
+}
+
+.opening .roster .readies {
+  margin-top: 4px;
+}
+
+.opening .roster.dealer[role='button'] {
+  pointer-events: auto;
+  cursor: pointer;
+  transition: box-shadow 120ms, background-color 120ms;
+}
+
+.opening .roster.dealer[role='button']:hover {
+  background: rgba(241, 234, 216, 0.06);
+  box-shadow: inset 0 0 0 1.5px var(--chalk-dim);
+}
+
+.opening .roster.dealer[role='button']:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: 2px;
+}

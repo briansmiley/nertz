@@ -13,8 +13,6 @@ const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
 const HOOK = 'https://discord.invalid/hook';
 /** What Discord answers a webhook asked to wait (`?wait=true`): the message it made. */
 const posted = (id = '1500000000000000001'): Response => Response.json({ id, channel_id: '1571055056319422515' });
-/** Linear's answer to the count of open issues labelled auto (`mayAuto`): none. */
-const NONE_OPEN = { theirs: { nodes: [] }, all: { nodes: [] } };
 let server: NertzServer | undefined;
 /** Reports delivered so far, for a test to wait on: the sender is answered before delivery. */
 let delivered = 0;
@@ -86,7 +84,7 @@ describe('feedback', () => {
       if (String(url).startsWith(HOOK)) return posted();
       if (String(url) !== 'https://api.linear.app/graphql') return new Response(null, { status: 200 }); // the upload
       const q = (body as { query: string }).query;
-      const data = q.includes('theirs:') ? NONE_OPEN : q.includes('viewer') ? { viewer: { id: 'me1' } } : q.includes('workflowStates') ? { workflowStates: { nodes: [{ id: 'todo1' }] } } : q.includes('projects(') ? { projects: { nodes: [] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'bug', team: null }, { id: 'other', name: 'Feature', team: { id: 'team2' } }] } } : q.includes('issueLabelCreate') ? { issueLabelCreate: { issueLabel: { id: (body as { variables: { input?: { name?: string } } }).variables.input?.name === 'auto' ? 'auto1' : 'feat1' } } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : q.includes('fileUpload') ? { fileUpload: { uploadFile: { uploadUrl: 'https://upload.invalid/x', assetUrl: 'https://asset.invalid/x.png', headers: [{ key: 'x-h', value: '1' }] } } } : { issueCreate: { issue: { id: 'issue7', identifier: 'NRZ-7', url: 'https://linear.invalid/NRZ-7' } } };
+      const data = q.includes('viewer') ? { viewer: { id: 'me1' } } : q.includes('workflowStates') ? { workflowStates: { nodes: [{ id: 'todo1' }] } } : q.includes('projects(') ? { projects: { nodes: [] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'bug', team: null }, { id: 'other', name: 'Feature', team: { id: 'team2' } }] } } : q.includes('issueLabelCreate') ? { issueLabelCreate: { issueLabel: { id: (body as { variables: { input?: { name?: string } } }).variables.input?.name === 'auto' ? 'auto1' : 'feat1' } } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : q.includes('fileUpload') ? { fileUpload: { uploadFile: { uploadUrl: 'https://upload.invalid/x', assetUrl: 'https://asset.invalid/x.png', headers: [{ key: 'x-h', value: '1' }] } } } : { issueCreate: { issue: { id: 'issue7', identifier: 'NRZ-7', url: 'https://linear.invalid/NRZ-7' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
@@ -108,11 +106,11 @@ describe('feedback', () => {
     const told = JSON.parse((calls.find((c) => c.url.startsWith(HOOK))!.body as FormData).get('payload_json') as string) as { embeds: { title: string; url: string }[] };
     expect(told.embeds[0]).toMatchObject({ title: '💡 a ready button · NRZ-7', url: 'https://linear.invalid/NRZ-7' });
 
-    // The team and its labels are looked up once: a second report (a bug) uses the workspace's label, and asks only to count the open auto issues, to file, to tell, and to note the post on the issue.
+    // The team and its labels are looked up once: a second report (a bug) uses the workspace's label, and asks only to file, to tell, and to note the post on the issue.
     const before = calls.length;
     expect((await send({ kind: 'bug', text: 'it broke' })).status).toBe(200);
     await settled(2);
-    expect(calls.length).toBe(before + 4);
+    expect(calls.length).toBe(before + 3);
     expect((calls.find((c, i) => i >= before && (c.body as { query?: string })?.query?.includes('issueCreate'))!.body as typeof issue).variables.input.labelIds).toEqual(['bug1', 'auto1']);
   });
 
@@ -125,7 +123,7 @@ describe('feedback', () => {
       const { query: q, variables } = JSON.parse(String(init!.body)) as { query: string; variables: { input: Record<string, unknown> } };
       if (q.includes('projects(') && asked++ === 0) throw new Error('no answer');
       if (q.includes('issueCreate')) inputs.push(variables.input);
-      const data = q.includes('theirs:') ? NONE_OPEN : q.includes('projects(') ? { projects: { nodes: [{ id: 'proj1' }] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      const data = q.includes('projects(') ? { projects: { nodes: [{ id: 'proj1' }] } } : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;
@@ -145,7 +143,7 @@ describe('feedback', () => {
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
     const fake = (async (_url: unknown, init?: RequestInit) => {
       const q = (JSON.parse(String(init!.body)) as { query: string }).query;
-      const data = q.includes('theirs:') ? NONE_OPEN : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     server = await startServer({ port: 0, data: join(dir, 'nertz.db'), accounts: ACCOUNTS, feedback: { linear: { key: 'lin_api_x', team: 'nrz' }, anthropic: '', onDelivered, fetch: fake } });
@@ -172,7 +170,7 @@ describe('feedback', () => {
       const body = JSON.parse(String(init!.body)) as { query: string; variables: { id?: string; input: { description: string } } };
       calls.push({ url: u, query: body.query, variables: body.variables });
       const q = body.query;
-      const data = q.includes('theirs:') ? NONE_OPEN : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: { id: 'team1' } }] } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : { issueCreate: { issue: { id: 'issue9', identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: { id: 'team1' } }] } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } } : { issueCreate: { issue: { id: 'issue9', identifier: 'NRZ-9', url: 'https://linear.invalid/NRZ-9' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const said = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -278,47 +276,6 @@ describe('feedback', () => {
     expect(senderKey({}, null)).not.toBe(senderKey({ name: 'nobody' }, null));
   });
 
-  it('only so many auto issues are open at once, of one sender and of everyone: past that a report is filed and passed on all the same, without it; one closed frees its place', async () => {
-    /** A Linear that keeps what is filed with it, and counts the open auto issues from that, as the real one would. */
-    const issues: { title: string; description: string; labelIds: string[]; open: boolean }[] = [];
-    const fake = (async (url: unknown, init?: RequestInit) => {
-      if (String(url).startsWith(HOOK)) return posted();
-      const { query: q, variables: v } = JSON.parse(String(init!.body)) as { query: string; variables: { input: (typeof issues)[number]; sender: string; theirs: number; all: number } };
-      const open = issues.filter((i) => i.open && i.labelIds.includes('auto1'));
-      const data = q.includes('theirs:')
-        ? { theirs: { nodes: open.filter((i) => i.description.includes(v.sender)).slice(0, v.theirs) }, all: { nodes: open.filter((i) => i.title.startsWith('[FEEDBACK]')).slice(0, v.all) } }
-        : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : q.includes('issueUpdate') ? { issueUpdate: { success: true } }
-        : (issues.push({ ...v.input, open: true }), { issueCreate: { issue: { id: `issue${issues.length}`, identifier: `NRZ-${issues.length}`, url: `https://linear.invalid/NRZ-${issues.length}` } } });
-      if (q.includes('theirs:')) await new Promise((r) => setTimeout(r, 50)); // (counted as asked, and slow to answer: reports at once overlap)
-      return new Response(JSON.stringify({ data }), { status: 200 });
-    }) as typeof fetch;
-    dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
-    server = await startServer({ port: 0, data: join(dir, 'nertz.db'), feedback: { webhook: HOOK, linear: { key: 'lin_api_x', team: 'nrz' }, caps: { perSender: 2, open: 3 }, anthropic: '', onDelivered, fetch: fake } });
-    const send = (name: string) => fetch(`http://localhost:${server!.port}/feedback`, { method: 'POST', body: JSON.stringify({ kind: 'bug', text: 'it broke', name }) });
-    const autos = (name: string) => issues.filter((i) => i.description.includes(`**From:** ${name}`) && i.labelIds.includes('auto1')).length;
-
-    // Three from Sam at once, in any case: two places, and only two are taken, however they cross.
-    expect((await Promise.all(['Sam', 'sam', 'SAM'].map(send))).map((r) => r.status)).toEqual([200, 200, 200]);
-    await settled(3);
-    expect(autos('Sam') + autos('sam') + autos('SAM')).toBe(2);
-    expect(issues.map((i) => i.labelIds.includes('auto1')).filter(Boolean)).toHaveLength(2);
-    // Each is filed and posted all the same, the one past the cap without auto.
-    expect(issues).toHaveLength(3);
-    expect(kept().every((r) => r.issue && r.post)).toBe(true);
-
-    // One of Sam's merged (Done): its place is free again.
-    issues.find((i) => i.labelIds.includes('auto1'))!.open = false;
-    await send('Sam');
-    await settled(4);
-    expect(issues.at(-1)!.labelIds).toEqual(['bug1', 'auto1']);
-    // Everyone's: Ada takes the third place, and Bob, new as he is, finds none.
-    await send('Ada');
-    await settled(5);
-    await send('Bob');
-    await settled(6);
-    expect(issues.slice(-2).map((i) => i.labelIds)).toEqual([['bug1', 'auto1'], ['bug1']]);
-  });
-
   it('a screenshot that cannot be written is left out: the report is kept without it', () => {
     dir = mkdtempSync(join(tmpdir(), 'nertz-feedback-'));
     const blocked = join(dir, 'reports');
@@ -373,7 +330,7 @@ describe('feedback', () => {
       if (u.startsWith(HOOK)) return posted();
       if ((body as { query: string }).query.includes('issueUpdate')) return Response.json({ data: { issueUpdate: { success: true } } });
       const q = (body as { query: string }).query;
-      const data = q.includes('theirs:') ? NONE_OPEN : q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { id: 'issue8', identifier: 'NRZ-8', url: 'https://linear.invalid/NRZ-8' } } };
+      const data = q.includes('teams(') ? { teams: { nodes: [{ id: 'team1' }] } } : q.includes('issueLabels(') ? { issueLabels: { nodes: [{ id: 'bug1', name: 'Bug', team: null }, { id: 'feat1', name: 'Feature', team: null }, { id: 'auto1', name: 'auto', team: null }] } } : { issueCreate: { issue: { id: 'issue8', identifier: 'NRZ-8', url: 'https://linear.invalid/NRZ-8' } } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as typeof fetch;
     const real = fetch;

@@ -6,9 +6,8 @@
 //   once a PR for it is ready (the auto-fanout, kept outside this repo).
 // - LINEAR_API_KEY and LINEAR_TEAM (a team's key, like NRZ): an issue is filed in that team, titled "[FEEDBACK] ...",
 //   labelled Bug or Feature and `auto` (each label made if the team has none of that name), the screenshot in its
-//   description. `auto` is what puts it in the way of the auto-fanout (kept outside this repo), which implements it:
-//   so only so many of the issues it is on may be open at once, of one sender's (`AUTO_PER_SENDER`) and of everyone's
-//   (`AUTO_OPEN`), as Linear says when the issue is filed. Past that the issue is filed all the same, without it.
+//   description. `auto` is what puts it in the way of the auto-fanout (kept outside this repo), which implements it,
+//   and decides how many it takes on at once (of everyone's, and of one sender's, by the issue's `**Sender:**` line).
 //   Optional, each left alone if unset: LINEAR_PRIORITY (1 urgent, 2 high, 3 medium, 4 low), LINEAR_ASSIGNEE (an
 //   email address, or `me` for whoever the key belongs to), LINEAR_STATE (a status of the team by name, like Todo)
 //   and LINEAR_PROJECT (a project by name).
@@ -24,15 +23,7 @@ import type { Account } from '../shared/types';
 import { newReportId, type Reports } from './reports';
 
 /**
- * How many issues handed to the auto-fanout (labelled `auto`) may be open at once, not yet Done or Canceled: of one
- * sender's, and of every report's together (which a sender giving a new name each time cannot get round). Anyone at all
- * can send a report, and each one the auto-fanout takes up costs a Claude run. Merging or closing one frees its place.
- */
-export const AUTO_PER_SENDER = 5;
-export const AUTO_OPEN = 20;
-
-/**
- * Who sent a report, as the caps count them: their account if they were signed in (whatever name they gave), else the
+ * Who sent a report, as the auto-fanout counts them: their account if they were signed in (whatever name they gave), else the
  * name they gave, trimmed and in any case (one name is one person), else nobody, all of whom are one sender. Hashed:
  * it is written on the issue (`**Sender:**`), where an account's id must not be.
  */
@@ -123,8 +114,6 @@ export interface FeedbackOptions {
   linear?: { key: string; team: string; priority?: number; assignee?: string; state?: string; project?: string };
   /** An Anthropic API key: Claude names each report and judges its priority. */
   anthropic?: string;
-  /** For tests: `AUTO_PER_SENDER` and `AUTO_OPEN`, otherwise. */
-  caps?: { perSender: number; open: number };
   /** For tests. */
   fetch?: typeof fetch;
   /** For tests: told when a report has been delivered (or failed to be), after the sender was answered. */
@@ -171,14 +160,6 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   const anthropicKey = options.anthropic ?? process.env.ANTHROPIC_API_KEY;
   const claude = anthropicKey ? new Anthropic({ apiKey: anthropicKey, fetch: outward, timeout: PATIENCE_MS, maxRetries: 0 }) : null;
   const recent = new Map<string, number[]>();
-  const caps = options.caps ?? { perSender: AUTO_PER_SENDER, open: AUTO_OPEN };
-  /** The filing now going on, if any: each waits for the one before (`inTurn`). */
-  let filing: Promise<unknown> = Promise.resolve();
-  const inTurn = <T>(does: () => Promise<T>): Promise<T> => {
-    const done = filing.then(does, does);
-    filing = done.catch(() => undefined);
-    return done;
-  };
   const env = process.env;
   const linear =
     options.linear ??
@@ -195,8 +176,7 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
   };
 
   /**
-   * The team's id and its labels, looked up once: Bug and Feature (one by the report's kind) and `auto` (on those the
-   * caps let through, `mayAuto`). A label of that name is used if the team has one, or the workspace has one for every team; otherwise it is
+   * The team's id and its labels, looked up once: Bug and Feature (one by the report's kind) and `auto` (on every one). A label of that name is used if the team has one, or the workspace has one for every team; otherwise it is
    * made for the team. (Asked in two small queries: one that reads every label of a team inside the team is refused by
    * Linear as too complex.)
    */
@@ -285,23 +265,8 @@ export function feedbackHandler(options: FeedbackOptions = {}, { reports, who }:
     const about = [r.name && `**From:** ${r.name}`, r.room && `**Table:** ${r.room}`, r.context && `**Where:** ${r.context}`, `**Report:** ${id}`, `**Sender:** ${sender}`].filter(Boolean).join('  \n');
     // (What a stranger typed is quoted, so that it cannot pass for the issue's own text.)
     const description = `${r.text.split('\n').map((l) => `> ${l}`).join('\n')}${picture}\n\n${about}`;
-    // Counted and filed in turn, one report at a time: two at once must not both find the last place free.
-    return inTurn(async () => {
-      const auto = await mayAuto(t, sender).catch((e: unknown) => (console.error('feedback', id, 'counting the open auto issues', e), false));
-      const made = await gql<{ issueCreate: { issue: Omit<Filed, 'description'> } }>('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier url } } }', { input: { teamId: t.id, title: `[FEEDBACK] ${title}`, description, labelIds: [t.labels[r.kind], ...(auto ? [t.labels.auto] : [])], ...t.extra, ...(priority ? { priority } : {}) } });
-      return { ...made.issueCreate.issue, description };
-    });
-  };
-
-  /**
-   * Whether a new issue of `sender`'s may be labelled `auto`: whether fewer than the caps of the issues labelled so are
-   * open, of theirs (by the `**Sender:**` line) and of every report's (by the title's `[FEEDBACK]`). An issue of
-   * Brian's own that he labelled is not counted.
-   */
-  const mayAuto = async (t: Team, sender: string): Promise<boolean> => {
-    const open = 'team: { id: { eq: $team } }, labels: { some: { id: { eq: $label } } }, state: { type: { nin: ["completed", "canceled"] } }';
-    const had = await gql<{ theirs: { nodes: unknown[] }; all: { nodes: unknown[] } }>(`query($team: ID!, $label: ID!, $sender: String!, $theirs: Int!, $all: Int!) { theirs: issues(first: $theirs, filter: { ${open}, description: { contains: $sender } }) { nodes { id } } all: issues(first: $all, filter: { ${open}, title: { startsWith: "[FEEDBACK]" } }) { nodes { id } } }`, { team: t.id, label: t.labels.auto, sender: `**Sender:** ${sender}`, theirs: caps.perSender, all: caps.open });
-    return had.theirs.nodes.length < caps.perSender && had.all.nodes.length < caps.open;
+    const made = await gql<{ issueCreate: { issue: Omit<Filed, 'description'> } }>('mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier url } } }', { input: { teamId: t.id, title: `[FEEDBACK] ${title}`, description, labelIds: [t.labels[r.kind], t.labels.auto], ...t.extra, ...(priority ? { priority } : {}) } });
+    return { ...made.issueCreate.issue, description };
   };
 
   /**

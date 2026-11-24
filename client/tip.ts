@@ -34,19 +34,20 @@ const DRIFT = 6;
 const HOLD_MS = 500;
 const WANDER = 10;
 
-/** Where the tip goes (its top left corner, in the window): under the anchor (over it, `up`, for a finger), or the
- *  other side when only that fits, and
- *  centred on it but never closer than MARGIN to the window's edge. */
-export function place(anchor: Box, tip: Size, view: Size, up = false): { x: number; y: number; above: boolean } {
+/** Where the tip goes (its top left corner): under the anchor (over it, `up`, for a finger), or the other side when
+ *  only that fits, and centred on it but never closer than MARGIN to the edge of `view`, the part of the page that is
+ *  seen. All in the same coordinates. */
+export function place(anchor: Box, tip: Size, view: Box, up = false): { x: number; y: number; above: boolean } {
+  const bottom = view.top + view.height;
   const below = anchor.top + anchor.height + GAP;
   const over = anchor.top - GAP - tip.height;
-  const fitsBelow = below + tip.height <= view.height - MARGIN;
-  const fitsOver = over >= MARGIN;
-  const above = up ? fitsOver || !fitsBelow : !fitsBelow && (fitsOver || anchor.top > view.height - anchor.top - anchor.height);
+  const fitsBelow = below + tip.height <= bottom - MARGIN;
+  const fitsOver = over >= view.top + MARGIN;
+  const above = up ? fitsOver || !fitsBelow : !fitsBelow && (fitsOver || anchor.top - view.top > bottom - anchor.top - anchor.height);
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
   return {
-    x: clamp(anchor.left + anchor.width / 2 - tip.width / 2, MARGIN, view.width - MARGIN - tip.width),
-    y: clamp(above ? over : below, MARGIN, view.height - MARGIN - tip.height),
+    x: clamp(anchor.left + anchor.width / 2 - tip.width / 2, view.left + MARGIN, view.left + view.width - MARGIN - tip.width),
+    y: clamp(above ? over : below, view.top + MARGIN, bottom - MARGIN - tip.height),
     above,
   };
 }
@@ -125,10 +126,19 @@ export function startTips(doc: Document = document): () => void {
     const text = shown.el.dataset.tip;
     if (!shown.el.isConnected || !text) return hide();
     if (bubble.textContent !== text) bubble.textContent = text;
+    // What is seen of the window, in the coordinates `fixed` goes by: under a pinch it is only a part of the window.
+    const seen = win.visualViewport;
+    const view = seen ? { left: seen.offsetLeft, top: seen.offsetTop, width: seen.width, height: seen.height } : { left: 0, top: 0, width: win.innerWidth, height: win.innerHeight };
+    bubble.style.setProperty('--seen-width', `${view.width}px`);
+    // Under a pinch WebKit measures an element from the corner of what is seen, others from the window's, and `fixed`
+    // goes by the window's in both: so how far apart the two are is read off the tip itself, from where it was put.
+    const at = bubble.getBoundingClientRect();
+    const off = { x: at.left - (parseFloat(bubble.style.left) || 0), y: at.top - (parseFloat(bubble.style.top) || 0) };
     // By the pointer: a box around the arrow, so the tip goes just under it.
-    const anchor = shown.at ? { left: shown.at.x, top: shown.at.y - 10, width: 0, height: 26 } : shown.el.getBoundingClientRect();
+    const box = shown.at ? { left: shown.at.x, top: shown.at.y - 10, width: 0, height: 26 } : shown.el.getBoundingClientRect();
+    const anchor = { left: box.left - off.x, top: box.top - off.y, width: box.width, height: box.height };
     const size = { width: bubble.offsetWidth, height: bubble.offsetHeight };
-    const p = place(anchor, size, { width: win.innerWidth, height: win.innerHeight }, shown.by === 'touch');
+    const p = place(anchor, size, view, shown.by === 'touch');
     bubble.style.left = `${Math.round(p.x)}px`;
     bubble.style.top = `${Math.round(p.y)}px`;
     frame = win.requestAnimationFrame(follow);

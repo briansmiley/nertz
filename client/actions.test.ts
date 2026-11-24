@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal, finishDeal, RESHUFFLES_BEFORE_VOTE, resolveEndVote, seatedPeople } from '../shared/engine';
+import { applyIntent, deal, finishDeal, RESHUFFLES_BEFORE_VOTE, resolveEndVote, seatedPeople, startCountdown } from '../shared/engine';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 import type { GameState, PlayerView, RoomView } from '../shared/types';
 import { ballot, canPause, canRedeal, canReset, canResume, pauseKeyAction, standing, tableActions } from './actions';
@@ -24,10 +24,10 @@ describe("the table's actions", () => {
     expect(tableActions(roomOf(live, 0)).filter((a) => a.sure).map((a) => a.id)).toEqual(['redeal', 'leave']);
   });
 
-  it('before Start there is nothing to pause or to end: only whoever deals can deal again, and anyone can leave', () => {
+  it('before Start there is nothing to pause or to end: only whoever deals can deal again, and anyone can stand up or leave', () => {
     const ready = finishDeal(deal([0, 1, 2], lcg(7)));
-    expect(ids(roomOf(ready, 1))).toEqual(['leave']);
-    expect(ids(roomOf(ready, 0))).toEqual(['redeal', 'leave']);
+    expect(ids(roomOf(ready, 1))).toEqual(['stand', 'leave']);
+    expect(ids(roomOf(ready, 0))).toEqual(['redeal', 'stand', 'leave']);
   });
 
   it('someone watching can only leave', () => {
@@ -91,8 +91,12 @@ describe('the pause key', () => {
 });
 
 describe('standing up from your cards for now', () => {
-  it('is open once the round is under way, to whoever plays it; standing, the line says you can sit back down', () => {
-    expect(standing(roomOf(finishDeal(deal([0, 1, 2], lcg(7))), 1))).toBeNull(); // before Start: leave, or wait
+  it('is open from the deal until Nertz is called, to whoever plays at the table; standing, the line says you can sit back down', () => {
+    const dealt = deal([0, 1, 2], lcg(7));
+    for (const game of [dealt, finishDeal(dealt), startCountdown(finishDeal(dealt))]) {
+      expect(standing(roomOf(game, 1))).toBe(false); // during the deal, the wait for Start and the count, as in play
+      expect(tableActions(roomOf(game, 1)).find((a) => a.id === 'stand')).toMatchObject({ label: 'Stand up' });
+    }
     expect(standing(roomOf(live, 1))).toBe(false);
     const up = withPlayer(roomOf(live, 1), 1, { standing: true });
     expect(standing(up)).toBe(true);

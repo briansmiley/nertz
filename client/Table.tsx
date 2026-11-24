@@ -365,9 +365,21 @@ function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
   );
 }
 
-/** `sheet` (the scores) is laid over the table when the end-of-round sequence has played out. */
-export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
+/**
+ * `sheet` (the scores) is laid over the table when the end-of-round sequence has played out. `seats` (the lobby's
+ * sheet) is whoever deals', laid over it from the names under Start until they press it: the cards are dealt, nothing
+ * is played, and the table can still be seated as in the lobby.
+ */
+export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode; seats: (close: () => void) => ReactNode }) {
   const game = room.game!;
+  const [seating, setSeating] = useState(false);
+  const unseat = useCallback(() => setSeating(false), []);
+  const unplayed = game.status.at === 'dealing' || game.status.at === 'ready';
+  const dealer = room.players.find((p) => p.id === room.me)?.isHost === true;
+  const seatsOpen = seating && unplayed && dealer;
+  useEffect(() => {
+    if (!unplayed || !dealer) setSeating(false);
+  }, [unplayed, dealer]);
   /** Your seat; or, watching without one, a seat that nobody has. */
   const you = room.seat ?? -1;
   const results = room.phase === 'results';
@@ -1031,7 +1043,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       })}
 
       {/* (Not while the pile is in hand, on its way: that is what the notice asks for.) */}
-      <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} />
+      <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} onSeats={seatsOpen ? undefined : () => setSeating(true)} />
 
       {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
       {called && stage !== 'sheet' && (
@@ -1107,6 +1119,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
       </div>
     )}
     {stage === 'sheet' && sheet}
+    {seatsOpen && seats(unseat)}
     {/* The round's clock, where the layout has a free place for it. (Over the score sheet too: it has stopped.) */}
     {L.clock && room.clock && <Clock clock={room.clock} at={L.clock} />}
     </>

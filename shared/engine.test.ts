@@ -35,6 +35,7 @@ import {
   startCountdown,
   viewFor,
   wentOut,
+  withHands,
   yetToHear,
   type Result,
   type Rng,
@@ -245,6 +246,25 @@ describe('deal', () => {
   it('survives a degenerate rng', () => {
     expect(checkInvariants(inPlay([0, 1], () => 0.999999999))).toBeNull();
     expect(checkInvariants(inPlay([3, 5], () => 1))).toBeNull();
+  });
+
+  it('before Start a hand goes on the table or comes off it and no other is touched; one dealt in late is buried as the round was', () => {
+    const rng = seeded(3);
+    const dealt = dealRound([0, 2], rng);
+    const late = dealRound([1], rng, 2).players[0]!;
+    expect(downs(late)).toEqual(downs(dealt.players[0]!)); // as two were dealt: nothing face-down
+    expect(downs(dealRound([1], rng, 4).players[0]!)).toEqual([0, 1, 2, 3]);
+    const three = withHands(dealt, [...dealt.players, late]);
+    expect(three.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    expect([three.players[0], three.players[2]]).toEqual(dealt.players);
+    expect(three.slots).toEqual(Array.from({ length: 12 }, () => null));
+    expect(checkInvariants(three)).toBeNull();
+    const two = withHands(finishDeal(three), three.players.slice(1));
+    expect(two).toMatchObject({ status: { at: 'ready' }, players: [late, dealt.players[1]] });
+    expect(two.slots).toHaveLength(8);
+    expect(checkInvariants(two)).toBeNull();
+    const counting = startCountdown(two);
+    expect(withHands(counting, [late])).toBe(counting); // "1, 2, 3": the cards lie where they are
   });
 });
 
