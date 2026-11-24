@@ -231,10 +231,12 @@ function Record({ among, choose }: { among: Among; choose: (a: Among) => void })
   const had = useRef(false);
   had.current ||= stats !== null;
   return (
-    <>
-      {had.current && <Which among={among} choose={choose} vs />}
-      {stats && <Figures figures={recordOf(stats)} />}
-    </>
+    had.current ? (
+      <div className="stats">
+        <Which among={among} choose={choose} vs />
+        {stats && <Figures figures={recordOf(stats)} />}
+      </div>
+    ) : null
   );
 }
 
@@ -255,12 +257,16 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
         {known && <Follow handle={handle} name={known.name ?? handle} />}
       </div>
-      {known && <Which among={among} choose={choose} vs />}
-      {known && <Figures figures={recordOf(known.stats)} />}
-      {known?.versus && (
-        <div className="versus">
-          <h3>You vs {known.name ?? 'them'}</h3>
-          <Figures figures={versusOf(known.versus)} />
+      {known && (
+        <div className="stats">
+          <Which among={among} choose={choose} vs />
+          <Figures figures={recordOf(known.stats)} />
+          {known.versus && (
+            <div className="versus">
+              <h3>You vs {known.name ?? 'them'}</h3>
+              <Figures figures={versusOf(known.versus)} />
+            </div>
+          )}
         </div>
       )}
     </div>

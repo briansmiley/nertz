@@ -400,6 +400,17 @@
   opacity: 1;
 }
 
+/* The record, and (on someone's page) you against them under a line: one sheet laid on the ruled paper, the rounds
+   counted chosen at its top. */
+.profile .stats {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.1rem 0.6rem 0.7rem;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: #fff;
+}
+
 .profile .record {
   flex-wrap: wrap;
   justify-content: center;
@@ -475,11 +486,6 @@
   height: 2rem;
   padding: 0 0.1rem;
   border-bottom: 1.5px solid transparent;
-}
-
-/* (On a page, on the rule straight under the head: the rounds counted in everything under it.) */
-.profile > .among {
-  margin-top: -0.6rem;
 }
 
 .among .vs {
@@ -903,7 +909,9 @@
 .versus {
   display: grid;
   gap: 0.3rem;
-  margin-top: 0.6rem;
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--ink);
 }
 
 .versus h3 {
