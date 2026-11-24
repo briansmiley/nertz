@@ -83,8 +83,8 @@ export function Robot() {
 export function RobotPlus() {
   return (
     <svg className="robotplus" viewBox="0 0 24 24" aria-hidden="true">
-      {/* (The head low in the square, level with the plus beside it: the antennae have the room above.) */}
-      <g transform="translate(0 2.2)">
+      {/* (The head low in the square, level with the plus beside it, the antennae with the room above; tipped, as a card is.) */}
+      <g transform="translate(0 2.2) rotate(-10 10 14.25)">
         <path d="M7 8.5V5.6M13 8.5V5.6" />
         <circle className="bulb" cx="7" cy="4.3" r="1.3" />
         <circle className="bulb" cx="13" cy="4.3" r="1.3" />
