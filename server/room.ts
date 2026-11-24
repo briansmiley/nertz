@@ -960,8 +960,13 @@ export class Room {
     return botAt(bot.level, this.state?.players.length ?? 2);
   }
 
+  /**
+   * Whoever deals seats a bot, and takes one off (`removeBot`): in the lobby, on the score sheet, and before their
+   * Start, never once it is pressed. A bot sits down and gets up the way a person does: before Start it is dealt its
+   * seat's hand (`fill`), and taken off it puts that hand aside (`gone`, `upFrom`). Nobody else's cards change.
+   */
   private addBot(by: Player, level: BotLevel): void {
-    if (by !== this.dealer || this.phase === 'playing') return;
+    if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed)) return;
     const seat = this.seatFor();
     if (seat === null) return;
     const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
@@ -970,6 +975,7 @@ export class Room {
     const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
     this.players.push(bot);
     this.sitDown(bot, seat);
+    this.fill(); // (before Start, its seat's hand goes on the table)
     this.changed();
   }
 
@@ -1016,10 +1022,8 @@ export class Room {
 
   private removeBot(by: Player, seat: number): void {
     const player = this.players.find((p) => p.seat === seat);
-    if (by !== this.dealer || this.phase === 'playing' || !player?.bot) return;
-    this.remove(player, true); // (its line of the last round stays for the cards it left on the table, but off the score sheet: a bot sent away is gone)
-    this.fill(); // its seat is free: the first in the queue has it
-    this.changed();
+    if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed) || !player?.bot) return;
+    this.gone(player, 'kicked'); // (its line of the last round stays for the cards it left on the table, but off the score sheet: a bot sent away is gone)
   }
 
   /**

@@ -338,11 +338,14 @@ card in hand is over everything.
 
 ## Bots
 
-Whoever deals can seat bots, so that one person has something to play against. In the lobby, and on the score sheet between
-rounds, pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. A bot takes a seat
+Whoever deals can seat bots, so that one person has something to play against. In the lobby, on the score sheet between
+rounds, and after the deal while the table waits for Start (the robot after the names under the Start button, and the ×
+beside each), pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. Before Start a
+bot sits down and gets up as a person does: it is dealt its seat's hand, and taken off, that hand is put aside; nobody
+else's cards change. A bot takes a seat
 with its own back colour and a name ("Bot Ada", "Bot Bix", ...), is marked "bot" in the lobby list and beside its name on
 the table, and counts as a connected player everywhere: for the two-player minimum, for the six seats, for the "everyone is
-stuck" vote and for scoring. A bot never deals, cannot be added or removed during a round, and does not keep a table alive:
+stuck" vote and for scoring. A bot never deals, cannot be added or removed once Start is pressed, and does not keep a table alive:
 a lobby with only bots left is forgotten at once, and a table nobody is connected to expires as usual, bots or not.
 
 The lobby sheet is one size however many sit down: its list of names has a line for each of the ten seats a table can

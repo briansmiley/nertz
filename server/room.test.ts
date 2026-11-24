@@ -454,6 +454,58 @@ describe('Room', () => {
     expect(room.game!.status.at).toBe('play');
   });
 
+  it("before Start, whoever deals may seat a bot and take one off, the way a person sits down and gets up: nobody else's cards change; not once Start is pressed", () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    const hands = () => JSON.stringify(room.game!.players);
+    const bots = () => (room.flush(), a.last.room.players.filter((p) => p.bot));
+    room.handle(a, { t: 'start' });
+    const dealt = hands();
+    // During the deal, and again while the table waits for Start.
+    for (const wait of [0, DEAL_MS]) {
+      vi.advanceTimersByTime(wait);
+      room.handle(b, { t: 'addBot', level: 'slow' }); // (not theirs to seat)
+      expect(bots()).toEqual([]);
+      room.handle(a, { t: 'addBot', level: 'slow' });
+      expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', `${bots()[0]!.name}@2`]);
+      expect(JSON.stringify(room.game!.players.slice(0, 2))).toBe(dealt);
+      expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+      expect(downs(room.game!.players[2]!)).toEqual(downs(room.game!.players[0]!)); // (buried as deep as the round was dealt: to two)
+      expect(bots()[0]).toMatchObject({ ready: true }); // (a bot never holds up Start)
+      expect(room.game!.slots).toHaveLength(12);
+      expect(checkInvariants(room.game!)).toBeNull();
+      const three = hands();
+      room.handle(b, { t: 'removeBot', seat: 2 }); // (not theirs to take off)
+      expect(hands()).toBe(three);
+      room.handle(a, { t: 'removeBot', seat: 2 });
+      expect(bots()).toEqual([]);
+      expect(hands()).toBe(dealt);
+      expect(room.game!.slots).toHaveLength(8);
+      expect(checkInvariants(room.game!)).toBeNull();
+      // A bot seated where one was taken off has the hand that was dealt there, as a person would.
+      room.handle(a, { t: 'addBot', level: 'slow' });
+      expect(hands()).toBe(three);
+      room.handle(a, { t: 'removeBot', seat: 2 });
+    }
+    expect(room.game!.status.at).toBe('ready');
+    expect(vi.getTimerCount()).toBe(0); // (nothing is dealt over: the table goes on waiting)
+    // From "1, 2, 3" on, no bot sits down and none gets up.
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'go' });
+    const counting = room.game;
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'removeBot', seat: 2 });
+    expect(room.game).toBe(counting);
+    expect(bots()).toHaveLength(1);
+    vi.advanceTimersByTime(START_MS);
+    expect(room.game!.status.at).toBe('play');
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'removeBot', seat: 2 });
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    expect(bots()).toHaveLength(1);
+  });
+
   it('a line of the score sheet is its player\'s, not its seat\'s: whoever has the seat next is not shown as them, and they are back in it if it is free', () => {
     const { room, conns } = roomWith(MAX_PLAYERS, { deal: rigged([0]) });
     const w = new FakeConn();

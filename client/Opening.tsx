@@ -8,6 +8,7 @@ import { MIN_PLAYERS, START_BEAT_MS, START_BEATS, START_MS } from '../shared/pro
 import type { PlayerView, RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
 import { go, ready } from './net';
+import { AddBot, Unseat } from './Seating';
 
 /** How long the word stays up once play is open. It lets every click through. */
 const WORD_MS = 650;
@@ -143,8 +144,9 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
         ) : (
           <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
         )}
-        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick. Under them, how many have. */}
-        {waiting.length > 0 && (
+        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick. Under them, how many have.
+            The dealer's, as in the lobby: the × beside each name, and the robot after them that seats a bot. */}
+        {(waiting.length > 0 || mine) && (
           <>
             <ul className="readies" aria-label="Who is ready">
               {waiting.map((p) => (
@@ -160,12 +162,20 @@ export function Opening({ room, at }: { room: RoomView; at: { x: number; y: numb
                       <i />
                     </span>
                   )}
+                  {mine && <Unseat who={p} />}
                 </li>
               ))}
+              {mine && (
+                <li className="seat-bot">
+                  <AddBot room={room} />
+                </li>
+              )}
             </ul>
-            <p className={`tally${warned ? ' late' : ''}`}>
-              {waiting.filter((p) => p.ready).length}/{waiting.length}
-            </p>
+            {waiting.length > 0 && (
+              <p className={`tally${warned ? ' late' : ''}`}>
+                {waiting.filter((p) => p.ready).length}/{waiting.length}
+              </p>
+            )}
           </>
         )}
       </>

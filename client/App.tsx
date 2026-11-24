@@ -6,18 +6,19 @@ import { Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
-import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
+import { cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
+import type { OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
+import { AddBot, Unseat } from './Seating';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
-import { Corner, Pop, Robot, TableRules } from './Settings';
+import { botBack, create, join, nameBot, passHost, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
+import { Corner, Robot, TableRules } from './Settings';
 import { Check, Eye, Gear, LinkIcon } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
@@ -207,42 +208,6 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
         <span {...backOf(backColour(seat ?? 0), look ? shownBack(look.backs) : 'plain', !!look?.bare, true)} />
       )}
     </span>
-  );
-}
-
-/** For whoever deals, between rounds: a robot button that opens a slip for seating a bot. */
-function AddBot({ room }: { room: RoomView }) {
-  const [level, setLevel] = useState<BotLevel>('medium');
-  const full = freeSeats(room.seats) === 0;
-  return (
-    <Pop icon={<Robot />} label="Add a bot">
-      <h3>Add a bot</h3>
-      {full ? (
-        <p className="hint">The table is full.</p>
-      ) : (
-        <div className="bots">
-          <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
-            {BOT_LEVELS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="plain" onClick={() => addBot(level)}>
-            Add
-          </button>
-        </div>
-      )}
-    </Pop>
-  );
-}
-
-/** A small × beside a name, for whoever deals: a bot is sent away; a person is put out of the table, as if they had left. */
-function Unseat({ who }: { who: PlayerView }) {
-  return (
-    <button type="button" className="unseat" aria-label={`Remove ${who.name}`} data-tip={who.bot ? `Remove ${who.name}` : `Remove ${who.name} from the table`} onClick={() => (who.bot ? who.seat !== null && removeBot(who.seat) : kick(who.id))}>
-      ×
-    </button>
   );
 }
 
