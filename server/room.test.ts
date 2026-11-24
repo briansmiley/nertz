@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, setUpDeal, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { downs, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
@@ -2215,7 +2215,9 @@ describe('server over real sockets', () => {
   });
 
   it('(b) a swarm of four bots firing as fast as they can never breaks the table', async () => {
-    const { room, players } = await table(4);
+    // (Dealt with an Ace on top in every hand, so there is always a card for the middle: a plain deal now and then gave
+    // the swarm none it could play there, and the check that play reached the middle failed with nothing wrong.)
+    const { room, players } = await table(4, (seats, rng) => setUpDeal(deal(seats, rng), 'aces'));
     const rnd = seeded(2024);
     const PER_BOT = 1500;
     const BURST = 4;
