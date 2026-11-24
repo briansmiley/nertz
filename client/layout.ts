@@ -647,7 +647,7 @@ const CHAT_W: Record<ChatButton, readonly [number, number]> = { text: [49, 57], 
 const CHAT = { gap: 6, h: 29, barH: 36 } as const;
 /** The one button of the corner, the menu (Settings.tsx `Corner`): `size` across. */
 export const KNOB = { size: 36 } as const;
-/** The room the clock is given: above the menu's button (large figures), or in line after the chat's buttons (small ones). */
+/** The room the clock is given: above the menu's button or in line after it (large figures), or in line after the chat's buttons (small ones). */
 const CLOCK = { above: { w: 58, h: 22 }, beside: { w: 44, h: 16 } } as const;
 /** "I'm stuck" and the vote: as small pills (`h` high, `gap` apart, each as wide as its longest wording; under `min` the wording is cut short; never lower than `low`) or, where there is room under your stock, full buttons. */
 export const PILL = { stuck: 124, vote: 112, h: 32, gap: 6, min: 84, low: 24, full: { h: 39, gap: 8, min: 150, drop: 16 } } as const;
@@ -675,7 +675,8 @@ export interface ClockAt extends Rect {
  * Upright, both are in the bar across the top, the chat's buttons from the left and the menu's from the right. When
  * the bar is too narrow for the chat's as they are there (larger, for a thumb), they are no larger than elsewhere, and
  * narrower still they are squeezed; the clock stands between them, by the menu's. Otherwise the chat is top left and the menu's button
- * bottom left; the clock would stand above that, or else after the chat's buttons.
+ * bottom left; the clock would stand above that, or else after the chat's buttons, or else (on a phone on its side, where
+ * the hands down the sides take both) in line after the menu's button.
  */
 export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit: Fittings = NO_FITTINGS): Corners {
   const H = fullH - keep.b;
@@ -701,7 +702,8 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
   const knobs: Rect = { x: Math.max(12, keep.l), y: H - 10 - KNOB.size, w: KNOB.size, h: KNOB.size };
   const above = { x: knobs.x, y: knobs.y - 8 - CLOCK.above.h, ...CLOCK.above, small: false };
   const beside = { x: chat.x + chat.w + 8, y: chat.y + (chat.h - CLOCK.beside.h) / 2, ...CLOCK.beside, small: true };
-  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? [above, beside] : [] };
+  const after = { x: knobs.x + knobs.w + 10, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
+  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? (shape === 'low' ? [above, beside, after] : [above, beside]) : [] };
 }
 
 /** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
@@ -739,13 +741,13 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  *   side by side, or as pills one under the other, whichever comes first that fits above the bottom of the window and
  *   short of the tray; failing all three (and in any window that is low), as pills in a
  *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
- *   button; narrower than that, its pills shrink.
+ *   button (or the clock in line after it); narrower than that, its pills shrink.
  * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
  *   (and the clock above it). Otherwise it is one line, as wide as what it says: tucked under the pile and its count
  *   while that is clear of everything and short of your work piles; failing that, level with the button: ending under
  *   the end of the nertz pile, or short of the count on the pile or a pill where one of them is in its row; where that
- *   would put it on the button, right after the button, and only then cut short, by whatever is in its way (too little
- *   room for a name: none).
+ *   would put it on the button, right after the button (or the clock in line after it), and only then cut short, by
+ *   whatever is in its way (too little room for a name: none).
  * - The count on your nertz pile is placed first, and all of this keeps clear of it; where its place under the pile's
  *   corner is the menu's button, it stands at the top corner instead.
  */
@@ -784,6 +786,8 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
 
   const roomy = at.shape === 'wide';
   const knobsR = at.knobs.x + at.knobs.w;
+  // The end of what stands from the left in the row of the menu's button: the button, and the clock where it is in line after it.
+  const rowR = clock && clock.y < at.knobs.y + at.knobs.h && clock.y + clock.h > at.knobs.y ? clock.x + clock.w : knobsR;
   const right = Math.min(trayX, W - keep.r) - 8; // nothing of this goes further right
   const boxR = h.x + 7 * ow + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const padBase = base + stockDrop(ow); // the bottom of the stock's lowest card
@@ -814,7 +818,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
     }
     // No room for both there: "I'm stuck" under your stock (or as near as keeps it on the screen) and the vote on its
     // left, under your work piles, which then fan no further down than it.
-    const left = knobsR + 8;
+    const left = rowR + 8;
     const x = Math.max(left, Math.min(stockX, right - PILL.stuck));
     const stuck: Rect = { x, y, w: Math.max(0, Math.min(PILL.stuck, right - x)), h: PILL.h };
     const vw = Math.min(PILL.vote, x - PILL.gap - left);
@@ -828,7 +832,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
   const name = ((): NameAt | null => {
     const F = NAME.full;
     // (In full it reaches down past the menu's button, and the clock above that, which may be the wider of the two.)
-    const wall = Math.max(knobsR, clock && clock.y < at.knobs.y ? clock.x + clock.w : 0);
+    const wall = Math.max(rowR, clock && clock.y < at.knobs.y ? clock.x + clock.w : 0);
     const wide = Math.min(F.w, nertzR - (wall + 4));
     if (roomy && wide >= F.min) {
       // As low under the pile as it has always stood, while it fits; in a lower window nearer to it, and its lines closer.
@@ -840,7 +844,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
     }
     const y = at.knobs.y + (at.knobs.h - NAME.h) / 2;
     const w = clamp(fit.name, NAME.min, NAME.max);
-    const left = knobsR + 10;
+    const left = rowR + 10;
     // Tucked under the pile and its count, from the pile's left edge: moved left only as far as keeps it short of your
     // first work pile (which fans down there).
     const tuck: NameAt = { x: Math.max(left, Math.min(nertzX, workX - 6 - w)), y: Math.max(base, badge.y + badge.h) + 4, w, h: NAME.h, full: false, align: 'start' };
