@@ -83,22 +83,25 @@ export function Robot() {
 export function RobotPlus() {
   return (
     <svg className="robotplus" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 8.5V5.6M13 8.5V5.6" />
-      <circle className="bulb" cx="7" cy="4.3" r="1.3" />
-      <circle className="bulb" cx="13" cy="4.3" r="1.3" />
-      <rect className="ear" x="1.3" y="11.6" width="2" height="4.4" rx="1" />
-      <rect className="blank" x="3.3" y="8.5" width="13.4" height="11.5" rx="2.4" />
-      <g className="eyes">
-        <g transform="translate(7.5 12.9) scale(1.75)">
-          <circle cy="-0.75" r="0.6" />
-          <circle cx="-0.68" cy="0.28" r="0.6" />
-          <circle cx="0.68" cy="0.28" r="0.6" />
-          <path d="M-0.4 1.45 0 0.2 0.4 1.45Z" />
+      {/* (The head low in the square, level with the plus beside it: the antennae have the room above.) */}
+      <g transform="translate(0 2.2)">
+        <path d="M7 8.5V5.6M13 8.5V5.6" />
+        <circle className="bulb" cx="7" cy="4.3" r="1.3" />
+        <circle className="bulb" cx="13" cy="4.3" r="1.3" />
+        <rect className="ear" x="1.3" y="11.6" width="2" height="4.4" rx="1" />
+        <rect className="blank" x="3.3" y="8.5" width="13.4" height="11.5" rx="2.4" />
+        <g className="eyes">
+          <g transform="translate(7.5 12.9) scale(1.75)">
+            <circle cy="-0.75" r="0.6" />
+            <circle cx="-0.68" cy="0.28" r="0.6" />
+            <circle cx="0.68" cy="0.28" r="0.6" />
+            <path d="M-0.4 1.45 0 0.2 0.4 1.45Z" />
+          </g>
+          <path transform="translate(12.5 12.9) scale(1.75)" d="M0-1.35C.8-.45 1.3 0 1.3.58A.65.65 0 0 1 .18.95L.4 1.45H-.4L-.18.95A.65.65 0 0 1-1.3.58C-1.3 0-.8-.45 0-1.35Z" />
         </g>
-        <path transform="translate(12.5 12.9) scale(1.75)" d="M0-1.35C.8-.45 1.3 0 1.3.58A.65.65 0 0 1 .18.95L.4 1.45H-.4L-.18.95A.65.65 0 0 1-1.3.58C-1.3 0-.8-.45 0-1.35Z" />
+        <path d="M8 17h4" />
       </g>
-      <path d="M8 17h4" />
-      <path className="plus" d="M21.1 15.2v5M18.6 17.7h5" />
+      <path className="plus" d="M21.1 14v5M18.6 16.5h5" />
     </svg>
   );
 }
