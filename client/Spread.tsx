@@ -21,7 +21,8 @@ const DOUBLE = 350;
 /** How long a wave runs, from the first card's start to the last one's landing (ms). */
 const WAVE = (CARDS - 1) * STAGGER + 2 * HALF * 1000;
 
-/** Once the picture of `back` is in (or has failed, or taken too long), so that a card turned over never lands blank. */
+/** Once the picture of `back` is in (or has failed, or taken too long), so that a card turned over never lands blank. Called
+ *  a turn ahead too, to send for it early: by the press the browser has it (or is already fetching it). */
 function loaded(back: Back): Promise<unknown> {
   const art = backArt(back, true);
   if (!art) return Promise.resolve();
@@ -36,10 +37,18 @@ function Card({ seat, wave }: { seat: number; wave: number }) {
   const [back, setBack] = useState<Back>('plain');
   const [scope, animate] = useAnimate<HTMLSpanElement>();
   const turning = useRef(false);
+  // Drawn a turn ahead, so a press turns over a card whose picture is already in: six pictures sent for at a time, not all.
+  const ahead = useRef<Back>('plain');
+  useEffect(() => {
+    ahead.current = anotherBack('plain');
+    void loaded(ahead.current);
+  }, []);
 
   const turn = async () => {
     if (turning.current) return;
-    const next = anotherBack(back);
+    const next = ahead.current;
+    ahead.current = anotherBack(next);
+    void loaded(ahead.current);
     turning.current = true;
     const still = calm(); // reduced motion: the new back, without the turn
     deal(still ? 0 : HALF - SNAP); // on the audio clock, so the flick lands just as the card comes edge-on
