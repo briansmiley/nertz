@@ -9,8 +9,8 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, deal, dealOn, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
-import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg } from '../shared/protocol';
+import { applyIntent, deal, dealOn, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
+import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { Account, BotLevel, GameState, Intent, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -24,6 +24,13 @@ import type { RoundRecord } from './rounds';
  * Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is and
  * whether it is theirs alone, and the picture they put up. As it was when they joined, or since changed (`reaccount`).
  */
+/**
+ * Whether the aids for trying things out are on: set-up deals (`?deal=`) and a bot going out on demand (Shift+N). On in
+ * local development (any NODE_ENV but production) and wherever `TESTING=1` is set (previews); off on staging and
+ * production. Read each time, so that a test can set it. Every window is told, in `RoomView.testing`.
+ */
+export const testing = (env: NodeJS.ProcessEnv = process.env): boolean => env.TESTING === '1' || env.NODE_ENV !== 'production';
+
 export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture' | 'private'>;
 /** Only what a room keeps, of whatever it is handed. */
 const kept = ({ id, handle, picture, private: hidden }: SignedAs): SignedAs => ({ id, handle, picture, private: hidden });
@@ -277,7 +284,7 @@ export class Room {
     if (!player) return;
     switch (msg.t) {
       case 'start':
-        return this.start(player);
+        return this.start(player, msg.deal);
       case 'go':
         return this.go(player);
       case 'ready': {
@@ -462,11 +469,11 @@ export class Room {
     this.changed();
   }
 
-  private start(player: Player): void {
+  private start(player: Player, setUp?: SetUp): void {
     // Only people who are here get cards. Someone away keeps their seat and score and sits the round out.
     if (player !== this.dealer || this.phase === 'playing' || this.present < MIN_PLAYERS) return;
     this.round++;
-    this.dealOut();
+    this.dealOut(setUp);
   }
 
   /**
@@ -474,7 +481,7 @@ export class Room {
    * whoever deals says to deal it over. Never otherwise: whoever sits down (or comes back) after the deal but before
    * the dealer has said Start is dealt into it as it lies (`fill`).
    */
-  private dealOut(): void {
+  private dealOut(setUp?: SetUp): void {
     // The cards of whatever round there was are gone with it. So nobody is `out` any more (that is only ever said of
     // cards in play), and with no round on the queue sits down. Done here, where a round is replaced, and in `settle`,
     // where one ends: the only two places a round goes away, so that no caller has to remember.
@@ -486,6 +493,8 @@ export class Room {
     for (const p of this.players) delete p.ready;
     for (const p of this.players) this.draw(p); // (whoever is on a lot with nothing drawn: dealt in or not, here or away)
     this.state = this.deal(dealt.map((p) => p.seat), this.rng);
+    // A set-up deal (`?deal=aces`) is for trying things out: only where `testing` is on.
+    if (setUp && testing()) this.state = setUpDeal(this.state, setUp);
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!
@@ -660,7 +669,7 @@ export class Room {
     drags.at = now;
     if (drags.left < 1) return;
     drags.left--;
-    const msg: ServerMsg = { t: 'drag', seat: player.seat, id: where.id, w: where.w, h: where.h, p: where.p, ...(where.f === undefined ? {} : { f: where.f }) };
+    const msg: ServerMsg = { t: 'drag', seat: player.seat, id: where.id, w: where.w, h: where.h, p: where.p };
     for (const p of this.players) if (p !== player) p.conn?.send(msg);
   }
 
@@ -1147,11 +1156,11 @@ export class Room {
   }
 
   /**
-   * For trying things out (seeing and hearing a bot go out without playing a round through): never in production, and only for whoever deals.
+   * For trying things out (seeing and hearing a bot go out without playing a round through): only where `testing` is on, and only for whoever deals.
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
   private debugBotOut(by: Player): void {
-    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
+    if (!testing() || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
     const bot = this.players.find((p) => p.bot && this.state!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -1223,6 +1232,7 @@ export class Room {
       clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
       paused: this.pausedBy ? { by: this.pausedBy.id } : null,
       lastRound: this.lastRound,
+      testing: testing(),
     };
   }
 }

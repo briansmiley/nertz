@@ -358,5 +358,6 @@ export const roomOf = (game: GameState, you: number, extra: Partial<RoomView> = 
   clock: null,
   paused: null,
   lastRound: null,
+  testing: false,
   ...extra,
 });

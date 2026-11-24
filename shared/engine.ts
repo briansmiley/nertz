@@ -3,7 +3,7 @@
 // same reducer on its redacted view to predict its own moves.
 //
 // Pile convention: the TOP of every pile is the LAST array element.
-import { MAX_PLAYERS, parseIntent, SLOTS_PER_PLAYER, WORK_PILES } from './protocol';
+import { MAX_PLAYERS, parseIntent, SLOTS_PER_PLAYER, WORK_PILES, type SetUp } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
 import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
@@ -109,6 +109,47 @@ export function deal(seats: readonly number[], rng: Rng): GameState {
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
   return { players, status: { at: 'dealing' }, slots, tray: [], reshuffles: 0 };
+}
+
+/**
+ * For trying things out (never in production): what each set-up puts on top of each hand's piles (`nertz`, or a work
+ * pile by number), and how many cards it leaves in the nertz pile (the rest go under the stock).
+ */
+const SET_UP_TOPS: Record<SetUp, { tops: [pile: 'nertz' | number, suit: Suit, rank: number][]; nertz?: number }> = {
+  // An Ace to put down and a 2 to put on it, twice over.
+  aces: { tops: [[0, 'S', 1], [1, 'S', 2], [2, 'H', 1], [3, 'H', 2]] },
+  // Everyone's Ace of spades is up, and their 2 of spades waits on their nertz pile: once two of the Aces are down, each 2 has two piles to go to.
+  'two-piles': { tops: [[0, 'S', 1], ['nertz', 'S', 2]] },
+  // Two Aces left in the nertz pile: put them down and call.
+  out: { tops: [['nertz', 'D', 1], ['nertz', 'C', 1]], nertz: 2 },
+};
+
+/**
+ * A freshly dealt round (`deal`) rearranged into a set-up: within each hand, each card the set-up names is swapped
+ * onto the top it names (for several on one pile, the first named on top and the next under it), and the card that
+ * lay there goes where it came from. Everything else stays as dealt.
+ */
+export function setUpDeal(state: GameState, name: SetUp): GameState {
+  const { tops, nertz: left } = SET_UP_TOPS[name];
+  const players = state.players.map((p): PlayerState => {
+    const nertz = [...p.nertz];
+    const work = p.work.map((w) => ({ ...w, cards: [...w.cards] }));
+    const stock = [...p.stock];
+    const piles = [nertz, ...work.map((w) => w.cards), stock];
+    const placed = new Map<AnyCard[], number>();
+    for (const [at, suit, rank] of tops) {
+      const to = at === 'nertz' ? nertz : work[at]!.cards;
+      const i = to.length - 1 - (placed.get(to) ?? 0);
+      placed.set(to, (placed.get(to) ?? 0) + 1);
+      const is = (c: AnyCard) => !isHidden(c) && c.suit === suit && c.rank === rank;
+      const from = piles.find((pile) => pile.some(is))!;
+      const j = from.findIndex(is);
+      [to[i], from[j]] = [from[j]!, to[i]!];
+    }
+    const under = left === undefined ? [] : nertz.splice(0, nertz.length - left);
+    return { ...p, nertz, work, stock: [...under, ...stock] };
+  });
+  return { ...state, players };
 }
 
 // ---------------------------------------------------------------- legality

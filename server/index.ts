@@ -404,10 +404,12 @@ function serveStatic(dist: string, path: string, req: IncomingMessage, res: Serv
     file = join(dist, 'index.html');
     if (!isFile(file)) return text(404, 'Client not built. Run `npm run build`, or use `npm run dev` and open http://localhost:5173.');
   }
+  // Vite fingerprints everything under assets/, and the back pictures are asked for by their issue (`?v=`, in
+  // client/cards/Face.tsx): those keep. index.html must always be fresh.
+  const keeps = ['assets', join('cards', 'backs')].some((dir) => file.startsWith(join(dist, dir) + sep));
   res.writeHead(200, {
     'content-type': MIME[extname(file)] ?? 'application/octet-stream',
-    // Vite fingerprints everything under assets/; index.html must always be fresh.
-    'cache-control': file.startsWith(join(dist, 'assets') + sep) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'cache-control': keeps ? 'public, max-age=31536000, immutable' : 'no-cache',
   });
   if (req.method === 'HEAD') return void res.end();
   createReadStream(file)

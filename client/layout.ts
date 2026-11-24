@@ -958,10 +958,14 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const width = (botL: number) => Math.min(wide / OPP_UNITS, each(botL - col.topL, round.left), each(col.botR - col.topR, round.right), mine ? ow * 0.62 : OPP_MAX);
     // The left column runs down to the menu's button only beside your hand, clear of it (a phone's hand is narrow and
-    // leaves it the room); otherwise it stops above your hand, as the right one does. Whichever has its hands larger.
-    const beside = Math.min(width(H - LOW.knobs), (handX - CLEAR - sideL) / OPP_UNITS);
-    const above = width(ends);
-    if (beside >= Math.max(above, OPP_LEAST)) col.w = beside;
+    // leaves it the room); otherwise it stops above your hand, as the right one does. Whichever has its hands larger as
+    // they are drawn, which is never smaller than OPP_LEAST: where neither has the room for hands that small, the longer
+    // column, whose hands then lie over each other the less.
+    const byHand = handX - CLEAR - sideL; // the width beside your hand
+    const drawn = (w: number) => clamp(w, OPP_LEAST, OPP_MAX);
+    const beside = drawn(Math.min(width(H - LOW.knobs), byHand / OPP_UNITS));
+    const above = drawn(width(ends));
+    if (beside >= above && beside <= byHand / OPP_UNITS) col.w = beside;
     else Object.assign(col, { w: above, botL: ends });
   } else if (cols) Object.assign(col, { topL: U.top, topR: U.top, botL: ends, botR: ends }); // a U: both stop above your hand
   const tops = seats.filter((s) => s.where === 'top');
@@ -969,7 +973,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const mw = tall
     ? clamp(grid.w, OPP_LEAST, OPP_MAX)
     : low
-      ? clamp(col.w, OPP_LEAST, OPP_MAX)
+      ? col.w // (as drawn already: see `beside` and `above`)
       : clamp(
     Math.min(
       H * OPP_SIZE[Math.min(5, others.length)]!,
@@ -1222,19 +1226,18 @@ function nearestEdge(felt: Felt, n: number, p: Pt): Pt {
  * window. The felt is the same on every screen and the hands are not: its
  * owner carries the card up from the bottom of their screen, and here it has
  * to come from wherever this window seats them. So it is not simply drawn
- * where it is. It starts out about its owner's hand, in cards of their hand as
- * drawn here (`hw` wide, the card's home at `home`): as far along the row as
- * they have it (`at.h[0]`), and out towards the felt `at.f` of the way from the
- * hand to the felt's edge (never less than its hop within the hand, `at.h[1]`).
- * As it nears the felt its sideways place gives way: a hand above or below the
- * felt shares the felt's left and right, so it is steered across to where the
- * card really is; a hand at the side does not, so its sideways part fades out.
- * From there:
- * - a card with a pile to go to (`pile`: the middle of that pile on this
- *   screen) is as far along the straight line to that pile as its owner has
- *   carried it of their own way there (`at.w`, 0 to 1);
- * - and any card comes over to where it really is (`at.p`, its point of the
- *   felt) as it lingers over the felt (`linger`, 0 to 1).
+ * where it is: it is drawn on one path, as far along it as its owner says
+ * (`at.w`). From 0 to 1 it goes out about its owner's hand, in cards of their
+ * hand as drawn here (`hw` wide, the card's home at `home`): as far along the
+ * row as they have it (`at.h[0]`), and that share of the way out from the hand
+ * to the felt's edge (never less than its hop within the hand, `at.h[1]`). Its
+ * sideways place gives way as it goes, and is gone at the edge: which way is
+ * sideways on its owner's screen says nothing about where on the felt it is
+ * going from here. From 1 to 2 it goes straight on from the felt's edge to the
+ * pile it is going to (`pile`: the middle of that pile on this screen; where
+ * it really is, if there is none). And any card comes over to where it really
+ * is (`at.p`, its point of the felt) as it lingers over the felt (`linger`, 0
+ * to 1).
  */
 export function aloftAt(
   felt: Felt,
@@ -1242,7 +1245,7 @@ export function aloftAt(
   home: Pt,
   hw: number,
   hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined,
-  at: { h: readonly [number, number]; p: readonly [number, number]; w: number; f?: number },
+  at: { h: readonly [number, number]; p: readonly [number, number]; w: number },
   pile: Pt | undefined,
   linger: number,
 ): Pt {
@@ -1251,7 +1254,7 @@ export function aloftAt(
   // (Straight at the nearest point of the felt's edge from its place in the hand.)
   const to = hand ? nearestEdge(felt, n, home) : { x: 0, y: -1 };
   const len = Math.hypot(to.x, to.y) || 1;
-  const f = at.f ?? 0;
+  const f = Math.min(at.w, 1);
   // Which way the row runs here: across, the other way round for a hand across the table, down or up for a turned one.
   const row = hand?.turn === 90 ? { x: 0, y: 1 } : hand?.turn === -90 ? { x: 0, y: -1 } : { x: hand?.flip ? -1 : 1, y: 0 };
   // Its sideways place counts for less the nearer the felt it is.
@@ -1261,7 +1264,9 @@ export function aloftAt(
   const out = f > 0 ? Math.max(lift, (f * offFelt(toTable(felt, home.x, home.y), n) * felt.u) / hw) : lift;
   let x = home.x + (along * row.x + (out * to.x) / len) * hw;
   let y = home.y + (along * row.y + (out * to.y) / len) * hw;
-  if (pile) [x, y] = [x + (pile.x - x) * at.w, y + (pile.y - y) * at.w];
+  // On from the felt's edge.
+  const end = pile ?? there;
+  [x, y] = [x + (end.x - x) * (at.w - f), y + (end.y - y) * (at.w - f)];
   return { x: x + (there.x - x) * linger, y: y + (there.y - y) * linger };
 }
 

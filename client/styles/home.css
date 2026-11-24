@@ -271,7 +271,9 @@
 @media (max-width: 760px) {
   .home {
     grid-template-columns: 1fr;
-    align-content: center;
+    /* From the top, not centred: the pad's sides are not one height (your page is short until its figures come, then
+       long), and the name over it stays where it is as the pad turns. */
+    align-content: start;
   }
 
   .spread {
@@ -322,6 +324,53 @@
   }
 }
 
+/* Your page there (and who you follow): the name and the fan a size down, holding only the room they need, and the pad
+   as wide as the rest of the line lets it be, up to 29rem; wide enough, your record goes to two lines of five, each
+   average over its best. The height pared to fit. (The way in, laid out as a page is, keeps the pad as it was.) */
+@media (orientation: landscape) and (max-height: 500px) {
+  .home:has(.profile:not(.signin)) {
+    grid-template-columns: minmax(13rem, 1fr) minmax(0, 29rem);
+    gap: 1rem;
+    padding-block: 0.5rem;
+  }
+
+  .home:has(.profile:not(.signin)) .hero {
+    height: calc(100dvh - 1rem);
+  }
+
+  .home:has(.profile:not(.signin)) .spread {
+    zoom: 0.4;
+    margin-left: 1.5rem;
+  }
+
+  .home:has(.profile:not(.signin)) .hero h1 {
+    font-size: min(7vw, 3.75rem);
+  }
+
+  .home .pad:has(> .profile:not(.signin)) {
+    width: 100%;
+    padding: 1.2rem 1.25rem 0.6rem 2.9rem;
+  }
+
+  .home .profile:not(.signin) {
+    gap: 0.4rem;
+  }
+
+  .home .profile .outs {
+    margin-top: 0;
+  }
+
+  @container (min-width: 23rem) {
+    .home .profile > .record {
+      display: grid;
+      grid-template-rows: auto auto;
+      grid-auto-flow: column;
+      justify-content: space-between;
+      gap: 0.2rem 0.4rem;
+    }
+  }
+}
+
 /* Reduced motion. A class rather than a media query: the player's own setting (prefs.ts) overrules the system's either way. */
 .calm .spread .mini {
   animation: none;
@@ -332,9 +381,15 @@
     font-size: 4rem;
   }
 
+  /* (Room over the fan for the corner's buttons, and under the pad no more than its shadow: what fits does not scroll.) */
   .home {
     gap: 1.25rem;
-    padding-top: 3.5rem;
+    padding-top: 3rem;
+    padding-bottom: 1rem;
+  }
+
+  .spread {
+    zoom: 0.6;
   }
 }
 
@@ -354,7 +409,7 @@
 
 .record dd {
   margin: 0;
-  font: 700 1.5rem/2rem var(--num);
+  font: 700 1.5rem/1.75rem var(--num);
   letter-spacing: 0.02em;
   color: var(--ink);
 }
