@@ -973,7 +973,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const mw = tall
     ? clamp(grid.w, OPP_LEAST, OPP_MAX)
     : low
-      ? clamp(col.w, OPP_LEAST, OPP_MAX)
+      ? col.w // (as drawn already: see `beside` and `above`)
       : clamp(
     Math.min(
       H * OPP_SIZE[Math.min(5, others.length)]!,
