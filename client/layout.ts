@@ -1238,12 +1238,13 @@ export function aloftAt(
 
 /**
  * The deal at the start of a round. After `lead` ms the work piles are dealt
- * off each deck at an unhurried `step`; then, after a `pause`, the nertz pile
+ * off each deck, spread evenly over `work` ms however many there are (a table
+ * without face-downs deals fewer, each at a slower step); then, after a `pause`, the nertz pile
  * is counted off as one quick ribbon (a card every `stream` ms). Each card
  * takes `duration` s to land, and the last is down a beat before the server's
  * DEAL_MS is up and the face-up cards turn over.
  */
-export const DEAL = { lead: 100, step: 130, pause: 180, stream: 50, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
+export const DEAL = { lead: 100, work: 1300, pause: 180, stream: 50, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
 
 /**
  * How long until the `i`th card to leave a deck does so (the `work` work-pile
@@ -1252,7 +1253,7 @@ export const DEAL = { lead: 100, step: 130, pause: 180, stream: 50, duration: 0.
  * card is simply in its place.
  */
 export function dealWait(i: number, dealMs: number, work = 10): number | null {
-  const at = i < work ? i * DEAL.step : work * DEAL.step + DEAL.pause + (i - work) * DEAL.stream;
+  const at = i < work ? (i * DEAL.work) / work : DEAL.work + DEAL.pause + (i - work) * DEAL.stream;
   const wait = DEAL.lead + at - (DEAL_MS - dealMs);
   return wait >= 0 ? wait : null;
 }

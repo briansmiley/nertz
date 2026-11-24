@@ -1029,10 +1029,19 @@ describe('the deal', () => {
   it('has every card down, with a beat to spare, before the server turns the faces over', () => {
     const waits = Array.from({ length: LEAVING }, (_, i) => dealWait(i, DEAL_MS)!);
     expect(waits.every((w, i) => w !== null && (i === 0 || w > waits[i - 1]!))).toBe(true); // one after another
-    expect(DEAL.step).toBeLessThan(DEAL.duration * 1000); // overlapping: the next has left before this one lands
+    expect(DEAL.work / 10).toBeLessThan(DEAL.duration * 1000); // overlapping: the next has left before this one lands
     const landed = waits[LEAVING - 1]! + DEAL.duration * 1000;
     expect(landed).toBeLessThanOrEqual(DEAL_MS - 200);
     expect(landed).toBeGreaterThan(DEAL_MS / 2); // and it fills the time: this is a deal, not a flash
+  });
+
+  it('takes as long over a short deal as a full one: the work piles are spread over the same time, the nertz pile follows as before', () => {
+    const at = (i: number, work: number) => dealWait(i, DEAL_MS, work)!;
+    expect(at(10, 10)).toBe(100 + 1300 + 180); // a full table: first nertz card, as it always was
+    expect(at(4, 4)).toBe(at(10, 10)); // four work cards: the nertz pile starts at the same moment
+    expect(at(3, 4) - at(0, 4)).toBeCloseTo(1300 * (3 / 4)); // evenly spread
+    expect(at(13, 4) - at(4, 4)).toBe(at(19, 10) - at(10, 10)); // the nertz ribbon is the same
+    expect(at(9, 10)).toBe(100 + 9 * 130); // full table unchanged
   });
 
   it('in a window that arrives late, leaves the cards already dealt in place and deals the rest on the same schedule', () => {
