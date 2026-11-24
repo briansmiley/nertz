@@ -187,9 +187,15 @@ export function roomInUrl(): string {
   return isRoomCode(code) ? code : '';
 }
 
-/** For trying things out, in development only: the set-up deal the address names (`?deal=aces`), which Start asks for. */
+/**
+ * Whether this window has the aids for trying things out: in development, and wherever the server says it has its own on
+ * (`RoomView.testing`: locally and on previews). Start then asks for the set-up the address names; Shift+D and Shift+N work.
+ */
+export const testing = (room: RoomView | null): boolean => import.meta.env.DEV || !!room?.testing;
+
+/** The set-up deal the address names (`?deal=aces`), which Start asks for where `testing` is on. */
 function setUpInUrl(): SetUp | undefined {
-  if (!import.meta.env.DEV || typeof location === 'undefined') return undefined;
+  if (typeof location === 'undefined') return undefined;
   const name = new URLSearchParams(location.search).get('deal');
   return SET_UPS.find((s) => s === name);
 }
@@ -396,7 +402,7 @@ export function leave(): void {
 }
 
 export function start(): void {
-  const setUp = setUpInUrl();
+  const setUp = testing(state.room) ? setUpInUrl() : undefined;
   post(setUp ? { t: 'start', deal: setUp } : { t: 'start' });
 }
 

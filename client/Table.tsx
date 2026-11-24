@@ -25,7 +25,7 @@ import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
-import { kick, onDrag, onSnipe, pause, playable, post, sit } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, sit, testing } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -571,14 +571,15 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const called = calledBy(game) !== null;
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
   const out = wentOut(game);
-  // Development aid: Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
+  // Aid for trying things out (`testing`): Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
   const [replay, setReplay] = useState(0);
   const [replaying, setReplaying] = useState(false);
+  const aids = testing(room);
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!aids) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || !e.shiftKey || (e.target as Element).closest?.('input,textarea')) return;
-      // Shift+N: a bot goes out now (to see and hear it without playing a round through; the server refuses it in production).
+      // Shift+N: a bot goes out now (to see and hear it without playing a round through; the server refuses it where `testing` is off).
       if (e.code === 'KeyN') return void post({ t: 'debugBotOut' });
       if (e.code !== 'KeyD') return;
       setReplay((n) => n + 1);
@@ -586,7 +587,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [aids]);
   useEffect(() => {
     if (!replaying) return;
     const t = setTimeout(() => setReplaying(false), DEAL_MS);

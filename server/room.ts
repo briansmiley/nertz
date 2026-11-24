@@ -24,6 +24,13 @@ import type { RoundRecord } from './rounds';
  * Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is and
  * whether it is theirs alone, and the picture they put up. As it was when they joined, or since changed (`reaccount`).
  */
+/**
+ * Whether the aids for trying things out are on: set-up deals (`?deal=`) and a bot going out on demand (Shift+N). On in
+ * local development (any NODE_ENV but production) and wherever `TESTING=1` is set (previews); off on staging and
+ * production. Read each time, so that a test can set it. Every window is told, in `RoomView.testing`.
+ */
+export const testing = (env: NodeJS.ProcessEnv = process.env): boolean => env.TESTING === '1' || env.NODE_ENV !== 'production';
+
 export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture' | 'private'>;
 /** Only what a room keeps, of whatever it is handed. */
 const kept = ({ id, handle, picture, private: hidden }: SignedAs): SignedAs => ({ id, handle, picture, private: hidden });
@@ -487,8 +494,8 @@ export class Room {
     for (const p of this.players) delete p.ready;
     for (const p of this.players) this.draw(p); // (whoever is on a lot with nothing drawn: dealt in or not, here or away)
     this.state = this.deal(dealt.map((p) => p.seat), this.rng);
-    // A set-up deal (`?deal=aces`) is for trying things out: never in production.
-    if (setUp && process.env.NODE_ENV !== 'production') this.state = setUpDeal(this.state, setUp);
+    // A set-up deal (`?deal=aces`) is for trying things out: only where `testing` is on.
+    if (setUp && testing()) this.state = setUpDeal(this.state, setUp);
     this.dealtTo = dealt.length;
     this.phase = 'playing';
     this.pausedBy = null;
@@ -1150,11 +1157,11 @@ export class Room {
   }
 
   /**
-   * For trying things out (seeing and hearing a bot go out without playing a round through): never in production, and only for whoever deals.
+   * For trying things out (seeing and hearing a bot go out without playing a round through): only where `testing` is on, and only for whoever deals.
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
   private debugBotOut(by: Player): void {
-    if (process.env.NODE_ENV === 'production' || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
+    if (!testing() || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
     const bot = this.players.find((p) => p.bot && this.state!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -1226,6 +1233,7 @@ export class Room {
       clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
       paused: this.pausedBy ? { by: this.pausedBy.id } : null,
       lastRound: this.lastRound,
+      testing: testing(),
     };
   }
 }
