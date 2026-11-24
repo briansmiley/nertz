@@ -270,8 +270,10 @@
 
 @media (max-width: 760px) {
   .home {
-    grid-template-columns: 1fr;
-    align-content: center;
+    /* minmax(0, …): a side with wide content must not widen the column (and so the pad). From the top, not centred: a
+       taller side (your page) grows downward, and the name stays where it was. */
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
   }
 
   .spread {
