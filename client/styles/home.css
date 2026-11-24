@@ -324,17 +324,23 @@
   }
 }
 
-/* Your page there, on a phone long enough for it: the pad wider, into the room beside the name (a size down), for your
-   record to be two lines of figures, each average over its best, and the page to fit the height. (The way in, laid out
-   as a page is, keeps the pad as it was.) */
-@media (orientation: landscape) and (max-height: 500px) and (min-width: 780px) {
+/* Your page there (and who you follow): the name and the fan a size down, holding only the room they need, and the pad
+   as wide as the rest of the line lets it be, up to 29rem; wide enough, your record goes to two lines of five, each
+   average over its best. The height pared to fit. (The way in, laid out as a page is, keeps the pad as it was.) */
+@media (orientation: landscape) and (max-height: 500px) {
   .home:has(.profile:not(.signin)) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 29rem);
+    grid-template-columns: minmax(13rem, 1fr) minmax(0, 29rem);
+    gap: 1rem;
     padding-block: 0.5rem;
   }
 
   .home:has(.profile:not(.signin)) .hero {
     height: calc(100dvh - 1rem);
+  }
+
+  .home:has(.profile:not(.signin)) .spread {
+    zoom: 0.4;
+    margin-left: 1.5rem;
   }
 
   .home:has(.profile:not(.signin)) .hero h1 {
@@ -343,18 +349,25 @@
 
   .home .pad:has(> .profile:not(.signin)) {
     width: 100%;
-    padding-block: 1.4rem 0.7rem;
+    padding: 1.2rem 1.25rem 0.6rem 2.9rem;
+  }
+
+  .home .profile:not(.signin) {
+    gap: 0.4rem;
   }
 
   .home .profile .outs {
     margin-top: 0;
   }
 
-  .home .profile > .record {
-    display: grid;
-    grid-template-rows: auto auto;
-    grid-auto-flow: column;
-    justify-content: space-between;
+  @container (min-width: 23rem) {
+    .home .profile > .record {
+      display: grid;
+      grid-template-rows: auto auto;
+      grid-auto-flow: column;
+      justify-content: space-between;
+      gap: 0.2rem 0.4rem;
+    }
   }
 }
 
