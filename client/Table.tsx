@@ -40,16 +40,16 @@ const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
 /**
- * A card turned up by your own move before its face has come (`unseen`): it starts over at once, slower than a flip,
- * and waits at AJAR (degrees; 180 is face-down, 90 edge-on) with its back still showing. When the face comes it
- * finishes the turn (FINISH); if the move is refused it settles back down.
+ * A card turned up by your own move before its face has come (`unseen`): a soft spring draws it towards EDGE (degrees;
+ * 180 is face-down, 90 edge-on), ever slower, its back still showing. When the face comes a stiff spring carries it on
+ * from there, at the speed it had; if the move is refused it settles back down.
  */
-const AJAR = 125;
-const OPENING = () => ({ duration: calm() ? 0 : 0.22, ease: 'easeOut' }) as const;
-const FINISH = () => ({ duration: calm() ? 0 : 0.12, ease: 'easeIn' }) as const;
-const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? AJAR : 180);
+const EDGE = 100;
+const UNSEEN = () => (calm() ? { duration: 0 } : ({ type: 'spring', stiffness: 120, damping: 30 } as const));
+const FINISH = () => (calm() ? { duration: 0 } : ({ type: 'spring', stiffness: 500, damping: 45 } as const));
+const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? EDGE : 180);
 /** How a card turns from showing `was` to showing `face`: the one place that is decided. */
-const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? OPENING() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
+const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? UNSEEN() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
@@ -944,7 +944,7 @@ export function Table({ room, sheet }: { room: RoomView; sheet: ReactNode }) {
                 </Name>
               )}
               <span className="pts">{points(total(o.seat))}</span>
-              {p?.bot && !((L.tall || L.low) && o.box.w < 150) && <em className="bot">bot</em>}
+              {p?.bot && !((L.tall || L.cols) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false || p?.standing ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (

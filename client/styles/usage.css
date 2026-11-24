@@ -2,6 +2,8 @@
    the last days on a rule, and the latest sittings one to a line. Plain paper, as feedback's. */
 .slip.usage {
   width: min(24rem, calc(100vw - 24px));
+  min-height: 16rem; /* (before there are figures, room for the list of which rounds) */
+  align-content: start;
   max-height: calc(100dvh - 72px);
   overflow-y: auto;
   padding-top: 1.1rem;
@@ -16,9 +18,15 @@
   color: var(--ink-soft);
 }
 
-/* Which rounds: the drawings a record has (profile.css `.among`), at the head's end. */
+/* Which rounds: the choice a record has (profile.css `.among`), at the head's end, its list hung from there. */
 .usage .among {
   margin-left: auto;
+}
+
+.usage .among [role='listbox'] {
+  left: auto;
+  right: 0;
+  translate: none;
 }
 
 /* The totals: each figure big, its word small under it. */

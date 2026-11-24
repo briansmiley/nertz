@@ -30,12 +30,9 @@ export function chatButtons(room: RoomView, social: Pick<SocialState, 'text' | '
 export function fittingsOf(room: RoomView | null | undefined, social: Parameters<typeof chatButtons>[1], inVoice: boolean, muted = false): Fittings {
   if (!room) return NO_FITTINGS;
   const me = room.players.find((p) => p.id === room.me);
-  // (Everyone at the table has a place round it, in the round or not: more than six, and the others stand in columns.)
-  const table = room.game && room.phase !== 'lobby' ? new Set([...room.game.players.map((p) => p.seat), ...room.players.flatMap((p) => (p.seat === null ? [] : [p.seat]))]).size : 0;
   return {
     chat: chatButtons(room, social, inVoice, muted),
     clock: !!room.clock && room.phase !== 'lobby',
-    seats: table,
     vote: !!ballot(room)?.pressing,
     name: me ? lineWidth(room, me) : 0,
   };
