@@ -120,7 +120,9 @@ jobs:
         run: |
           # Sign-in by emailed code only (Google's redirect addresses cannot be registered per preview). Nothing for
           # feedback: a preview's reports go nowhere. AUTH_SECRET is made once per app, so later pushes keep sessions.
-          set -- PUBLIC_URL="https://$APP.fly.dev"
+          # TESTING=1: the aids for trying things out (`?deal=`, Shift+N; README "Run the two-window demo"), which
+          # staging and production never have.
+          set -- PUBLIC_URL="https://$APP.fly.dev" TESTING=1
           secrets=$(flyctl secrets list --app "$APP" --json)
           if ! jq -e 'any(.[]?; .name == "AUTH_SECRET")' <<< "$secrets" > /dev/null; then
             set -- "$@" AUTH_SECRET="$(openssl rand -hex 32)"

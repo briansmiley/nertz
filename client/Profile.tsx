@@ -1,12 +1,12 @@
 // You, signed in: the name you go by and where your page is (both yours to change), your record, whether your page is
 // yours alone, who you follow, and the ways out: signing out, and your account gone for good. Opened by pressing your name at the foot of the home page's pad. And someone else's page (`/u/<handle>`),
 // opened by pressing their name at a table: their record, yours against them, and following them or not.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cleanName, handleOf, MAX_HANDLE_LENGTH, MAX_NAME_LENGTH } from '../shared/protocol';
 import { AMONG, type Account, type Among, type Stats, type Versus } from '../shared/types';
 import { deleteAccount, follow, rehandle, rename, repicture, setPrivate, signOut, useFollowing, usePage, useStats, type Crop } from './account';
 import { showPage } from './address';
-import { useDismiss } from './dismiss';
+import { Dropdown } from './Dropdown';
 import { PictureCrop } from './PictureCrop';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
@@ -106,63 +106,9 @@ const drawn = (a: Among): React.JSX.Element => (
   </>
 );
 
-/**
- * The rounds to count, by who held hands in them: on a record, and on how much the game is played (Usage.tsx). The one
- * chosen; pressed, all of them on a slip over what is under it (above it where there is no room below), put away by
- * choosing, by Esc, or by a press anywhere else.
- */
+/** The rounds to count, by who held hands in them: on a record, and on how much the game is played (Usage.tsx). */
 export function Which({ among, choose, vs }: { among: Among; choose: (a: Among) => void; vs?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [up, setUp] = useState(false);
-  const here = useRef<HTMLDivElement>(null);
-  const shown = useRef<HTMLButtonElement>(null);
-  const list = useRef<HTMLDivElement>(null);
-  useDismiss(here, open, () => setOpen(false));
-  useLayoutEffect(() => {
-    if (!open) return;
-    const { top, bottom } = shown.current!.getBoundingClientRect();
-    const tall = list.current!.offsetHeight;
-    setUp(innerHeight - bottom < tall && top >= tall);
-    list.current!.querySelector<HTMLElement>('[aria-selected="true"]')?.focus({ preventScroll: true });
-  }, [open]);
-  /** Put away, with the focus back on what opened it. */
-  const shut = (): void => (setOpen(false), shown.current?.focus());
-  const onKey = (e: React.KeyboardEvent): void => {
-    if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') (e.preventDefault(), setOpen(true));
-      return;
-    }
-    if (e.key === 'Tab') return shut(); // (and the Tab goes on from the button)
-    const options = [...list.current!.querySelectorAll<HTMLElement>('[role="option"]')];
-    const at = options.indexOf(document.activeElement as HTMLElement);
-    const moves: Record<string, number | undefined> = { ArrowDown: Math.min(at + 1, options.length - 1), ArrowUp: Math.max(at - 1, 0), Home: 0, End: options.length - 1 };
-    const to = moves[e.key];
-    if (to === undefined && e.key !== 'Escape') return;
-    e.preventDefault();
-    e.stopPropagation(); // (Esc puts this away, and not the slip it may be on)
-    if (to === undefined) shut();
-    else options[to]!.focus();
-  };
-  return (
-    <div ref={here} className="among" onKeyDown={onKey}>
-      <button ref={shown} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={`Which rounds: ${AMONG_DRAWN[among].title}`} onClick={() => setOpen(!open)}>
-        {vs && <span className="vs">vs.</span>}
-        {drawn(among)}
-        <svg className="caret" viewBox="0 0 10 6" aria-hidden="true">
-          <path d="M1 1l4 4 4-4" />
-        </svg>
-      </button>
-      {open && (
-        <div ref={list} className={up ? 'up' : undefined} role="listbox" aria-label="Which rounds">
-          {AMONG.map((a) => (
-            <button key={a} type="button" role="option" aria-selected={a === among} tabIndex={-1} onClick={() => (choose(a), shut())}>
-              {drawn(a)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <Dropdown className="among" value={among} options={AMONG} choose={choose} label="Which rounds" said={(a) => AMONG_DRAWN[a].title} show={drawn} lead={vs && <span className="vs">vs.</span>} />;
 }
 
 /** A figure, what it counts, and (where the word alone may not say) a little more about it. */
@@ -230,11 +176,12 @@ function Record({ among, choose }: { among: Among; choose: (a: Among) => void })
   const stats = useStats(among);
   const had = useRef(false);
   had.current ||= stats !== null;
+  if (!had.current) return null;
   return (
-    <>
-      {had.current && <Which among={among} choose={choose} vs />}
+    <div className="stats">
+      <Which among={among} choose={choose} vs />
       {stats && <Figures figures={recordOf(stats)} />}
-    </>
+    </div>
   );
 }
 
@@ -255,12 +202,16 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
         <h2>{page === 'none' ? 'Not found' : (known?.name ?? '')}</h2>
         {known && <Follow handle={handle} name={known.name ?? handle} />}
       </div>
-      {known && <Which among={among} choose={choose} vs />}
-      {known && <Figures figures={recordOf(known.stats)} />}
-      {known?.versus && (
-        <div className="versus">
-          <h3>You vs {known.name ?? 'them'}</h3>
-          <Figures figures={versusOf(known.versus)} />
+      {known && (
+        <div className="stats">
+          <Which among={among} choose={choose} vs />
+          <Figures figures={recordOf(known.stats)} />
+          {known.versus && (
+            <div className="versus">
+              <h3>You vs {known.name ?? 'them'}</h3>
+              <Figures figures={versusOf(known.versus)} />
+            </div>
+          )}
         </div>
       )}
     </div>

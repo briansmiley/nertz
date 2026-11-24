@@ -13,6 +13,7 @@ import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
+import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
@@ -221,13 +222,7 @@ function AddBot({ room }: { room: RoomView }) {
         <p className="hint">The table is full.</p>
       ) : (
         <div className="bots">
-          <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
-            {BOT_LEVELS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
+          <Dropdown value={level} options={BOT_LEVELS} choose={setLevel} label="Bot speed" />
           <button type="button" className="plain" onClick={() => addBot(level)}>
             Add
           </button>

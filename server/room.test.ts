@@ -3,13 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, setUpDeal, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { downs, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
-import { Room, type Conn } from './room';
+import { Room, testing, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
@@ -45,6 +45,35 @@ describe('Room', () => {
     expect(view.game).toEqual(wire(viewFor(room.game!, 1)));
     expect(checkInvariants(room.game!)).toBeNull();
     expect(JSON.stringify(b.states) + JSON.stringify(conns[0]!.states)).not.toMatch(/tok-/);
+  });
+
+  it('deals the set-up Start asks for (`?deal=`) where testing is on (locally, or TESTING=1), never in production otherwise', () => {
+    vi.useFakeTimers();
+    const tops = (room: Room) => room.game!.players.map((p) => p.work.map((w) => w.cards.at(-1) as Card).map((c) => `${c.suit}${c.rank}`));
+    const dev = roomWith(2);
+    expect(send(dev.room, dev.conns[0]!, { t: 'start', deal: 'aces' })).toBe(true);
+    expect(tops(dev.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+    expect(checkInvariants(dev.room.game!)).toBeNull();
+    const plain = roomWith(2);
+    send(plain.room, plain.conns[0]!, { t: 'start', deal: 'no-such-set-up' });
+    const dealt = tops(plain.room);
+    expect([testing({ NODE_ENV: 'production' }), testing({ NODE_ENV: 'production', TESTING: '1' }), testing({ NODE_ENV: 'development' }), testing({})]).toEqual([false, true, true, true]);
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const prod = roomWith(2);
+      send(prod.room, prod.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(prod.room)).toEqual(dealt); // the same random deal as with no set-up at all
+      prod.room.flush();
+      expect(prod.conns[0]!.last.room.testing).toBe(false);
+      vi.stubEnv('TESTING', '1'); // a preview
+      const preview = roomWith(2);
+      send(preview.room, preview.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(preview.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+      preview.room.flush();
+      expect(preview.conns[0]!.last.room.testing).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
@@ -2186,7 +2215,9 @@ describe('server over real sockets', () => {
   });
 
   it('(b) a swarm of four bots firing as fast as they can never breaks the table', async () => {
-    const { room, players } = await table(4);
+    // (Dealt with an Ace on top in every hand, so there is always a card for the middle: a plain deal now and then gave
+    // the swarm none it could play there, and the check that play reached the middle failed with nothing wrong.)
+    const { room, players } = await table(4, (seats, rng) => setUpDeal(deal(seats, rng), 'aces'));
     const rnd = seeded(2024);
     const PER_BOT = 1500;
     const BURST = 4;
