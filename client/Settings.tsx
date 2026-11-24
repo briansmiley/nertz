@@ -8,7 +8,7 @@
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
 // - `TableRules`: the house rules on the lobby sheet, for everyone to read.
-// Also the small icon buttons the sheets share (`Pop`, `Robot`, `BotCard`; the rest are in icons.tsx).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
@@ -77,33 +77,28 @@ export function Robot() {
 }
 
 /**
- * A card, tilted, with a robot on it: an N in two corners, marigold antenna tips, a club and a spade for eyes, a red
- * ear and collar. Drawn big and bare (no round button around it), so it is its own button (`Pop`'s `bare`).
+ * Add a bot: a robot's head, big (marigold antenna tips, a club and a spade for eyes, a red ear), and a plus beside it.
+ * Drawn bare (no round button around it), so it is its own button (`Pop`'s `bare`).
  */
-export function BotCard() {
+export function RobotPlus() {
   return (
-    <svg className="botcard" viewBox="0 0 24 24" aria-hidden="true">
-      <g transform="rotate(-12 12 12)">
-        <rect className="blank" x="4.5" y="2" width="15" height="20" rx="2" />
-        <path className="letters" d="M6.3 6.2V3.8L8 6.2V3.8M16 20.2v-2.4l1.7 2.4v-2.4" />
-        <path d="M10 8.2V6.4M14 8.2V6.4" />
-        <circle className="bulb" cx="10" cy="5.4" r="1" />
-        <circle className="bulb" cx="14" cy="5.4" r="1" />
-        <rect className="ear" x="6.6" y="10.5" width="1.4" height="3" rx="0.7" />
-        <rect className="blank" x="8" y="8.2" width="8" height="7.4" rx="1.4" />
-        <g className="eyes">
-          <g transform="translate(10.3 11.1) scale(1.15)">
-            <circle cy="-0.75" r="0.6" />
-            <circle cx="-0.68" cy="0.28" r="0.6" />
-            <circle cx="0.68" cy="0.28" r="0.6" />
-            <path d="M-0.4 1.45 0 0.2 0.4 1.45Z" />
-          </g>
-          <path transform="translate(13.7 11.1) scale(1.15)" d="M0-1.35C.8-.45 1.3 0 1.3.58A.65.65 0 0 1 .18.95L.4 1.45H-.4L-.18.95A.65.65 0 0 1-1.3.58C-1.3 0-.8-.45 0-1.35Z" />
+    <svg className="robotplus" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 8.5V5.6M13 8.5V5.6" />
+      <circle className="bulb" cx="7" cy="4.3" r="1.3" />
+      <circle className="bulb" cx="13" cy="4.3" r="1.3" />
+      <rect className="ear" x="1.3" y="11.6" width="2" height="4.4" rx="1" />
+      <rect className="blank" x="3.3" y="8.5" width="13.4" height="11.5" rx="2.4" />
+      <g className="eyes">
+        <g transform="translate(7.5 12.9) scale(1.75)">
+          <circle cy="-0.75" r="0.6" />
+          <circle cx="-0.68" cy="0.28" r="0.6" />
+          <circle cx="0.68" cy="0.28" r="0.6" />
+          <path d="M-0.4 1.45 0 0.2 0.4 1.45Z" />
         </g>
-        <path d="M10.6 14h2.8" />
-        <path d="M10.4 15.6v2h3.2v-2" />
-        <path className="collar" d="M10.4 16.4h3.2" />
+        <path transform="translate(12.5 12.9) scale(1.75)" d="M0-1.35C.8-.45 1.3 0 1.3.58A.65.65 0 0 1 .18.95L.4 1.45H-.4L-.18.95A.65.65 0 0 1-1.3.58C-1.3 0-.8-.45 0-1.35Z" />
       </g>
+      <path d="M8 17h4" />
+      <path className="plus" d="M21.1 15.2v5M18.6 17.7h5" />
     </svg>
   );
 }
