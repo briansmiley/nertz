@@ -11,7 +11,7 @@ import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, grab, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, isRoomCode, PING_MS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, isRoomCode, PING_MS, SET_UPS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
 
@@ -187,6 +187,13 @@ export function roomInUrl(): string {
   return isRoomCode(code) ? code : '';
 }
 
+/** For trying things out, in development only: the set-up deal the address names (`?deal=aces`), which Start asks for. */
+function setUpInUrl(): SetUp | undefined {
+  if (!import.meta.env.DEV || typeof location === 'undefined') return undefined;
+  const name = new URLSearchParams(location.search).get('deal');
+  return SET_UPS.find((s) => s === name);
+}
+
 /**
  * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
  * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone.
@@ -198,7 +205,10 @@ function keep(seat: { room: string; name: string } | null): void {
   } catch {
     // storage unavailable: a reload just lands at home
   }
-  if (typeof history !== 'undefined') history.replaceState(null, '', seat ? `/?room=${seat.room}` : '/');
+  if (typeof history === 'undefined') return;
+  const setUp = setUpInUrl(); // (kept in the address, so that it holds across a reload)
+  const query = [seat && `room=${seat.room}`, setUp && `deal=${setUp}`].filter(Boolean).join('&');
+  history.replaceState(null, '', query ? `/?${query}` : '/');
 }
 
 /** On page load: if this window was at the table in the address, it sits back down. */
@@ -386,7 +396,8 @@ export function leave(): void {
 }
 
 export function start(): void {
-  post({ t: 'start' });
+  const setUp = setUpInUrl();
+  post(setUp ? { t: 'start', deal: setUp } : { t: 'start' });
 }
 
 /** The dealer's Start, once the cards are dealt: "1, 2, 3, Nertz!". The server ignores it from anyone else, or at any other time. */

@@ -47,6 +47,26 @@ describe('Room', () => {
     expect(JSON.stringify(b.states) + JSON.stringify(conns[0]!.states)).not.toMatch(/tok-/);
   });
 
+  it('deals the set-up Start asks for (`?deal=`), but never in production', () => {
+    vi.useFakeTimers();
+    const tops = (room: Room) => room.game!.players.map((p) => p.work.map((w) => w.cards.at(-1) as Card).map((c) => `${c.suit}${c.rank}`));
+    const dev = roomWith(2);
+    expect(send(dev.room, dev.conns[0]!, { t: 'start', deal: 'aces' })).toBe(true);
+    expect(tops(dev.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+    expect(checkInvariants(dev.room.game!)).toBeNull();
+    const plain = roomWith(2);
+    send(plain.room, plain.conns[0]!, { t: 'start', deal: 'no-such-set-up' });
+    const dealt = tops(plain.room);
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const prod = roomWith(2);
+      send(prod.room, prod.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(prod.room)).toEqual(dealt); // the same random deal as with no set-up at all
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
     const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];

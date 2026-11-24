@@ -175,12 +175,17 @@ export function anotherBack(had: Back | undefined, pool: readonly Back[] = Objec
   return others[Math.min(others.length - 1, Math.floor(roll * others.length))]!;
 }
 
+/** For trying things out (never in production): the set-up deals Start may ask for (`?deal=aces`), each dealt by `setUpDeal`. */
+export const SET_UPS = ['aces', 'two-piles', 'out'] as const;
+export type SetUp = (typeof SET_UPS)[number];
+
 export type ClientMsg =
   /** Open a new table, and sit down at it; the server picks the code and answers with the first snapshot (`room.code`). */
   | { t: 'create'; name: string; token: string }
   /** Come into (or reconnect to) an existing table: to a seat if one is free and no round is being played, and else to watch, until you ask for one (`sit`). An unknown code is an error. */
   | { t: 'join'; room: string; name: string; token: string }
-  | { t: 'start' }
+  /** `deal`: a set-up deal instead of a random one, refused by a server in production. */
+  | { t: 'start'; deal?: SetUp }
   /** Dealer only, once the cards are dealt and the table is waiting (`game.status` is `ready`): count "1, 2, 3, Nertz!" and open play. */
   | { t: 'go' }
   /** Once the cards are dealt, before Start: I am ready (or, off, not after all). Shown to everyone; the dealer still says when. */
@@ -470,8 +475,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       const room = typeof v.room === 'string' ? v.room.trim().toUpperCase() : '';
       return isRoomCode(room) ? { t: 'join', room, name, token: v.token } : null;
     }
-    case 'start':
-      return { t: 'start' };
+    case 'start': {
+      const setUp = SET_UPS.find((s) => s === v.deal);
+      return setUp ? { t: 'start', deal: setUp } : { t: 'start' };
+    }
     case 'go':
       return { t: 'go' };
     case 'leave':
