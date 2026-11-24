@@ -205,7 +205,7 @@ function feltUnder(d: Grip, centre: Pt, { game, you, L }: Scene): { to: PileRef;
  * middle) in cards of your hand, and as a point of the table, with how far it has come of the way to a pile in the
  * middle that would take it (`piles`; nothing if there is none).
  */
-function whereabouts(d: InHand, piles: readonly Target[], { L, byId }: Scene): DragAt | null {
+function whereabouts(d: InHand, piles: readonly Target[], { L, byId, game }: Scene): DragAt | null {
   const c = byId.get(d.lead);
   if (d.held.k !== 'card' || !c) return null;
   const centre = centreOf(d);
@@ -219,9 +219,14 @@ function whereabouts(d: InHand, piles: readonly Target[], { L, byId }: Scene): D
     const to = { x: t.rect.x + t.rect.w / 2, y: t.rect.y + t.rect.h / 2 };
     come = Math.max(come, 1 - (Math.hypot(to.x - centre.x, to.y - centre.y) - there) / Math.max(1, Math.hypot(to.x - home.x, to.y - home.y) - there));
   }
+  // How far out to the felt, by the pointer: not the card, which a finger carries risen above it from the start.
+  const n = game.players.length;
+  const start = offFelt(toTable(L.felt, d.sx, d.sy), n);
+  const now = d.phase === 'carried' ? offFelt(toTable(L.felt, d.px, d.py), n) : start;
   return {
     id: d.held.id,
     w: round3(clamp(come, 0, 1)),
+    f: round3(start > 0 ? clamp(1 - now / start, 0, 1) : 1),
     h: [round3(clamp((centre.x - home.x) / hw, -60, 60)), round3(clamp((home.y - centre.y) / hw, -60, 60))],
     p: [round3(clamp(at.x, -8, 8)), round3(clamp(at.y, -8, 8))],
   };

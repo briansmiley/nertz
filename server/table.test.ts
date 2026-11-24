@@ -88,6 +88,9 @@ describe('card positions while dragging', () => {
     room.disconnect(c);
     room.handle(a, at(held, 0.5));
     expect(b.drags).toHaveLength(2);
+    // How far out to the felt it is goes too, when it is said.
+    room.handle(a, { ...at(held, 0.5), f: 0.4 });
+    expect(b.drags.at(-1)).toEqual({ t: 'drag', seat: 0, id: held, w: 0.5, h: [1, 2], p: [0.1, 0.6], f: 0.4 });
     expect(c.drags).toHaveLength(1);
     room.close();
   });

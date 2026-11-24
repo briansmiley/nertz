@@ -282,6 +282,8 @@ export interface DragAt {
   w: number;
   h: [number, number];
   p: [number, number];
+  /** How far it has come of the way from its pile to the edge of the felt, 0 to 1 (a window draws it that share of the way out from that player's hand to the felt). */
+  f?: number;
 }
 
 /** How often a dragging client reports its card (per second), and what the server lets through per player. */
@@ -382,7 +384,8 @@ function parseDrag(v: Record<string, unknown>): DragAt | null {
     Array.isArray(raw) && raw.length === 2 && isCoord(raw[0], max) && isCoord(raw[1], max) ? [round3(raw[0]), round3(raw[1])] : null;
   const h = pair(v.h, 60);
   const p = pair(v.p, 8);
-  return isId(v.id) && isCoord(v.w, 1) && v.w >= 0 && h && p ? { id: v.id, w: round3(v.w), h, p } : null;
+  if (!(isId(v.id) && isCoord(v.w, 1) && v.w >= 0 && h && p)) return null;
+  return isCoord(v.f, 1) && v.f >= 0 ? { id: v.id, w: round3(v.w), h, p, f: round3(v.f) } : { id: v.id, w: round3(v.w), h, p };
 }
 
 /** Returns a clean copy of a well-formed intent, or null. Never throws. */

@@ -99,6 +99,13 @@ describe('card-position reports (drag)', () => {
     expect(parseClientMsg({ ...good, w: 1 })).not.toBeNull();
   });
 
+  it('keeps how far out to the felt the card is (f, 0 to 1) when it is sound, and the report without it when not', () => {
+    expect(parseClientMsg({ ...good, f: 0.123456 })).toEqual({ ...good, f: 0.123 });
+    expect(parseClientMsg({ ...good, f: 0 })).toEqual({ ...good, f: 0 });
+    expect(parseClientMsg({ ...good, f: 1 })).toEqual({ ...good, f: 1 });
+    for (const f of [2, -0.1, '0.5', null, NaN, Infinity]) expect(parseClientMsg({ ...good, f }), String(f)).toEqual(good);
+  });
+
   it('refuses anything else: missing or wrong-typed fields, numbers out of range or not finite', () => {
     const bad: unknown[] = [
       { ...good, id: '' },

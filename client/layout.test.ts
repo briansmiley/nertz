@@ -947,11 +947,14 @@ describe("another player's card in the air", () => {
     const report = (t: number) => {
       const c = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
       const p = toTable(theirs.felt, c.x, c.y);
-      return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const };
+      // As the holder's window works it out (hand.ts): the share of the way from where it was taken to the felt's edge.
+      const start = offFelt(toTable(theirs.felt, from.x, from.y), n);
+      const f = Math.min(1, Math.max(0, 1 - offFelt(p, n) / start));
+      return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const, f };
     };
     const end = toScreen(mine.felt, P);
-    const path = seats(41).map((i) => aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(i / 40), w: pile ? i / 40 : 0 }, pile ? end : undefined, 0));
-    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(1), w: 0 }, undefined, i / 20));
+    const path = seats(41).map((i) => aloftAt(mine.felt, n, home, hand.nertz.w, hand, { ...report(i / 40), w: pile ? i / 40 : 0 }, pile ? end : undefined, 0));
+    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, n, home, hand.nertz.w, hand, { ...report(1), w: 0 }, undefined, i / 20));
     return { path, home, end, felt: mine.felt };
   }
   /** How much longer the path is than the straight line, and how far it ever backs away from where it ends (px). */
@@ -995,8 +998,24 @@ describe("another player's card in the air", () => {
         }
       }
     }
-    // (Measured over all of these: at worst 1.31 times the straight line, and 21px back, on the way out of the hand.)
+    // (Measured over all of these: at worst 1.22 times the straight line, and 6px back.)
     expect(worst.ratio).toBeGreaterThan(1); // (it is a path, not a jump)
+  });
+
+  it("a card its owner has brought to the felt's edge is drawn at the felt's edge, from every seat, on phones too", () => {
+    for (const [W, H] of [[1280, 720], [1440, 900], [390, 780], [780, 390]] as const) {
+      for (let n = 2; n <= 6; n++) {
+        const game = inPlay(seats(n), lcg(n));
+        const mine = computeLayout(W, H, game, 0);
+        for (const hand of mine.opponents) {
+          const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
+          for (const along of [0, 2]) {
+            const c = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [along, 3], p: [0, 0], w: 0, f: 1 }, undefined, 0);
+            expect(offFelt(toTable(mine.felt, c.x, c.y), n) * mine.felt.u, `${n} at ${W}x${H}, seat ${hand.seat}`).toBeCloseTo(0, 3);
+          }
+        }
+      }
+    }
   });
 
   it('a card going from pile to pile within a hand is drawn in that hand as this window draws it, mirrored for a hand across the table', () => {
@@ -1012,7 +1031,7 @@ describe("another player's card in the air", () => {
         const to = { x: own.work[2]!.x + own.work[2]!.w / 2, y: from.y };
         const p = toTable(theirs.felt, to.x, to.y);
         const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
-        const drawn = aloftAt(mine.felt, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
+        const drawn = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
         // It is over that hand's third work pile here, whichever way round (or turned) the hand is drawn.
         const pile = { x: hand.workAt[2]!.x + hand.workAt[2]!.w / 2, y: hand.workAt[2]!.y + hand.workAt[2]!.h / 2 };
         expect(Math.hypot(drawn.x - pile.x, drawn.y - pile.y)).toBeLessThan(hand.nertz.w * 0.35);
