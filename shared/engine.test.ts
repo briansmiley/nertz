@@ -40,7 +40,7 @@ import {
   type Result,
   type Rng,
 } from './engine';
-import { allCards, card as c, cards as cs, downs, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seeded, slot, stepDraws, deals, table, untilReached, work, type Hand } from './testkit';
+import { allCards, card as c, cards as cs, downs, faceUps, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seeded, slot, stepDraws, deals, table, untilReached, work, type Hand } from './testkit';
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
@@ -253,14 +253,13 @@ describe('deal', () => {
     const dealt = dealRound([0, 2], rng);
     const late = dealRound([1], rng).players[0]!;
     expect(downs(late)).toEqual([0, 0, 0, 0]);
-    const tops = (p: PlayerState) => [p.nertz, p.work.map((w) => w.cards.at(-1))];
     const cardsOf = (p: PlayerState) => [...p.nertz, ...p.work.flatMap((w) => w.cards), ...p.stock].map((x) => x.id).sort();
     const three = withHands(dealt, [...dealt.players, late]);
     expect(three.players.map((p) => p.seat)).toEqual([0, 1, 2]);
     for (const p of three.players) {
       const was = [...dealt.players, late].find((q) => q.seat === p.seat)!;
       expect(downs(p)).toEqual([0, 0, 1, 2]);
-      expect(tops(p)).toEqual(tops(was)); // face-ups and the nertz pile as they were
+      expect(faceUps(p)).toEqual(faceUps(was)); // face-ups and the nertz pile as they were
       expect(cardsOf(p)).toEqual(cardsOf(was));
       expect(p.stock).toHaveLength(32);
       expect(p.stock).toEqual(was.stock.slice(3)); // the three now face-down came off the bottom of the stock

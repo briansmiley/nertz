@@ -191,6 +191,8 @@ export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra 
 export const upWork = (piles: readonly AnyCard[][]): WorkPile[] => piles.map((cards) => ({ cards, down: 0 }));
 /** How many face-down cards each of `p`'s work piles has. */
 export const downs = (p: PlayerState): number[] => p.work.map((w) => w.down);
+/** What of `p`'s hand shows, or will once play opens: its nertz pile and the top of each work pile. */
+export const faceUps = (p: PlayerState) => ({ seat: p.seat, nertz: p.nertz, tops: p.work.map((w) => w.cards.at(-1)) });
 
 /** The top card of `seat`'s work pile `i`. */
 export const workTop = (g: GameState, seat: number, i: number) => g.players.find((p) => p.seat === seat)!.work[i]!.cards.at(-1)!.id;
