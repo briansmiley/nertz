@@ -904,12 +904,19 @@
 /* Its figures share the line evenly. */
 .profile .versus .record {
   flex-wrap: nowrap;
+  gap: 0 0.6rem;
 }
 
+/* (Five to the line: each as wide as its figure needs, a pair never broken, a size down from the record's.) */
 .profile .versus .record div {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
   text-align: center;
+}
+
+.profile .versus .record dd {
+  font-size: 1.3rem;
+  white-space: nowrap;
 }
 
 /* Your page yours alone, or anyone's signed in: a small lever by the word, inked when it is, at the far end of the
