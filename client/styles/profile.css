@@ -879,10 +879,10 @@
 }
 
 /* You against them, wherever it is counted: yours green, theirs red. */
-.yours {
+.vs-you {
   color: #2f7a4a;
 }
-.theirs {
+.vs-them {
   color: #b0303c;
 }
 

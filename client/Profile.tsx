@@ -204,7 +204,7 @@ function recordOf(stats: Stats): Figure[] {
 const pair = (v: Versus, yours: number, theirs: number): React.ReactNode =>
   v.rounds ? (
     <>
-      <span className="yours">{written(yours)}</span>–<span className="theirs">{written(theirs)}</span>
+      <span className="vs-you">{written(yours)}</span>–<span className="vs-them">{written(theirs)}</span>
     </>
   ) : (
     '–'
