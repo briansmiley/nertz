@@ -160,7 +160,7 @@ describe('chooseIntent', () => {
     expect(look({ ...none, players: none.players.map((p) => ({ ...p, stuck: true })) })).toBeNull();
   });
 
-  it('with a group half-dealt it leaves the waste alone, plays its other piles as ever, and otherwise deals on', () => {
+  it('with a group half-dealt it deals on: it leaves the waste alone and notices nothing until the group is done', () => {
     const one = (state: GameState) => {
       const r = applyIntent(state, 0, { k: 'flip' });
       if (!r.ok) throw new Error(r.reason);
@@ -175,9 +175,15 @@ describe('chooseIntent', () => {
       expect(look(mid)?.intent).toEqual({ k: 'flip' }); // (and not nothing: a face-down waste top is not a closed table)
     }
     expect(one(one(one(waste))).players[0]!.dealt).toBe(0);
-    // A nertz move turns up between two cards of a group: it is taken, and the memory starts over.
-    const nertz = one(table({ nertz: ['S5'], work: [['H6'], ['C13'], ['H13'], ['D13']], waste: ['C2'] }));
-    expect(look(nertz, { flips: 7, last: null })).toEqual({ intent: move('S5', work(0)), memory: freshMemory() });
+    // Once a group is started it is finished: no move is noticed between two cards, an Ace included, at any observance,
+    // and each card counts as a flip (but not while the bot is flagged stuck).
+    const half = one(table({ nertz: ['H1'], work: [['H6'], ['C13'], ['H13'], ['D13']], waste: ['C2'] }));
+    expect(half.players[0]!.dealt).toBeGreaterThan(0);
+    for (const observance of [1, 0]) {
+      expect(look(half, { flips: 7, last: null }, observance)).toEqual({ intent: { k: 'flip' }, memory: { flips: 8, last: null } });
+    }
+    const stuck = { ...half, players: half.players.map((p) => (p.seat === 0 ? { ...p, stuck: true } : p)) };
+    expect(look(stuck, { flips: 7, last: null })).toEqual({ intent: { k: 'flip' }, memory: { flips: 7, last: null } });
   });
 
   it('observance 0 only ever flips (and says stuck), but for an Ace; observance 1 always takes the best move', () => {
