@@ -878,6 +878,14 @@
   color: var(--ink-soft);
 }
 
+/* You against them, wherever it is counted: yours green, theirs red. */
+.yours {
+  color: #2f7a4a;
+}
+.theirs {
+  color: #b0303c;
+}
+
 /* You against them: a line of its own under their record. */
 .versus {
   display: grid;

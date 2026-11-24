@@ -166,7 +166,7 @@ export function Which({ among, choose, vs }: { among: Among; choose: (a: Among) 
 }
 
 /** A figure, what it counts, and (where the word alone may not say) a little more about it. */
-type Figure = [string, string, string?];
+type Figure = [React.ReactNode, string, string?];
 
 function Figures({ figures }: { figures: Figure[] }) {
   return (
@@ -200,13 +200,22 @@ function recordOf(stats: Stats): Figure[] {
 }
 
 /** You against someone, as one figure: the rounds you finished ahead of them, and behind (none at all: a dash). */
-const winLoss = (v: Versus): string => (v.rounds ? `${written(v.ahead)}–${written(v.behind)}` : '–');
+/** Yours against theirs, yours in green and theirs in red; a dash when you have played no rounds together. */
+const pair = (v: Versus, yours: number, theirs: number): React.ReactNode =>
+  v.rounds ? (
+    <>
+      <span className="yours">{written(yours)}</span>–<span className="theirs">{written(theirs)}</span>
+    </>
+  ) : (
+    '–'
+  );
+const winLoss = (v: Versus): React.ReactNode => pair(v, v.ahead, v.behind);
 
 /** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, your points against theirs over them, and your snipes on them against theirs on you. */
 function versusOf(v: Versus): Figure[] {
   const level = v.rounds - v.ahead - v.behind;
-  const points: Figure = [v.rounds ? `${written(v.points)}–${written(v.theirs)}` : '–', 'points'];
-  const snipes: Figure = [v.rounds ? `${written(v.snipes)}–${written(v.sniped)}` : '–', 'snipes'];
+  const points: Figure = [pair(v, v.points, v.theirs), 'points'];
+  const snipes: Figure = [pair(v, v.snipes, v.sniped), 'snipes'];
   return [[written(v.rounds), v.rounds === 1 ? 'round' : 'rounds'], [winLoss(v), 'W–L', level ? `${level} level` : undefined], points, snipes];
 }
 
