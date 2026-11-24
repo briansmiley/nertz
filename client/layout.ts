@@ -266,6 +266,17 @@ export function countdownTop(L: Layout, W: number): number {
 
 /** Faces narrower than this on screen use the large-print rendition. */
 export const MINI_BELOW = 52;
+/** How far past `MINI_BELOW` a card that is growing or shrinking has to go before its drawing changes, so one near it does not flicker. */
+export const MINI_SLACK = 3;
+
+/**
+ * Whether a card drawn `w` pixels wide on screen shows the large-print rendition. This follows the size it is
+ * drawn at, whatever it is doing and whoever holds it. One on its way (`was`: what it showed) changes only once it
+ * is `MINI_SLACK` past the line. One at rest (no `was`) is just what its width says.
+ */
+export function drawnMini(w: number, was?: boolean): boolean {
+  return w < (was === undefined ? MINI_BELOW : was ? MINI_BELOW + MINI_SLACK : MINI_BELOW - MINI_SLACK);
+}
 
 /** A pile that shows its thickness (the nertz pile, the stock): each card lies this far below the one on it, for a card drawn full size. */
 const LEAN = 0.55;

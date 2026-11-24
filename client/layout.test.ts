@@ -4,7 +4,7 @@ import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABL
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
-import { aloftAt, computeLayout, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, dropTarget, fanOut, inside, isTall, keepOut, landingAt, MINI_BELOW, MINI_SLACK, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** `game` with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
@@ -1199,5 +1199,27 @@ describe('a phone held upright', () => {
         expect(L.cards.filter((c) => c.pile !== 'tray').every((c) => c.x >= -1 && c.x + c.s * 90 <= W + 1), at).toBe(true);
       }
     }
+  });
+});
+
+describe('drawnMini', () => {
+  it('at rest, is just whether the card is drawn narrower than MINI_BELOW', () => {
+    expect(drawnMini(MINI_BELOW - 0.1)).toBe(true);
+    expect(drawnMini(MINI_BELOW)).toBe(false);
+  });
+
+  it('on its way, changes only once the card is MINI_SLACK past the line', () => {
+    // Shrinking from its full drawing: still full just under the line, large print once well under.
+    expect(drawnMini(MINI_BELOW - 1, false)).toBe(false);
+    expect(drawnMini(MINI_BELOW - MINI_SLACK - 0.1, false)).toBe(true);
+    // Growing from large print: still large print just over the line, full once well over.
+    expect(drawnMini(MINI_BELOW + 1, true)).toBe(true);
+    expect(drawnMini(MINI_BELOW + MINI_SLACK, true)).toBe(false);
+  });
+
+  it('a card that wobbles around the line keeps one drawing', () => {
+    let mini = false;
+    for (const w of [53, 51, 50, 52, 54, 51, 50]) mini = drawnMini(w, mini);
+    expect(mini).toBe(false);
   });
 });
