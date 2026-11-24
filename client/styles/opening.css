@@ -5,6 +5,7 @@
   position: absolute;
   z-index: 19500; /* over the cards, under a card in hand */
   translate: -50% -50%;
+  width: max-content; /* not shrink-to-fit: that stops at the table's right edge, half a table from `left`, and wraps the names early */
   display: grid;
   place-items: center;
   text-align: center;
