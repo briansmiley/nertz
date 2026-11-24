@@ -3,7 +3,7 @@
 // same reducer on its redacted view to predict its own moves.
 //
 // Pile convention: the TOP of every pile is the LAST array element.
-import { parseIntent, SLOTS_PER_PLAYER, WORK_PILES, type SetUp } from './protocol';
+import { MAX_PLAYERS, parseIntent, SLOTS_PER_PLAYER, WORK_PILES, type SetUp } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
 import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
@@ -81,10 +81,9 @@ export const faceUp = (pile: WorkPile): AnyCard[] => pile.cards.slice(pile.down)
  * A small table buries fewer cards (`faceDown` in settings.ts): with two seats
  * no work pile has a face-down card (4 cards in the work piles, 35 in the
  * stock), with three they have 0/0/1/2 (7 and 32), from four up 0/1/2/3.
- * (`dealtTo`: how many the round was dealt to, for a hand dealt into it
- * afterwards (`withHands`): it is buried as deep as the others were.)
+ * (A hand put on the table or taken off it afterwards changes that: `withHands`.)
  */
-export function deal(seats: readonly number[], rng: Rng, dealtTo = seats.length): GameState {
+export function deal(seats: readonly number[], rng: Rng): GameState {
   const pick = (n: number) => Math.min(n - 1, Math.max(0, Math.floor(rng() * n)));
   const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const used = new Set<string>();
@@ -105,7 +104,7 @@ export function deal(seats: readonly number[], rng: Rng, dealtTo = seats.length)
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
     }
     const nertz = deck.splice(0, NERTZ_SIZE);
-    const work = faceDown(dealtTo).slice(0, WORK_PILES).map((down): WorkPile => ({ cards: deck.splice(0, down + 1), down }));
+    const work = faceDown(seats.length).slice(0, WORK_PILES).map((down): WorkPile => ({ cards: deck.splice(0, down + 1), down }));
     return { seat, nertz, work, stock: deck, waste: [], dealt: 0, stuck: false, holding: null };
   });
   const slots = Array.from({ length: SLOTS_PER_PLAYER * seats.length }, () => null);
@@ -422,13 +421,59 @@ export function finishDeal(state: GameState): GameState {
 }
 
 /**
+ * `hand`, nothing played from it yet, buried as deep as a table of `players` hands is dealt (`faceDown`): each work
+ * pile keeps its face-up top, and the face-down cards under it come off the bottom of the stock (the end drawn last)
+ * or go back there. Nobody has seen either. It goes a table size at a time, each step back undoing the one forward,
+ * so that a hand is the same at the same depth however it got there: nobody has other cards by getting up and
+ * sitting down again.
+ */
+function buried(hand: PlayerState, players: number): PlayerState {
+  const total = (downs: number[]) => downs.reduce((a, b) => a + b, 0);
+  const deeper = total(faceDown(players)) > total(hand.work.map((w) => w.down));
+  const sizes = Array.from({ length: MAX_PLAYERS }, (_, i) => i + 1).filter((n) => (deeper ? n <= players : n >= players));
+  let { work, stock } = hand;
+  for (const n of deeper ? sizes : sizes.reverse()) {
+    const left = [...stock];
+    const back: AnyCard[] = [];
+    work = work.map((w, i): WorkPile => {
+      const down = faceDown(n)[i]!;
+      if (deeper ? down <= w.down : down >= w.down) return w;
+      back.push(...w.cards.slice(0, Math.max(0, w.down - down)));
+      return { cards: [...left.splice(0, Math.max(0, down - w.down)), ...w.cards.slice(Math.max(0, w.down - down))], down };
+    });
+    stock = [...back, ...left];
+  }
+  return { ...hand, work, stock };
+}
+
+/**
  * `hands` are the ones on the table of a round dealt and not yet started, with the middle's four slots for each. Until
  * the dealer's Start nothing has been played, so a hand comes off with whoever gets up from it and goes on with whoever
- * sits down there, and no other hand is touched. Same state from the count on: from then cards lie where they are.
+ * sits down there, and every hand on the table is buried as deep as so many hands are dealt (`buried`): its face-up
+ * cards and nertz pile stay as they are. Same state from the count on: from then cards lie where they are.
  */
 export function withHands(state: GameState, hands: readonly PlayerState[]): GameState {
   if (state.status.at !== 'dealing' && state.status.at !== 'ready') return state;
-  return { ...state, players: hands.toSorted((a, b) => a.seat - b.seat), slots: Array.from({ length: SLOTS_PER_PLAYER * hands.length }, () => null) };
+  const players = hands.map((h) => buried(h, hands.length)).sort((a, b) => a.seat - b.seat);
+  return { ...state, players, slots: Array.from({ length: SLOTS_PER_PLAYER * hands.length }, () => null) };
+}
+
+/**
+ * The cards reburied (`withHands`) going from `a` to `b`: before play opens, the only cards that go between a hand's
+ * stock and its work piles. By id, the seat whose hand it is.
+ */
+export function reburiedSince(a: GameState, b: GameState): Map<string, number> {
+  const ids = new Map<string, number>();
+  if (hasOpened(b)) return ids;
+  for (const p of b.players) {
+    const was = a.players.find((q) => q.seat === p.seat);
+    if (!was) continue;
+    const inStock = new Set(was.stock.map((c) => c.id));
+    const inWork = new Set(was.work.flatMap((w) => w.cards.map((c) => c.id)));
+    for (const c of p.work.flatMap((w) => w.cards)) if (inStock.has(c.id)) ids.set(c.id, p.seat);
+    for (const c of p.stock) if (inWork.has(c.id)) ids.set(c.id, p.seat);
+  }
+  return ids;
 }
 
 /** The dealer pressed Start: "1, 2, 3...". */

@@ -10,7 +10,7 @@
 //   that is the 'home' cue;
 // - nothing is compared across a reconnect, a reload or a change of table, so
 //   whatever happened meanwhile is not replayed.
-import { calledBy, hasOpened, inGrace, reshuffledSince } from '../shared/engine';
+import { calledBy, hasOpened, inGrace, reburiedSince, reshuffledSince } from '../shared/engine';
 import { START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { GameState, RoomView } from '../shared/types';
 
@@ -21,6 +21,8 @@ export type Cue =
   | { k: 'deal'; work: number }
   /** A card (or run) was picked up. */
   | { k: 'pickup'; who: Who }
+  /** Before play opens, a hand was reburied: `n` face-down cards moved between its stock and its work piles. */
+  | { k: 'rebury'; n: number }
   /** A card or run landed on a work pile. */
   | { k: 'work'; who: Who }
   /** One card off the stock, face-down onto the waste. */
@@ -115,10 +117,14 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
   const before = places(a.game);
   const after = places(b.game);
   const moved = new Set<string>();
+  // Face-downs reburied for a changed table (before play opens): only your own hand's are heard, one whisper each.
+  const reburied = reburiedSince(a.game, b.game);
+  const yours = [...reburied.values()].filter((seat) => seat === you).length;
   for (const [id, to] of after) {
     const from = before.get(id);
     if (!from || (from.pile === to.pile && from.seat === to.seat && from.i === to.i)) continue;
     moved.add(id);
+    if (reburied.has(id)) continue;
     if (to.pile === 'slot') {
       if (from.seat < 0) continue;
       const pile = b.game.slots[to.i]!;
@@ -139,6 +145,8 @@ export function soundCues(prev: Frame | null, next: Frame): Cue[] {
       if (!reshuffled) add({ k: 'recycle', who: who(to.seat) });
     }
   }
+
+  if (yours > 0) add({ k: 'rebury', n: yours });
 
   for (const p of b.game.players) {
     const was = a.game.players.find((q) => q.seat === p.seat)?.holding ?? null;

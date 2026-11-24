@@ -186,12 +186,11 @@ export class Room {
   /**
    * The rest of the round's deal, beside the hands on the table (`state.players`). A hand is its seat's for the round:
    * shuffled once, at the deal or when someone first sits down there before the dealer's Start, and buried as deep as
-   * the round was dealt (`dealtTo`: to how many). Getting up before Start puts it aside here (`from`: who got up, a
-   * `Player.id`) and sitting down there puts it back, so nobody else's cards change, and nobody has other cards by
+   * the hands on the table call for (`withHands`). Getting up before Start puts it aside here (`from`: who got up, a
+   * `Player.id`) and sitting down there puts it back, so nobody's face-up cards change, and nobody has other cards by
    * getting up and sitting down again. Kept until Start (`go`), or a deal over.
    */
   private aside: { hand: PlayerState; from: number }[] = [];
-  private dealtTo = 0;
 
   private players: Player[] = []; // everyone in the room, in the order they came
   private conns = new Map<Conn, Player>();
@@ -496,7 +495,6 @@ export class Room {
     this.state = this.deal(dealt.map((p) => p.seat), this.rng);
     // A set-up deal (`?deal=aces`) is for trying things out: only where `testing` is on.
     if (setUp && testing()) this.state = setUpDeal(this.state, setUp);
-    this.dealtTo = dealt.length;
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!
@@ -895,7 +893,8 @@ export class Room {
    * The one place where anyone sits down. Free seats go to those in the queue who are here, first come first (someone
    * away keeps their place in it). Not while a round is being played: then when it is over. And whoever sits down, or
    * comes back, before the dealer's Start is in the round: their seat's hand goes on the table, the one put aside
-   * there (`aside`) or, the first time anyone has sat there since the deal, one shuffled now. No other hand is touched.
+   * there (`aside`) or, the first time anyone has sat there since the deal, one shuffled now. Every hand on the table
+   * is then buried as deep as so many hands are dealt (`withHands`); no face-up card changes.
    */
   private fill(): void {
     if (this.roundOn) return;
@@ -903,7 +902,7 @@ export class Room {
     if (!this.unplayed) return;
     for (const p of this.table.filter((q) => q.conn && !this.holds(q))) {
       const i = this.aside.findIndex((a) => a.hand.seat === p.seat);
-      const hand = i < 0 ? this.deal([p.seat], this.rng, this.dealtTo).players[0]! : this.aside.splice(i, 1)[0]!.hand;
+      const hand = i < 0 ? this.deal([p.seat], this.rng).players[0]! : this.aside.splice(i, 1)[0]!.hand;
       this.state = withHands(this.state!, [...this.state!.players, hand]);
     }
   }
@@ -933,8 +932,8 @@ export class Room {
    * The one place where anyone gets up from their cards in a round not over: stood up, left, or sent away (`out`, which
    * also says what becomes of them when it is). A card in their hand goes home first; and whoever remains may now all
    * be stuck, or all have voted to end it. Before the dealer's Start nothing has been played, so nothing lies there
-   * and nothing waits: their hand comes off the table and is put aside (`aside`), nobody else's is touched, and they
-   * are where `out` says at once.
+   * and nothing waits: their hand comes off the table and is put aside (`aside`), the others are buried as deep as
+   * the hands left call for (`withHands`: no face-up card changes), and they are where `out` says at once.
    */
   private upFrom(p: Player, how: NonNullable<Player['out']>): void {
     this.letGo(p);
@@ -999,7 +998,7 @@ export class Room {
   /**
    * Whoever deals seats a bot, and takes one off (`removeBot`): in the lobby, on the score sheet, and before their
    * Start, never once it is pressed. A bot sits down and gets up the way a person does: before Start it is dealt its
-   * seat's hand (`fill`), and taken off it puts that hand aside (`gone`, `upFrom`). Nobody else's cards change.
+   * seat's hand (`fill`), and taken off it puts that hand aside (`gone`, `upFrom`). Nobody else's face-up cards change.
    */
   private addBot(by: Player, level: BotLevel): void {
     if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed)) return;

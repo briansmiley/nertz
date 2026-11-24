@@ -158,8 +158,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Small tables** bury fewer cards: with two players in the round no work pile has a face-down card (4 cards in the
   work piles, 35 in the stock); with three they have 0, 0, 1 and 2 (7 and 32); from four up the standard 0, 1, 2 and 3.
   The nertz pile is 13 either way. This is the rule, not an option (`faceDown` in `shared/settings.ts`). It goes by how
-  many the round was dealt to: sitting down or standing up before Start changes nobody's cards, so until the round is
-  dealt again it stays as it was dealt.
+  many hands are on the table: whenever someone sits down, stands up, leaves or is sent away before Start, every hand is
+  buried as deep as the hands now there call for. Each work pile keeps its face-up card; the face-down cards under it
+  come off the bottom of that hand's stock or go back there (nobody has seen either), and the nertz pile stays as it is.
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -232,7 +233,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   pressing **Sit back down** (in the menu, or where "I'm stuck" was) or by playing a card, and if you have not by the
   time the round is over you are watching from then on. (Until the dealer has said Start nothing has been played: whoever sits down or
   comes back by then is dealt in, and **Stand up** gives your seat up to watch, your cards coming off the table. Neither
-  changes anyone else's cards. A hand is its seat's for the round: sit back down and you have the same seat (while
+  changes anyone else's face-up cards, only how deep they are buried (see Small tables). A hand is its seat's for the round: sit back down and you have the same seat (while
   nobody else has taken it) and the same cards, and whoever takes a seat someone left has the cards dealt there. Only **Restart round** shuffles again.)
   The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
@@ -359,7 +360,7 @@ Whoever deals can seat bots, so that one person has something to play against. I
 rounds, and after the deal while the table waits for Start (whoever deals presses the names under the Start button for the
 lobby's sheet, over the table, and Done puts it away), pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. Before Start a
 bot sits down and gets up as a person does: it is dealt its seat's hand, and taken off, that hand is put aside; nobody
-else's cards change. A bot takes a seat
+else's face-up cards change. A bot takes a seat
 with its own back colour and a name ("Bot Ada", "Bot Bix", ...), is marked "bot" in the lobby list and beside its name on
 the table, and counts as a connected player everywhere: for the two-player minimum, for the six seats, for the "everyone is
 stuck" vote and for scoring. A bot never deals, cannot be added or removed once Start is pressed, and does not keep a table alive:
