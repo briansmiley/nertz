@@ -179,3 +179,8 @@
   display: grid;
   place-items: center;
 }
+
+/* Where a reburied card left from (Table.tsx `Ghost`): only seen going. */
+.card.ghost {
+  pointer-events: none;
+}

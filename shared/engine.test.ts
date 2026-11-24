@@ -37,6 +37,7 @@ import {
   viewFor,
   wentOut,
   withHands,
+  reburiedSince,
   yetToHear,
   type Result,
   type Rng,
@@ -281,6 +282,12 @@ describe('deal', () => {
     expect(checkInvariants(two)).toBeNull();
     const counting = startCountdown(two);
     expect(withHands(counting, [late])).toBe(counting); // "1, 2, 3": the cards lie where they are
+    // What was reburied, each way: the cards that went between a hand's stock and its work piles, by whose hand.
+    const under = (g: GameState, seat: number) => g.players.find((p) => p.seat === seat)!.work.flatMap((w) => w.cards.slice(0, w.down)).map((x) => x.id);
+    expect([...reburiedSince(less, two)].sort()).toEqual([1, 2].flatMap((seat) => under(less, seat).map((id) => [id, seat])).sort());
+    expect([...reburiedSince(two, less).keys()].sort()).toEqual([1, 2].flatMap((seat) => under(less, seat)).sort());
+    expect(reburiedSince(less, less).size).toBe(0);
+    expect(reburiedSince(two, openPlay(counting)).size).toBe(0); // in play nothing is reburied
   });
 });
 

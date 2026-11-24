@@ -458,6 +458,24 @@ export function withHands(state: GameState, hands: readonly PlayerState[]): Game
   return { ...state, players, slots: Array.from({ length: SLOTS_PER_PLAYER * hands.length }, () => null) };
 }
 
+/**
+ * The cards reburied (`withHands`) going from `a` to `b`: before play opens, the only cards that go between a hand's
+ * stock and its work piles. By id, the seat whose hand it is.
+ */
+export function reburiedSince(a: GameState, b: GameState): Map<string, number> {
+  const ids = new Map<string, number>();
+  if (hasOpened(b)) return ids;
+  for (const p of b.players) {
+    const was = a.players.find((q) => q.seat === p.seat);
+    if (!was) continue;
+    const inStock = new Set(was.stock.map((c) => c.id));
+    const inWork = new Set(was.work.flatMap((w) => w.cards.map((c) => c.id)));
+    for (const c of p.work.flatMap((w) => w.cards)) if (inStock.has(c.id)) ids.set(c.id, p.seat);
+    for (const c of p.stock) if (inWork.has(c.id)) ids.set(c.id, p.seat);
+  }
+  return ids;
+}
+
 /** The dealer pressed Start: "1, 2, 3...". */
 export function startCountdown(state: GameState): GameState {
   return state.status.at === 'ready' ? { ...state, status: { at: 'countdown' } } : state;
