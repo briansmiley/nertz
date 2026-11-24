@@ -311,6 +311,7 @@ interface Flight {
   s: number;
   /** How long it has been over the felt, ms: after a while (`REAL_AFTER`) it is drawn where it really is. */
   over: number;
+  ace: boolean;
 }
 
 /** What is said across the middle of the felt while a round is played: a snipe you were in, or the table's stocks turned over because everyone was stuck. */
@@ -504,15 +505,16 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       let f = flights.get(p.seat);
       if (!f) {
         if (time - at.at > STALE_MS) continue;
-        f = { id: p.holding, ids: grab(game, p.seat, p.holding)?.cards.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, over: 0 };
+        const got = grab(game, p.seat, p.holding)?.cards;
+        f = { id: p.holding, ids: got?.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, over: 0, ace: got?.length === 1 && got[0]!.rank === 1 };
         flights.set(p.seat, f);
       }
       const hw = home.s * CARD_W;
       const table = { x: at.p[0], y: at.p[1] };
       const onFelt = offFelt(table, game.players.length) <= 0;
-      f.over = onFelt ? f.over + dt : 0;
-      const ace = f.ids.length === 1 && grab(game, p.seat, f.id)?.cards[0]?.rank === 1;
-      const t = clamp((f.over - (ace ? REAL_AFTER.ace : REAL_AFTER.card)) / REAL_AFTER.fade, 0, 1);
+      // Off the felt it runs down rather than starting again: a card held on the felt's edge does not jump back to its line.
+      f.over = onFelt ? f.over + dt : Math.max(0, f.over - 3 * dt);
+      const t = clamp((f.over - (f.ace ? REAL_AFTER.ace : REAL_AFTER.card)) / REAL_AFTER.fade, 0, 1);
       const linger = calm() ? 1 : t * t * (3 - 2 * t);
       const s = home.s + (L.fs - home.s) * Math.max(at.w, linger);
       const seat = L.opponents.find((o) => o.seat === p.seat);

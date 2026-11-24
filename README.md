@@ -316,17 +316,20 @@ their screen; in your window it has to come from wherever they sit.
   Right near the hand, wherever and however large a window draws that hand.
 - `w`: how far the card has come of the way to a pile in the middle that would take it, from 0 when it has just left
   its own pile (or has no such pile to go to: an Ace) to 1 when it is over that pile.
-- `f`: how far it has come of the way from its pile to the edge of the felt, 0 to 1.
+- `f`: how far it has come of the way from where it was taken to the edge of the felt, 0 to 1, measured by the
+  pointer (a finger carries the card risen above it from the start). Bots' made-up reports carry it too.
 
 A receiving window (`aloftAt` in `client/layout.ts`) starts the card at `h` in its own picture of that hand: so a
 card going from pile to pile within a hand is seen doing just that. A card on its way to the felt is drawn `f` of the
-way from that hand, as your window draws it, to the felt's edge (and one pulled back away from the felt goes as far
-the other way), keeping its sideways movement along the row. From there a card with a pile to go to is drawn `w` of
+way from that hand, as your window draws it, straight towards the nearest point of the felt's edge (and one pulled
+back away from the felt goes as far the other way). Its sideways movement along the row counts for less the nearer
+the felt it is, and none at the edge: which way is sideways on its owner's screen says nothing about where on the
+felt it is going from yours. From there a card with a pile to go to is drawn `w` of
 the way along the straight line to that pile, so it arrives as its owner does. After 0.6 s over the felt (0.15 s
 for an Ace, which has no pile to go by) it moves over to where it really is, `p`, taking 0.8 s, and stays with it
 while it is over the felt; put down sooner, it flies to its place when it lands. It grows from hand size to pile
 size on the way. So from every seat a card is seen to travel a nearly straight line from its owner's hand to
-its place (checked for every seat of 2 to 6 players: at most 1.3 times the straight line, never doubling back), and
+its place (checked for every seat of 2 to 6 players: at most 1.22 times the straight line, never doubling back), and
 a card that is held still over the felt is drawn exactly where it is. Between reports the card closes on its place
 smoothly (about two thirds of the way every 80 ms), so 18 reports a second, or fewer if some are late or lost, look
 like one movement. When the snapshot says the hold is over, the card is released from wherever it has got to and

@@ -1187,24 +1187,35 @@ export const keepOut = (L: Pick<Layout, 'felt'>, slot: Rect, n: number): Rect =>
 /** Someone else's card that has left their hand for the felt is drawn lifted this many of its own widths out of the hand, until it is known where it is going. */
 const LIFT = 1.2;
 
+/** The way from `p` (on screen, off the felt) to the nearest point of the felt's edge. */
+function nearestEdge(felt: Felt, n: number, p: Pt): Pt {
+  const t = toTable(felt, p.x, p.y);
+  const [ix, iy] = [feltHw(n) - TABLE.corner, 1 - TABLE.corner];
+  const c = { x: clamp(t.x, -ix, ix), y: clamp(t.y, -iy, iy) };
+  const d = { x: t.x - c.x, y: t.y - c.y };
+  const len = Math.hypot(d.x, d.y) || 1;
+  const q = { x: c.x + (d.x / len) * TABLE.corner, y: c.y + (d.y / len) * TABLE.corner };
+  return { x: (q.x - t.x) * felt.u, y: (q.y - t.y) * felt.u };
+}
+
 /**
  * Where the middle of a card that another player is carrying is drawn in this
  * window. The felt is the same on every screen and the hands are not: its
  * owner carries the card up from the bottom of their screen, and here it has
  * to come from wherever this window seats them. So it is not simply drawn
- * where it is. It starts out about its owner's hand: as far along the row and
- * as far towards the middle from its pile as they have it (`at.h`), in cards
- * of their hand as drawn here (`hw` wide, the card's home at `home`); once it
- * has left the hand for the felt, lifted a little way out of the hand towards
- * the middle. From there:
+ * where it is. It starts out about its owner's hand, in cards of their hand as
+ * drawn here (`hw` wide, the card's home at `home`): as far along the row as
+ * they have it (`at.h[0]`), and out towards the felt `at.f` of the way from the
+ * hand to the felt's edge (never less than its hop within the hand, `at.h[1]`).
+ * As it nears the felt its sideways place gives way: a hand above or below the
+ * felt shares the felt's left and right, so it is steered across to where the
+ * card really is; a hand at the side does not, so its sideways part fades out.
+ * From there:
  * - a card with a pile to go to (`pile`: the middle of that pile on this
  *   screen) is as far along the straight line to that pile as its owner has
  *   carried it of their own way there (`at.w`, 0 to 1);
  * - and any card comes over to where it really is (`at.p`, its point of the
- *   felt) as it lingers over the felt (`linger`, 0 to 1): an Ace on its way to
- *   bare felt has no pile to go by.
- * Either way it travels a straight line from that hand to its place, whichever
- * side of the table the hand is on.
+ *   felt) as it lingers over the felt (`linger`, 0 to 1).
  */
 export function aloftAt(
   felt: Felt,
@@ -1218,20 +1229,17 @@ export function aloftAt(
 ): Pt {
   const there = toScreen(felt, { x: at.p[0], y: at.p[1] });
   // "Towards the middle" is up the screen for whoever is dragging; for their hand as drawn here it is wherever the felt lies.
-  const to = hand ? { x: felt.cx - (hand.box.x + hand.box.w / 2), y: felt.cy - (hand.box.y + hand.box.h / 2) } : { x: 0, y: -1 };
+  // (Straight at the nearest point of the felt's edge from its place in the hand.)
+  const to = hand ? nearestEdge(felt, n, home) : { x: 0, y: -1 };
   const len = Math.hypot(to.x, to.y) || 1;
-  // Along the row (a hand across the table is drawn the other way round) counts for a card going from pile to pile,
-  // not for one that is on its way out of the hand: which way is sideways on its owner's screen says nothing about
-  // where on the felt it is going.
-  // With `f`, sideways is kept all the way out to the felt: along their row as this window draws it.
-  const along = at.f !== undefined ? at.h[0] : at.h[0] * clamp(1 - at.h[1] / 0.8, 0, 1);
+  const f = at.f ?? 0;
   // Which way the row runs here: across, the other way round for a hand across the table, down or up for a turned one.
   const row = hand?.turn === 90 ? { x: 0, y: 1 } : hand?.turn === -90 ? { x: 0, y: -1 } : { x: hand?.flip ? -1 : 1, y: 0 };
-  // Towards the middle: as far as its owner has it, up to a card's width or so out of the hand, and never most of the
-  // way to where it really is. (No further: how far up its owner's screen it is says little about where it is going.)
-  // With `f`: the same share of the way from the hand to the felt's edge as its owner has it.
-  // (Pulled back away from the felt, it goes as far the other way: there is no edge to measure that by.)
-  const out = at.f !== undefined ? (at.h[1] < 0 ? at.h[1] : (at.f * offFelt(toTable(felt, home.x, home.y), n) * felt.u) / hw) : Math.min(at.h[1], LIFT, (0.6 * Math.hypot(there.x - home.x, there.y - home.y)) / hw);
+  // Its sideways place counts for less the nearer the felt it is.
+  const along = at.h[0] * (1 - f) * (1 - f);
+  // Out towards the felt: pulled back away from it, as far the other way.
+  const lift = Math.min(at.h[1], LIFT);
+  const out = f > 0 ? Math.max(lift, (f * offFelt(toTable(felt, home.x, home.y), n) * felt.u) / hw) : lift;
   let x = home.x + (along * row.x + (out * to.x) / len) * hw;
   let y = home.y + (along * row.y + (out * to.y) / len) * hw;
   if (pile) [x, y] = [x + (pile.x - x) * at.w, y + (pile.y - y) * at.w];

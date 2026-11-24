@@ -539,6 +539,6 @@ describe('telling the others where the card is', () => {
     vi.useFakeTimers();
     const t = seatAt(game());
     t.tap(t.at('0:H4'));
-    expect(t.reports).toEqual([{ id: '0:H4', w: 0, h: [0, expect.closeTo(0.16 * (CARD_H / CARD_W), 2)], p: expect.anything(), f: expect.any(Number) }]);
+    expect(t.reports).toEqual([{ id: '0:H4', w: 0, h: [0, expect.closeTo(0.16 * (CARD_H / CARD_W), 2)], p: expect.anything(), f: 0 }]); // (standing where it was: no way out to the felt)
   });
 });

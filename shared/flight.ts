@@ -69,10 +69,10 @@ export function flightFrames(state: GameState, seat: number, intent: Intent): Dr
   for (let k = 1; k <= n; k++) {
     const e = ease(k / n);
     if (there) {
-      frames.push({ id: intent.cardId, w: r3(e), h: [0, r3(0.5 * e)], p: [r3(there.x), r3(there.y)] });
+      frames.push({ id: intent.cardId, w: r3(e), h: [0, r3(0.5 * e)], p: [r3(there.x), r3(there.y)], f: r3(e) });
     } else {
       const to = intent.to.k === 'work' ? rowX('work', intent.to.i) : from;
-      frames.push({ id: intent.cardId, w: 0, h: [r3((to - from) * e), r3(0.35 * Math.sin(Math.PI * e))], p: [0, 50] });
+      frames.push({ id: intent.cardId, w: 0, h: [r3((to - from) * e), r3(0.35 * Math.sin(Math.PI * e))], p: [0, 50], f: 0 });
     }
   }
   return frames;
