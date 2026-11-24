@@ -506,6 +506,12 @@ button.code.copy small {
     grid-area: 1 / 3;
   }
 
+  /* (At the top of the screen, a slip opened from your own row goes under it too, as the tools' do.) */
+  .pad:has(> .seats) > .top .pop {
+    top: calc(100% + 8px);
+    bottom: auto;
+  }
+
   .over > .pad:has(> .seats) {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
