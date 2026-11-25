@@ -796,8 +796,11 @@ would still need one of the options above, and serving both from one origin is s
 - **Someone who never comes back** keeps their seat until they press Leave, whoever deals stands them up or sends them
   away, or the table expires. They are not dealt cards while away, but they count towards the six seats. Only whoever
   deals can do that: if that is the one who is not looking (connected, but gone), nobody can.
-- **Every table is on the home page.** **Tables** lists, to anyone, each table someone is at just now (the twenty where
-  something happened last): its code, the names at it, and its round. There is no private table.
+- **Every table is on the home page, unless its host makes it private.** **Tables** lists, to anyone, each table someone
+  is at just now (the twenty where something happened last): its code, the names at it, and its round. A new table is
+  listed only once it has been open 8 seconds, so a host who ticks **Private table** (in the settings, under Host, at any
+  time) before then is never listed. A private table is left off the list and out of its count, and its code still lets
+  anyone in; made public again, it is listed at the next look.
 - **An abandoned lobby lasts a minute.** If you open a table and everyone's connection drops for more than a minute before
   the first deal, the table is gone and the invite link reports no such table.
 - **Only the dealer can start.** Once the cards are dealt the table waits for the dealer's Start with no time limit. If
