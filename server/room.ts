@@ -1,16 +1,16 @@
 // One game room. No IO: it is handed parsed messages for opaque connection
 // handles and decides what each connection is sent. Its only clocks are the
 // deal timer and the "1, 2, 3" start timer at the opening of a round, the
-// held-card grace timer at its end (and within it, the wait for a call to reach every window), the steps of each
-// group in flight off a stock, and one timer per bot (see server/bot.ts); every rule about them lives in the engine.
+// held-card grace timer at its end (and within it, the wait for a call to reach every window), the round's clock
+// (which a draw is timed by), and one timer per bot (see server/bot.ts); every rule about them lives in the engine.
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, deal, dealOn, expireGrace, finishDeal, inRound, isLive, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
-import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
+import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, landed, landsAt, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
+import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { Account, BotLevel, GameState, Intent, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
@@ -206,8 +206,6 @@ export class Room {
   private roundTimer: { handle: ReturnType<typeof setTimeout>; endsAt: number } | null = null;
   /** Within the grace after a call, the end of its wait to be heard (`hearMs`): set with the round timer, and called off with it. */
   private hearTimer: ReturnType<typeof setTimeout> | null = null;
-  /** By seat, the next step of each group in flight off a stock (`draws`). Called off with the round timer, and by a pause: the group waits where it is. */
-  private steps = new Map<number, ReturnType<typeof setTimeout>>();
   /** The last round whose start the chat was told of. */
   private startTold = 0;
   /** Who paused the round in play, if it is paused. */
@@ -582,39 +580,6 @@ export class Room {
     if (this.roundTimer) clearTimeout(this.roundTimer.handle);
     if (this.hearTimer) clearTimeout(this.hearTimer);
     this.roundTimer = this.hearTimer = null;
-    this.stopDraws();
-  }
-
-  /**
-   * Every group in flight off a stock takes its next step (`dealOn`) STOCK_CARD_MS after its last: the server deals
-   * the cards of a draw, so a draw is one intent and nobody deals faster than anyone else. Only while the round is
-   * live: a group in flight at a call stays as it lies. After anything that can start a draw, or let one go on.
-   */
-  private draws(): void {
-    if (this.phase !== 'playing' || !this.state || !isLive(this.state) || this.pausedBy) return;
-    for (const { seat, dealt } of this.state.players) {
-      if (dealt === 0 || this.steps.has(seat)) continue;
-      this.steps.set(
-        seat,
-        this.later(STOCK_CARD_MS, () => {
-          this.steps.delete(seat);
-          if (this.phase !== 'playing' || !this.state || this.pausedBy) return;
-          const next = dealOn(this.state, seat);
-          if (next === this.state) return;
-          this.state = next;
-          this.changed();
-          this.draws();
-          // A bot waits to see what its draw turns up (bot.ts): it looks it over now.
-          const bot = this.table.find((p) => p.bot && at(p) === seat);
-          if (bot && !this.steps.has(seat)) this.decide(bot);
-        }),
-      );
-    }
-  }
-
-  private stopDraws(): void {
-    for (const t of this.steps.values()) clearTimeout(t);
-    this.steps.clear();
   }
 
   /**
@@ -633,7 +598,7 @@ export class Room {
     if (sent.k !== 'heard') delete player.standing; // playing is sitting back down (hearing a call is not)
     // Who a call has yet to reach is the room's to say, whoever sent it.
     const intent: Intent = sent.k === 'nertz' ? { k: 'nertz', unheard: this.listening(player) } : sent;
-    const result = applyIntent(this.state, at(player), intent);
+    const result = applyIntent(this.state, at(player), intent, this.playedMs());
     if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, [], intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
     const next = result.ok ? result.state : refused(this.state, at(player), intent);
@@ -648,7 +613,6 @@ export class Room {
       if (yetToHear(next).length > 0) this.hearTimer = this.later(this.hearMs, () => this.hearingOver());
     }
     this.settle();
-    this.draws();
     this.changed();
     return result.ok;
   }
@@ -737,15 +701,18 @@ export class Room {
       this.stopClock();
       for (const p of this.players) this.letGo(p);
       this.stopBots();
-      this.stopDraws();
     } else {
       if (!this.pausedBy) return;
       this.pausedBy = null;
       this.playingSince = Date.now();
       for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p);
-      this.draws();
     }
     this.changed();
+  }
+
+  /** What the round's clock reads: how long the round has been played, not counting time paused. A draw is timed by it (`PlayerState.draw`). */
+  private playedMs(): number {
+    return (this.played ?? 0) + (this.playingSince === null ? 0 : Date.now() - this.playingSince);
   }
 
   /** The round's clock stops (a pause, or the end of the round), keeping what it has run up. */
@@ -1113,6 +1080,15 @@ export class Room {
   private decide(player: Player, spent = 0): void {
     const bot = player.bot!;
     if (this.phase !== 'playing' || !this.state) return;
+    // A bot waits to see what its draw turns up (bot.ts): it looks its hand over when the group is down.
+    const draw = this.state.players.find((p) => p.seat === at(player))?.draw;
+    const wait = draw ? landsAt(draw) - this.playedMs() : 0;
+    if (wait > 0) {
+      if (bot.timer) clearTimeout(bot.timer);
+      bot.timer = this.later(wait, () => this.decide(player));
+      return;
+    }
+    this.state = landed(this.state, this.playedMs());
     bot.pending = chooseIntent(viewFor(this.state, at(player)), at(player), bot.memory, this.rng, this.botNow(bot).observance);
     this.wake(player, false, spent);
   }
@@ -1229,7 +1205,7 @@ export class Room {
       seats: this.seats,
       game,
       timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
-      clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
+      clock: this.played === null ? null : { ms: this.playedMs(), running: this.playingSince !== null },
       paused: this.pausedBy ? { by: this.pausedBy.id } : null,
       lastRound: this.lastRound,
       testing: testing(),
