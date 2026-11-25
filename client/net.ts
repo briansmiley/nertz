@@ -382,17 +382,18 @@ function stop(error: string | null): void {
 /**
  * A window left open over a deploy still runs the page it loaded, against a server that has moved on: it draws and
  * plays by the old one. Whenever this window is at no table (it has just left one, or come back to the front), it
- * asks for the page again, and if that names another script than the one running, loads it. At a table it does so
- * only once it is `back` there from an update the server stopped for: the reload sits back down (`resume`).
+ * asks for the page again, and if that names another build than the one running (its `<meta name="build">`, a hash
+ * of everything the build serves, icons included: vite.config.ts), loads it. At a table it does so only once it is
+ * `back` there from an update the server stopped for: the reload sits back down (`resume`).
  */
 async function renew(back = false): Promise<void> {
   const free = (): boolean => back || (!state.room && !session);
   if (typeof document === 'undefined' || !free()) return;
-  const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src');
+  const mine = document.querySelector<HTMLMetaElement>('meta[name="build"]')?.content;
   if (!mine) return; // not a built page (development)
   try {
     const page = await (await fetch('/', { cache: 'no-store' })).text();
-    const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(page)?.[1];
+    const theirs = /<meta name="build" content="([^"]+)"/.exec(page)?.[1];
     if (theirs && theirs !== mine && free()) location.reload();
   } catch {
     // offline: next time

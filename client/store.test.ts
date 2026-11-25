@@ -467,19 +467,21 @@ describe("this window's session", () => {
 });
 
 describe('a page put up anew while the window was open', () => {
-  const OLD = '/assets/index-Old1.js';
-  const NEW = '/assets/index-New2.js';
-  const served = (src: string) => `<!doctype html><script type="module" crossorigin src="${src}"></script>`;
+  const OLD = '0a1b2c3d4e5f';
+  const NEW = '9f8e7d6c5b4a';
+  /** The page the server serves: the same script whatever changed (an icon in public/ alone), and the build's id. */
+  const served = (build: string) =>
+    `<!doctype html><head><script type="module" crossorigin src="/assets/index-Same1.js"></script><meta name="build" content="${build}"></head>`;
   let fetched: ReturnType<typeof vi.fn>;
   /** The window comes back to the front. */
   let front: () => void;
-  /** The script of the page this window runs (`mine`; null: the dev server's page), and of the page the server serves now. */
+  /** The build of the page this window runs (`mine`; null: the dev server's page), and of the page the server serves now. */
   function built(mine: string | null, theirs: string | Promise<string>): void {
     const listeners: (() => void)[] = [];
     vi.stubGlobal('document', {
       visibilityState: 'visible',
       documentElement: { classList: { toggle: () => {} } }, // (client/prefs.ts)
-      querySelector: () => (mine ? { getAttribute: () => mine } : null),
+      querySelector: (q: string) => (mine && q === 'meta[name="build"]' ? { content: mine } : null),
       addEventListener: (_: string, fn: () => void) => void listeners.push(fn),
     });
     fetched = vi.fn(async () => ({ text: async () => served(await theirs) }));
@@ -503,7 +505,7 @@ describe('a page put up anew while the window was open', () => {
     expect(page.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('is loaded when the window comes back to the front at home', async () => {
+  it('is loaded when the window comes back to the front at home, though only something beside the script changed', async () => {
     built(OLD, NEW);
     await reload();
     front();
