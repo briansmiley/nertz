@@ -326,6 +326,17 @@ button.code.copy small {
   font-size: 1.2rem;
 }
 
+/* Someone watching is followed from their name as someone sitting is: the figure close by it, and level with it. */
+.watching .follow {
+  margin-left: 0.15rem;
+  vertical-align: middle;
+}
+
+.watching .follow svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* The lobby: a dot of your colour beside the card back; behind it, the colours still free. */
 .colour {
   position: relative;

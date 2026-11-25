@@ -356,7 +356,8 @@ function Watching({ room, butYou }: { room: RoomView; butYou?: boolean }) {
         <small>{label}</small>
         {them.map((p) => (
           <span key={p.id} className={p.id === room.me ? 'you' : ''}>
-            {p.name}
+            <Named who={p}>{p.name}</Named>
+            {p.handle && <Follow handle={p.handle} name={p.name} small />}
             {!p.queued && (p.id === room.me || host) && (
               <button type="button" className="sit" onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
                 {p.id === room.me ? 'Take a seat' : 'Seat'}
