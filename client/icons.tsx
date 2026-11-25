@@ -1,5 +1,9 @@
 // The line icons of the corner and its menu (Settings.tsx, Menu.tsx), and of the sheets that share them: 24 units
 // square, drawn in the colour of the text around them.
+// The connection banner's robots are built into the bundle, not public/icons: the broken one is wanted just when the
+// line is down, too late to fetch it.
+import robotBroken from './art/robot-broken.png?inline';
+import robotFixed from './art/robot-fixed.png?inline';
 
 /** Sound: the speaker, and struck through in red while it is off. */
 export function Speaker({ off }: { off: boolean }) {
@@ -34,6 +38,36 @@ export function Sit() {
 /** Standing up: the chair pushed back from the table. */
 export function Chair() {
   return <img className="art" src="/icons/stand.png" alt="" aria-hidden="true" />;
+}
+
+/** The connection lost: the robot cracked, a spade and an X for eyes, a zigzag mouth, snapped antenna, bulb red. */
+export function RobotBroken() {
+  return (
+    <span className="robot-net">
+      <img className="art" src={robotBroken} alt="" aria-hidden="true" />
+    </span>
+  );
+}
+
+/** The connection back: the robot mended and upright, a heart and a dot for eyes, the antenna straight, bulb green. */
+export function RobotFixed() {
+  return (
+    <span className="robot-net">
+      <img className="art" src={robotFixed} alt="" aria-hidden="true" />
+    </span>
+  );
+}
+
+/** The game updating: a hand of four cards, only their suits, fanned, the front one tucked to the back over and over. */
+export function Riffle() {
+  return (
+    <span className="riffle" aria-hidden="true">
+      <i>{'♠\uFE0E'}</i>
+      <i className="red">{'♥\uFE0E'}</i>
+      <i>{'♣\uFE0E'}</i>
+      <i className="red">{'♦\uFE0E'}</i>
+    </span>
+  );
 }
 
 /** Feedback: a little beetle with a heart on its back. */

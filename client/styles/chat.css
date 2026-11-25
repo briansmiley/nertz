@@ -248,6 +248,43 @@
   border-color: var(--marigold);
 }
 
+/* The line is down and its card put away (App.tsx): the broken robot, bare in the bar, still saying so. Pressed, the
+   card comes back. It lands with a little drop, as if the card had left it there. */
+.chat-bar button.lost {
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  animation: lost-in 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.chat-bar button.lost .robot-net {
+  width: 38px;
+  height: 38px;
+  margin: -4px 0;
+  rotate: -8deg;
+  transition: transform 0.12s ease-out;
+}
+
+.chat-bar button.lost:hover .robot-net {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+@keyframes lost-in {
+  from {
+    opacity: 0;
+    translate: 0 -10px;
+    scale: 1.4;
+  }
+}
+
+.calm .chat-bar button.lost {
+  animation: none;
+}
+
 /* The sound is off (the corner's menu): a small amber badge at the end of the bar. Pressed, the sound comes back on. */
 .chat-bar button.sound-off {
   display: grid;

@@ -60,8 +60,11 @@ input {
   font: inherit;
 }
 
+/* (No phone's own mark over a tapped button: a box round the drawn icons, which are bare; every button shows its own
+   press.) */
 button {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 :focus-visible {
@@ -96,16 +99,94 @@ button {
   background: var(--ink);
   color: var(--chalk);
   font-size: 14px;
+  /* One line while the window is wide enough for it, not just while half of it is. */
+  width: max-content;
+  max-width: calc(100vw - 24px);
 }
 
 /* Along the foot of the window, where whoever is watching has no cards: the table is laid out above it (layout.ts
-   `WATCH`). One line while the window is wide enough for it, not just while half of it is. */
+   `WATCH`). */
 .banner.low {
   top: auto;
   bottom: 12px;
-  width: max-content;
-  max-width: calc(100vw - 24px);
   text-align: center;
+}
+
+/* The line to the server, lost or back: not the ink pill but a card lying on the felt (the face's colour, corners and
+   shadow, cards.css; its edge firmer, so it holds on the lobby's pad too), the robot climbing out over its top edge.
+   On a phone it lies over the chat bar and the menu: its × (`shut`) puts it away. */
+.banner.net {
+  top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 12px 14px;
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--ink);
+  font: 600 17px/1.25 var(--ui);
+  box-shadow:
+    0 0 0 1.5px var(--ink-soft),
+    0 1.5px 2.5px rgba(0, 0, 0, 0.32),
+    0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+/* The line lost, and then back (App.tsx `Line`): the card lies tipped while it is down and swings itself straight when
+   it is back, with a little overshoot; straight at once with reduced motion. */
+.banner.line {
+  rotate: -2.5deg;
+  transition: rotate 0.5s cubic-bezier(0.3, 1.7, 0.5, 1);
+}
+
+.banner.line.mended {
+  rotate: 0deg;
+}
+
+.calm .banner.line {
+  transition: none;
+}
+
+/* Both robots in one place and both words in another, the one for now shown: the card is the size of the larger. */
+.banner.line .stack {
+  display: grid;
+}
+
+.banner.line .stack > * {
+  grid-area: 1 / 1;
+}
+
+.banner.line .robots {
+  flex: none;
+  align-self: flex-start;
+}
+
+.banner.line .stack > :nth-child(2),
+.banner.line.mended .stack > :first-child {
+  visibility: hidden;
+}
+
+.banner.line.mended .stack > :nth-child(2) {
+  visibility: visible;
+}
+
+/* The connection card's ×: small and quiet, in its top right corner. */
+.banner .shut {
+  flex: none;
+  align-self: flex-start;
+  width: 24px;
+  height: 24px;
+  margin: -8px -14px 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-soft);
+  font: 400 20px/24px var(--ui);
+}
+
+.banner .shut:hover {
+  background: rgba(27, 39, 51, 0.08);
+  color: var(--ink);
 }
 
 /* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */

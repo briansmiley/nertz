@@ -19,9 +19,9 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
-import { Chair, Check, Gear, LinkIcon, SignInDoor, Sit } from './icons';
+import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -46,6 +46,76 @@ function Ping() {
   );
 }
 
+/** How long the banner says the line is back. */
+const BACK_MS = 3000;
+
+/**
+ * Whether the line has just come back: true for `BACK_MS` from when the window is online again after `reconnecting`.
+ * Not at the first connect, nor after `updating` (that one reloads the page).
+ */
+function useBack(status: Status): boolean {
+  const [was, setWas] = useState(status);
+  const [back, setBack] = useState(false);
+  if (status !== was) {
+    setWas(status);
+    setBack(was === 'reconnecting' && status === 'online');
+  }
+  useEffect(() => {
+    if (!back) return;
+    const t = setTimeout(() => setBack(false), BACK_MS);
+    return () => clearTimeout(t);
+  }, [back]);
+  return back;
+}
+
+/**
+ * A card at the top of the window saying what the line is doing (`say`). Over the chat bar and the menu on a phone, so
+ * its × puts it away: until it has something else to say; or, given `onShut`, as that says.
+ */
+function Toast({ say, className, onShut, children }: { say: string; className: string; onShut?: () => void; children: ReactNode }) {
+  const [shut, setShut] = useState<string | null>(null);
+  if (shut === say) return null;
+  return (
+    <p className={`banner net ${className}`} role="status">
+      {children}
+      <button type="button" className="shut" aria-label="Dismiss" onClick={() => (onShut ? onShut() : setShut(say))}>
+        ×
+      </button>
+    </p>
+  );
+}
+
+/**
+ * The line to the table, lost and then back: one card, tipped while the line is down, that sets itself straight with the
+ * mended robot when it is back. Both robots and both words are in it at once, one of each shown, so it keeps its size.
+ * Put away while the line is down, it leaves the broken robot in the chat bar (`onTuck`), which brings it back.
+ */
+function Line({ back, onTuck }: { back: boolean; onTuck: () => void }) {
+  return (
+    <Toast say={back ? 'back' : 'lost'} className={back ? 'line mended' : 'line'} onShut={back ? undefined : onTuck}>
+      <span className="stack robots">
+        <RobotBroken />
+        <RobotFixed />
+      </span>
+      <span className="stack says">
+        <span>Connection lost. Reconnecting…</span>
+        <span>Reconnected!</span>
+      </span>
+    </Toast>
+  );
+}
+
+/** The card saying the line is lost is put away, its robot in the chat bar: for as long as the line stays lost. */
+function useTucked(status: Status): [boolean, (on: boolean) => void] {
+  const [was, setWas] = useState(status);
+  const [tucked, setTucked] = useState(false);
+  if (status !== was) {
+    setWas(status);
+    if (status !== 'reconnecting') setTucked(false);
+  }
+  return [tucked, setTucked];
+}
+
 export function App() {
   const net = useNet();
   const room = net.room;
@@ -53,6 +123,8 @@ export function App() {
   /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. */
   const page = useAddressed();
   useSounds(room, net.status === 'online');
+  const back = useBack(net.status);
+  const [tucked, setTucked] = useTucked(net.status);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -92,11 +164,20 @@ export function App() {
       <Corner room={room} />
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} seats={(close) => <TableSheet room={room} onClose={close} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
-      <Chat room={room} />
+      <Chat room={room} lost={tucked ? () => setTucked(false) : undefined} />
       <Sure room={room} />
       <Ping />
-      {net.status === 'reconnecting' || net.status === 'updating' ? (
-        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : 'Connection lost. Reconnecting…'}</p>
+      {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
+        // (Mid-round the card over the paused table says it: the update paused the round.)
+        <Toast say="updating" className="updating">
+          <Riffle />
+          <span>
+            Updating the game
+            <Dots />
+          </span>
+        </Toast>
+      ) : (net.status === 'reconnecting' && !tucked) || back ? (
+        <Line back={back} onTuck={() => setTucked(true)} />
       ) : (
         spectating && (
           <p className="banner low">

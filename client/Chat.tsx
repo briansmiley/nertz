@@ -7,7 +7,7 @@ import type { RoomView } from '../shared/types';
 import { backColour, nameColour } from './cards/Face';
 import { SaidWord, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
-import { Sit, Speaker } from './icons';
+import { RobotBroken, Sit, Speaker } from './icons';
 import { useCorners } from './fittings';
 import { chatLines } from './layout';
 import { kick, sit } from './net';
@@ -95,7 +95,8 @@ function Passing({ lines, colour, most }: { lines: SocialState['passing']; colou
   );
 }
 
-export function Chat({ room }: { room: RoomView }) {
+/** `lost`: the line is down and its card put away (App.tsx): the broken robot is in the bar, and brings the card back. */
+export function Chat({ room, lost }: { room: RoomView; lost?: () => void }) {
   const social = useSocial();
   const prefs = usePrefs();
   const voice = useVoice();
@@ -203,6 +204,11 @@ export function Chat({ room }: { room: RoomView }) {
         {prefs.muted && (
           <button type="button" className="sound-off" aria-label="Sound is off. Unmute" data-tip={soundKey ? `Sound is off: unmute (${soundKey})` : 'Sound is off: unmute'} onClick={() => setPrefs({ muted: false })}>
             <Speaker off />
+          </button>
+        )}
+        {lost && (
+          <button type="button" className="lost" aria-label="Connection lost. Show" data-tip="Connection lost. Reconnecting…" onClick={lost}>
+            <RobotBroken />
           </button>
         )}
         {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}

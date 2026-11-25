@@ -242,6 +242,122 @@ img.art {
   stroke-width: 1.5;
 }
 
+/* The robots before the connection banner's words (App.tsx), drawn art: broken while the line is lost, mended once it
+   is back. Their heads stand out over the card's top edge, without the card growing for them (the margins). */
+.robot-net {
+  flex: none;
+  align-self: flex-start;
+  width: 58px;
+  height: 58px;
+  margin: -30px 0 -8px -4px;
+}
+
+.robot-net > img.art {
+  width: 100%;
+  height: 100%;
+}
+
+/* The game updating (App.tsx): four little cards, fanned where the robots stand, only their suits in the corner (where
+   a fanned hand shows them); and riffled: the front card lifts out and tucks in at the back while the rest move up one.
+   Each card goes through the four places in turn, a quarter apart; with reduced motion the fan holds still. */
+.riffle {
+  position: relative;
+  flex: none;
+  align-self: flex-start;
+  width: 58px;
+  height: 58px;
+  margin: -30px 0 -8px -4px;
+}
+
+.riffle i {
+  position: absolute;
+  left: 19px;
+  top: 17px;
+  width: 20px;
+  height: 28px;
+  border-radius: 3px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1.5px var(--ink-soft),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+  padding: 2px 0 0 3px;
+  color: var(--ink);
+  font: 700 10px/1 var(--ui);
+  font-style: normal;
+  transform-origin: 50% 160%;
+  animation: riffle 2.4s ease-in-out infinite;
+}
+
+.riffle i.red {
+  color: var(--red);
+}
+
+.riffle i:nth-child(2) {
+  animation-delay: -0.6s;
+}
+
+.riffle i:nth-child(3) {
+  animation-delay: -1.2s;
+}
+
+.riffle i:nth-child(4) {
+  animation-delay: -1.8s;
+}
+
+@keyframes riffle {
+  0%,
+  15% {
+    transform: rotate(20deg);
+    z-index: 3;
+  }
+  16% {
+    z-index: 0;
+  }
+  20% {
+    transform: translateY(-9px) rotate(0deg);
+  }
+  25%,
+  40% {
+    transform: rotate(-20deg);
+    z-index: 0;
+  }
+  50%,
+  65% {
+    transform: rotate(-7deg);
+    z-index: 1;
+  }
+  75%,
+  90% {
+    transform: rotate(7deg);
+    z-index: 2;
+  }
+  100% {
+    transform: rotate(20deg);
+    z-index: 3;
+  }
+}
+
+.calm .riffle i {
+  animation: none;
+  transform: rotate(20deg);
+  z-index: 3;
+}
+
+.calm .riffle i:nth-child(2) {
+  transform: rotate(-20deg);
+  z-index: 0;
+}
+
+.calm .riffle i:nth-child(3) {
+  transform: rotate(-7deg);
+  z-index: 1;
+}
+
+.calm .riffle i:nth-child(4) {
+  transform: rotate(7deg);
+  z-index: 2;
+}
+
 /* The slip an icon button opens, just above it. */
 .pop-at {
   position: relative;
