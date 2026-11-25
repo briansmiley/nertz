@@ -126,14 +126,25 @@
   font-size: clamp(28px, 4.5vw, 46px);
 }
 
-.opening .kickoff.readyup.on {
+/* Green: you are ready, or (the dealer's Start) everyone is. */
+.opening .kickoff.readyup.on,
+.opening .kickoff.all {
   color: var(--chalk);
   background: #2f8f5b;
   box-shadow:
     inset 0 0 0 3px var(--card),
     0 7px 0 #1f6440,
     0 16px 32px rgba(0, 0, 0, 0.45);
+}
+
+.opening .kickoff.readyup.on {
   animation: none;
+}
+
+.opening .kickoff.all:active {
+  box-shadow:
+    inset 0 0 0 3px var(--card),
+    0 2px 0 #1f6440;
 }
 
 /* Who is ready: colour and name, no box; dots that come and go until the tick. */

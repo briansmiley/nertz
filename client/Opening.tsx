@@ -132,7 +132,7 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
         {mine && !enough ? null : mine ? (
           <>
             {warned && <p className="waitfor">Waiting for {late.map((p) => p.name).join(', ')}</p>}
-            <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
+            <button type="button" className={`kickoff${warned ? ' warned' : late.length === 0 ? ' all' : ''}`} onClick={press}>
               {warned ? 'Start anyway' : 'Start'}
             </button>
           </>
