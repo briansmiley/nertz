@@ -123,7 +123,8 @@ export function Chat({ room }: { room: RoomView }) {
   const wide = (i: number) => ({ minWidth: at.chatParts[i] });
   const voiceAt = mayText ? 1 : 0;
   // A press anywhere else puts a slip away.
-  useDismiss(root, open === 'voice' || open === 'watchers', () => setOpen(null));
+  const slip = open === 'voice' || open === 'watchers';
+  useDismiss(root, slip, () => setOpen(null));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
