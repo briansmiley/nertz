@@ -58,6 +58,18 @@ export function RobotFixed() {
   );
 }
 
+/** The game updating: a hand of four cards, only their suits, fanned, the front one tucked to the back over and over. */
+export function Riffle() {
+  return (
+    <span className="riffle" aria-hidden="true">
+      <i>{'♠\uFE0E'}</i>
+      <i className="red">{'♥\uFE0E'}</i>
+      <i>{'♣\uFE0E'}</i>
+      <i className="red">{'♦\uFE0E'}</i>
+    </span>
+  );
+}
+
 /** Feedback: a little beetle with a heart on its back. */
 export function Bug() {
   return <img className="art" src="/icons/bug.png" alt="" aria-hidden="true" />;

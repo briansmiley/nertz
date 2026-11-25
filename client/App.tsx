@@ -21,7 +21,7 @@ import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
-import { Chair, Check, Gear, LinkIcon, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
+import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -66,6 +66,25 @@ function useBack(status: Status): boolean {
     return () => clearTimeout(t);
   }, [back]);
   return back;
+}
+
+/**
+ * The line to the table, lost and then back: one card, tipped while the line is down, that sets itself straight with the
+ * mended robot when it is back. Both robots and both words are in it at once, one of each shown, so it keeps its size.
+ */
+function Line({ back }: { back: boolean }) {
+  return (
+    <p className={back ? 'banner net line mended' : 'banner net line'} role="status">
+      <span className="stack robots">
+        <RobotBroken />
+        <RobotFixed />
+      </span>
+      <span className="stack says">
+        <span>Connection lost. Reconnecting…</span>
+        <span>Reconnected!</span>
+      </span>
+    </p>
+  );
 }
 
 export function App() {
@@ -118,16 +137,17 @@ export function App() {
       <Chat room={room} />
       <Sure room={room} />
       <Ping />
-      {net.status === 'updating' ? (
-        <p className="banner">
-          Updating the game
-          <Dots />
-        </p>
-      ) : net.status === 'reconnecting' ? (
+      {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
+        // (Mid-round the card over the paused table says it: the update paused the round.)
         <p className="banner net">
-          <RobotBroken />
-          Connection lost. Reconnecting…
+          <Riffle />
+          <span>
+            Updating the game
+            <Dots />
+          </span>
         </p>
+      ) : net.status === 'reconnecting' || back ? (
+        <Line back={back} />
       ) : (
         spectating && (
           <p className="banner low">
@@ -140,12 +160,6 @@ export function App() {
             )}
           </p>
         )
-      )}
-      {back && (
-        <p className="banner net">
-          <RobotFixed />
-          Reconnected!
-        </p>
       )}
     </>
   );

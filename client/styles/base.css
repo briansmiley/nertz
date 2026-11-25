@@ -134,6 +134,44 @@ button {
   }
 }
 
+/* The line lost, and then back (App.tsx `Line`): the card lies tipped while it is down and swings itself straight when
+   it is back, with a little overshoot; straight at once with reduced motion. */
+.banner.line {
+  rotate: -2.5deg;
+  transition: rotate 0.5s cubic-bezier(0.3, 1.7, 0.5, 1);
+}
+
+.banner.line.mended {
+  rotate: 0deg;
+}
+
+.calm .banner.line {
+  transition: none;
+}
+
+/* Both robots in one place and both words in another, the one for now shown: the card is the size of the larger. */
+.banner.line .stack {
+  display: grid;
+}
+
+.banner.line .stack > * {
+  grid-area: 1 / 1;
+}
+
+.banner.line .robots {
+  flex: none;
+  align-self: flex-start;
+}
+
+.banner.line .stack > :nth-child(2),
+.banner.line.mended .stack > :first-child {
+  visibility: hidden;
+}
+
+.banner.line.mended .stack > :nth-child(2) {
+  visibility: visible;
+}
+
 /* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */
 .banner button {
   margin-left: 10px;
