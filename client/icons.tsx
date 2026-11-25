@@ -1,5 +1,9 @@
 // The line icons of the corner and its menu (Settings.tsx, Menu.tsx), and of the sheets that share them: 24 units
 // square, drawn in the colour of the text around them.
+// The connection banner's robots are built into the bundle, not public/icons: the broken one is wanted just when the
+// line is down, too late to fetch it.
+import robotBroken from './art/robot-broken.png?inline';
+import robotFixed from './art/robot-fixed.png?inline';
 
 /** Sound: the speaker, and struck through in red while it is off. */
 export function Speaker({ off }: { off: boolean }) {
@@ -34,6 +38,24 @@ export function Sit() {
 /** Standing up: the chair pushed back from the table. */
 export function Chair() {
   return <img className="art" src="/icons/stand.png" alt="" aria-hidden="true" />;
+}
+
+/** The connection lost: the robot cracked, an X and an O for eyes, its bent antenna's bulb red and sparking. */
+export function RobotBroken() {
+  return (
+    <span className="robot-net">
+      <img className="art" src={robotBroken} alt="" aria-hidden="true" />
+    </span>
+  );
+}
+
+/** The connection back: the robot mended, hearts for eyes and a grin, the antenna straight and its bulb green, pulsing. */
+export function RobotFixed() {
+  return (
+    <span className="robot-net fixed">
+      <img className="art" src={robotFixed} alt="" aria-hidden="true" />
+    </span>
+  );
 }
 
 /** Feedback: a little beetle with a heart on its back. */
