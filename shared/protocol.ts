@@ -48,6 +48,7 @@ export const CARD_BACKS = {
   compass: 'Compass',
   lightcone: 'Lightcone',
   arbor: 'Arbor',
+  earth: 'Earth',
   fleur: 'Fleur-de-lis',
   giglio: 'Florence',
   lotus: 'Lotus',
@@ -140,7 +141,7 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
   { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'clover', 'clover-2', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia', 'birch'] },
   { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
   { name: 'Animals', backs: ['fox', 'owl', 'loong', 'rabbit', 'crane', 'phoenix', 'deer', 'koi', 'falcon', 'swallowtail', 'butterflies', 'ants', 'aster'] },
-  { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'giglio'] },
+  { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'giglio', 'earth'] },
   { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye'] },
 ];
 /**
