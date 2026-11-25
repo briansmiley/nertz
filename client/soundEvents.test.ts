@@ -192,6 +192,33 @@ describe('sound cues from rendered state', () => {
     expect(s.me({ k: 'draw' })).toEqual([{ k: 'recycle', who: 'me' }]);
   });
 
+  it('a draw is called off from what is on screen: the card under the group is taken up, and the cards dealt so far slide back onto the stock', () => {
+    const s = session(rigged());
+    const mine = () => s.frame.room!.game!.players[0]!;
+    const four = mine().waste.at(-1)!.id;
+    // Not once the group has turned up here: the card under it is out of reach, and nothing is in hand.
+    s.me({ k: 'draw' });
+    s.confirm();
+    for (let i = 0; i < 3; i++) s.tick();
+    expect(mine().draw).toBeNull();
+    expect(s.me({ k: 'hold', cardId: four })).toEqual([]);
+    expect(mine()).toMatchObject({ holding: null, waste: { length: 4 } });
+    s.confirm();
+    // The next draw, two of its three off the stock: the card they are dealt onto is taken.
+    const [top, stock] = [mine().waste.at(-1)!.id, mine().stock.map((c) => c.id)];
+    s.me({ k: 'draw' });
+    s.confirm();
+    s.tick();
+    expect(mine().draw).toMatchObject({ n: 3, off: 2 });
+    expect(applyIntent(s.frame.room!.game!, 0, { k: 'hold', cardId: top }).ok).toBe(true); // (what the window asks before it sends: net.ts `playable`)
+    expect(s.me({ k: 'hold', cardId: top })).toEqual([{ k: 'recycle', who: 'me' }, { k: 'pickup', who: 'me' }]);
+    expect(mine()).toMatchObject({ draw: null, holding: top, waste: { length: 4 } });
+    expect(mine().stock.map((c) => c.id)).toEqual(stock);
+    // The server says the same: nothing changes on screen.
+    expect(s.confirm()).toEqual([]);
+    expect(s.game.players[0]!.stock.map((c) => c.id)).toEqual(stock);
+  });
+
   it('a table that is stuck has its stocks turned over to one sound, the table\'s own: not a slide for each waste that goes back', () => {
     const s = session(rigged());
     const everyone = (g: GameState) => resolveStuck(g, [0, 1]);

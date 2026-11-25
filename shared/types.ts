@@ -33,13 +33,15 @@ export interface PlayerState {
   work: WorkPile[];
   /** Face-down. */
   stock: AnyCard[];
-  /** Face-up; only the top is playable, and not while a group is in flight onto it (`draw`). */
+  /** Face-up; only the top is playable. While a group is in flight onto it (`draw`) that is still the card the group is covering, and taking it calls the draw off. */
   waste: AnyCard[];
   /**
    * The group in flight, or null: no draw under way. A `draw` puts its `n` cards on top of the waste in one step and
    * says when it was made (`at`, on the round's clock: `RoomView.clock`). They count as dealt one at a time,
    * STOCK_CARD_MS apart, and turned up together one step after the last: so the draw is over, and its top card can be
-   * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Each window deals the cards out
+   * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Until then the card under the group
+   * can be taken (`hold`, `move`), which calls the draw off: the group goes back on the stock as it came off, and
+   * there is no draw under way. Each window deals the cards out
    * on its own clock. `off` is only ever on screen: how many of the group this window has dealt off the stock so
    * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off.
    */

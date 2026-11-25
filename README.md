@@ -50,6 +50,7 @@ Controls:
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
 | Click the stock, or press Space | draw a group of three: they come off one at a time, a sixth of a second apart, and turn up together |
+| Take the card on your waste while a group is being dealt onto it | call the draw off: the group goes back on the stock, and the card is in your hand |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Resume game**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (from Start, for now; before it, to watch: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot, picked with the picture beside Send or dropped or pasted onto the slip; Tab from the words goes to Send) |
@@ -187,9 +188,11 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Stock**: one click on the stock (or Space) is a draw: a group of three, and dealing takes time, as it does with
   real cards: they come off one at a time, `STOCK_CARD_MS` (170 ms) apart, face-down, and the group turns face-up onto
   the waste one step after the third (or after the last card, if the stock runs out first). A draw takes half a
-  second, and the next can start once its group is up, however fast you click. While a group is in flight the waste
-  is out of play (its top is covered, and nobody is shown those cards, their owner included); the nertz pile and the
-  work piles play on. When the stock is empty, a click turns the whole waste back over into the stock.
+  second, and the next can start once its group is up, however fast you click. While a group is in flight nobody is
+  shown its cards, their owner included, and none of them can be played; the nertz pile and the work piles play on.
+  The card the group is being dealt onto can still be taken, and taking it calls the draw off: the cards dealt so far
+  go back on the stock, unseen and in the order they came off, and that card is in your hand. Once the group has
+  turned up the chance is gone. When the stock is empty, a click turns the whole waste back over into the stock.
 - **The pace is the server's.** A draw is one intent; the server puts its group on the waste in one step, and until
   the group's time is up it refuses another draw and a play of its top card, so a doctored client gains nothing. Each
   window deals the cards out at that pace on its own clock.
