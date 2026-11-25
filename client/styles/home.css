@@ -439,3 +439,37 @@
   font: 400 0.8rem/1rem var(--ui);
   color: var(--ink-soft);
 }
+
+/* The pad's foot: the open tables at one end, and at the other Online or Offline (the one you are in underlined, as
+   the choice of card faces is in the settings). Offline, only that, where it was. */
+.foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.foot .mode {
+  display: inline-flex;
+  gap: 0.7rem;
+  margin-left: auto;
+  font-size: 0.92rem;
+}
+
+.mode button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+}
+
+.mode button:hover {
+  color: var(--ink);
+}
+
+.mode button.on {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

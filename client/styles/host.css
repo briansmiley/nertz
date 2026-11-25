@@ -43,7 +43,7 @@ a.page:focus-visible {
   text-underline-offset: 0.2em;
 }
 
-/* Offline you are the only one who could host: the mark by your name says nothing. */
-.offline .host {
+/* Where nobody else can come (`alone`, on the root: client/App.tsx) you are the only one who could host: the mark by your name says nothing. */
+.alone .host {
   display: none;
 }

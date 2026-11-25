@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, redeal, resetTable, sit } from './net';
+import { leave, pause, reach, redeal, resetTable, sit, useReach } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -29,8 +29,16 @@ export function canResume(room: RoomView): boolean {
  */
 export function standing(room: RoomView): boolean | null {
   const me = meOf(room);
-  return room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
+  return mayStand() && room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
 }
+
+/**
+ * Is there any standing up from a table here, to watch it or for now? Only where others can come to it (client/net.ts
+ * `Reach`): alone with bots there is nobody to watch, and nobody the round is played on for. The one rule, for the
+ * menu, the lobby and the score sheet.
+ */
+export const mayStand = (): boolean => reach().others;
+export const useMayStand = (): boolean => useReach().others;
 
 /** Can you deal the round over? Whoever deals, at any point of a round. */
 export const canRedeal = (room: RoomView): boolean => room.phase === 'playing' && !!room.game && !!meOf(room)?.isHost;
@@ -101,7 +109,8 @@ export function tableActions(room: RoomView): TableAction[] {
   return [
     canPause(room) ? { id: 'pause' as const, label: 'Pause' } : coming && { id: 'pause' as const, label: 'Pause', coming: true },
     canResume(room) && { id: 'resume' as const, label: 'Resume game' },
-    vote ? { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine } : coming && { id: 'vote' as const, label: 'End round', coming: true },
+    // (With a say of your own alone, the one human at the table, there is nothing to count.)
+    vote ? { id: 'vote' as const, label: 'End round', ...(vote.voters > 1 && { tally: `${vote.voted}/${vote.voters}` }), on: vote.mine } : coming && { id: 'vote' as const, label: 'End round', coming: true },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: true },
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },

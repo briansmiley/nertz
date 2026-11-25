@@ -26,7 +26,7 @@ import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setBoard, setUnrevealed } from './social';
 import { useFeed } from './feed';
 import { Dots } from './Dots';
-import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet, useReach } from './net';
 import { Clock } from './Settings';
 import { Chair } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -692,6 +692,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const paused = !!room.paused && !results;
   /** The line to the table is up: until it is, the card over a paused table offers nothing (an update: the table is on its way back). */
   const online = useNet().status === 'online';
+  const { others } = useReach();
   /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over), or it is paused. (A card already in hand may still land during grace.) */
   const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
@@ -1087,7 +1088,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
                 e.currentTarget.blur();
               }}
             >
-              End round {vote.voted > 0 && <small>{vote.voted}/{vote.voters}</small>}
+              End round {vote.voted > 0 && vote.voters > 1 && <small>{vote.voted}/{vote.voters}</small>}
             </button>
           )}
 
@@ -1213,7 +1214,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
             {pausedBy.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
           </>
         ) : (
-          <p>{pausedBy.id === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === pausedBy.id)?.name ?? 'Someone'} paused the round.`}</p>
+          // (Where nobody else can come, who paused it is no news: only you could have, or the window did when you left it.)
+          others && <p>{pausedBy.id === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === pausedBy.id)?.name ?? 'Someone'} paused the round.`}</p>
         )}
         {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>

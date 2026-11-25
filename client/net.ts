@@ -314,10 +314,15 @@ function tell(): void {
   if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
-// Offline or not is the settings' to say while this window is at no table (`NetState.offline`).
+// Offline or not is the settings' to say while this window is at no table (`NetState.offline`). On its way to one it
+// has not got to (a server that cannot be reached, which is when offline is wanted) it gives that up for what is asked now.
+let wanted = getPrefs().offline;
 watchPrefs(() => {
-  if (session || state.offline === getPrefs().offline) return;
-  set({ offline: getPrefs().offline });
+  if (wanted === getPrefs().offline) return;
+  wanted = getPrefs().offline;
+  if (state.room) return; // (at a table: it is what it was opened as, until it is left)
+  if (session) return stop(null);
+  set({ offline: wanted });
   void renew(); // (back online: the page may have been put up anew meanwhile)
 });
 
@@ -405,15 +410,31 @@ function stop(error: string | null): void {
  */
 async function renew(back = false): Promise<void> {
   const free = (): boolean => back || (!state.room && !session);
-  if (typeof document === 'undefined' || !free() || state.offline) return;
+  if (typeof document === 'undefined' || !free() || !reach().server) return;
   const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src');
   if (!mine) return; // not a built page (development)
   try {
-    const page = await (await fetch('/', { cache: 'no-store' })).text();
-    const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(page)?.[1];
-    if (theirs && theirs !== mine && free()) location.reload();
+    const res = await fetch('/', { cache: 'no-store' });
+    if (!res.ok) return; // (a server on its way up, or a proxy with none behind it: not a page)
+    const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(await res.text())?.[1];
+    if (!theirs || theirs === mine || !free()) return;
+    // Loading the page again is tried once for each page there is to have: where that does not bring it (the network
+    // gone again, and the page the one the service worker keeps), asking again and again would only load this one over and over.
+    if (renewedFor() === theirs) return;
+    renewedFor(theirs);
+    location.reload();
   } catch {
     // offline: next time
+  }
+}
+const RENEWED_KEY = 'nertz.renewed';
+/** The page (its script) this window last loaded itself anew for; given one, that is it from now. */
+function renewedFor(script?: string): string | null {
+  try {
+    if (script) sessionStorage.setItem(RENEWED_KEY, script);
+    return sessionStorage.getItem(RENEWED_KEY);
+  } catch {
+    return null;
   }
 }
 // Back in front: at a table, is the line still up (`probe`)? At none, is this still the page the server serves?
@@ -545,11 +566,12 @@ function probe(): void {
   ping();
   setTimeout(() => socket === ws && heard < asked && dropped(), PROBE_MS);
 }
-if (typeof window !== 'undefined') window.addEventListener('online', probe);
+if (typeof window !== 'undefined') window.addEventListener('online', () => (probe(), void renew()));
 
-function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting'): void {
+/** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
+function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false): void {
   if (session) stop(null);
-  session = { room, name, local: getPrefs().offline };
+  session = { room, name, local };
   attempts = 0;
   set({ status, error: null, offline: session.local });
   connect();
@@ -557,7 +579,8 @@ function open(room: string | null, name: string, status: 'connecting' | 'rejoini
 }
 
 /** Opens a new table. The server picks its code; it arrives as `room.code` in the first snapshot. */
-export const create = (name: string): void => open(null, name);
+/** Offline (the settings say), the table is this window's own, and is there at once. */
+export const create = (name: string): void => open(null, name, 'connecting', getPrefs().offline);
 
 /** Sits down at an existing table. A code nobody opened is refused: the server closes with CLOSE_OVER and the reason. */
 export const join = (room: string, name: string): void => open(room, name);
@@ -644,8 +667,22 @@ export const subscribe = (l: () => void) => {
 export const current = (): NetState => state;
 
 export const useNet = (): NetState => useSyncExternalStore(subscribe, current);
-/** This window plays offline (`NetState.offline`): what is only for a table others can come to, or asks the game server anything, is not shown. */
-export const useOffline = (): boolean => useNet().offline;
+/**
+ * What this window can reach, which is what there is to show for it. The two things offline is the lack of:
+ * `others`: anyone else can come to its table (so the table has a code and a link, can be come to by one, is listed or
+ * private, has seats to count and to stand up from, chat, voice, a host, and a line whose time is worth showing);
+ * `server`: the game server can be asked (who is signed in, their page and record, feedback, whether the page is new).
+ * Derived from the store's state and nothing else: whoever shows or asks something goes by this, never by the setting.
+ */
+export interface Reach {
+  others: boolean;
+  server: boolean;
+}
+const ONLINE: Reach = { others: true, server: true };
+const OFFLINE: Reach = { others: false, server: false };
+export const reachOf = (net: Pick<NetState, 'offline'>): Reach => (net.offline ? OFFLINE : ONLINE);
+export const reach = (): Reach => reachOf(state);
+export const useReach = (): Reach => reachOf(useNet());
 
 // ---------------------------------------------------------------- round trip
 

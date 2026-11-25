@@ -528,6 +528,84 @@ describe('a window that plays offline', () => {
     expect(net.current().offline).toBe(true);
   });
 
+  it('Offline switched on while a new table cannot be reached: the window gives that table up, and is offline at once', async () => {
+    vi.useFakeTimers();
+    const net = await reload();
+    const prefs = await import('./prefs');
+    net.create('Ada');
+    last().closed(); // no server to be had
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(net.current()).toMatchObject({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', offline: false });
+    const tried = sockets();
+    prefs.setPrefs({ offline: true });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets()).toBe(tried); // (and it has stopped trying)
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { phase: 'lobby' } });
+    expect(sockets()).toBe(tried);
+    net.leave();
+  });
+
+  it('only the switch itself gives a table up: some other setting changed while on the way to one changes nothing', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    net.join('WXYZ', 'Ada');
+    prefs.setPrefs({ muted: true });
+    expect(net.current()).toMatchObject({ status: 'connecting', offline: false });
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'WXYZ' });
+  });
+
+  it('a table that is there already is the server\'s, whatever the settings say: a reload sits back down at it, and one come to by its code is come to', async () => {
+    const net = await seated();
+    const prefs = await import('./prefs');
+    prefs.setPrefs({ offline: true }); // (another window of this browser switched it on)
+    expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' }, offline: false });
+    // The reload: the page's script anew, with the settings as they are kept.
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const before = sockets();
+    const again = await reload();
+    expect((await import('./prefs')).getPrefs().offline).toBe(true);
+    expect(sockets()).toBe(before + 1);
+    expect(again.current()).toMatchObject({ status: 'rejoining', offline: false });
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
+    last().deliver(at('ABCD'));
+    expect(again.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' }, offline: false, error: null });
+    expect(address()).toBe('?room=ABCD');
+    again.leave();
+    expect(again.current().offline).toBe(true);
+    // Come to by its code (a link someone sent), with Offline on: the server's table still.
+    again.join('WXYZ', 'Ada');
+    expect(sockets()).toBe(before + 2);
+    expect(again.current()).toMatchObject({ status: 'connecting', offline: false });
+  });
+
+  it('there is no standing up from a table of its own, to watch or for now; at one others can come to, there is', async () => {
+    vi.useFakeTimers();
+    const { net, prefs } = await offline();
+    const actions = await import('./actions');
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    net.start();
+    await vi.advanceTimersByTimeAsync(5000);
+    net.go();
+    await vi.advanceTimersByTimeAsync(5000);
+    const room = net.current().room!;
+    expect(room.game!.status.at).toBe('play');
+    expect(actions.mayStand()).toBe(false);
+    expect(actions.standing(room)).toBeNull();
+    expect(actions.tableActions(room).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'leave']);
+    // (And the lone human's vote is not counted out loud.)
+    expect(actions.tableActions(room).find((a) => a.id === 'vote')).toEqual({ id: 'vote', label: 'End round', on: false });
+    net.leave();
+    prefs.setPrefs({ offline: false });
+    expect(actions.mayStand()).toBe(true);
+    expect(actions.tableActions(room).map((a) => a.id)).toContain('stand');
+  });
+
   it("leaves someone's link in the address alone, and a reload lands at home", async () => {
     page.search = '?room=WXYZ';
     const { net } = await offline();
@@ -603,11 +681,13 @@ describe('a window that plays offline', () => {
 });
 
 describe('a page put up anew while the window was open', () => {
-  /** Two starts of the server: the one this page was served by, and one put up since (an icon alone may have changed). */
-  const OLD = BOOT;
-  const NEW = 'registry.fly.io/nertz:deployment-new';
-  /** The server tells this socket which start of it it reached, as it tells every socket first. */
-  const welcome = (ws: FakeSocket, boot: string) => ws.deliver({ t: 'welcome', boot });
+  const OLD = '/assets/index-Old1.js';
+  const NEW = '/assets/index-New2.js';
+  const served = (src: string) => `<!doctype html><script type="module" crossorigin src="${src}"></script>`;
+  let fetched: ReturnType<typeof vi.fn>;
+  /** The server answers with a page (not a 502 from a proxy with nothing behind it). */
+  let answers = true;
+  beforeEach(() => void (answers = true));
   /** The window comes back to the front. */
   let front: () => void;
   beforeEach(() => {
@@ -617,6 +697,8 @@ describe('a page put up anew while the window was open', () => {
       documentElement: { classList: { toggle: () => {} } }, // (client/prefs.ts)
       addEventListener: (_: string, fn: () => void) => void listeners.push(fn),
     });
+    fetched = vi.fn(async () => ({ ok: answers, text: async () => served(await theirs) }));
+    vi.stubGlobal('fetch', fetched);
     front = () => listeners.at(-1)!();
   });
   /** A page just loaded at home: the socket it opened to hear the server's boot has heard `boot`. */
@@ -650,20 +732,42 @@ describe('a page put up anew while the window was open', () => {
     expect(page.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('is not loaded when the server is the same start: a line that dropped, or a window back at home', async () => {
-    vi.useFakeTimers();
-    const net = await home();
-    net.create('Ada');
-    welcome(last(), OLD);
-    last().open();
-    last().deliver(at('ABCD'));
-    last().closed();
-    await vi.advanceTimersByTimeAsync(300);
-    welcome(last(), OLD);
-    last().open();
-    last().deliver(at('ABCD'));
-    expect(net.current().status).toBe('online');
-    net.leave();
+  it('is loaded once for each page there is to have: where loading did not bring it (the copy the service worker keeps), the window does not load itself over and over', async () => {
+    built(OLD, NEW);
+    await reload();
+    front();
+    await settled();
+    expect(page.reload).toHaveBeenCalledTimes(1);
+    // The reload brought the old page again (the network gone at that moment): the window is as it was, and asks again.
+    built(OLD, NEW);
+    await reload();
+    front();
+    await settled();
+    front();
+    await settled();
+    expect(fetched).toHaveBeenCalledTimes(2);
+    expect(page.reload).toHaveBeenCalledTimes(1);
+    // A page newer still is another page: once for that one too.
+    built(OLD, '/assets/index-Newer3.js');
+    await reload();
+    front();
+    await settled();
+    expect(page.reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('an answer that is no page (a server on its way up) is not taken for one', async () => {
+    built(OLD, NEW);
+    answers = false;
+    await reload();
+    front();
+    await settled();
+    expect(fetched).toHaveBeenCalledTimes(1);
+    expect(page.reload).not.toHaveBeenCalled();
+  });
+
+  it('is not loaded when it is the page the window has, and not asked for at all from the dev server', async () => {
+    built(OLD, OLD);
+    await reload();
     front();
     welcome(last(), OLD);
     expect(page.reload).not.toHaveBeenCalled();

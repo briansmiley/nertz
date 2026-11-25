@@ -18,8 +18,8 @@ import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
-import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useOffline, useRtt } from './net';
+import { openAction, press, useMayStand, type ActionId } from './actions';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, reachOf, sit, start, useNet, useReach, useRtt, type Reach } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
@@ -121,12 +121,13 @@ export function App() {
   const net = useNet();
   const room = net.room;
   const account = useAccount();
-  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. Offline, no one's: there is nobody to ask. */
+  const reach = reachOf(net);
+  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. With no server to ask, no one's. */
   const addressed = useAddressed();
-  const page = net.offline ? null : addressed;
+  const page = reach.server ? addressed : null;
   useSounds(room, net.status === 'online');
-  // (For what the stylesheet leaves out offline: the host's mark by a name, where you are the only one who could be.)
-  useEffect(() => void document.documentElement.classList.toggle('offline', net.offline), [net.offline]);
+  // (For what the stylesheet leaves out where nobody else can come: the host's mark by a name, when you are the only one who could be.)
+  useEffect(() => void document.documentElement.classList.toggle('alone', !reach.others), [reach.others]);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -135,7 +136,7 @@ export function App() {
   if (!room) {
     return (
       <>
-        <Home key={net.offline ? 'offline' : 'online'} error={net.error} busy={net.status !== 'idle'} yours={page} offline={net.offline} />
+        <Home key={net.offline ? 'offline' : 'online'} error={net.error} busy={net.status !== 'idle'} yours={page} reach={reach} />
         <Corner />
       </>
     );
@@ -168,7 +169,7 @@ export function App() {
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} lost={tucked ? () => setTucked(false) : undefined} />
       <Sure room={room} />
-      {!net.offline && <Ping />}
+      {reach.others && <Ping />}
       {net.status === 'reconnecting' || net.status === 'updating' ? (
         <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : 'Connection lost. Reconnecting…'}</p>
       ) : (
@@ -214,6 +215,11 @@ function Named({ who, children }: { who: PlayerView | undefined; children: React
       {children}
     </a>
   );
+}
+
+/** On the button that deals, while there is nobody to deal to but you: whom it is waiting for; or, where nobody else can come, what to do about it. */
+function Short() {
+  return useReach().others ? 'Waiting for a second player' : 'Add a bot to deal';
 }
 
 /** The server deals only to players who are connected, and needs two of them. */
@@ -293,20 +299,25 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
 /** For whoever deals, between rounds and before their Start: a robot's head and a plus, bare, a button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const full = freeSeats(room.seats) === 0;
+  // A full table has no slip to open: the robot is there, faded, and says why.
+  if (freeSeats(room.seats) === 0) {
+    return (
+      <span className="pop-at">
+        <button type="button" className="icon bare" aria-disabled="true" aria-label="Add a bot: the table is full" data-tip="The table is full">
+          <RobotPlus />
+        </button>
+      </span>
+    );
+  }
   return (
     <Pop icon={<RobotPlus />} label="Add a bot" bare>
       <h3>Add a bot</h3>
-      {full ? (
-        <p className="hint">The table is full.</p>
-      ) : (
-        <div className="bots">
-          <Dropdown value={level} options={BOT_LEVELS} choose={setLevel} label="Bot speed" />
-          <button type="button" className="plain" onClick={() => addBot(level)}>
-            Add
-          </button>
-        </div>
-      )}
+      <div className="bots">
+        <Dropdown value={level} options={BOT_LEVELS} choose={setLevel} label="Bot speed" />
+        <button type="button" className="plain" onClick={() => addBot(level)}>
+          Add
+        </button>
+      </div>
     </Pop>
   );
 }
@@ -376,6 +387,7 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
  * altogether. Whoever hosts the table is asked first whether to hand it on, and to whom: some go on dealing from the side.
  */
 function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
+  const may = useMayStand();
   const mine = who.id === room.me;
   const says = mine ? 'Stand up (spectate)' : `Stand ${who.name} up (spectate)`;
   const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];
@@ -383,6 +395,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const root = useRef<HTMLSpanElement>(null);
   useDismiss(root, !!step, () => setStep(null));
   const up = () => (sit(false, mine ? undefined : who.id), setStep(null));
+  if (!may) return null;
   return (
     <span className="pop-at" ref={root}>
       <button type="button" className="standup" aria-label={says} data-tip={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
@@ -474,7 +487,8 @@ const TABLES_MS = 5000;
 const roundOf = (t: TableSummary): string => (t.playing ? `round ${t.round}` : t.round > 0 ? `after round ${t.round}` : 'not started');
 
 /** The tables someone is at just now (server/index.ts `/tables`), how many beside the word; pressed, the list; a line of it, that table. */
-function Tables({ onPick }: { onPick: (code: string) => void }) {
+/** `aside`: what stands at the other end of its line (the pad's foot). */
+function Tables({ onPick, aside }: { onPick: (code: string) => void; aside: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [known, setKnown] = useState<OpenTables | null>(null);
   useEffect(() => {
@@ -498,9 +512,12 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   }, [open]); // (asked for at once when the list is opened, too)
   return (
     <div className="tables">
-      <button type="button" className="quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Tables{known && ` (${known.open})`}
-      </button>
+      <div className="foot">
+        <button type="button" className="quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
+          Tables{known && ` (${known.open})`}
+        </button>
+        {aside}
+      </div>
       {open &&
         known &&
         (known.tables.length ? (
@@ -525,12 +542,21 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
-/** Offline, where the open tables would be listed: that this window is, and pressed, the way back. */
-function OfflineMark() {
-  return (
-    <button type="button" className="quiet" data-tip="Go back online" onClick={() => setPrefs({ offline: false })}>
-      Offline
+/**
+ * At the foot of the home page's pad, in both: Online or Offline, the one you are in underlined, the other pressed to
+ * change to it (client/net.ts `NetState.offline`). Offline, your tables are your own, with bots.
+ */
+function Mode({ offline }: { offline: boolean }) {
+  const way = (to: boolean, name: string) => (
+    <button type="button" role="radio" aria-checked={offline === to} className={offline === to ? 'on' : ''} onClick={() => setPrefs({ offline: to })}>
+      {name}
     </button>
+  );
+  return (
+    <span className="mode" role="radiogroup" aria-label="Online or offline">
+      {way(false, 'Online')}
+      {way(true, 'Offline')}
+    </span>
   );
 }
 
@@ -551,10 +577,11 @@ function Avatar({ image, name }: { image: string | null; name: string | null }) 
 }
 
 /** The home page; `yours`, with the pad turned over to your page, or on it who you follow (the address is yours: `useAddressed`). */
-function Home({ error, busy, yours, offline }: { error: string | null; busy: boolean; yours: Addressed | null; offline: boolean }) {
-  const invited = offline ? '' : roomInUrl();
-  /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. Offline, where nobody is signed in: the one you last sat down under. */
-  const [name, setName] = useState(offline ? lastName : rememberedName);
+function Home({ error, busy, yours, reach }: { error: string | null; busy: boolean; yours: Addressed | null; reach: Reach }) {
+  const invited = reach.others ? roomInUrl() : '';
+  /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. With no server to say who is signed in: the one you last sat down under. */
+  const [name, setName] = useState(reach.server ? rememberedName : lastName);
+  const mode = <Mode offline={!reach.others} />;
   const account = useAccount();
   const signedIn = signedInAs(account);
   const ways = waysIn(account);
@@ -683,7 +710,7 @@ function Home({ error, busy, yours, offline }: { error: string | null; busy: boo
               <button type="button" className="go" disabled={!ready} onClick={() => go(null)}>
                 {busy && !typed ? 'Connecting…' : 'New Table'}
               </button>
-              {!offline && <div className="way">
+              {reach.others && <div className="way">
                 <label htmlFor="code">Join existing table</label>
                 <div className="pair">
                   <input
@@ -703,7 +730,7 @@ function Home({ error, busy, yours, offline }: { error: string | null; busy: boo
                 </div>
               </div>}
             </div>
-            {offline ? <OfflineMark /> : <Tables onPick={pick} />}
+            {reach.others ? <Tables onPick={pick} aside={mode} /> : <div className="foot">{mode}</div>}
           </form>
         )}
       </Pad>
@@ -720,7 +747,6 @@ function Lobby({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
   const ready = enoughToDeal(room);
-  const offline = useOffline();
   return (
     <main className="solo">
       <Pad className="lobby">
@@ -729,7 +755,7 @@ function Lobby({ room }: { room: RoomView }) {
         <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!ready} onClick={start}>
-            {ready ? 'Deal the first round' : offline ? 'Add a bot to deal' : 'Waiting for a second player'}
+            {ready ? 'Deal the first round' : <Short />}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
@@ -783,7 +809,7 @@ function TableHead({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
   const [codeCopied, copyCode] = useCopy(room.code);
   const [copied, copy] = useCopy(`${location.origin}/?room=${room.code}`);
-  const offline = useOffline();
+  const { others } = useReach();
 
   return (
     <>
@@ -791,8 +817,8 @@ function TableHead({ room }: { room: RoomView }) {
           {me?.isHost && <AddBot room={room} />}
           <Act id="leave" room={room} />
         </div>
-        {/* Offline the table has no code to give anyone: where it would be, that says so. */}
-        {offline ? <h2>Table <span className="code">Offline</span></h2> : <h2>
+        {/* A table nobody else can come to has no code to give anyone: where it would be, that says so. */}
+        {!others ? <h2>Table <span className="code">Offline</span></h2> : <h2>
           Table{' '}
           {/* The code itself is a button: pressed, it is copied (just the code, for saying or typing; the chain after it copies the link). */}
           <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} data-tip="Copy the code" onClick={copyCode}>
@@ -810,8 +836,6 @@ function TableHead({ room }: { room: RoomView }) {
 /** Everyone at the table and watching: you under the head, the others' places, then who watches; and the backs being chosen. */
 function Sitters({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
-  /** Offline there is nothing to stand up for: nobody plays on without you. */
-  const offline = useOffline();
   const prefs = usePrefs();
   /** Whose backs are being chosen, if the sheet of backs is open: yours (seated or watching), or a bot's (by its seat). */
   const [picking, setPicking] = useState<'you' | number | null>(null);
@@ -887,7 +911,7 @@ function Sitters({ room }: { room: RoomView }) {
               </span>
               <span className="note">
                 you
-                {hasSeat(me) && !offline && <StandUp room={room} who={me} />}
+                {hasSeat(me) && <StandUp room={room} who={me} />}
                 {/* Spectating (you stood up, or came in to a full table): a seat is yours for the asking, the chair tucked in where
                     standing up's was; at a full table, words, since a chair cannot say you will wait for one. */}
                 {!hasSeat(me) && !me.queued && freeSeats(room.seats) > 0 && (
@@ -984,12 +1008,13 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
 
 function Results({ room }: { room: RoomView }) {
   const round = room.lastRound;
-  const offline = useOffline();
   const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
   const end = round?.end;
+  /** How many people the round's lines are of (a bot has no say in ending it): with one, nobody agreed with anybody. */
+  const agreed = (round?.scores ?? []).filter((s) => !room.players.find((p) => p.id === s.id)?.bot).length;
   /** The seats that got Nertz: each has the stamp in their line. */
   const out = end?.by === 'nertz' ? end.out : [];
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
@@ -1019,7 +1044,7 @@ function Results({ room }: { room: RoomView }) {
       <Pad wide>
         <h2>Round {room.round}</h2>
         {/* Who got Nertz is said in their own lines of the sheet, with the stamp in the Nertz column; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
-        {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
+        {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? (agreed > 1 ? 'Everyone agreed to end the round. Scored as it stands.' : 'Scored as it stands.') : 'Round over.'}</p>}
         <table className="scores">
           <thead>
             <tr>
@@ -1048,7 +1073,7 @@ function Results({ room }: { room: RoomView }) {
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{s.name}</Named>}
                   </Name>
                   {p?.handle && <Follow handle={p.handle} name={p.name} small />}
-                  {p && !p.bot && p.seat !== null && !offline && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
+                  {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
                 </th>
@@ -1102,7 +1127,7 @@ function Results({ room }: { room: RoomView }) {
         {round?.snipes && top && <Snipes snipes={round.snipes} top={top} who={who} />}
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
-            {enoughToDeal(room) ? 'Next round' : offline ? 'Add a bot to deal' : 'Waiting for a second player'}
+            {enoughToDeal(room) ? 'Next round' : <Short />}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>

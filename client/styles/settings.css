@@ -236,6 +236,12 @@ label.check {
   gap: 0.25rem 0.5rem;
 }
 
+/* Two of them (no voice chat to have a level): side by side from the left, not one at each end. */
+.mix.few {
+  justify-content: flex-start;
+  column-gap: 1.4rem;
+}
+
 .mix button {
   display: flex;
   align-items: baseline;
@@ -443,6 +449,11 @@ fieldset.rules {
 
 fieldset.rules legend {
   width: 100%;
+}
+
+/* A rule alone has no heading, and its own line of the sheet whatever stands beside the rules elsewhere. */
+.pad.lobby > fieldset.rules.one {
+  grid-column: 1 / -1;
 }
 
 /* On a narrow sheet each (i) opens under the whole line, as wide as the sheet; once the sheet is wide, under its own rule. */

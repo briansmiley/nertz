@@ -122,6 +122,13 @@ describe('standing up from your cards for now', () => {
 });
 
 describe('the vote to end the round, as the menu and the table show it', () => {
+  it('with one person at the table (the rest bots) there is nothing to count: the vote has no tally', () => {
+    const alone = roomOf(live, 0);
+    const room: RoomView = { ...alone, players: alone.players.map((p) => (p.seat === 0 ? p : { ...p, bot: 'medium' as const })) };
+    expect(ballot(room)).toMatchObject({ voters: 1, voted: 0 });
+    expect(tableActions(room).find((a) => a.id === 'vote')).toEqual({ id: 'vote', label: 'End round', on: false });
+  });
+
   it("counts as the engine does: those with a say, and how many voted; and says whether yours is in", () => {
     const one = voting(live, 1);
     expect(ballot(roomOf(one, 1))).toEqual({ voters: 3, voted: 1, mine: true, pressing: true });

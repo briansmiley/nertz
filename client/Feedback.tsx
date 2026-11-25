@@ -8,7 +8,7 @@ import { Back } from './Menu';
 import { thisDevice } from './device';
 import { Bug as BugIcon } from './icons';
 import { rememberedName } from './name';
-import { useOffline } from './net';
+import { useReach } from './net';
 import { post } from './outbox';
 import { touchOnly } from './prefs';
 import { useAboveKeyboard } from './viewport';
@@ -90,7 +90,8 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [state, setState] = useState<{ k: 'idle' | 'sending' | 'sent' } | { k: 'error'; message: string }>({ k: 'idle' });
-  const offline = useOffline();
+  /** With no server to send it to, it is kept and sent later: the slip says Saved. */
+  const offline = !useReach().server;
   const form = useRef<HTMLFormElement>(null);
   // Sent: the slip folds away to Send, saying so, and then puts itself away. (Closed before then, it is simply gone.)
   useEffect(() => {
