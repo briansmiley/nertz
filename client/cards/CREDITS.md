@@ -35,6 +35,10 @@ white-on-nothing pattern that is printed in each player's colour.
   `giglio` that of "Fleur de lis of Florence.svg" (Wikimedia Commons, F l a n k e r, public domain).
 - `arbor` (drawn in `backArt.ts`) is the logo of Arbor, the owner's own organisation, redrawn from its file.
 - `acanthus`, `daisy`, `tulip`, `fronds`, `oak`, `waterlily`, `lilypads`, `maple`, the `dandelion-` backs, `thistle`, `clover`, `clover-2`, `lily`, `rose`, `iris`, `sunflower`, `poppies`, `sequoia`, `birch`, `fern`, `ginkgo`, `ginkgo-ring`, `ginkgo-scatter`, `tarot-star` and `tarot-eye` (and the tarot pair's one-colour `-tint` prints) are pictures the owner made in Midjourney.
+- The Animals backs (`fox`, `owl`, `loong`, `rabbit`, `crane`, `phoenix`, `deer`, `koi`, `falcon`, `swallowtail`,
+  `butterflies`, `ants`, `aster`) were generated for the owner with OpenAI's image API (24 Nov 2026), whose terms
+  give the output to the one who made it. `aster` is the owner's cat, from the owner's own photo. How they were made
+  is in `art/backs/STYLE.md`.
 - `lightcone` (drawn in `backArt.ts`) is the logo of Lightcone Infrastructure, taken from the owner's own copy of its
   file. It is their mark, not this project's: the owner's choice to include; check with them before it is deployed publicly.
 - `hat` (the aperiodic "einstein" tiling, drawn in `backArt.ts`) is built by the method of Craig S. Kaplan's hatviz,
