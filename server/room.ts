@@ -249,7 +249,8 @@ export class Room {
   /** The last round whose start the chat was told of. */
   private startTold = 0;
   /** Who paused the round in play, if it is paused: someone in the room, or the server stopping for an update (`halt`). */
-  private pausedBy: Player | 'update' | null = null;
+  /** Who paused the round: a player; or the server stopping for an update (`update`), and once a server is back with the table, that update over (`updated`). */
+  private pausedBy: Player | 'update' | 'updated' | null = null;
   /** The round's clock: what it had run up before it was last stopped, and since when it is running now (ms epoch; null while it is not). */
   private played: number | null = null;
   private playingSince: number | null = null;
@@ -462,7 +463,7 @@ export class Room {
    * everyone here (`settle`), and the windows go, and come back, one at a time. Kept, it would be everyone's as soon as
    * whoever said it was the only one here, and the update would end the round, or turn its stocks over.
    */
-  halt(): void {
+  halt(by: 'update' | 'updated' = 'update'): void {
     if (this.phase !== 'playing' || !this.state) return;
     const { at } = this.state.status;
     if (at === 'grace') return this.graceExpired();
@@ -470,7 +471,7 @@ export class Room {
     if (at === 'dealing' || at === 'countdown') this.state = { ...this.state, status: { at: 'ready' } };
     if (at === 'play') {
       this.state = { ...this.state, players: this.state.players.map(({ ending, ...p }) => ({ ...p, stuck: false })) };
-      this.stopPlay('update');
+      this.stopPlay(by);
     }
     this.changed();
   }
@@ -525,7 +526,7 @@ export class Room {
     room.host = room.players.find((p) => p.id === kept.host) ?? null;
     room.startTold = kept.startTold;
     room.played = kept.played;
-    room.halt();
+    room.halt('updated');
     return room;
   }
 
@@ -859,7 +860,7 @@ export class Room {
   }
 
   /** The one way a round being played is paused, by `by`: its clock stops, cards in hand go back, and the bots and the groups in flight wait. */
-  private stopPlay(by: Player | 'update'): void {
+  private stopPlay(by: Player | 'update' | 'updated'): void {
     this.pausedBy = by;
     this.stopClock();
     for (const p of this.players) this.letGo(p);
@@ -1349,7 +1350,7 @@ export class Room {
       game,
       timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince), running: this.playingSince !== null },
-      paused: this.pausedBy ? { by: this.pausedBy === 'update' ? null : this.pausedBy.id } : null,
+      paused: !this.pausedBy ? null : this.pausedBy === 'update' ? { by: null } : this.pausedBy === 'updated' ? { by: null, done: true } : { by: this.pausedBy.id },
       lastRound: this.lastRound,
       testing: testing(),
     };

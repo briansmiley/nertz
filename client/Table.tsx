@@ -1221,7 +1221,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
           // (Paused by the server going down for an update: while it is away, that it will be back; once it is, that play can go on.)
           <>
             <p>Game paused while the server updates.</p>
-            {online ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
+            {room.paused!.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
           </>
         ) : (
           <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>

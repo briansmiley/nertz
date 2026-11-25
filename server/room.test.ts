@@ -2579,7 +2579,7 @@ describe('a table kept over a restart of the server', () => {
     const b2 = new FakeConn();
     expect(back.join(b2, 'P1', 'tok-0001')).toBeNull(); // (a guest: who they are is their token)
     back.flush();
-    expect(b2.room).toMatchObject({ me: b.room.me, seat: 1, phase: 'playing', round: 2, paused: { by: null } });
+    expect(b2.room).toMatchObject({ me: b.room.me, seat: 1, phase: 'playing', round: 2, paused: { by: null, done: true } });
     expect(lines(b2)).toEqual(lines(b));
     expect(b2.room.players.find((p) => p.id === a.room.me)).toMatchObject({ connected: false });
 
@@ -2645,7 +2645,7 @@ describe('a table kept over a restart of the server', () => {
       await b.did({ k: 'end', on: true }); // (said by one of two: it must not end the round as the other's window goes, nor as Bob's comes back first)
       server.update();
       await vi.waitFor(() => expect([a.closeCode, b.closeCode]).toEqual([CLOSE_UPDATE, CLOSE_UPDATE]));
-      expect(a.last.room.paused).toEqual({ by: null });
+      expect(a.last.room.paused).toEqual({ by: null }); // (the update under way: not yet `done`)
       expect(b.last.room.paused).toEqual({ by: null });
 
       await restarted();
@@ -2653,7 +2653,7 @@ describe('a table kept over a restart of the server', () => {
       expect(room.game!.players).toEqual(hands);
       const back = await Client.open(server.port, code, 'Bob', b.token, false);
       await vi.waitFor(() => expect(back.states.length).toBeGreaterThan(0));
-      expect(back.last.room).toMatchObject({ me: b.last.room.me, seat: b.seat, phase: 'playing', paused: { by: null } });
+      expect(back.last.room).toMatchObject({ me: b.last.room.me, seat: b.seat, phase: 'playing', paused: { by: null, done: true } }); // (back: the update over)
       back.send({ t: 'pause', on: false });
       await vi.waitFor(() => expect(back.last.room.paused).toBeNull());
       await back.did({ k: 'draw' });
