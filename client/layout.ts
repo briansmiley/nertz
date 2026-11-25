@@ -7,6 +7,7 @@ import { canDrop, DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/eng
 import { cardSize, feltHw, offFelt, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
+import { clamp } from '../shared/numbers';
 
 export interface Rect {
   x: number;
@@ -187,7 +188,6 @@ export interface Layout {
 }
 
 const RATIO = CARD_H / CARD_W;
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 export const inside = (r: Rect, x: number, y: number): boolean => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 

@@ -3,6 +3,7 @@ import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isP
 import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, PlayerView, RoomView, Seats } from './types';
+import { round3 } from './numbers';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
@@ -375,7 +376,6 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH;
 
 const isCoord = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= max;
-const round3 = (v: number): number => Math.round(v * 1000) / 1000 || 0;
 const isIndex = (v: unknown, below: number): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < below;
 const MAX_SLOTS = SLOTS_PER_PLAYER * MAX_PLAYERS;
 /** The longest run there is: King down to Ace. */

@@ -912,6 +912,6 @@
 
 /* The server is back from its update: play can go on. (The green of yours, as against theirs.) */
 .paper-card p.done {
-  color: #2f7a4a;
+  color: var(--yours);
   font-weight: 600;
 }
