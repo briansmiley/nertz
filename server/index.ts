@@ -1,6 +1,7 @@
 // The whole backend: one Node process, every room in memory. HTTP serves the
 // built client (when dist/ exists), /healthz, the home page's list of /tables, signing in (/api/auth: server/accounts.ts), one's own profile and who one follows (/profile: server/profile.ts), records (/stats: server/stats.ts), and for an admin how much the game is played (/usage, the same);
 // websockets on /ws carry the game. What outlives the process is in one database (server/db.ts), if there is one: the game runs without.
+import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, resolve, sep } from 'node:path';
@@ -289,6 +290,8 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   const alive = new WeakSet<WebSocket>();
+  /** Which start of the server this is, told to every socket first (`welcome`): on Fly, the image it runs, so a restart of the same build is the same. */
+  const boot = process.env.FLY_IMAGE_REF || process.env.FLY_MACHINE_VERSION || randomUUID();
   /** Stopping for an update (`update`): no socket is taken any more, so a window that tries again at once waits for the server that starts next. */
   let updating = false;
 
@@ -325,6 +328,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       ws.close(CLOSE_OVER, fit);
     };
     const conn: Conn = { send, close: over };
+    send({ t: 'welcome', boot });
     /** The socket closed: the seat is kept for a reconnect. */
     const detach = (): void => {
       if (!room) return;

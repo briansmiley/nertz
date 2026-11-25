@@ -37,7 +37,7 @@ describe('the end of a connection', () => {
     const lost = await hello('ZZZZ', 'Lost');
     await vi.waitFor(() => expect(lost.end.code).toBe(CLOSE_OVER));
     expect(lost.end.reason).toMatch(/Table ZZZZ not found/);
-    expect(lost.got).toEqual([]);
+    expect(lost.got.map((m) => m.t)).toEqual(['welcome']); // (all it was told: which start of the server it reached)
   });
 
   it('a hello that does not parse is a refusal too; a bad message from someone at a table is only a complaint', async () => {
@@ -100,7 +100,7 @@ describe('the end of a connection', () => {
     ws.on('message', (data) => got.push(JSON.parse(data.toString())));
     await new Promise((ok, fail) => ws.once('open', ok).once('error', fail));
     ws.send(JSON.stringify({ t: 'ping' }));
-    await vi.waitFor(() => expect(got).toEqual([{ t: 'pong' }]));
+    await vi.waitFor(() => expect(got).toEqual([{ t: 'welcome', boot: expect.any(String) }, { t: 'pong' }]));
     expect(ws.readyState).toBe(WebSocket.OPEN);
   });
 
@@ -111,5 +111,31 @@ describe('the end of a connection', () => {
     await vi.waitFor(() => expect(ann.got.at(-1)).toEqual({ t: 'pong', at: 1234.5 }));
     ann.send({ t: 'ping', at: 'soon' } as never);
     await vi.waitFor(() => expect(ann.got.filter((m) => m.t === 'pong')).toEqual([{ t: 'pong', at: 1234.5 }, { t: 'pong' }]));
+  });
+});
+
+describe("the server's boot", () => {
+  it('every socket is told it first: the same for every socket to one start of the server, and on Fly the image it runs', async () => {
+    const boots = async (s: NertzServer) => {
+      const first = await Promise.all([1, 2].map(async () => {
+        const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`);
+        sockets.push(ws);
+        return new Promise<ServerMsg>((ok) => ws.once('message', (data) => ok(JSON.parse(data.toString()) as ServerMsg)));
+      }));
+      return first.map((m) => (m.t === 'welcome' ? m.boot : null));
+    };
+    const [a, b] = await boots(server);
+    expect(a).toEqual(expect.any(String));
+    expect(b).toBe(a);
+
+    vi.stubEnv('FLY_IMAGE_REF', 'registry.fly.io/nertz:deployment-01');
+    const fly = await startServer({ port: 0, dist: '/nonexistent' });
+    try {
+      expect(await boots(fly)).toEqual(['registry.fly.io/nertz:deployment-01', 'registry.fly.io/nertz:deployment-01']);
+    } finally {
+      vi.unstubAllEnvs();
+      for (const ws of sockets.splice(0)) ws.terminate();
+      await fly.close();
+    }
   });
 });

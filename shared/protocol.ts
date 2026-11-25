@@ -254,6 +254,8 @@ export type ClientMsg =
   | SocialClientMsg;
 
 export type ServerMsg =
+  /** The first thing every socket is told: which start of the server it reached. Another one since means a deploy (client/net.ts `boot`). */
+  | { t: 'welcome'; boot: string }
   /** Full snapshot. `rev` rises on every room change; `ack` is the highest intent seq processed from this client. */
   | { t: 'state'; rev: number; ack: number; room: RoomView }
   /** A complaint about something this connection sent. It changes nothing: the connection goes on. */
