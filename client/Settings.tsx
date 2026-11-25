@@ -9,7 +9,7 @@
 //   and voice, and between rounds the house rules.
 // - `TableRules`: the house rules on the lobby sheet, for everyone to read.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx), and the
-// connection banner's broken robot (`RobotBroken`).
+// connection banner's robots (`RobotBroken`, `RobotFixed`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
@@ -108,22 +108,48 @@ export function RobotPlus() {
 }
 
 /**
- * The connection lost: a robot's head, cracked, an X and an O for eyes, one antenna bent and sparking. (The antennae are
- * the colour of the words beside it: in ink they would be lost on the ink banner.)
+ * The connection lost: a robot's head, cracked, an X and an O for eyes, one antenna bent, its bulb red and sparking. (The
+ * antennae are the colour of the words beside it: in ink they would be lost on the ink banner.)
  */
 export function RobotBroken() {
   return (
-    <svg className="robotbroken" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="robot-net robotbroken" viewBox="0 0 24 24" aria-hidden="true">
       <g transform="rotate(-10 12 14)">
         <path d="M8 8.5V5.8" />
         <circle className="bulb" cx="8" cy="4.5" r="1.3" />
-        <path d="M15 8.5l.6-1.6 1.6-.4 1-1.8" />
-        <path className="spark" d="M19.6 3.4l.8-.9M20.4 5.3h1.1M18.6 2.6l-.1-1.1" />
+        <path d="M15 8.5l.5-1.4 1.5-.4.6-1.1" />
+        <circle className="bulb red" cx="18.1" cy="4.5" r="1.3" />
+        <path className="spark" d="M20 2.9l.8-.8M20.4 5h1.1M18.4 2.3l.1-1.1" />
         <rect className="ear" x="2.3" y="11.6" width="2" height="4.4" rx="1" />
         <path className="blank" d="M6.7 8.5h4.3l.9 1.5 1-1.5h3.6a2.4 2.4 0 0 1 2.4 2.4v4.2l-1.6.9 1.6 1v1.1a2.4 2.4 0 0 1-2.4 2.4H6.7a2.4 2.4 0 0 1-2.4-2.4v-6.7a2.4 2.4 0 0 1 2.4-2.4z" />
         <path className="sk" d="M7.4 11.9l2 2M9.4 11.9l-2 2" />
         <circle className="sk" cx="14.3" cy="12.9" r="1.1" />
         <path className="sk" d="M9.3 17.3h.01M11.3 17.3h.01" />
+      </g>
+    </svg>
+  );
+}
+
+/** The heart a fixed robot has for each eye, about the origin. */
+const HEART = 'M0 1.25C-.95.6-1.35.05-1.35-.42A.72.72 0 0 1 0-.66.72.72 0 0 1 1.35-.42C1.35.05.95.6 0 1.25Z';
+
+/**
+ * The connection back: the broken robot mended, whole, tipped the other way, hearts for eyes and a grin, the bent
+ * antenna straight again and its bulb bright green, glowing (still with reduced motion).
+ */
+export function RobotFixed() {
+  return (
+    <svg className="robot-net robotfixed" viewBox="0 0 24 24" aria-hidden="true">
+      <g transform="rotate(8 12 14)">
+        <path d="M8 8.5V5.8M15 8.5V5.8" />
+        <circle className="bulb" cx="8" cy="4.5" r="1.3" />
+        <circle className="glow" cx="15" cy="4.5" r="2.6" />
+        <circle className="bulb green" cx="15" cy="4.5" r="1.3" />
+        <rect className="ear" x="2.3" y="11.6" width="2" height="4.4" rx="1" />
+        <rect className="blank" x="4.3" y="8.5" width="14.4" height="11.5" rx="2.4" />
+        <path className="heart" transform="translate(9 12.9) scale(1.25)" d={HEART} />
+        <path className="heart" transform="translate(14 12.9) scale(1.25)" d={HEART} />
+        <path className="grin" d="M9.4 16.1h4.2a2.1 2.1 0 0 1-4.2 0z" />
       </g>
     </svg>
   );

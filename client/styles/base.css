@@ -109,6 +109,16 @@ button {
   text-align: center;
 }
 
+/* The line to the server, lost or back: bigger than the rest, a robot before the words, which wrap beside it on a
+   narrow phone. */
+.banner.net {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px 12px 14px;
+  font: 600 17px/1.25 var(--ui);
+}
+
 /* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */
 .banner button {
   margin-left: 10px;

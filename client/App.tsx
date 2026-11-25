@@ -19,8 +19,8 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
-import { Corner, Pop, Robot, RobotBroken, RobotPlus, TableRules } from './Settings';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt, type Status } from './net';
+import { Corner, Pop, Robot, RobotBroken, RobotFixed, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
@@ -46,6 +46,28 @@ function Ping() {
   );
 }
 
+/** How long the banner says the line is back. */
+const BACK_MS = 3000;
+
+/**
+ * Whether the line has just come back: true for `BACK_MS` from when the window is online again after `reconnecting`.
+ * Not at the first connect, nor after `updating` (that one reloads the page).
+ */
+function useBack(status: Status): boolean {
+  const [was, setWas] = useState(status);
+  const [back, setBack] = useState(false);
+  if (status !== was) {
+    setWas(status);
+    setBack(was === 'reconnecting' && status === 'online');
+  }
+  useEffect(() => {
+    if (!back) return;
+    const t = setTimeout(() => setBack(false), BACK_MS);
+    return () => clearTimeout(t);
+  }, [back]);
+  return back;
+}
+
 export function App() {
   const net = useNet();
   const room = net.room;
@@ -53,6 +75,7 @@ export function App() {
   /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. */
   const page = useAddressed();
   useSounds(room, net.status === 'online');
+  const back = useBack(net.status);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -95,8 +118,16 @@ export function App() {
       <Chat room={room} />
       <Sure room={room} />
       <Ping />
-      {net.status === 'reconnecting' || net.status === 'updating' ? (
-        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : <><RobotBroken />Connection lost. Reconnecting…</>}</p>
+      {net.status === 'updating' ? (
+        <p className="banner">
+          Updating the game
+          <Dots />
+        </p>
+      ) : net.status === 'reconnecting' ? (
+        <p className="banner net">
+          <RobotBroken />
+          Connection lost. Reconnecting…
+        </p>
       ) : (
         spectating && (
           <p className="banner low">
@@ -109,6 +140,12 @@ export function App() {
             )}
           </p>
         )
+      )}
+      {back && (
+        <p className="banner net">
+          <RobotFixed />
+          Reconnected!
+        </p>
       )}
     </>
   );
