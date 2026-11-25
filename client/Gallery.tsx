@@ -2,9 +2,10 @@
 // if dealt out, shown in whichever of the six colours you like; then every deck of faces as a fanned hand, light or
 // dark, with the whole deck behind "See all 52". Each is shown with its small rendition too: what other players'
 // piles are drawn with. What is picked here is your own: everyone at your table sees your cards so.
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { BackShelf } from './BackShelf';
 import { BACKS } from './cards/Face';
+import { useDismiss } from './dismiss';
 import { FaceShelf } from './FaceShelf';
 import { setPrefs, usePrefs } from './prefs';
 
@@ -57,14 +58,7 @@ const PIE = `conic-gradient(${BACKS.map((c, i) => `${c} ${(i / BACKS.length) * 3
 function Inks({ ink, onInk }: { ink: number; onInk: (ink: number) => void }) {
   const [open, setOpen] = useState(false);
   const here = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent): void => void (here.current?.contains(e.target as Node) || setOpen(false));
-    const key = (e: KeyboardEvent): void => void (e.key === 'Escape' && setOpen(false));
-    addEventListener('pointerdown', away);
-    addEventListener('keydown', key);
-    return () => (removeEventListener('pointerdown', away), removeEventListener('keydown', key));
-  }, [open]);
+  useDismiss(here, open, () => setOpen(false));
   return (
     <div ref={here} className={`inks${open ? ' open' : ''}`}>
       <button type="button" className="pie" aria-label="Show the backs in another colour" aria-expanded={open} style={{ background: PIE, color: BACKS[ink] }} onClick={() => setOpen(!open)} />

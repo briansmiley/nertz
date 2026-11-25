@@ -26,7 +26,7 @@ const zoomed = (l: Lie, s: number, px: number, py: number): Lie => ({ s, x: px -
 /**
  * A picture of you, before it is put up: you see it in a square with the circle that will show, move it about by
  * dragging, and zoom with the slider, the wheel or two fingers. It always covers the circle. Save hands back the
- * square of the picture that is in the window; Cancel, Esc or a press beside it, nothing.
+ * square of the picture that is in the window; Cancel, Esc or a tap beside it, nothing.
  */
 export function PictureCrop({ file, onSave, onCancel }: { file: Blob; onSave: (crop: Crop) => void; onCancel: () => void }) {
   const [url] = useState(() => URL.createObjectURL(file));
@@ -90,7 +90,7 @@ export function PictureCrop({ file, onSave, onCancel }: { file: Blob; onSave: (c
 
   // Drawn at the top of the page, not inside the small picture it was opened from (whose styles are for it alone).
   return createPortal(
-    <div className="asked" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
+    <div className="asked" onClick={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="paper-card crop" role="dialog" aria-label="Your picture: move and zoom it to fit the circle">
         <div ref={view} className="window" onPointerDown={down} onPointerMove={moved} onPointerUp={up} onPointerCancel={up} onWheel={wheel}>
           <img

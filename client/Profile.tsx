@@ -487,7 +487,7 @@ function Private({ account }: { account: Account }) {
   );
 }
 
-/** Asked once more, over everything: Esc or a press beside it is no. */
+/** Asked once more, over everything: Esc or a tap beside it is no. */
 function SureDelete({ onNo }: { onNo: () => void }) {
   const [going, setGoing] = useState(false);
   useEffect(() => {
@@ -496,7 +496,7 @@ function SureDelete({ onNo }: { onNo: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onNo]);
   return (
-    <div className="asked" onPointerDown={(e) => e.target === e.currentTarget && onNo()}>
+    <div className="asked" onClick={(e) => e.target === e.currentTarget && onNo()}>
       <div className="paper-card" role="alertdialog" aria-label="Delete account: are you sure?">
         <h2>Are you sure?</h2>
         <button type="button" className="go danger" disabled={going} onClick={() => (setGoing(true), void deleteAccount().then((gone) => gone || (setGoing(false), onNo())))}>

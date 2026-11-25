@@ -5,6 +5,7 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode }
 import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour, nameColour } from './cards/Face';
+import { useDismiss } from './dismiss';
 import { SaidWord, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { RobotBroken, Sit, Speaker } from './icons';
@@ -128,14 +129,7 @@ export function Chat({ room, lost }: { room: RoomView; lost?: () => void }) {
   const voiceSlip = open === 'voice' && mayVoice;
   // A press anywhere else puts a slip away.
   const slip = voiceSlip || open === 'watchers';
-  useEffect(() => {
-    if (!slip) return;
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(null);
-    };
-    window.addEventListener('pointerdown', onDown, true);
-    return () => window.removeEventListener('pointerdown', onDown, true);
-  }, [slip]);
+  useDismiss(root, slip, () => setOpen(null));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
