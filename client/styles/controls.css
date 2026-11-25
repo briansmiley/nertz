@@ -243,12 +243,13 @@ img.art {
 }
 
 /* The robots before the connection banner's words (App.tsx), drawn art: broken while the line is lost, mended once it
-   is back. Taller than the words, without the banner growing for them (the margins). */
+   is back. Their heads stand out over the card's top edge, without the card growing for them (the margins). */
 .robot-net {
   flex: none;
-  width: 44px;
-  height: 44px;
-  margin: -10px 0 -10px -6px;
+  align-self: flex-start;
+  width: 58px;
+  height: 58px;
+  margin: -30px 0 -8px -4px;
 }
 
 .robot-net > img.art {
