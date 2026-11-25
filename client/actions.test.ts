@@ -40,7 +40,7 @@ describe("the table's actions", () => {
   });
 
   it('paused: anyone in the round unpauses it, and whoever deals, watching or not; someone else watching cannot', () => {
-    const paused = (you: number) => roomOf(live, you, { paused: { by: 1 } });
+    const paused = (you: number) => roomOf(live, you, { paused: { by: 'player', id: 1 } });
     expect(ids(paused(1))).toEqual(['resume', 'vote', 'stand', 'leave']);
     expect(ids(paused(0))).toEqual(['resume', 'vote', 'redeal', 'stand', 'leave']);
     expect(ids(paused(2))).toEqual(['resume', 'vote', 'stand', 'leave']);
@@ -71,14 +71,14 @@ describe("the table's actions", () => {
 describe('the pause key', () => {
   it("presses the menu's Pause or Resume game, whichever is open to you, and otherwise nothing", () => {
     expect(pauseKeyAction(roomOf(live, 1))).toBe('pause');
-    expect(pauseKeyAction(roomOf(live, 1, { paused: { by: 2 } }))).toBe('resume');
+    expect(pauseKeyAction(roomOf(live, 1, { paused: { by: 'player', id: 2 } }))).toBe('resume');
     expect(pauseKeyAction(roomOf(finishDeal(deal([0, 1, 2], lcg(7))), 1))).toBeNull(); // (before Start)
     expect(pauseKeyAction(roomOf(live, 0, { phase: 'lobby', game: null }))).toBeNull();
     expect(pauseKeyAction(null)).toBeNull();
   });
 
   it('is nothing to someone watching, unless they deal and the round is paused', () => {
-    const base = roomOf(live, 1, { paused: { by: 1 } });
+    const base = roomOf(live, 1, { paused: { by: 'player', id: 1 } });
     const watching = (isHost: boolean, paused: boolean): RoomView => {
       const me: PlayerView = { ...base.players[1]!, id: 9, seat: null, name: 'w', isHost };
       return { ...base, paused: paused ? base.paused : null, me: 9, seat: null, players: [...base.players.map((p) => ({ ...p, isHost: false })), me] };

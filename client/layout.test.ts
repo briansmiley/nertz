@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { applyIntent, canDrop, checkInvariants, DEAL_MS, isHidden, NERTZ_SIZE, viewFor } from '../shared/engine';
 import { STOCK_CARD_MS } from '../shared/protocol';
 import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABLE, tiltAt, type Spot } from '../shared/table';
-import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
+import { inPlay, lcg, pile, seats, table, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
-import { aloftAt, computeLayout, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, dropTarget, fanOut, inside, isTall, keepOut, landingAt, MINI_BELOW, MINI_SLACK, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
+import { aloftAt, aloftPath, computeLayout, pileFor, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, dropTarget, fanOut, inside, isTall, keepOut, landingAt, MINI_BELOW, MINI_SLACK, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 import { dealtBy } from './net';
 
@@ -147,7 +147,7 @@ describe('table layout', () => {
         for (const you of [0, n - 1]) {
           const at = `${n} players, seat ${you}, ${W}x${H}`;
           const L = computeLayout(W, H, game, you);
-          expect([L.tall, L.low, L.cols], at).toEqual([false, false, true]);
+          expect([L.shape, L.cols], at).toEqual(['wide', true]);
           // Everyone else in seat order, clockwise from your left: up the left side, across the top, down the right side.
           expect(L.opponents.map((o) => o.seat), at).toEqual(seats(n - 1).map((k) => (you + 1 + k) % n));
           const [lefts, tops, rights] = [L.opponents.slice(0, left), L.opponents.slice(left, left + top), L.opponents.slice(left + top)];
@@ -198,11 +198,11 @@ describe('table layout', () => {
     for (const n of [4, 7, 10]) {
       const game = inPlay(seats(n), lcg(n));
       const side = computeLayout(844, 390, game, 0);
-      expect([side.tall, side.low, side.cols], `${n} players`).toEqual([false, true, true]);
+      expect([side.shape, side.cols], `${n} players`).toEqual(['low', true]);
       // Nobody above the felt: everyone beside it, upright.
       for (const o of side.opponents) expect(o.turn === 0 && (o.box.x + o.box.w <= side.middle.x || o.box.x >= side.middle.x + side.middle.w), `${n} players`).toBe(true);
       const upright = computeLayout(390, 844, game, 0);
-      expect([upright.tall, upright.low, upright.cols], `${n} players`).toEqual([true, false, false]);
+      expect([upright.shape, upright.cols], `${n} players`).toEqual(['tall', false]);
       for (const o of upright.opponents) expect(o.box.y + o.box.h, `${n} players`).toBeLessThanOrEqual(upright.middle.y);
     }
   });
@@ -377,7 +377,7 @@ describe('table layout', () => {
         expect(L.middle.y + L.middle.h, at).toBeLessThanOrEqual(line);
         // (In rows above the felt, nobody is near the line. In columns, the right-hand one stops above it; the left-hand
         // one comes down beside it as it does beside a hand, as far as the menu's button.)
-        const over = L.tall ? [] : L.low ? L.opponents.filter((o) => o.box.x > W / 2) : L.opponents;
+        const over = L.shape === 'tall' ? [] : L.shape === 'low' ? L.opponents.filter((o) => o.box.x > W / 2) : L.opponents;
         for (const o of over) {
           expect(o.box.y + o.box.h, at).toBeLessThanOrEqual(line + 0.01);
           const count = countBox(o.count, W, H);
@@ -755,7 +755,7 @@ describe('table layout', () => {
           const blocks = plan.piles.map((p) => blockParts(p));
           for (const [i, parts] of blocks.entries()) {
             const at = `${where}, pile of seat ${plan.piles[i]!.seat}`;
-            for (const r of parts) expect(r.x >= notch - 0.01 && r.y >= (L.tall ? L.bar : 0) - 0.01 && r.x + r.w <= W - notch + 0.01 && r.y + r.h <= H, `${at}: off the window`).toBe(true);
+            for (const r of parts) expect(r.x >= notch - 0.01 && r.y >= (L.shape === 'tall' ? L.bar : 0) - 0.01 && r.x + r.w <= W - notch + 0.01 && r.y + r.h <= H, `${at}: off the window`).toBe(true);
             for (const other of blocks.slice(i + 1)) for (const a of parts) for (const b of other) expect(overlap(a, b), `${at}: over another`).toBe(false);
             // The wash, spread out, is clear of them all.
             const [ox, oy] = [plan.heap.x + plan.heap.w / 2, plan.heap.y + plan.heap.h / 2];
@@ -966,8 +966,8 @@ describe("another player's card in the air", () => {
       return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const, w };
     };
     const end = toScreen(mine.felt, P);
-    const path = seats(41).map((i) => aloftAt(mine.felt, n, home, hand.nertz.w, hand, report(i / 40), pile ? end : undefined, 0));
-    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, n, home, hand.nertz.w, hand, report(1), undefined, i / 20));
+    const path = seats(41).map((i) => aloftPath(mine.felt, n, { home, hw: hand.nertz.w, hand, at: report(i / 40), pile: pile ? end : undefined, linger: 0 }));
+    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftPath(mine.felt, n, { home, hw: hand.nertz.w, hand, at: report(1), pile: undefined, linger: i / 20 }));
     return { path, home, end, felt: mine.felt };
   }
   /** How much longer the path is than the straight line, and how far it ever backs away from where it ends (px). */
@@ -1023,7 +1023,7 @@ describe("another player's card in the air", () => {
         for (const hand of mine.opponents) {
           const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
           for (const along of [0, 2]) {
-            const c = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [along, 3], p: [0, 0], w: 1 }, undefined, 0);
+            const c = aloftPath(mine.felt, n, { home, hw: hand.nertz.w, hand, at: { h: [along, 3], p: [0, 0], w: 1 }, pile: undefined, linger: 0 });
             expect(offFelt(toTable(mine.felt, c.x, c.y), n) * mine.felt.u, `${n} at ${W}x${H}, seat ${hand.seat}`).toBeCloseTo(0, 3);
           }
         }
@@ -1044,7 +1044,7 @@ describe("another player's card in the air", () => {
         const to = { x: own.work[2]!.x + own.work[2]!.w / 2, y: from.y };
         const p = toTable(theirs.felt, to.x, to.y);
         const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
-        const drawn = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
+        const drawn = aloftPath(mine.felt, n, { home, hw: hand.nertz.w, hand, at: { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, pile: undefined, linger: 0 });
         // It is over that hand's third work pile here, whichever way round (or turned) the hand is drawn.
         const pile = { x: hand.workAt[2]!.x + hand.workAt[2]!.w / 2, y: hand.workAt[2]!.y + hand.workAt[2]!.h / 2 };
         expect(Math.hypot(drawn.x - pile.x, drawn.y - pile.y)).toBeLessThan(hand.nertz.w * 0.35);
@@ -1052,6 +1052,44 @@ describe("another player's card in the air", () => {
         else expect(drawn.y).toBeCloseTo(home.y, 6);
       }
     }
+  });
+});
+
+describe("the rules for another player's card in the air", () => {
+  // Seat 1 holds the 2 of spades, which two piles in the middle would take (an Ace each side), and the 5 of hearts, which none would.
+  const game = table([{}, { work: ['S2', 'H5', 'D9', 'C9'] }, {}], { slots: [{ cards: pile('SA', 0), x: -1, y: 0 }, { cards: pile('SA', 2), x: 1, y: 0 }, { cards: pile('HA', 0), x: 0, y: 0.5 }] });
+  const L = computeLayout(1280, 800, game, 0);
+  const home = L.cards.find((c) => c.card.id === '1:S2')!;
+  const middle = (i: number) => ({ x: L.slots[i]!.x + L.slots[i]!.w / 2, y: L.slots[i]!.y + L.slots[i]!.h / 2 });
+  const report = (w: number, p: readonly [number, number] = [0, 0], h: readonly [number, number] = [0, 0]) => ({ w, p, h });
+
+  it('heads for the nearest pile in the middle that would take it, once it is past the felt\'s edge; a card none would take, or a run, heads for none', () => {
+    expect(pileFor(L, game, 1, '1:S2', report(1, [-0.9, 0]))).toBeUndefined(); // not yet past the edge
+    expect(pileFor(L, game, 1, '1:S2', report(1.5, [-0.9, 0]))).toEqual(middle(0));
+    expect(pileFor(L, game, 1, '1:S2', report(1.5, [0.9, 0]))).toEqual(middle(1));
+    expect(pileFor(L, game, 1, '1:S2', report(1.5, [0, 0.5]))).toEqual(middle(0)); // (the hearts are nearer, and would not take it)
+    expect(pileFor(L, game, 1, '1:H5', report(1.5, [0, 0.5]))).toBeUndefined();
+    // On its path to that pile: a run goes by none, and straight to where it is.
+    const at = report(1.5, [0.9, 0]);
+    const hw = home.s * CARD_W;
+    const path = { home: { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, hand: L.opponents.find((o) => o.seat === 1), at, linger: 0 };
+    expect(aloftAt(L, game, { seat: 1, ids: ['1:S2'], home, at, linger: 0 })).toMatchObject(aloftPath(L.felt, 3, { ...path, pile: middle(1) }));
+    expect(aloftAt(L, game, { seat: 1, ids: ['1:S2', '1:H5'], home, at, linger: 0 })).toMatchObject(aloftPath(L.felt, 3, { ...path, pile: undefined }));
+  });
+
+  it("grows from its size in its owner's hand to the middle's, half way by the felt's edge or as it lingers; and turns upright as it leaves the hand", () => {
+    const turned = { ...home, rot: 90 };
+    const at = (r: ReturnType<typeof report>, linger = 0) => aloftAt(L, game, { seat: 1, ids: ['1:S2'], home: turned, at: r, linger });
+    expect(at(report(0))).toMatchObject({ s: home.s, rot: 90 });
+    expect(at(report(1)).s).toBeCloseTo((home.s + L.fs) / 2, 9);
+    expect(at(report(2)).s).toBeCloseTo(L.fs, 9);
+    expect(at(report(0), 1)).toMatchObject({ s: L.fs, rot: 0 });
+    expect(at(report(0.5), 0.8).s).toBeCloseTo(home.s + (L.fs - home.s) * 0.8, 9); // whichever is further
+    // Upright by the time it is a quarter of the way out, or has hopped 0.6 of a card within the hand.
+    expect(at(report(0.125)).rot).toBeCloseTo(45, 9);
+    expect(at(report(0.25)).rot).toBe(0);
+    expect(at(report(0, [0, 0], [0, 0.3])).rot).toBeCloseTo(45, 9);
+    expect(at(report(0, [0, 0], [0, 0.6])).rot).toBe(0);
   });
 });
 
@@ -1178,7 +1216,7 @@ describe('a phone held upright', () => {
       for (let n = 2; n <= 6; n++) {
         const L = computeLayout(W, H, inPlay(seats(n), lcg(n)), 0);
         const at = `${W}x${H}, ${n} players`;
-        expect(L.tall, at).toBe(true);
+        expect(L.shape, at).toBe('tall');
         const me = L.me!;
         // Your hand: two rows, the work piles over the nertz pile and the stock, all of it on the screen.
         expect(me.workAt.every((r) => r.y < me.nertz.y && r.x >= 0 && r.x + r.w <= W), at).toBe(true);

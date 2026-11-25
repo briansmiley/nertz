@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
-import { DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/engine';
+import { canDrop, DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/engine';
 import { cardSize, feltHw, offFelt, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -158,17 +158,16 @@ export interface Layout {
   /** Scale of cards in the middle. */
   fs: number;
   /**
-   * A narrow upright screen (a phone held upright), laid out its own way: a bar across the top for the buttons
-   * (`bar` high), everyone else in rows under it, the felt, and your own hand in two rows at the bottom.
+   * Which way the window is laid out (`shapeOf`). `tall`: a narrow upright screen (a phone held upright), laid out its
+   * own way: a bar across the top for the buttons (`bar` high), everyone else in rows under it, the felt, and your own
+   * hand in two rows at the bottom. `low`: a phone on its side (see LOW): everyone else in a column at each side, the
+   * felt as high as the room above your hand. Either is a phone (not `wide`): at the end of a round its table is
+   * cleared for the sorted piles (`cleared`).
    */
-  tall: boolean;
+  shape: Shape;
   bar: number;
-  /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
-  low: boolean;
   /** Those at the sides stand in columns of upright hands, not each where their chair is round the table: a phone on its side, or a U (see `seating`). */
   cols: boolean;
-  /** A phone, upright or on its side. At the end of a round its table is cleared for the sorted piles. */
-  phone: boolean;
   /**
    * The end of a round on a phone, once the middle's cards have been washed on the felt: the table is cleared. The
    * hands and the felt are not shown, and the sorted piles have the whole window (Finale.tsx).
@@ -260,7 +259,7 @@ export function countdownTop(L: Layout, W: number): number {
   const x = W - COUNTDOWN.right - COUNTDOWN.w;
   const hands = L.opponents.map((o) => ({ ...o.box, y: o.box.y - TAG_H, h: o.box.h + TAG_H })); // with the name above it
   const clear = (y: number) => !hands.some((r) => r.x + r.w > x && r.y < y + COUNTDOWN.h && y < r.y + r.h);
-  const from = L.tall ? L.bar + 4 : 12; // upright, the corner belongs to the buttons in the bar
+  const from = L.shape === 'tall' ? L.bar + 4 : 12; // upright, the corner belongs to the buttons in the bar
   return [from, ...hands.flatMap((r) => [r.y, r.y + r.h + 6]).filter((y) => y > from)].sort((a, b) => a - b).find(clear) ?? from;
 }
 
@@ -442,7 +441,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // hand, as with real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just
   // above the stock, not quite square, so three separate cards are seen to be pulled. The complete group is held
   // there a beat (the last step), then lands on the waste, every card turning over as it goes, the last on top.
-  const lifted = p.draw?.n ?? 0;
+  const lifted = p.draw ? (p.draw.off ?? p.draw.n) : 0;
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
@@ -908,8 +907,9 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const view = Math.max(0, ring.indexOf(mine!));
   // Opponents in seat order starting after you: clockwise round the table, from your left.
   const others = mine ? [...ring.slice(view + 1), ...ring.slice(0, view)] : ring;
-  const tall = isTall(W, H);
-  const low = isLow(W, H);
+  const shape = shapeOf(W, H);
+  const tall = shape === 'tall';
+  const low = shape === 'low';
   const edge = tall ? TALL.edge : 16;
 
   // Your hand: bottom, as large as the window allows. (Upright: in two rows, see TALL.)
@@ -1186,9 +1186,8 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  const phone = tall || low;
-  const cleared = phone && sorting(stage);
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, cols, phone, cleared, keep, at, clock, name: by?.name ?? null, stuck: by?.stuck ?? null, vote: by?.vote ?? null, pills: by?.pills ?? false };
+  const cleared = shape !== 'wide' && sorting(stage);
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, shape, bar: tall ? TALL.bar : 0, cols, cleared, keep, at, clock, name: by?.name ?? null, stuck: by?.stuck ?? null, vote: by?.vote ?? null, pills: by?.pills ?? false };
 }
 
 /** Is any point of `r` on the felt as drawn (its corners are round)? */
@@ -1232,8 +1231,54 @@ function nearestEdge(felt: Felt, n: number, p: Pt): Pt {
   return { x: (q.x - t.x) * felt.u, y: (q.y - t.y) * felt.u };
 }
 
+/** What a window is told of a card another player is carrying (protocol.ts `DragAt`): how far along its path, and where it is. */
+type Report = { h: readonly [number, number]; p: readonly [number, number]; w: number };
+
+/** Another player's card in the air as this window draws it: its middle on screen, its scale, and its tilt in degrees. */
+export interface Aloft {
+  x: number;
+  y: number;
+  s: number;
+  rot: number;
+}
+
 /**
- * Where the middle of a card that another player is carrying is drawn in this
+ * How another player's carried card is drawn this frame: the cards `ids` (the one reported first, a run under it),
+ * whose place in their hand as drawn here is `home`, by their latest report `at`; `linger` (0 to 1) is how far it has
+ * come over to where it really is while it lingers over the felt. It goes along its path (`aloftPath`) to the pile it
+ * is heading for (`pileFor`). It grows from its size in their hand to the middle's (`fs`) as it goes out, half way by
+ * the felt's edge, or as it lingers, whichever is further: this window cannot know its owner's screen, so not by how
+ * your own grows (hand.ts `feltScale`). And it turns upright for whoever is watching as it leaves the hand (a
+ * neighbour's hand is turned to face the felt).
+ */
+export function aloftAt(L: Pick<Layout, 'felt' | 'fs' | 'slots' | 'opponents'>, game: GameState, carried: { seat: number; ids: readonly string[]; home: Placed; at: Report; linger: number }): Aloft {
+  const { seat, ids, home, at, linger } = carried;
+  const hw = home.s * CARD_W;
+  const middle = { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 };
+  const pile = ids.length === 1 ? pileFor(L, game, seat, ids[0]!, at) : undefined;
+  const c = aloftPath(L.felt, game.players.length, { home: middle, hw, hand: L.opponents.find((o) => o.seat === seat), at, pile, linger });
+  return { ...c, s: home.s + (L.fs - home.s) * Math.max(at.w / 2, linger), rot: home.rot * (1 - clamp(Math.max(at.h[1] / 0.6, at.w * 4, linger), 0, 1)) };
+}
+
+/**
+ * The pile in the middle another player's card `id` is heading for, on this screen (its middle): of those that would
+ * take it, the nearest to where it is. None until it is past the felt's edge (`at.w` over 1), nor if none would.
+ */
+export function pileFor(L: Pick<Layout, 'felt' | 'slots'>, game: GameState, seat: number, id: string, at: Report): Pt | undefined {
+  if (at.w <= 1) return undefined;
+  const there = toScreen(L.felt, { x: at.p[0], y: at.p[1] });
+  const off = (q: Pt) => Math.hypot(q.x - there.x, q.y - there.y);
+  let pile: Pt | undefined;
+  L.slots.forEach((r, i) => {
+    if (!r || !canDrop(game, seat, id, { k: 'slot', i })) return;
+    const q = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+    if (!pile || off(q) < off(pile)) pile = q;
+  });
+  return pile;
+}
+
+/**
+ * The path of a card that another player is carrying: where its middle is drawn in this
  * window. The felt is the same on every screen and the hands are not: its
  * owner carries the card up from the bottom of their screen, and here it has
  * to come from wherever this window seats them. So it is not simply drawn
@@ -1250,15 +1295,10 @@ function nearestEdge(felt: Felt, n: number, p: Pt): Pt {
  * is (`at.p`, its point of the felt) as it lingers over the felt (`linger`, 0
  * to 1).
  */
-export function aloftAt(
+export function aloftPath(
   felt: Felt,
   n: number,
-  home: Pt,
-  hw: number,
-  hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined,
-  at: { h: readonly [number, number]; p: readonly [number, number]; w: number },
-  pile: Pt | undefined,
-  linger: number,
+  { home, hw, hand, at, pile, linger }: { home: Pt; hw: number; hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined; at: Report; pile: Pt | undefined; linger: number },
 ): Pt {
   const there = toScreen(felt, { x: at.p[0], y: at.p[1] });
   // "Towards the middle" is up the screen for whoever is dragging; for their hand as drawn here it is wherever the felt lies.

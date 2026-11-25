@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { applyIntent, beforeStart, deal, expireGrace, finishDeal, inRound, isLive, landed, landsAt, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
-import type { Account, BotLevel, GameState, Intent, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
+import type { Account, BotLevel, GameState, Intent, Pause, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, freshMemory, type BotMemory } from './bot';
 import { FLIGHT_MS, FLIGHT_STEP_MS, flightFrames } from '../shared/flight';
 import { DEFAULT_SETTINGS, type TableSettings } from '../shared/settings';
@@ -108,6 +108,11 @@ interface Player {
   /** Set for a bot. A bot is a player like any other, except that its `conn` is `BOT_CONN` and it never hosts. */
   bot?: { level: BotLevel; memory: BotMemory; timer: ReturnType<typeof setTimeout> | null; pending: { intent: Intent; memory: BotMemory } | null };
 }
+
+/** The server stopping for an update, or a server back with the table once it is over (`Pause`). */
+type UpdatePause = Extract<Pause, { by: 'update' }>;
+/** Who paused the round in play, as the room knows it: `Pause`, with the player themself. */
+type Paused = { by: 'player'; player: Player } | UpdatePause;
 
 /**
  * What `was` becomes when the player (or, for a bot, whoever deals) says `to`; `was` itself if that changes nothing.
@@ -252,9 +257,8 @@ export class Room {
   private hearTimer: ReturnType<typeof setTimeout> | null = null;
   /** The last round whose start the chat was told of. */
   private startTold = 0;
-  /** Who paused the round in play, if it is paused: someone in the room, or the server stopping for an update (`halt`). */
-  /** Who paused the round: a player; or the server stopping for an update (`update`), and once a server is back with the table, that update over (`updated`). */
-  private pausedBy: Player | 'update' | 'updated' | null = null;
+  /** Who paused the round in play, if it is paused (`Pause`, with the player themself): someone in the room, or the server stopping for an update (`halt`). */
+  private pausedBy: Paused | null = null;
   /** The round's clock: what it had run up before it was last stopped, and since when it is running now (ms epoch; null while it is not). */
   private played: number | null = null;
   private playingSince: number | null = null;
@@ -467,7 +471,7 @@ export class Room {
    * everyone here (`settle`), and the windows go, and come back, one at a time. Kept, it would be everyone's as soon as
    * whoever said it was the only one here, and the update would end the round, or turn its stocks over.
    */
-  halt(by: 'update' | 'updated' = 'update'): void {
+  halt(by: UpdatePause = { by: 'update', done: false }): void {
     if (this.phase !== 'playing' || !this.state) return;
     const { at } = this.state.status;
     if (at === 'grace') return this.graceExpired();
@@ -530,7 +534,7 @@ export class Room {
     room.host = room.players.find((p) => p.id === kept.host) ?? null;
     room.startTold = kept.startTold;
     room.played = kept.played;
-    room.halt('updated');
+    room.halt({ by: 'update', done: true }); // (back with the table: the update is over)
     return room;
   }
 
@@ -820,7 +824,7 @@ export class Room {
     if (!this.state || !(this.inRound(player) || (!on && player === this.dealer))) return;
     if (on) {
       if (this.pausedBy || !isLive(this.state)) return;
-      this.stopPlay(player);
+      this.stopPlay({ by: 'player', player });
     } else {
       if (!this.pausedBy) return;
       this.pausedBy = null;
@@ -836,7 +840,7 @@ export class Room {
   }
 
   /** The one way a round being played is paused, by `by`: its clock stops, cards in hand go back, and the bots wait (and the groups in flight, which go by that clock). */
-  private stopPlay(by: Player | 'update' | 'updated'): void {
+  private stopPlay(by: Paused): void {
     this.pausedBy = by;
     this.stopClock();
     for (const p of this.players) this.letGo(p);
@@ -1333,7 +1337,7 @@ export class Room {
       game,
       timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.playedMs(), running: this.playingSince !== null },
-      paused: !this.pausedBy ? null : this.pausedBy === 'update' ? { by: null } : this.pausedBy === 'updated' ? { by: null, done: true } : { by: this.pausedBy.id },
+      paused: this.pausedBy?.by === 'player' ? { by: 'player', id: this.pausedBy.player.id } : this.pausedBy,
       lastRound: this.lastRound,
       testing: testing(),
     };

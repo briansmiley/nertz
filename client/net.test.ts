@@ -4,7 +4,7 @@ import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, i
 import { STOCK_CARD_MS } from '../shared/protocol';
 import { card as c, felt, inPlay, lcg, move, roomOf, table, toPlay, upWork, withPile, work } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
-import { dealtBy, freshSync, hearsCall, hello, onSend, onSnapshot, predict, roundNow, type Sync } from './net';
+import { dealOut, dealtBy, freshDealing, freshSync, hearsCall, hello, onSend, onSnapshot, predict, roundNow, type Sync } from './net';
 
 /** A tiny authoritative server for one player's messages. */
 function server(game: GameState, you: number) {
@@ -166,32 +166,87 @@ describe('prediction', () => {
     expect(dealtBy(start.players[0]!, AT, AT)).toBe(start.players[0]); // no draw: the hand as it is
     for (const k of [1, 2, 3]) {
       const seen = dealtBy(p, AT + (k - 1) * STOCK_CARD_MS, AT);
-      expect(seen.draw).toEqual({ n: k, at: AT });
+      expect(seen.draw).toEqual({ n: 3, at: AT, off: k }); // the group keeps its size
       expect(ids(seen.waste)).toEqual(group.slice(0, k));
       expect(ids(seen.stock)).toEqual([...ids(p.stock), ...group.slice(k).reverse()]); // the next to come off is on top
       expect([...seen.waste, ...seen.stock.slice(p.stock.length)].every(isHidden)).toBe(true);
     }
-    expect(dealtBy(p, AT + STOCK_CARD_MS - 1, AT).draw!.n).toBe(1);
-    expect(dealtBy(p, AT - 50, AT).draw!.n).toBe(1); // (the first card is off when the draw is seen)
+    expect(dealtBy(p, AT + STOCK_CARD_MS - 1, AT).draw!.off).toBe(1);
+    expect(dealtBy(p, AT - 50, AT).draw!.off).toBe(1); // (the first card is off when the draw is seen)
     // The group is held whole a step, then down: the hand as it is, faces up, with no draw.
-    expect(dealtBy(p, landsAt(p.draw!) - 1, AT).draw!.n).toBe(3);
+    expect(dealtBy(p, landsAt(p.draw!) - 1, AT).draw!.off).toBe(3);
     expect(dealtBy(p, landsAt(p.draw!), AT)).toEqual({ ...p, draw: null });
     // A window that has it late finds the cards due by then already off, and one long after, the group down.
-    expect(dealtBy(p, AT + STOCK_CARD_MS + 5, AT).draw!.n).toBe(2);
+    expect(dealtBy(p, AT + STOCK_CARD_MS + 5, AT).draw!.off).toBe(2);
     expect(dealtBy(p, AT + 60_000, AT).draw).toBeNull();
     // The cards leave from when the draw was first seen here; the group lands by the draw's own time (your own draw's is the server's, once it answers).
     const answered = { ...p, draw: { n: 3, at: AT + 80 } };
-    expect(dealtBy(answered, AT + STOCK_CARD_MS, AT).draw!.n).toBe(2);
-    expect(dealtBy(answered, AT + 3 * STOCK_CARD_MS, AT).draw!.n).toBe(3);
+    expect(dealtBy(answered, AT + STOCK_CARD_MS, AT).draw!.off).toBe(2);
+    expect(dealtBy(answered, AT + 3 * STOCK_CARD_MS, AT).draw!.off).toBe(3);
     expect(dealtBy(answered, AT + 80 + 3 * STOCK_CARD_MS, AT).draw).toBeNull();
     // Seen a little late, its cards still leave a step apart from then, and it is down a step after the last of them.
-    expect(dealtBy(p, landsAt(p.draw!), AT + 100).draw!.n).toBe(3);
+    expect(dealtBy(p, landsAt(p.draw!), AT + 100).draw!.off).toBe(3);
     expect(dealtBy(p, AT + 100 + 3 * STOCK_CARD_MS, AT + 100).draw).toBeNull();
     // Your own draw before the server has answered: its faces are not here, so it does not turn up, however late.
     const mine = applyIntent(roomOf(start, 0).game!, 0, { k: 'draw' }, AT);
     if (!mine.ok) throw new Error(mine.reason);
     expect(mine.state.players[0]!.waste.every(isHidden)).toBe(true);
-    expect(dealtBy(mine.state.players[0]!, AT + 60_000, AT).draw).toEqual({ n: 3, at: AT });
+    expect(dealtBy(mine.state.players[0]!, AT + 60_000, AT).draw).toEqual({ n: 3, at: AT, off: 3 });
+  });
+
+  it('deals out a group in flight at this window\'s own pace, from when it first had the draw, whenever the snapshots come', () => {
+    const start = inPlay([0, 1], lcg(2));
+    const AT = 1000;
+    const r = applyIntent(start, 1, { k: 'draw' }, AT); // seat 1 draws: the group comes to this window in one snapshot
+    if (!r.ok) throw new Error(r.reason);
+    // (This window's clock and the round's read alike, until a quicker snapshot puts the round's forward.)
+    const snap = (rev: number, game: GameState, ms: number) => ({ rev, ack: -1, room: { ...roomOf(game, 0), clock: { ms, running: true } } });
+    const theirs = (out: ReturnType<typeof dealOut>) => out.room!.game!.players[1]!;
+    // On screen before the draw: nothing is due.
+    let sync = onSnapshot(freshSync, snap(0, start, AT - 500), AT - 500);
+    let out = dealOut(freshDealing, sync, AT - 500);
+    expect([out.wait, out.dealing.looking, out.dealing.flights.size]).toEqual([null, true, 0]);
+    // Their draw reaches this window 400 ms late: its first card leaves now, and the next a step on.
+    const seen = AT + 400;
+    sync = onSnapshot(sync, snap(1, r.state, seen), seen);
+    out = dealOut(out.dealing, sync, seen);
+    expect([theirs(out).draw, out.wait, out.dealing.flights.get(1)]).toEqual([{ n: 3, at: AT, off: 1 }, STOCK_CARD_MS, { card: r.state.players[1]!.waste.at(-3)!.id, at: seen }]);
+    // Dealt on when its timer is up: a card a step, then held whole a step, then down. The group keeps its size (`n`).
+    out = dealOut(out.dealing, sync, seen + STOCK_CARD_MS);
+    expect([theirs(out).draw, out.wait]).toEqual([{ n: 3, at: AT, off: 2 }, STOCK_CARD_MS]);
+    out = dealOut(out.dealing, sync, seen + 2 * STOCK_CARD_MS);
+    expect([theirs(out).draw, out.wait]).toEqual([{ n: 3, at: AT, off: 3 }, STOCK_CARD_MS]);
+    const held = out.dealing;
+    // Another snapshot of the same draw does not start it over; one that came 100 ms quicker puts its cards forward with the clock.
+    const quicker = onSnapshot(sync, snap(2, r.state, seen + 2 * STOCK_CARD_MS + 100), seen + 2 * STOCK_CARD_MS);
+    expect(dealOut(held, quicker, seen + 2 * STOCK_CARD_MS).dealing.flights.get(1)!.at).toBe(seen + 100);
+    out = dealOut(held, onSnapshot(sync, snap(2, r.state, seen + 2 * STOCK_CARD_MS), seen + 2 * STOCK_CARD_MS), seen + 2 * STOCK_CARD_MS + 1);
+    expect(out.dealing.flights.get(1)!.at).toBe(seen);
+    out = dealOut(held, sync, seen + 3 * STOCK_CARD_MS);
+    expect([theirs(out).draw, out.wait]).toEqual([null, null]); // down here, though the snapshot has it in flight yet
+    // A window that was not looking when the draw was made (it has just sat back down) goes by the draw's own time,
+    // and finds the cards due by then already off.
+    const back = dealOut({ ...held, looking: false, flights: new Map() }, onSnapshot(freshSync, snap(0, r.state, seen), seen), seen);
+    expect([back.dealing.flights.get(1)!.at, theirs(back).draw!.off]).toEqual([AT, 3]);
+  });
+
+  it('holds a group in flight where it lies once the round is not live, and starts afresh at no table', () => {
+    const start = inPlay([0, 1], lcg(2));
+    const r = applyIntent(start, 1, { k: 'draw' }, 1000);
+    if (!r.ok) throw new Error(r.reason);
+    const snap = (rev: number, game: GameState, ms: number, running = true) => ({ rev, ack: -1, room: { ...roomOf(game, 0), clock: { ms, running } } });
+    let sync = onSnapshot(freshSync, snap(0, r.state, 1000), 1000);
+    let out = dealOut(freshDealing, onSnapshot(freshSync, snap(0, start, 1000), 1000), 1000);
+    out = dealOut(out.dealing, sync, 1000);
+    expect(out.room!.game!.players[1]!.draw!.off).toBe(1);
+    // The round ends: the clock stops, and the group stays as it lies however long the window looks.
+    const over: GameState = { ...r.state, status: { at: 'over', end: { by: 'jam' } } };
+    sync = onSnapshot(sync, snap(1, over, 1000 + 2 * STOCK_CARD_MS, false), 1000 + 2 * STOCK_CARD_MS);
+    out = dealOut(out.dealing, sync, 60_000);
+    expect([out.room!.game!.players[1]!.draw!.off, out.wait, out.dealing.at]).toEqual([1, null, 1000]);
+    // No table: nothing in flight and nothing remembered, but that the window was looking.
+    out = dealOut(out.dealing, freshSync, 60_000);
+    expect([out.room, out.wait, out.dealing]).toEqual([null, null, { flights: new Map(), led: null, looking: true, at: null }]);
   });
 
   it('reckons the round\'s clock from the snapshot that came quickest: steadily, never backwards, and afresh when it has been stopped or the round is another', () => {

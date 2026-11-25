@@ -140,7 +140,7 @@ export const drawnAt = (d: InHand, i: number): Pt => {
  * it lay.
  */
 const feltScale = (held: Held, home: number, L: Layout): number =>
-  held.k === 'card' && held.ace ? L.fs : held.k === 'card' && L.phone ? TOUCH_CARD_PX / CARD_W : home;
+  held.k === 'card' && held.ace ? L.fs : held.k === 'card' && L.shape !== 'wide' ? TOUCH_CARD_PX / CARD_W : home;
 
 /** The hand with the pointer at `p`: the card goes with it. */
 function carry(d: Pressed | Carried, p: Pt, { L, game }: Scene): Carried {

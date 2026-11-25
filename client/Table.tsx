@@ -9,13 +9,13 @@
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, useMotionValueEvent, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { beforeStart, calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reburiedSince, reshuffledSince, wentOut } from '../shared/engine';
+import { beforeStart, calledBy, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reburiedSince, reshuffledSince, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -462,8 +462,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   // Whatever decks are at the table, as you see them, are fetched before their cards are turned up.
   const decks = room.players.map((p) => seenLook(prefs, p.look).deck);
   useEffect(() => decks.forEach((d) => warm(d)), [decks.join()]);
-  /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
-  const clears = isTall(W, H) || isLow(W, H);
+  /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). By the height the layout goes by. */
+  const clears = shapeOf(W, H - pad.b) !== 'wide';
   const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
   // A click meant for a card must not throw the end of the round away: only Escape skips it, and only on your own screen.
   const playingOut = ending(stage);
@@ -611,32 +611,17 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         f = { id: p.holding, ids: got?.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, over: 0, ace: got?.length === 1 && got[0]!.rank === 1 };
         flights.set(p.seat, f);
       }
-      const hw = home.s * CARD_W;
-      const table = { x: at.p[0], y: at.p[1] };
-      const onFelt = offFelt(table, game.players.length) <= 0;
+      const onFelt = offFelt({ x: at.p[0], y: at.p[1] }, game.players.length) <= 0;
       // Off the felt it runs down rather than starting again: a card held on the felt's edge does not jump back to its line.
       // It counts no further than the fade's end, so taken back off the felt it is on its line again at once (a third of the fade).
       const after = f.ace ? REAL_AFTER.ace : REAL_AFTER.card;
       f.over = onFelt ? Math.min(f.over + dt, after + REAL_AFTER.fade) : Math.max(0, f.over - 3 * dt);
       const t = clamp((f.over - after) / REAL_AFTER.fade, 0, 1);
       const linger = calm() ? 1 : t * t * (3 - 2 * t);
-      const s = home.s + (L.fs - home.s) * Math.max(at.w / 2, linger);
-      const seat = L.opponents.find((o) => o.seat === p.seat);
-      // The pile it is going to: of those in the middle that would take it, the nearest to where it is.
-      let pile: { x: number; y: number } | undefined;
-      if (at.w > 1 && f.ids.length === 1) {
-        const there = toScreen(L.felt, table);
-        const off = (q: { x: number; y: number }) => Math.hypot(q.x - there.x, q.y - there.y);
-        L.slots.forEach((r, i) => {
-          if (!r || !canDrop(game, p.seat, f!.id, { k: 'slot', i })) return;
-          const q = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-          if (!pile || off(q) < off(pile)) pile = q;
-        });
-      }
-      const c = aloftAt(L.felt, game.players.length, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, linger);
-      f.x += (c.x - (s * CARD_W) / 2 - f.x) * k;
-      f.y += (c.y - (s * CARD_H) / 2 - f.y) * k;
-      f.s += (s - f.s) * k;
+      const a = aloftAt(L, game, { seat: p.seat, ids: f.ids, home, at, linger });
+      f.x += (a.x - (a.s * CARD_W) / 2 - f.x) * k;
+      f.y += (a.y - (a.s * CARD_H) / 2 - f.y) * k;
+      f.s += (a.s - f.s) * k;
       f.ids.forEach((id, i) => {
         const c = byId.get(id);
         const h = handles.get(id);
@@ -646,8 +631,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         h.s.set(f.s);
         h.take('carried', i);
         h.o.set(ALOFT);
-        // Upright for whoever is watching once it is out of the hand (a neighbour's hand is turned to face the felt).
-        h.r.set(c.rot * (1 - clamp(Math.max(at.h[1] / 0.6, at.w * 4, linger), 0, 1)));
+        h.r.set(a.rot);
       });
     }
     loop.frame = waiting || flights.size > 0 ? requestAnimationFrame(tick) : 0;
@@ -732,8 +716,9 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     return plan;
   }, [dealing, dealMs, game.players, L, you]);
   const grace = inGrace(game);
+  /** Who paused the round, if it is paused (`Pause`). */
+  const pausedBy = room.paused;
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
-  const hosting = !!room.players.find((p) => p.id === room.me)?.isHost;
   /** My own faces and backs: my choice, shown at once; or, if my backs are by lot, the one the table drew for me (it comes with the deal). */
   const chosen = lookOf(prefs);
   const myLook: Look = chosen.backs.k === 'lot' ? { ...chosen, backs: info(you)?.look.backs ?? chosen.backs } : chosen;
@@ -953,7 +938,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   });
   const finale = onCanvas(stage, 'slot');
   /** A phone, upright or on its side: the table is cleared for the end of a round (`Layout.cleared`). */
-  const phone = L.phone;
+  const phone = L.shape !== 'wide';
   /** An Ace is in hand. */
   const placing = held?.k === 'card' && held.ace;
 
@@ -970,7 +955,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   return (
     <>
     <div
-      className={`table${L.tall ? ' tall' : L.low ? ' short' : ''}${L.cleared ? ' cleared' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
+      className={`table${L.shape === 'tall' ? ' tall' : L.shape === 'low' ? ' short' : ''}${L.cleared ? ' cleared' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
       aria-hidden={paused || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -1000,7 +985,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
               style={o.turn ? { left: o.turn === 90 ? o.box.x : undefined, right: o.turn === -90 ? L.window.w - o.box.x - o.box.w : undefined, top: o.box.y - TAG_H, maxWidth: TAG_SIDE_W } : { left: o.box.x, top: o.box.y - TAG_H, width: o.box.w }}
             >
               <PictureBy picture={p?.picture} seat={o.seat} />
-              {hosting && p && !p.bot && !p.left && !results ? (
+              {dealer && p && !p.bot && !p.left && !results ? (
                 <Hosting who={p}>
                   <Name host={p.isHost} className="name">
                     {name(o.seat)}
@@ -1012,7 +997,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
                 </Name>
               )}
               <span className="pts">{points(total(o.seat))}</span>
-              {p?.bot && !((L.tall || L.cols) && o.box.w < 150) && <em className="bot">bot</em>}
+              {p?.bot && !((L.shape === 'tall' || L.cols) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false || p?.standing ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
@@ -1208,24 +1193,24 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         <button
           type="button"
           className={`skip${phone ? ' aside' : ''}`}
-          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.tall ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
           onClick={skip}
         >
           {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>
         </button>
       )}
     </div>
-    {paused && (
+    {paused && pausedBy && (
       <div className="paper-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
-        {room.paused!.by === null ? (
+        {pausedBy.by === 'update' ? (
           // (Paused by the server going down for an update: while it is away, that it will be back; once it is, that play can go on.)
           <>
             <p>Game paused while the server updates.</p>
-            {room.paused!.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
+            {pausedBy.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
           </>
         ) : (
-          <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
+          <p>{pausedBy.id === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === pausedBy.id)?.name ?? 'Someone'} paused the round.`}</p>
         )}
         {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>

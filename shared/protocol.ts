@@ -286,7 +286,7 @@ export const CLOSE_UPDATE = 1012;
  *   the edge of the felt, 2 over a pile in the middle that would take it (a
  *   card with no such pile, an Ace above all, stops at 1). A window draws the
  *   card that far along one path: out from that player's hand, wherever the
- *   window seats them, to the felt's edge, and on to the pile (`aloftAt` in
+ *   window seats them, to the felt's edge, and on to the pile (`aloftPath` in
  *   client/layout.ts, which also says how a card with no pile to go by gets
  *   to `p`).
  */
