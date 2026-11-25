@@ -305,7 +305,7 @@ const CardView = memo(function CardView(p: CardProps) {
 
 /** Where a reburied card left from (`REBURY`): its back, fading as it slides `off` out from behind its place. Gone when it has. */
 const Ghost = memo(function Ghost({ c, off, look, gone }: { c: Placed; off: Pt; look: Look; gone: () => void }) {
-  const mini = c.s * CARD_W < MINI_BELOW;
+  const mini = drawnMini(c.s * CARD_W);
   return (
     <motion.div
       className="card ghost"
