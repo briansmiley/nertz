@@ -41,7 +41,7 @@
   gap: 6px;
 }
 
-/* What has just been said, while the chat is closed: words on the cloth under the button, no box, and nothing to press. */
+/* What has just been said, while the chat is closed: words on the cloth under the button, each line on a wash of its own, no box round them all, and nothing to press. */
 .passing {
   position: absolute;
   left: 2px;
@@ -296,16 +296,18 @@
   animation: none;
 }
 
+/* Something unread: a red diamond on the bubble's corner. It is placed from the art (32 across at the button's left, in
+   the middle of its height), not from the button's own corner: in a phone's bar the button is wider and taller than the art. */
 .chat .dot {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: calc(50% - 18px);
+  left: 30px;
   width: 10px;
   height: 10px;
   border-radius: 2px;
   background: var(--red);
   box-shadow: 0 0 0 2px var(--felt-dark);
-  transform: rotate(45deg); /* a diamond on the bubble's corner */
+  transform: rotate(45deg);
 }
 
 .chat header {
