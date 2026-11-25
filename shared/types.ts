@@ -273,6 +273,8 @@ export interface RoomView {
   /** The table's house rules. Only the host changes them, between rounds. */
   settings: TableSettings;
   seats: Seats;
+  /** The table is kept off the home page's list (and its count): the host's to set, at any time. */
+  unlisted: boolean;
   /**
    * Redacted current round; null in the lobby. Kept through 'results' as the
    * final table (centre slots, tray, hands), so the client can play the

@@ -141,13 +141,13 @@ const BOT_CONN: Conn = { send: () => {}, close: () => {} };
 const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
 /** Which `Kept` this server writes and reads. Whatever changes what is in one (a field of the room, of a player, of the engine's `GameState`) puts it up by one: a table kept by a server from before is then not brought back. */
-export const KEPT = 2;
+export const KEPT = 3;
 /**
  * The shape of a `Kept` of each version: its fingerprint, as server/room.test.ts takes it (every path in one, and the
  * kind of value there). That test fails when a table's shape is not the one written here for `KEPT`: then put `KEPT`
  * up by one and add the new shape under it. Never change one already here.
  */
-export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44' };
+export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'pending' };
 
 /** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
 interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {
@@ -168,6 +168,7 @@ export interface Kept {
   lastRound: RoundResult | null;
   settings: TableSettings;
   capacity: number;
+  unlisted: boolean;
   social: KeptSocial;
   snipes: { by: number; of: number; card: string }[];
   sitting: string;
@@ -211,6 +212,8 @@ export class Room {
   rev = 0;
   /** When the last of those changes was (ms epoch). */
   changedAt = Date.now();
+  /** When the table was opened, or brought back by a server started anew (ms epoch). */
+  readonly openedAt = Date.now();
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. Changed only from in here. */
   get game(): GameState | null {
     return this.state;
@@ -220,6 +223,8 @@ export class Room {
   settings: TableSettings = { ...DEFAULT_SETTINGS };
   /** How many seats the table has: the host's to set, between rounds (`resize`). See `seats`. */
   private capacity = MAX_PLAYERS;
+  /** Kept off the home page's list of tables (server/index.ts `/tables`): the host's to set, at any time (`unlist`). Its code still lets anyone in. */
+  unlisted = false;
   /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
   readonly social = new Social();
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
@@ -344,6 +349,8 @@ export class Room {
         return this.configure(player, msg.patch);
       case 'seats':
         return this.resize(player, msg.step);
+      case 'unlisted':
+        return this.unlist(player, msg.on);
       case 'intent':
         return void this.intent(player, msg.seq, msg.intent);
       case 'drag':
@@ -494,6 +501,7 @@ export class Room {
       lastRound: this.lastRound,
       settings: this.settings,
       capacity: this.capacity,
+      unlisted: this.unlisted,
       snipes: this.snipes,
       sitting: this.sitting,
       queue: this.queue,
@@ -522,6 +530,7 @@ export class Room {
     room.lastRound = kept.lastRound;
     room.settings = kept.settings;
     room.capacity = kept.capacity;
+    room.unlisted = kept.unlisted;
     room.social.restore(kept.social);
     room.snipes = kept.snipes;
     room.sitting = kept.sitting;
@@ -589,6 +598,13 @@ export class Room {
     if (to === this.capacity) return;
     this.capacity = to;
     this.fill();
+    this.changed();
+  }
+
+  /** On or off the home page's list: for whoever may deal, like the seats, but at any time, a round on or not. */
+  private unlist(player: Player, on: boolean): void {
+    if (player !== this.dealer || on === this.unlisted) return;
+    this.unlisted = on;
     this.changed();
   }
 
@@ -1334,6 +1350,7 @@ export class Room {
       })),
       settings: this.settings,
       seats: this.seats,
+      unlisted: this.unlisted,
       game,
       timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.playedMs(), running: this.playingSince !== null },

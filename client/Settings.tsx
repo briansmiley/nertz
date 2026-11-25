@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { setSeats, setTableSettings } from './net';
+import { setSeats, setTableSettings, setUnlisted } from './net';
 import { pauseKeyAction, perform, tableActions } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
 import { Gear, MenuIcon } from './icons';
@@ -402,7 +402,7 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           })}
         </div>
       )}
-      {/* Whoever hosts: whether this table has text chat and voice at all, and between rounds its house rules. */}
+      {/* Whoever hosts: whether this table has text chat and voice at all, whether it is listed, and between rounds its house rules. */}
       {room && hosting && (
         <div className="end-vote">
           <h3>Host</h3>
@@ -421,6 +421,12 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
             </label>
             <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
           </div>
+          <label className="check">
+            <input type="checkbox" checked={room.unlisted} onChange={(e) => setUnlisted(e.target.checked)} />
+            <span>
+              Private table <Info>Left off the open tables list. Anyone with the code can still join.</Info>
+            </span>
+          </label>
           {room.phase !== 'playing' && (
             <div className="rules">
               <Rules room={room} mine />

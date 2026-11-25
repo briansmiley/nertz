@@ -28,6 +28,7 @@ const UPDATE_MS = 500; // stopping for an update, the server stays this long aft
 const HEARTBEAT_MS = 30_000;
 const MAX_ROOMS = 2000;
 const MAX_LISTED = 20; // tables on the home page's list: those where something happened last
+const LIST_AFTER_MS = 8000; // a new table is listed only once it has been open this long: its host's time to make it private first
 const MAX_BUFFERED_BYTES = 1 << 20; // a client this far behind on snapshots is dropped
 const RATE_PER_SECOND = 60; // sustained messages per connection; far above what a hand can do
 // The burst has to hold a whole table joining voice at once: to each of five others an offer and a
@@ -92,12 +93,15 @@ export interface ServerOptions {
   data?: string | null;
   /** How people sign in (server/accounts.ts). Without it, or without a database, nobody can. */
   accounts?: AccountsOptions | null;
+  /** How long a new table stays off the home page's list (ms). Defaults to LIST_AFTER_MS. */
+  listAfterMs?: number;
 }
 
 export async function startServer(options: ServerOptions = {}): Promise<NertzServer> {
   const dist = resolve(options.dist ?? fileURLToPath(new URL('../dist', import.meta.url)));
   const rate = options.rate ?? RATE_PER_SECOND;
   const hearMs = options.hearMs ?? HEAR_MS;
+  const listAfterMs = options.listAfterMs ?? LIST_AFTER_MS;
   const rooms = new Map<string, Room>();
   const idleSince = new Map<Room, number>();
   const forget = (room: Room): void => {
@@ -218,7 +222,9 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
           return void res.end('Method not allowed');
         }
         // Only tables someone is at just now: one left behind is kept for a while for whoever was there, not for anyone else.
-        const open = [...rooms.values()].filter((room) => room.connected > 0);
+        // Nor a private one, nor one just opened (its host may be about to make it private).
+        const now = Date.now();
+        const open = [...rooms.values()].filter((room) => room.connected > 0 && !room.unlisted && now - room.openedAt >= listAfterMs);
         const body: OpenTables = {
           open: open.length,
           tables: open

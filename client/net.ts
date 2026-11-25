@@ -559,6 +559,9 @@ export const botBack = (seat: number, backs: Backs): void => void post({ t: 'bot
 /** Host only, between rounds: one seat more or fewer. A step, not a number, so that taps quicker than the snapshots each count. */
 export const setSeats = (step: 1 | -1): void => void post({ t: 'seats', step });
 
+/** Whoever deals, at any time: the table off the home page's list (on), or back on it (off). */
+export const setUnlisted = (on: boolean): void => void post({ t: 'unlisted', on });
+
 /** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
 export function setTableSettings(patch: Partial<TableSettings>): void {
   post({ t: 'settings', patch });

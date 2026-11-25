@@ -209,6 +209,8 @@ export type ClientMsg =
   | { t: 'settings'; patch: Partial<TableSettings> }
   /** Host only, between rounds: one seat more (1) or fewer (-1). The server keeps the number within `fewestSeats` and `MAX_PLAYERS`, so taps sent faster than the snapshots come back each count. */
   | { t: 'seats'; step: 1 | -1 }
+  /** Whoever deals, at any time: keep the table off the home page's list of tables (on), or put it back there (off). Its code still lets anyone in. */
+  | { t: 'unlisted'; on: boolean }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
   /** Whoever deals, between rounds: start over. Everyone's score goes back to nothing and the table to its lobby, as before the first deal. */
@@ -547,6 +549,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'seat', seat: v.seat } : null;
     case 'seats':
       return v.step === 1 || v.step === -1 ? { t: 'seats', step: v.step } : null;
+    case 'unlisted':
+      return typeof v.on === 'boolean' ? { t: 'unlisted', on: v.on } : null;
     case 'settings': {
       const patch = parseSettings(v.patch);
       return patch ? { t: 'settings', patch } : null;
