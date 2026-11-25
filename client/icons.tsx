@@ -52,7 +52,7 @@ export function RobotBroken() {
 /** The connection back: the robot mended and upright, a heart and a dot for eyes, the antenna straight, bulb green. */
 export function RobotFixed() {
   return (
-    <span className="robot-net fixed">
+    <span className="robot-net">
       <img className="art" src={robotFixed} alt="" aria-hidden="true" />
     </span>
   );

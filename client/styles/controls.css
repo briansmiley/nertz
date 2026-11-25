@@ -257,34 +257,6 @@ img.art {
   height: 100%;
 }
 
-/* The mended robot's green bulb, pulsing out a ring (where the art has the bulb: 76% across, 19% down); still with
-   reduced motion. */
-.robot-net.fixed::after {
-  content: '';
-  position: absolute;
-  left: 76%;
-  top: 19%;
-  width: 11%;
-  height: 11%;
-  translate: -50% -50%;
-  border-radius: 50%;
-  animation: bulb 1.1s ease-out infinite;
-}
-
-@keyframes bulb {
-  from {
-    box-shadow: 0 0 0 0 rgba(90, 210, 110, 0.85);
-  }
-  to {
-    box-shadow: 0 0 0 9px rgba(90, 210, 110, 0);
-  }
-}
-
-.calm .robot-net.fixed::after {
-  animation: none;
-  box-shadow: 0 0 5px 2px rgba(90, 210, 110, 0.7);
-}
-
 /* The slip an icon button opens, just above it. */
 .pop-at {
   position: relative;
