@@ -52,7 +52,7 @@ Controls:
 | Click the stock, or press Space | draw a group of three: they come off one at a time, a sixth of a second apart, and turn up together |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
-| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Unpause**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (from Start, for now; before it, to watch: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot, picked with the picture beside Send or dropped or pasted onto the slip; Tab from the words goes to Send) |
+| The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Resume game**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (from Start, for now; before it, to watch: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot, picked with the picture beside Send or dropped or pasted onto the slip; Tab from the words goes to Send) |
 | Press M (or the key you set under Hotkeys in the settings) | mute or unmute. While the sound is off a small amber speaker sits at the end of the chat bar, top left: press it to turn the sound back on |
 
 There is no auto-play and no "throw it at the middle": a card lands only where it is released, and only if it fits there.
@@ -706,11 +706,15 @@ is a few kilobytes and a busy table is a few messages a second.
 - An idle machine is suspended, memory kept (`auto_stop_machines = "suspend"`), and resumed on the next request. Fly only
   suspends a machine with no open connections, and every player at a table holds a websocket, so a game in progress keeps
   it up.
-- **What a deploy or restart does to live games:** the process is replaced, so every table and score is gone. Clients notice
-  the dropped socket, reconnect with backoff and try to rejoin their table code, which no longer exists, so they are told
-  there is no such table and someone has to start a new one. Hence `main` deploys only when nobody is connected. If that
-  ever stops being enough, the fix is to write each room's state to a volume or Redis on change and reload it on boot;
-  `GameState` is plain JSON, so that is a small change.
+- **What a deploy or restart does to live games:** the process is replaced, and the tables come back with it. Told to
+  stop (SIGTERM or SIGINT; `kill_timeout` in `fly.toml` gives it time), the server pauses every round, writes each open
+  table to the database on the volume (`room`, one row of JSON a table: seats, cards, scores, settings, chat; no card in
+  hand, no timer) and closes every socket saying why. The windows say "Updating the game…" and keep trying; the next
+  server brings the tables back with everyone away, and each window sits back down by its token, signed in or not, at
+  a round still paused: anyone in it unpauses. A table with a round on is also written every 30 seconds if it has
+  changed, so a crash costs at most that much of the round. A table nobody comes back to is forgotten as ever, and one
+  kept by a server whose tables were otherwise made (`KEPT` in `server/room.ts`) is not brought back. With no
+  database (no `DATA_DIR`), every table and score is gone, as before.
 - Outgrowing one machine (unlikely) means routing by table code, for example with Fly's `fly-replay` header, so that a table
   always lands on the machine that owns it.
 
@@ -833,8 +837,9 @@ would still need one of the options above, and serving both from one origin is s
   latency.
 - **A round nobody ends.** If every card is played and nobody presses NERTZ!, the round just sits there. The call is
   deliberate by design. (A table that is jammed for good ends by itself once everyone says they are stuck.)
-- **After a server restart** a reconnecting window is told its table no longer exists and is put back on the home page with
-  the code filled in; somebody has to start a new table.
+- **After a server restart** the tables are back, their rounds paused (see [Hosting](#hosting)). Where one is not (no
+  database, or a crash before it was first kept), a reconnecting window is told its table no longer exists and is put
+  back on the home page with the code filled in; somebody has to start a new table.
 - **Bundle size** is about 460 kB (160 kB gzipped), a third of it the animation library, plus 39 kB of sound files
   (the smallest recordings are inlined in the script).
 - **Sound needs a first click or key press**, like all audio in a browser, and the recordings load at that moment. If the
@@ -843,7 +848,7 @@ would still need one of the options above, and serving both from one origin is s
   over the line of text under your nertz pile.
 - **Chat in a small window.** With the panel open during a round in a window under about 1250 px wide, it lies over the
   captions under your nertz pile and, narrower still, over the pile's edge. Hide it to play.
-- **No spectators, no persistence.** Restarting the server ends every game and forgets the chat.
+- **No spectators.**
 
 ## Accounts
 

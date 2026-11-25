@@ -276,7 +276,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
   });
   // The pause key pauses or unpauses, when you may; the card over a paused table says so, not the button.
   const pausing = pauseKeyAction(room);
-  useHotkey(prefs.pauseKey, room && pausing ? () => (perform(pausing, room), pausing === 'pause' ? 'Paused' : 'Unpaused') : null);
+  useHotkey(prefs.pauseKey, room && pausing ? () => (perform(pausing, room), pausing === 'pause' ? 'Paused' : 'Resumed') : null);
 
   /** What can be done to the table now (actions.ts). */
   const actions = room ? tableActions(room) : [];

@@ -11,7 +11,7 @@ import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, grab, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, isRoomCode, PING_MS, SET_UPS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, isRoomCode, PING_MS, SET_UPS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
 
@@ -94,19 +94,22 @@ export function hello(room: string | null, name: string, token: string): ClientM
 
 // ---------------------------------------------------------------- store
 
-export type Status = 'idle' | 'connecting' | 'online' | 'reconnecting';
+/** `updating`: reconnecting, and the line went down because the server stopped to be put up anew (it said so: `CLOSE_UPDATE`). */
+export type Status = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'updating';
 
 export interface NetState {
   status: Status;
   /** Predicted room, or null when not in one. */
   room: RoomView | null;
   error: string | null;
+  /** Sitting back down at the table it was at, after a reload: until it is seated, or gives up (`resume`). */
+  rejoining: boolean;
 }
 
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null };
+let state: NetState = { status: 'idle', room: null, error: null, rejoining: false };
 const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
@@ -226,7 +229,7 @@ export function resume(): void {
     return; // storage unavailable (or not ours): home
   }
   const room = roomInUrl();
-  if (room && seat?.room === room && typeof seat.name === 'string') join(room, seat.name);
+  if (room && seat?.room === room && typeof seat.name === 'string') (join(room, seat.name), set({ rejoining: true }));
 }
 
 /** The one way out of a session: leaving, sent away, replaced, refused. */
@@ -240,23 +243,25 @@ function stop(error: string | null): void {
   old?.close();
   sync = freshSync;
   timed(null);
-  set({ status: 'idle', room: null, error });
+  set({ status: 'idle', room: null, error, rejoining: false });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
 /**
  * A window left open over a deploy still runs the page it loaded, against a server that has moved on: it draws and
  * plays by the old one. Whenever this window is at no table (it has just left one, or come back to the front), it
- * asks for the page again, and if that names another script than the one running, loads it.
+ * asks for the page again, and if that names another script than the one running, loads it. At a table it does so
+ * only once it is `back` there from an update the server stopped for: the reload sits back down (`resume`).
  */
-async function renew(): Promise<void> {
-  if (typeof document === 'undefined' || state.room || session) return;
+async function renew(back = false): Promise<void> {
+  const free = (): boolean => back || (!state.room && !session);
+  if (typeof document === 'undefined' || !free()) return;
   const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src');
   if (!mine) return; // not a built page (development)
   try {
     const page = await (await fetch('/', { cache: 'no-store' })).text();
     const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(page)?.[1];
-    if (theirs && theirs !== mine && !state.room && !session) location.reload();
+    if (theirs && theirs !== mine && free()) location.reload();
   } catch {
     // offline: next time
   }
@@ -272,15 +277,17 @@ const social = (msg: SocialServerMsg): void => {
 const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => void } = {
   state: (msg) => {
     attempts = 0;
+    const updated = state.status === 'updating';
     if (session && !state.room) {
       session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
       keep({ room: session.room, name: session.name });
     }
     sync = onSnapshot(sync, msg);
-    set({ status: 'online', room: predict(sync), error: null });
+    set({ status: 'online', room: predict(sync), error: null, rejoining: false });
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
+    if (updated) void renew(true);
   },
   error: (msg) => set({ error: msg.message }),
   snipe: (msg) => {
@@ -326,16 +333,16 @@ function connect(): void {
   ws.onclose = (e) => {
     if (socket !== ws) return;
     if (e.code === CLOSE_OVER) return stop(e.reason);
-    dropped();
+    dropped(e.code === CLOSE_UPDATE);
   };
 }
 
 /**
  * The line is down: the socket said it closed, or it has gone silent (`SILENT_MS`), which is all a window is told of a
  * line that died while it was off the network. Either way the socket is done with, and the window reconnects; its seat
- * is waiting for it.
+ * is waiting for it. `update`: the server closed it to be put up anew, which the window says until it is back.
  */
-function dropped(): void {
+function dropped(update = false): void {
   const old = socket;
   socket = null;
   if (old) {
@@ -346,7 +353,7 @@ function dropped(): void {
   sync = { ...sync, pending: [] };
   timed(null);
   const room = sync.server ?? state.room;
-  set({ status: 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
+  set({ status: update || state.status === 'updating' ? 'updating' : 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
   clearTimeout(retry);
   retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempts++));
 }

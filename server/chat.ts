@@ -56,6 +56,9 @@ export function roundOver(round: number, result: RoundResult): Extract<ChatEvent
 export const SIGNAL_BURST_BYTES = (MAX_PLAYERS + MAX_WATCHERS - 1) * 12_000;
 const SIGNAL_REFILL_PER_MS = SIGNAL_BURST_BYTES / 5000;
 
+/** What of a table's chat is kept over a restart of the server (server/room.ts, `Kept`): the host's switches, and what was said. Not who is in voice: that goes with a connection. */
+export type KeptSocial = Pick<Social, 'text' | 'voice' | 'watchText' | 'watchVoice'> & { lines: ChatLine[]; nextId: number };
+
 export class Social {
   /** The host's switches. To merge into a generic table-settings object, keep these four booleans there instead. */
   text = true;
@@ -72,6 +75,14 @@ export class Social {
   private signalBudget = new WeakMap<Member, { bytes: number; at: number }>();
   /** Who is in voice, and whether their microphone is muted. Belongs to a connection: a new socket starts outside. */
   private inVoice = new Map<Member, boolean>();
+
+  kept(): KeptSocial {
+    return { text: this.text, voice: this.voice, watchText: this.watchText, watchVoice: this.watchVoice, lines: this.lines, nextId: this.nextId };
+  }
+
+  restore(kept: KeptSocial): void {
+    Object.assign(this, kept);
+  }
 
   /** `member` has a new connection (first time or a reconnect): it gets the history and the switches, once. */
   joined(member: Member, members: readonly Member[]): void {

@@ -69,7 +69,7 @@ describe("the table's actions", () => {
 });
 
 describe('the pause key', () => {
-  it("presses the menu's Pause or Unpause, whichever is open to you, and otherwise nothing", () => {
+  it("presses the menu's Pause or Resume game, whichever is open to you, and otherwise nothing", () => {
     expect(pauseKeyAction(roomOf(live, 1))).toBe('pause');
     expect(pauseKeyAction(roomOf(live, 1, { paused: { by: 2 } }))).toBe('resume');
     expect(pauseKeyAction(roomOf(finishDeal(deal([0, 1, 2], lcg(7))), 1))).toBeNull(); // (before Start)
