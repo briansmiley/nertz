@@ -433,12 +433,14 @@ function dropped(update = false): void {
     old.onopen = old.onmessage = old.onclose = null; // (a silent socket may say it closed much later, or never)
     old.close();
   }
-  // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
+  // Unacknowledged intents died with the connection: show the plain snapshot until we are back, its groups in flight
+  // as far as this window has dealt them (one that is down here stays down), and no further.
   sync = { ...sync, pending: [] };
-  clearTimeout(step);
   timed(null);
-  const room = sync.server ?? state.room;
-  set({ status: update || state.status === 'updating' ? 'updating' : 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
+  const status = update || state.status === 'updating' ? 'updating' : 'reconnecting';
+  if (sync.server) show({ status, error: null });
+  else set({ status, error: state.room ? null : 'Cannot reach the game server. Still trying…' });
+  clearTimeout(step);
   clearTimeout(retry);
   retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempts++));
 }

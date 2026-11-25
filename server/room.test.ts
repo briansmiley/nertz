@@ -2484,6 +2484,16 @@ describe('a draw is one intent and one step, and the server holds it to its time
     expect(checkInvariants(room.game!)).toBeNull();
   });
 
+  it('an intent refused after the group\'s time still finds it down, and its sender is told so', () => {
+    const { room, b, me } = drawing();
+    sendIntent(room, b, 0, { k: 'draw' });
+    vi.advanceTimersByTime(3 * STOCK_CARD_MS);
+    sendIntent(room, b, 1, hold('not a card'));
+    expect(me()).toMatchObject({ draw: null, holding: null });
+    room.flush();
+    expect(b.last.room.game!.players[1]!.draw).toBeNull(); // its window had the group down when it sent that: it is not sent it in flight again
+  });
+
   it('a pause holds a group in flight: the time paused does not count', () => {
     const { room, a, b, me } = drawing();
     sendIntent(room, b, 0, { k: 'draw' });
