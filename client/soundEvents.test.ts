@@ -1,13 +1,13 @@
 // Which cue fires for which change of the rendered table. The frames are
 // produced the way the client really produces them: server snapshots with the
 // player's unacknowledged intents replayed over them, and each group in flight
-// dealt out as far as the round's clock has it (net.ts).
+// dealt out as far as this window has it (net.ts `dealOut`).
 import { describe, expect, it } from 'vitest';
-import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, refused, resolveStuck, startCountdown } from '../shared/engine';
+import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, isLive, refused, resolveStuck, startCountdown } from '../shared/engine';
 import { START_BEAT_MS, START_MS, STOCK_CARD_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, upWork, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
-import { dealtBy, freshSync, onSend, onSnapshot, predict, type Sync } from './net';
+import { dealOut, freshDealing, freshSync, onSend, onSnapshot, type Dealing, type Sync } from './net';
 import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
 /** Two players whose work piles are single face-up cards: A-spades, 2-spades, A-hearts and a black 5 on which nothing fits yet; on the waste, a red 4 that fits on the 5. */
@@ -20,13 +20,15 @@ function session(start: GameState) {
   let ack = 0;
   /** The round's clock, the server's and this window's alike. */
   let now = 0;
-  let sync: Sync = onSnapshot(freshSync, { rev, ack, room: roomOf(game, 0) });
-  /** What is on screen: the predicted room, each group in flight dealt out as far as the clock has it (as net.ts `show` does). */
+  /** A snapshot as it arrives: heard at once, so the round's clock reads here what it reads on the server. */
+  const snap = () => ({ rev, ack, room: roomOf(game, 0, { clock: { ms: now, running: isLive(game) } }) });
+  let sync: Sync = onSnapshot(freshSync, snap(), now);
+  let dealing: Dealing = freshDealing;
+  /** What is on screen: the predicted room, each group in flight dealt out as far as this window has it (net.ts `dealOut`). */
   const shown = (): RoomView | null => {
-    const room = predict(sync);
-    if (!room?.game) return room;
-    const players = room.game.players.map((p) => dealtBy(p, now, p.draw?.at ?? 0));
-    return players.every((p, i) => p === room.game!.players[i]) ? room : { ...room, game: { ...room.game, players } };
+    const out = dealOut(dealing, sync, now);
+    dealing = out.dealing;
+    return out.room;
   };
   let frame: Frame = { room: shown(), online: true };
   const queue: { seq: number; intent: Intent }[] = [];
@@ -40,7 +42,7 @@ function session(start: GameState) {
     const r = applyIntent(game, seat, intent, now);
     game = r.ok ? r.state : refused(game, seat, intent);
   };
-  const snapshot = () => (sync = onSnapshot(sync, { rev: ++rev, ack, room: roomOf(game, 0) }));
+  const snapshot = () => (rev++, (sync = onSnapshot(sync, snap(), now)));
   return {
     get game() {
       return game;
@@ -81,7 +83,10 @@ function session(start: GameState) {
       sync = { ...sync, pending: [] };
       const dropped = render(false);
       meanwhile();
-      sync = onSnapshot(freshSync, { rev: 0, ack: -1, room: roomOf(game, 0) });
+      rev = 0;
+      ack = -1;
+      sync = onSnapshot(freshSync, snap(), now);
+      dealing = { ...dealing, looking: false }; // (a new connection, as net.ts `connect`)
       return [dropped, render(true)];
     },
     act: apply,
@@ -166,11 +171,14 @@ describe('sound cues from rendered state', () => {
     expect(s.tick()).toEqual([{ k: 'stock', who: 'other' }]);
     expect(s.tick()).toEqual([{ k: 'stock', who: 'other' }]);
     expect(s.tick()).toEqual([]);
-    // Three of their cards at once (the snapshot of their draw came late): a flick each.
+    // The snapshot of their draw came late: its cards leave from when it is seen here, a flick at a time.
     s.act(1, { k: 'draw' });
     s.away(2 * STOCK_CARD_MS);
-    expect(s.server((g) => g)).toEqual(Array<Cue>(3).fill({ k: 'stock', who: 'other' }));
-    expect(s.frame.room!.game!.players[1]!.draw).toMatchObject({ n: 3 });
+    expect(s.server((g) => g)).toEqual([{ k: 'stock', who: 'other' }]);
+    // Then the window draws nothing for a while (its timer held back): the cards due meanwhile, a flick each, at once.
+    s.away(2 * STOCK_CARD_MS);
+    expect(s.tick(0)).toEqual(Array<Cue>(2).fill({ k: 'stock', who: 'other' }));
+    expect(s.frame.room!.game!.players[1]!.draw).toMatchObject({ n: 3, off: 3 });
     // A run of two cards moved together is one drop, not two.
     const run = s.game.players[0]!.work[3]!.cards[0]!.id;
     s.me({ k: 'hold', cardId: run });

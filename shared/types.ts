@@ -40,9 +40,10 @@ export interface PlayerState {
    * says when it was made (`at`, on the round's clock: `RoomView.clock`). They count as dealt one at a time,
    * STOCK_CARD_MS apart, and turned up together one step after the last: so the draw is over, and its top card can be
    * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Each window deals the cards out
-   * on its own clock.
+   * on its own clock. `off` is only ever on screen: how many of the group this window has dealt off the stock so
+   * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off.
    */
-  draw: { n: number; at: number } | null;
+  draw: { n: number; at: number; off?: number } | null;
   stuck: boolean;
   /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
