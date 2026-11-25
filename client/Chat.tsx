@@ -9,6 +9,7 @@ import { useDismiss } from './dismiss';
 import { SaidWord, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { RobotBroken, Sit, Speaker } from './icons';
+import { MicLevels } from './Settings';
 import { useCorners } from './fittings';
 import { chatLines } from './layout';
 import { kick, sit } from './net';
@@ -293,6 +294,7 @@ export function Chat({ room, lost }: { room: RoomView; lost?: () => void }) {
               })}
             </ul>
           )}
+          <MicLevels prefs={prefs} />
         </section>
       )}
 

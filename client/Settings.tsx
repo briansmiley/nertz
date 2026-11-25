@@ -27,7 +27,8 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Mic, type Prefs } from './prefs';
+import { micInput, useVoice } from './voice';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
@@ -201,7 +202,68 @@ function Volume({ prefs }: { prefs: Prefs }) {
           onChange={(e) => setLevel(open, Number(e.target.value))}
         />
       )}
+      <MicLevels prefs={prefs} />
     </div>
+  );
+}
+
+/** The two of your microphone, as the row under the channels names them, and in full. */
+const MIC_NAMES: Record<keyof Mic, [short: string, full: string]> = { level: ['Mic', 'Your microphone'], gate: ['Gate', 'Noise gate: quieter than this is not sent'] };
+
+/**
+ * Your microphone as voice chat sends it: its level and its gate, in a row like the channels', of which the one pressed
+ * opens its slider. Under Volume, and in the voice slip (Chat.tsx).
+ */
+export function MicLevels({ prefs }: { prefs: Prefs }) {
+  const [open, setOpen] = useState<keyof Mic | null>(null);
+  const slider = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) slider.current?.focus();
+  }, [open]);
+  const { mic } = prefs;
+  return (
+    <div className="mic-levels">
+      <div className="mix">
+        {(['level', 'gate'] as const).map((k) => (
+          <button key={k} type="button" className={open === k ? 'on' : ''} aria-expanded={open === k} data-tip={MIC_NAMES[k][1]} onClick={() => setOpen(open === k ? null : k)}>
+            {MIC_NAMES[k][0]}
+            <output>{k === 'gate' && !mic.gate ? 'off' : percent(mic[k])}</output>
+          </button>
+        ))}
+      </div>
+      {open && (
+        <div className="mic-slider">
+          <input
+            ref={slider}
+            type="range"
+            min="0"
+            max={open === 'level' ? 2 : 1}
+            step={open === 'level' ? 0.05 : 0.01}
+            aria-label={MIC_NAMES[open][1]}
+            value={mic[open]}
+            onChange={(e) => setPrefs({ mic: { ...getPrefs().mic, [open]: Number(e.target.value) } })}
+          />
+          {open === 'gate' && <Heard gate={mic.gate} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Under the gate's slider while you are in voice: how loud you are now, on the slider's scale, green where it is sent. */
+function Heard({ gate }: { gate: number }) {
+  const on = useVoice().status === 'on';
+  const [level, setLevel] = useState<number | null>(null);
+  useEffect(() => {
+    if (!on) return setLevel(null);
+    const timer = setInterval(() => setLevel(micInput()), 50);
+    return () => clearInterval(timer);
+  }, [on]);
+  if (level === null) return null;
+  return (
+    <span className={`heard${level >= gate ? ' over' : ''}`} role="meter" aria-label="Your microphone now" aria-valuemin={0} aria-valuemax={1} aria-valuenow={level}>
+      <i style={{ width: `${level * 100}%` }} />
+    </span>
   );
 }
 

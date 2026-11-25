@@ -270,6 +270,49 @@ label.check {
   accent-color: var(--red);
 }
 
+/* Your microphone: a row like the channels', its two to the left, and the one pressed opens its slider under it. Under
+   the gate's, while you are in voice, how loud you are now on the same scale: green where it is sent. */
+.mic-levels {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mic-levels .mix {
+  justify-content: flex-start;
+  column-gap: 1.1rem;
+}
+
+.mic-slider {
+  display: grid;
+  gap: 4px;
+}
+
+.mic-slider input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--red);
+}
+
+/* (Inset by about half a thumb, so that the end of the bar stands where the thumb would.) */
+.heard {
+  height: 3px;
+  margin: 0 7px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.heard i {
+  display: block;
+  height: 100%;
+  background: #9a9482;
+  transition: width 50ms linear;
+}
+
+.heard.over i {
+  background: rgb(28, 148, 104);
+}
+
 /* A part of your settings slip set off by a rule above it (what whoever hosts allows at the table). */
 .end-vote {
   display: grid;
