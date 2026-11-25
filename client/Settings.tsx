@@ -358,10 +358,6 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
     return () => window.removeEventListener('keydown', onKey, true);
   }, [keying]);
 
-  /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
-  const stage = room?.game?.status.at;
-  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
-
   return (
     <section className="yours" aria-labelledby="your-settings">
       <h3 id="your-settings">
@@ -407,10 +403,10 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           ))}
         </span>
       </div>
-      {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
-      <div className={`level${styling ? '' : ' locked'}`}>
+      {/* Any time, a round or not: everyone sees your cards in the new back at once. */}
+      <div className="level">
         <span>Card back</span>
-        <YourBacks colour={BACKS[0]} locked={!styling} />
+        <YourBacks colour={BACKS[0]} />
       </div>
       {/* Keys: only where there is a keyboard. */}
       {!touchOnly() && (

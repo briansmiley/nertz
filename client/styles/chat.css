@@ -291,11 +291,6 @@
   animation: none;
 }
 
-.chat-bar .mic-error {
-  color: var(--chalk);
-  font-size: 12px;
-}
-
 .chat .dot {
   position: absolute;
   top: -4px;
@@ -365,8 +360,8 @@
   animation: none;
 }
 
-/* The voice slip: who is in it, mute yourself, leave. Its heading with Leave at the right; a microphone beside a name
-   (your own is a button). */
+/* The voice slip: who is in it, join; once in, mute yourself, leave. Its heading with Join or Leave at the right; a
+   microphone beside a name (your own is a button). */
 .voice-slip {
   position: absolute;
   left: 0;
@@ -463,25 +458,47 @@
   transform: translateY(-2px) rotate(-4deg);
 }
 
-/* Leaving voice: the door, bare. */
-.voice-slip header button.out {
-  display: grid;
-  place-items: center;
-  padding: 0;
+/* Join and Leave, where the slip's heading ends: the table's chunky button made small and tipped a little, the same
+   size whichever it says; green to come in, red to go. */
+.voice-slip header .go {
+  min-width: 5rem;
+  padding: 0.3rem 0.75rem 0.35rem;
   border: 0;
-  background: none;
-  cursor: pointer;
+  border-radius: 6px;
+  font: 400 0.85rem/1.2 var(--display);
+  color: var(--card);
+  background: var(--fill);
+  box-shadow: 0 3px 0 var(--press);
+  rotate: -1.5deg;
 }
 
-.voice-slip header button.out img.art {
-  width: 30px;
-  height: 30px;
-  margin: -4px 0;
-  transition: transform 0.12s ease-out;
+.voice-slip header .go.join {
+  --fill: #2c9a5a;
+  --press: #1b6a3b;
 }
 
-.voice-slip header button.out:hover img.art {
-  transform: translateY(-2px) rotate(-4deg);
+.voice-slip header .go.leave {
+  --fill: var(--red);
+  --press: #8f1622;
+}
+
+.voice-slip header .go:active:not(:disabled) {
+  translate: 0 2px;
+  box-shadow: 0 1px 0 var(--press);
+}
+
+/* (While the browser asks for the microphone.) */
+.voice-slip header .go:disabled {
+  opacity: 1;
+  color: var(--ink-soft);
+  background: #e2d9c2;
+  box-shadow: none;
+}
+
+.voice-slip .mic-error {
+  max-width: 15rem;
+  color: #b3261e;
+  font-size: 12px;
 }
 
 /* A notice from the table among the chat's lines (who sniped whom, a round dealt or over): slanted and a little fainter than what is said. */
