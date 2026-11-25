@@ -192,7 +192,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   shown its cards, their owner included, and none of them can be played; the nertz pile and the work piles play on.
   The card the group is being dealt onto can still be taken, and taking it calls the draw off: the cards dealt so far
   go back on the stock, unseen and in the order they came off, and that card is in your hand. Once the group has
-  turned up the chance is gone. When the stock is empty, a click turns the whole waste back over into the stock.
+  landed on the waste the chance is gone. When the stock is empty, a click turns the whole waste back over into the stock.
 - **The pace is the server's.** A draw is one intent; the server puts its group on the waste in one step, and until
   the group's time is up it refuses another draw and a play of its top card. Each window deals the cards out at that
   pace on its own clock. Your window has your group down a round trip after the server does, so a take of the card
@@ -595,7 +595,8 @@ no timer for it: `applyIntent` is handed the clock, and first takes down every g
 a draw ends unless it is called off, and only while the round is live: a group in flight at a call stays as it lies).
 Until then another draw is refused, and `grab` refuses the group's cards and gives the card under them: a `hold` or
 `move` of that one calls the draw off (the group goes back on the stock, and `draw` is null). A window has its own group
-down a round trip later, so a take it makes while the group is in flight there names the draw (`callsOff`: its `at`).
+down a round trip later, so a take it makes while the group is in flight there, or gliding onto the waste after
+(`draw.down`, for as long as the glide takes: `glideMs`), names the draw (`callsOff`: its `at`).
 A group the server has down is kept as `drew`, and such a take still calls it off up to `CALL_OFF_MS` (1 s) after,
 while the round is live and the group lies untouched on top of the waste (any draw clears `drew`): the engine's
 `callable`, the one place that says whether a draw can still be called off, which the window's prediction asks too.
