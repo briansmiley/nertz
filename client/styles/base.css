@@ -13,6 +13,9 @@
   --marigold: #f2b320;
   --red: #cf2233;
   --card: #fffdf7;
+  /* You against them, wherever it is counted: yours green, theirs red (written on paper). */
+  --yours: #2f7a4a;
+  --theirs: #b0303c;
   --ui: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
   --num: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
   --display: 'Bowlby One', 'Arial Black', Impact, sans-serif;

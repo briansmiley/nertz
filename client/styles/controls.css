@@ -32,7 +32,7 @@
   border-radius: 8px;
   font-weight: 600;
   color: var(--ink);
-  background: #fffdf6; /* filled: the paper's ruled lines do not run through a button that has a border */
+  background: var(--card); /* filled: the paper's ruled lines do not run through a button that has a border */
 }
 
 .plain:disabled {
@@ -87,7 +87,7 @@
   border: 1.5px solid var(--ink-soft);
   border-radius: 50%;
   color: var(--ink-soft);
-  background: #fffdf6;
+  background: var(--card);
   cursor: pointer;
 }
 
@@ -143,7 +143,7 @@
 }
 
 .robotplus .blank {
-  fill: #fffdf6;
+  fill: var(--card);
 }
 
 .robotplus .bulb {

@@ -815,10 +815,10 @@
 
 /* You against them, wherever it is counted: yours green, theirs red. */
 .vs-you {
-  color: #2f7a4a;
+  color: var(--yours);
 }
 .vs-them {
-  color: #b0303c;
+  color: var(--theirs);
 }
 
 /* You against them: a line of its own under their record. */
