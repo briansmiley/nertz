@@ -70,15 +70,15 @@ function useBack(status: Status): boolean {
 
 /**
  * A card at the top of the window saying what the line is doing (`say`). Over the chat bar and the menu on a phone, so
- * its × puts it away: until it has something else to say.
+ * its × puts it away: until it has something else to say; or, given `onShut`, as that says.
  */
-function Toast({ say, className, children }: { say: string; className: string; children: ReactNode }) {
+function Toast({ say, className, onShut, children }: { say: string; className: string; onShut?: () => void; children: ReactNode }) {
   const [shut, setShut] = useState<string | null>(null);
   if (shut === say) return null;
   return (
     <p className={`banner net ${className}`} role="status">
       {children}
-      <button type="button" className="shut" aria-label="Dismiss" onClick={() => setShut(say)}>
+      <button type="button" className="shut" aria-label="Dismiss" onClick={() => (onShut ? onShut() : setShut(say))}>
         ×
       </button>
     </p>
@@ -88,10 +88,11 @@ function Toast({ say, className, children }: { say: string; className: string; c
 /**
  * The line to the table, lost and then back: one card, tipped while the line is down, that sets itself straight with the
  * mended robot when it is back. Both robots and both words are in it at once, one of each shown, so it keeps its size.
+ * Put away while the line is down, it leaves the broken robot in the chat bar (`onTuck`), which brings it back.
  */
-function Line({ back }: { back: boolean }) {
+function Line({ back, onTuck }: { back: boolean; onTuck: () => void }) {
   return (
-    <Toast say={back ? 'back' : 'lost'} className={back ? 'line mended' : 'line'}>
+    <Toast say={back ? 'back' : 'lost'} className={back ? 'line mended' : 'line'} onShut={back ? undefined : onTuck}>
       <span className="stack robots">
         <RobotBroken />
         <RobotFixed />
@@ -104,6 +105,17 @@ function Line({ back }: { back: boolean }) {
   );
 }
 
+/** The card saying the line is lost is put away, its robot in the chat bar: for as long as the line stays lost. */
+function useTucked(status: Status): [boolean, (on: boolean) => void] {
+  const [was, setWas] = useState(status);
+  const [tucked, setTucked] = useState(false);
+  if (status !== was) {
+    setWas(status);
+    if (status !== 'reconnecting') setTucked(false);
+  }
+  return [tucked, setTucked];
+}
+
 export function App() {
   const net = useNet();
   const room = net.room;
@@ -112,6 +124,7 @@ export function App() {
   const page = useAddressed();
   useSounds(room, net.status === 'online');
   const back = useBack(net.status);
+  const [tucked, setTucked] = useTucked(net.status);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -151,7 +164,7 @@ export function App() {
       <Corner room={room} />
       {room.game && room.phase !== 'lobby' && <Table room={room} sheet={<Results room={room} />} seats={(close) => <TableSheet room={room} onClose={close} />} />}
       {room.phase === 'lobby' && <Lobby room={room} />}
-      <Chat room={room} />
+      <Chat room={room} lost={tucked ? () => setTucked(false) : undefined} />
       <Sure room={room} />
       <Ping />
       {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
@@ -163,8 +176,8 @@ export function App() {
             <Dots />
           </span>
         </Toast>
-      ) : net.status === 'reconnecting' || back ? (
-        <Line back={back} />
+      ) : (net.status === 'reconnecting' && !tucked) || back ? (
+        <Line back={back} onTuck={() => setTucked(true)} />
       ) : (
         spectating && (
           <p className="banner low">
