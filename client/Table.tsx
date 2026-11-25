@@ -25,13 +25,14 @@ import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
-import { kick, onDrag, onSnipe, pause, playable, post, sit, testing } from './net';
+import { Dots } from './Dots';
+import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { Name } from './Host';
-import { calm, hotkeyName, lookOf, seenLook, usePrefs } from './prefs';
+import { calm, lookOf, seenLook, usePrefs } from './prefs';
 import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
@@ -698,8 +699,9 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const dealing = game.status.at === 'dealing' || replaying;
   /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over). (A card already in hand may still land during grace.) */
   const paused = !!room.paused && !results;
+  /** The line to the table is up: until it is, the card over a paused table offers nothing (an update: the table is on its way back). */
+  const online = useNet().status === 'online';
   /** The key that unpauses, named on the card over a paused table (none on a phone). */
-  const pauseKey = hotkeyName(prefs.pauseKey);
   const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
   useEffect(() => {
@@ -1215,10 +1217,18 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     {paused && (
       <div className="paper-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
-        <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
-        {canResume(room) && (
+        {room.paused!.by === null ? (
+          // (Paused by the server going down for an update: while it is away, that it will be back; once it is, that play can go on.)
+          <>
+            <p>Game paused while the server updates.</p>
+            {room.paused!.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
+          </>
+        ) : (
+          <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
+        )}
+        {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
-            Unpause {pauseKey && <small>{pauseKey}</small>}
+            Resume game
           </button>
         )}
       </div>

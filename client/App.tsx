@@ -13,6 +13,7 @@ import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
+import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
@@ -52,6 +53,8 @@ export function App() {
   const page = useAddressed();
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
+  // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
+  if (!room && net.rejoining && net.status === 'connecting') return null;
   // (Whose it is, yours or not, is not known until the server says who is signed in.)
   if (!room && page && page.handle !== signedInAs(account)?.handle) return account === 'unknown' ? null : <Someone handle={page.handle} />;
   if (!room) {
@@ -91,8 +94,8 @@ export function App() {
       <Chat room={room} />
       <Sure room={room} />
       <Ping />
-      {net.status === 'reconnecting' ? (
-        <p className="banner">Connection lost. Reconnecting…</p>
+      {net.status === 'reconnecting' || net.status === 'updating' ? (
+        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : 'Connection lost. Reconnecting…'}</p>
       ) : (
         spectating && (
           <p className="banner low">

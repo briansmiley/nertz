@@ -82,7 +82,7 @@ export function tableActions(room: RoomView): TableAction[] {
   const up = standing(room);
   return [
     canPause(room) && { id: 'pause' as const, label: 'Pause' },
-    canResume(room) && { id: 'resume' as const, label: 'Unpause' },
+    canResume(room) && { id: 'resume' as const, label: 'Resume game' },
     vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: true },
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
@@ -92,7 +92,7 @@ export function tableActions(room: RoomView): TableAction[] {
   ].filter((a) => !!a);
 }
 
-/** What the pause key presses now: Pause or Unpause, whichever the menu has open to you; neither, nothing. */
+/** What the pause key presses now: Pause or Resume game, whichever the menu has open to you; neither, nothing. */
 export function pauseKeyAction(room: RoomView | null | undefined): 'pause' | 'resume' | null {
   for (const a of room ? tableActions(room) : []) if (a.id === 'pause' || a.id === 'resume') return a.id;
   return null;

@@ -1,7 +1,7 @@
 // The store (client/net.ts) over a fake socket: the connection, the retry, this window's session and how it ends, what
 // a reload makes of it afterwards, and the page put up anew.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLOSE_OVER } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE } from '../shared/protocol';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 
 /** Just enough of a browser WebSocket: the test plays the server. */
@@ -91,7 +91,7 @@ describe('the connection', () => {
     net.create('Ada');
     expect(sockets()).toBe(1);
     expect(last().url).toBe('wss://nertz.example/ws');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, rejoining: false });
     expect(last().sent).toEqual([]); // nothing goes before it is open
 
     last().open();
@@ -156,7 +156,7 @@ describe('the connection', () => {
     const net = await reload();
     net.join('ABCD', 'Ada');
     last().closed(); // never opened
-    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…' });
+    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', rejoining: false });
     const waits: number[] = [];
     for (let i = 0; i < 7; i++) {
       const n = sockets();
@@ -227,7 +227,7 @@ describe('the connection', () => {
     old.closed(1005);
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, rejoining: false });
   });
 
   it('a socket that opens only after the window has moved on says nothing, on it or on the socket that took its place', async () => {
@@ -360,14 +360,17 @@ describe('a line that dies without a word', () => {
 });
 
 describe("this window's session", () => {
-  it('a reload while at the table sits back down at it, under the same name', async () => {
+  it('a reload while at the table sits back down at it, under the same name, and says it is rejoining until it is seated (nothing of home meanwhile)', async () => {
     await seated();
     expect(address()).toBe('?room=ABCD');
     const before = sockets();
-    await reload();
+    const net = await reload();
     expect(sockets()).toBe(before + 1);
+    expect(net.current()).toMatchObject({ status: 'connecting', rejoining: true });
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
+    last().deliver(at('ABCD'));
+    expect(net.current()).toMatchObject({ status: 'online', rejoining: false });
   });
 
   it.each([
@@ -377,7 +380,7 @@ describe("this window's session", () => {
     vi.useFakeTimers();
     const net = await seated();
     last().closed(CLOSE_OVER, reason);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason, rejoining: false });
     expect(address()).toBe('');
     const before = sockets();
     vi.advanceTimersByTime(10_000);
@@ -390,7 +393,7 @@ describe("this window's session", () => {
     const net = await seated();
     last().closed(CLOSE_OVER, 'You were removed from the table by whoever deals.');
     net.join('ABCD', 'Ada');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, rejoining: false });
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
     last().deliver(at('ABCD'));
@@ -420,7 +423,7 @@ describe("this window's session", () => {
     net.leave();
     expect(last().sent.at(-1)).toEqual({ t: 'leave' });
     expect(last().shut).toBe(true);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, rejoining: false });
     expect(address()).toBe('');
     const before = sockets();
     await reload();
@@ -433,7 +436,7 @@ describe("this window's session", () => {
     last().closed();
     expect(net.current().status).toBe('reconnecting');
     net.leave();
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, rejoining: false });
     net.join('WXYZ', 'Ada');
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
@@ -526,5 +529,27 @@ describe('a page put up anew while the window was open', () => {
     expect(fetched).toHaveBeenCalledTimes(1);
     expect(page.reload).not.toHaveBeenCalled();
     expect(net.current().status).toBe('connecting');
+  });
+
+  it('is loaded at a table once the window is back there from an update the server stopped for; until then the window says that is why the line is down', async () => {
+    vi.useFakeTimers();
+    built(OLD, NEW);
+    const net = await seated();
+    last().closed(CLOSE_UPDATE);
+    expect(net.current()).toMatchObject({ status: 'updating', room: { code: 'ABCD' }, error: null });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(sockets()).toBe(2);
+    last().closed(); // (the next server is not up yet)
+    expect(net.current().status).toBe('updating');
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sockets()).toBe(3);
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(page.reload).not.toHaveBeenCalled();
+    last().deliver(at('ABCD'));
+    expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(page.reload).toHaveBeenCalledTimes(1);
   });
 });

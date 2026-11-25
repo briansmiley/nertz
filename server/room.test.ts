@@ -2,15 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, setUpDeal, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
-import { CLOSE_OVER, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
 import { downs, faceUps, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { Room, testing, type Conn } from './room';
-import { Client, FakeConn, opening, roomWith, send, startOver, startRound, type StateMsg } from './testkit';
+import { Client, FakeConn, opening, roomWith, rows, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
@@ -2555,5 +2555,158 @@ describe('ready, before Start', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ---------------------------------------------------------------- kept over a restart of the server
+
+describe('a table kept over a restart of the server', () => {
+  afterEach(() => void vi.useRealTimers());
+  /** `room` as the next server has it: what it keeps, through the database's JSON. */
+  const restart = (room: Room): Room => Room.restored(wire(room.kept()), { rng: seeded(2), schedule: () => {} })!;
+  /** Where every card of the round lies (not what is in whose hand). */
+  const cards = (g: GameState) => ({ slots: g.slots, hands: g.players.map(({ seat, nertz, work, stock, waste, draw }) => ({ seat, nertz, work, stock, waste, draw })) });
+  const hand = (g: GameState, seat: number) => g.players.find((p) => p.seat === seat)!;
+  const lines = (c: FakeConn) => c.room.players.map(({ id, name, seat, score }) => ({ id, name, seat, score }));
+
+  it('comes back as it was, everyone away and the round paused by nobody: the same cards and scores, no card in hand, each back in their seat by their token, and anyone in it unpauses', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    sendIntent(room, b, 0, { k: 'end', on: true }); // a first round, for there to be scores
+    expect(room.phase).toBe('results');
+    startRound(room, a);
+    sendIntent(room, a, 1, { k: 'draw' }); // a group in flight off a's stock
+    sendIntent(room, b, 1, hold(workTop(room.game!, 1, 0))); // and a card in b's hand
+    sendIntent(room, b, 2, { k: 'end', on: true }); // and b's word that it should end, which is not a's
+    room.flush();
+    const was = room.game!;
+    expect(hand(was, 0).draw).toMatchObject({ n: 3 });
+    expect(hand(was, 1).holding).not.toBeNull();
+    expect(lines(b).some((l) => l.score !== 0)).toBe(true);
+    const back = restart(room);
+    room.close();
+
+    expect(back).toMatchObject({ code: room.code, phase: 'playing', round: 2 });
+    expect(back.connected).toBe(0);
+    expect(back.lastRound).toEqual(room.lastRound);
+    expect(cards(back.game!)).toEqual(cards(was));
+    expect(back.game!.players.map((p) => p.holding)).toEqual([null, null, null]);
+    expect(back.game!.players.some((p) => p.stuck || p.ending)).toBe(false); // (or b, first back, would be everyone here, and it would end)
+
+    const b2 = new FakeConn();
+    expect(back.join(b2, 'P1', 'tok-0001')).toBeNull(); // (a guest: who they are is their token)
+    back.flush();
+    expect(b2.room).toMatchObject({ me: b.room.me, seat: 1, phase: 'playing', round: 2, paused: { by: null, done: true } });
+    expect(lines(b2)).toEqual(lines(b));
+    expect(b2.room.players.find((p) => p.id === a.room.me)).toMatchObject({ connected: false });
+
+    // Paused, nothing of it moves: no intent is taken, the group in flight waits, and so does the bot.
+    sendIntent(back, b2, 0, { k: 'draw' });
+    vi.advanceTimersByTime(30_000);
+    expect(cards(back.game!)).toEqual(cards(was));
+
+    back.handle(b2, { t: 'pause', on: false });
+    back.flush();
+    expect(b2.room.paused).toBeNull();
+    expect(b2.room.clock).toMatchObject({ running: true });
+    vi.advanceTimersByTime(30_000);
+    expect(hand(back.game!, 0).draw).toBeNull(); // a's group is down: its time came once the clock ran again
+    expect(hand(back.game!, 2)).not.toEqual(hand(was, 2)); // and the bot plays on
+    back.close();
+  });
+
+  it("kept while its cards were being dealt, the round comes back waiting for the dealer's Start; a table kept by a server that kept them otherwise does not come back", () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2);
+    room.handle(conns[0]!, { t: 'start' });
+    expect(room.game!.status.at).toBe('dealing');
+    const back = restart(room);
+    expect(back.game!.status.at).toBe('ready');
+    const a = new FakeConn();
+    back.join(a, 'P0', 'tok-0000');
+    back.handle(a, { t: 'go' }); // (whoever opened the table deals, as before)
+    vi.advanceTimersByTime(START_MS);
+    expect(back.game!.status.at).toBe('play');
+    back.close();
+
+    expect(Room.restored({ ...wire(room.kept()), v: 0 })).toBeNull();
+    room.close();
+  });
+
+  describe('by the server, in its database', () => {
+    let dir: string;
+    let server: NertzServer;
+    const start = async (): Promise<void> => void (server = await startServer({ port: 0, dist: '/nonexistent', data: join(dir, 'nertz.db') }));
+    /** The server is gone, and another is up on the same database. */
+    const restarted = async (): Promise<void> => {
+      await server.close();
+      await start();
+    };
+    /** The tables in the database now. */
+    const keptCodes = () => rows(join(dir, 'nertz.db'), 'room').map((r) => r.code);
+    beforeEach(async () => {
+      dir = mkdtempSync(join(tmpdir(), 'nertz-kept-'));
+      await start();
+    });
+    afterEach(async () => {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('stopped for an update, the server pauses every round, tells every window why as it closes it, and keeps the tables; the next one has them back, and a window sits back down by its token', async () => {
+      const a = await Client.open(server.port, null, 'Ann');
+      const b = await Client.open(server.port, a.code, 'Bob');
+      const code = a.code;
+      await startOver(server.rooms.get(code)!, a, [a, b]);
+      const hands = server.rooms.get(code)!.game!.players;
+      await b.did({ k: 'end', on: true }); // (said by one of two: it must not end the round as the other's window goes, nor as Bob's comes back first)
+      server.update();
+      await vi.waitFor(() => expect([a.closeCode, b.closeCode]).toEqual([CLOSE_UPDATE, CLOSE_UPDATE]));
+      expect(a.last.room.paused).toEqual({ by: null }); // (the update under way: not yet `done`)
+      expect(b.last.room.paused).toEqual({ by: null });
+
+      await restarted();
+      const room = server.rooms.get(code)!;
+      expect(room.game!.players).toEqual(hands);
+      const back = await Client.open(server.port, code, 'Bob', b.token, false);
+      await vi.waitFor(() => expect(back.states.length).toBeGreaterThan(0));
+      expect(back.last.room).toMatchObject({ me: b.last.room.me, seat: b.seat, phase: 'playing', paused: { by: null, done: true } }); // (back: the update over)
+      back.send({ t: 'pause', on: false });
+      await vi.waitFor(() => expect(back.last.room.paused).toBeNull());
+      await back.did({ k: 'draw' });
+      expect(room.game!.players).not.toEqual(hands);
+      await back.close();
+    });
+
+    it('a table with a round on is kept as it goes, so that a server that just dies has it back; it is kept no longer once that round is scored, or the table is forgotten', async () => {
+      const a = await Client.open(server.port, null, 'Ann');
+      const b = await Client.open(server.port, a.code, 'Bob');
+      const code = a.code;
+      const room = server.rooms.get(code)!;
+      server.keep();
+      expect(keptCodes()).toEqual([]); // (no round on)
+      await startOver(room, a, [a, b]);
+      server.keep();
+      expect(keptCodes()).toEqual([code]);
+      await a.did({ k: 'end', on: true });
+      await b.did({ k: 'end', on: true });
+      await vi.waitFor(() => expect(room.phase).toBe('results'));
+      expect(keptCodes()).toEqual([]);
+
+      await startOver(room, a, [a, b]);
+      server.keep();
+      await a.drop();
+      await b.drop();
+      await restarted(); // (it was told nothing: what it has is what was last kept)
+      expect(server.rooms.get(code)).toMatchObject({ phase: 'playing', round: 2 });
+      expect(keptCodes()).toEqual([code]);
+      server.sweep(Date.now() + 11 * 60_000); // nobody came back to it
+      expect(server.rooms.has(code)).toBe(false);
+      expect(keptCodes()).toEqual([]);
+    });
   });
 });
