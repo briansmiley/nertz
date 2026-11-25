@@ -1,5 +1,5 @@
 // Voice chat: an audio-only WebRTC mesh between the players who pressed
-// "Join voice". Every pair has one RTCPeerConnection; offers, answers and ICE
+// "Join". Every pair has one RTCPeerConnection; offers, answers and ICE
 // candidates travel through the game's websocket ({ t: 'signal' }) and the
 // server only forwards them. Who is in voice comes from the server
 // ({ t: 'social' }, see social.ts), and `sync` makes the connections match it.

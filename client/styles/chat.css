@@ -360,8 +360,8 @@
   animation: none;
 }
 
-/* The voice slip: who is in it, join; once in, mute yourself, leave. Its heading with Join or Leave at the right; a microphone beside a name
-   (your own is a button). */
+/* The voice slip: who is in it, join; once in, mute yourself, leave. Its heading with Join or Leave at the right; a
+   microphone beside a name (your own is a button). */
 .voice-slip {
   position: absolute;
   left: 0;
