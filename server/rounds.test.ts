@@ -267,22 +267,21 @@ describe('a room hands its rounds over', () => {
     expect(kept[2]!.game).not.toBe(kept[0]!.game);
   });
 
-  it('one seat to an account: a second window of it watches until the first stands up', () => {
+  it('one player to an account: a window of it on another device is the same one, and the first window is closed', () => {
     const kept: RoundRecord[] = [];
     const { room } = roomWith(0, { record: (r) => kept.push(r) });
     const [a, again, b] = [new FakeConn(), new FakeConn(), new FakeConn()];
     room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
     room.join(again, 'Ada', 'tok-001a', true, signedAs('ada'));
     room.join(b, 'Bob', 'tok-000b', true, signedAs('bob'));
+    expect(a.closed).toBe(true);
     room.flush();
-    expect(again.states.at(-1)!.room.seat).toBeNull();
-    startRound(room, a);
-    room.handle(a, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
+    expect(again.last.room).toMatchObject({ me: 0, seat: 0 });
+    expect(again.last.room.players.map((p) => p.name)).toEqual(['Ada', 'Bob']);
+    startRound(room, again);
+    room.handle(again, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
     room.handle(b, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
     expect(kept[0]!.hands.map((h) => h.account)).toEqual(['ada', 'bob']);
-    room.handle(a, { t: 'sit', on: false });
-    room.flush();
-    expect(again.states.at(-1)!.room.seat).not.toBeNull();
   });
 
   it('a hand whose player left before the round was over is still theirs, and says they left', () => {

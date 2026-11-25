@@ -70,7 +70,7 @@ describe('the end of a connection', () => {
     const again = await hello(ann.last().code, 'Ann', ann.token);
     await taken(again);
     await vi.waitFor(() => expect(ann.end.code).toBe(CLOSE_OVER));
-    expect(ann.end.reason).toBe('This seat was opened in another tab.');
+    expect(ann.end.reason).toBe('This table was opened somewhere else.');
     expect(again.ws.readyState).toBe(WebSocket.OPEN);
   });
 

@@ -255,7 +255,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   else's: everything about a person goes by it (who you are, who said what, who is in voice, whose line of the score
   sheet). What is about cards goes by seat. Where someone is, is exactly one of three things: at the table (a seat), in
   the queue for one, or just watching; apart from that they are here or away. A window comes back as who it was by its
-  token, kept for as long as the window lives; a name proves nothing, and nobody takes a seat by typing one.
+  token, kept for as long as the window lives, or, signed in, by its account, from any device: one player to an account,
+  and the newest window of them is the one that plays, the one before closed. A name proves nothing, and nobody takes a
+  seat by typing one.
 
 ## The table
 

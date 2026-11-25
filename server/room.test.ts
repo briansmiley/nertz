@@ -10,7 +10,7 @@ import { downs, faceUps, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
 import { KEPT, KEPT_SHAPES, Room, testing, type Conn } from './room';
-import { Client, FakeConn, opening, roomWith, rows, send, startOver, startRound, type StateMsg } from './testkit';
+import { Client, FakeConn, opening, roomWith, rows, send, signedAs, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
 
@@ -986,6 +986,52 @@ describe('Room', () => {
     room.disconnect(b2);
     expect(room.rev).toBe(rev);
     expect(room.connected).toBe(3); // a, b and the stranger watching
+  });
+
+  it('opened signed in on another device mid-round, an account plays its own seat there, and the first device is closed', () => {
+    const { room } = roomWith(0);
+    const [phone, b, laptop] = [new FakeConn(), new FakeConn(), new FakeConn()];
+    room.join(phone, 'Ada', 'tok-phone', true, signedAs('ada'));
+    room.join(b, 'Bob', 'tok-bbbb', true);
+    startRound(room, phone);
+    sendIntent(room, phone, 0, { k: 'draw' });
+    room.flush();
+    const hand = phone.last.room.game;
+
+    expect(room.join(laptop, 'Ada', 'tok-laptop', true, signedAs('ada'))).toBeNull(); // another token: the account is who
+    expect(phone.closed).toBe(true);
+    room.flush();
+    expect(laptop.last.room).toMatchObject({ me: 0, seat: 0, phase: 'playing' });
+    expect(laptop.last.room.game).toEqual(hand);
+    expect(b.last.room.players.map((p) => [p.name, p.connected])).toEqual([['Ada', true], ['Bob', true]]);
+    const rev = room.rev;
+    sendIntent(room, phone, 1, { k: 'draw' }); // the phone no longer speaks for the seat
+    expect(room.rev).toBe(rev);
+
+    const back = new FakeConn(); // and the laptop's token finds her from now on, signed in or not
+    room.join(back, 'Ada', 'tok-laptop', true);
+    expect(laptop.closed).toBe(true);
+    room.flush();
+    expect(back.last.room).toMatchObject({ me: 0, seat: 0 });
+    expect(room.connected).toBe(2);
+  });
+
+  it('a device that was someone else here before it was signed in leaves them for the account at the table', () => {
+    const { room } = roomWith(0);
+    const [phone, b, laptop] = [new FakeConn(), new FakeConn(), new FakeConn()];
+    room.join(phone, 'Ada', 'tok-phone', true, signedAs('ada'));
+    room.join(b, 'Bob', 'tok-bbbb', true);
+    startRound(room, phone);
+    room.join(laptop, 'Guest', 'tok-laptop'); // in to watch, signed out
+    room.flush();
+    expect(laptop.last.room).toMatchObject({ me: 2, seat: null });
+
+    const again = new FakeConn();
+    room.join(again, 'Ada', 'tok-laptop', true, signedAs('ada'));
+    expect([phone.closed, laptop.closed]).toEqual([true, true]);
+    room.flush();
+    expect(again.last.room).toMatchObject({ me: 0, seat: 0 });
+    expect(again.last.room.players.map((p) => p.name)).toEqual(['Ada', 'Bob']); // the watcher is gone
   });
 
   it('hands the host role on when the host is gone outside a round, and frees a seat on leaving the lobby', () => {

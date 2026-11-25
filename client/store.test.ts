@@ -383,7 +383,7 @@ describe("this window's session", () => {
 
   it.each([
     ['sent away by whoever deals', 'You were removed from the table by whoever deals.'],
-    ['its seat opened in another tab', 'This seat was opened in another tab.'],
+    ['its seat opened in another tab or device', 'This table was opened somewhere else.'],
   ])('%s: the window goes home, says why, does not come back by itself, and a reload stays at home', async (_, reason) => {
     vi.useFakeTimers();
     const net = await seated();

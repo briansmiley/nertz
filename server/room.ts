@@ -298,24 +298,26 @@ export class Room {
   join(conn: Conn, name: string, token: string, sit = false, signed: SignedAs | null = null): string | null {
     const account = signed && kept(signed);
     if (this.conns.has(conn)) this.drop(conn, false);
-    // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
-    // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
-    let player = this.players.find((p) => p.token === token && !gone(p));
+    // Who someone is goes by their token, or, signed in, by their account: one player to an account, on whichever
+    // device. (A name proves nothing: anyone can type one.) Whoever left is gone for good: back, they are someone new.
+    // (Only someone away comes back to their seat.)
+    const mine = (p: Player) => !!account && p.account?.id === account.id;
+    const theirs = this.players.filter((p) => !p.bot && !gone(p) && (p.token === token || mine(p)));
+    // Both (this device was someone else here before it was signed in as the account): the one at the table, the account's first. The other leaves.
+    let player = theirs.find((p) => seated(p) && mine(p)) ?? theirs.find(seated) ?? theirs.find(mine) ?? theirs[0];
+    for (const other of theirs.filter((p) => p !== player)) {
+      if (other.conn) this.takenOver(other);
+      this.gone(other, 'left');
+    }
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
       player = { id: this.ids++, token, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
-    } else if (player.conn) {
-      // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
-      const old = player.conn;
-      this.conns.delete(old);
-      old.close('This seat was opened in another tab.');
-      this.letGo(player); // whatever the old socket was dragging is not in this one's hand
-    }
-    // (Come back signed in as someone already seated at the table, in another window, they are nobody here: one hand to an account.)
+    } else if (player.conn) this.takenOver(player); // a second socket (another tab or device, or a reconnect racing the old socket's close): newest wins
+    // (Come back signed in as someone whose cards still lie on the table, since they left the round, they are nobody here: one hand to an account.)
     const as = seated(player) && this.seatedAs(account, player) ? null : account;
-    Object.assign(player, { name, account: as, conn, ack: -1 });
+    Object.assign(player, { token, name, account: as, conn, ack: -1 }); // (found by their account, they are found by this device's token from now on)
     this.conns.set(conn, player);
     this.social.joined(player, this.players);
     if (fresh && (sit || (!this.roundOn && this.seatFor(player) !== null))) player.queued = ++this.queue;
@@ -323,6 +325,14 @@ export class Room {
     this.settle();
     this.changed();
     return null;
+  }
+
+  /** `player`'s socket is replaced by one opened since: it is closed, and whatever it was dragging is not in the new one's hand. */
+  private takenOver(player: Player): void {
+    this.conns.delete(player.conn!);
+    player.conn!.close('This table was opened somewhere else.');
+    player.conn = null;
+    this.letGo(player);
   }
 
   /** Any message other than `join`/`create` from a connection that has joined. Unknown connections are ignored. */
@@ -1007,7 +1017,6 @@ export class Room {
 
   private seatQueue(): void {
     for (const p of this.players.filter((q) => q.queued !== null && q.conn).sort((a, b) => a.queued! - b.queued!)) {
-      if (this.seatedAs(p.account, p)) continue; // one seat to an account: a second window of it waits until the first stands up
       const seat = this.seatFor(p);
       if (seat === null) break;
       this.sitDown(p, seat);

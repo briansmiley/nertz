@@ -273,7 +273,7 @@ export const PING_MS = 5_000;
 export const SILENT_MS = 12_000;
 
 /**
- * The close code of a connection the server is done with for good: refused a table, its seat opened in another tab, or
+ * The close code of a connection the server is done with for good: refused a table, its seat opened in another tab or device, or
  * sent away by whoever deals. The close reason is what to tell the player (at most 123 bytes). The window goes home and
  * does not come back by itself; any other close is a dropped line, and the window reconnects.
  */
