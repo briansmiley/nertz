@@ -62,9 +62,9 @@ describe('carrying a card (a mouse)', () => {
     const t = seatAt(game());
     const lay = t.card('0:H4');
     t.down(t.at('0:H4'));
-    t.move(by(t.at('0:H4'), 50, -20));
+    t.move(by(t.at('0:H4'), 50, -80));
     expect(t.sent).toEqual([hold('0:H4')]);
-    expect(t.hand).toMatchObject({ phase: 'carried', pointer: 1, held: { k: 'card', id: '0:H4', ace: false }, ids: ['0:H4'], at: { x: lay.x + 50, y: lay.y - 20 }, s: lay.s });
+    expect(t.hand).toMatchObject({ phase: 'carried', pointer: 1, held: { k: 'card', id: '0:H4', ace: false }, ids: ['0:H4'], at: { x: lay.x + 50, y: lay.y - 80 }, s: lay.s });
     t.move(t.work(0));
     t.up(t.work(0));
     expect(t.sent).toEqual([hold('0:H4'), move('0:H4', work(0))]);
@@ -85,8 +85,8 @@ describe('carrying a card (a mouse)', () => {
     const [under, over] = [t.card('0:C8'), t.card('0:H7')];
     const grip = { x: under.x + 20, y: under.y + 4 }; // the strip of the Eight that shows above the Seven
     t.down(grip);
-    t.move(by(grip, 30, 20));
-    expect(t.hand).toMatchObject({ ids: ['0:C8', '0:H7'], lead: '0:C8', at: { x: under.x + 30, y: under.y + 20 } });
+    t.move(by(grip, 30, -40));
+    expect(t.hand).toMatchObject({ ids: ['0:C8', '0:H7'], lead: '0:C8', at: { x: under.x + 30, y: under.y - 40 } });
     t.move(t.work(1));
     t.up(t.work(1));
     expect(t.sent).toEqual([hold('0:C8'), move('0:C8', work(1), 2)]);
@@ -327,8 +327,8 @@ describe('a finger', () => {
     expect(half.at.y).toBeGreaterThan(d.at.y);
   });
 
-  it('carried over your own hand, a card keeps the size and face it lay with; near the felt it takes the middle\'s, upright, on its side and by mouse', () => {
-    for (const size of [phone, { W: 844, H: 390, touch: true }, { ...phone, touch: false }, {}]) {
+  it('carried over your own hand, a card keeps the size and face it lay with; over the felt, on a phone it is the touch size, bigger than the piles, and on a desktop as it lay', () => {
+    for (const [size, felt] of [[phone, 48], [{ W: 844, H: 390, touch: true }, 48], [{ ...phone, touch: false }, 48], [{}, null]] as const) {
       const t = seatAt(game(), size);
       const lay = t.card('0:S2');
       t.down(t.at('0:S2'));
@@ -338,6 +338,20 @@ describe('a finger', () => {
       expect(d.s).toBeCloseTo(lay.s);
       expect(drawnMini(d.s * CARD_W)).toBe(drawnMini(lay.s * CARD_W));
       bring(t, t.slot(0)); // on the pile in the middle
+      const s = t.hand?.phase === 'carried' ? t.hand.s : 0;
+      expect(s * CARD_W).toBeCloseTo(felt ?? lay.s * CARD_W);
+      if (felt) expect(s).toBeGreaterThan(t.L.fs);
+    }
+  });
+
+  it('an Ace carried out of your hand on a phone keeps its size over your hand, and over the felt is the size of a pile in the middle', () => {
+    for (const size of [phone, { W: 844, H: 390, touch: true }]) {
+      const t = seatAt(game(), size);
+      const lay = t.card('0:DA');
+      t.down(t.at('0:DA'));
+      t.move(t.work(0));
+      expect(t.hand?.phase === 'carried' && t.hand.s).toBeCloseTo(lay.s);
+      bring(t, room(t, '0:DA'));
       expect(t.hand?.phase === 'carried' && t.hand.s).toBeCloseTo(t.L.fs);
     }
   });

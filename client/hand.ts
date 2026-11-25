@@ -16,7 +16,9 @@ const DRAG_SLOP = 6; // px of travel before a press becomes a carry
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
 const TOUCH_RISE_PX = 44;
 const TOUCH_CLEAR_PX = 10;
-/** A card on its way to the middle comes to the size of a pile there over the last few px before the felt. */
+/** On a phone a card carried over the felt is drawn this wide (px): bigger than the piles there, easier to aim with a finger. */
+const TOUCH_CARD_PX = 48;
+/** A card carried out of your hand comes to its size over the felt (`feltScale`) over the last few px before it. */
 const SHRINK_PX = 14;
 /** A card taken up by a tap stands this much of its height above where it lay. */
 const STAND = 0.16;
@@ -133,6 +135,14 @@ export const drawnAt = (d: InHand, i: number): Pt => {
   return { x: d.at.x + (d.base[i]!.x - leadBase(d).x) * k, y: d.at.y + (d.base[i]!.y - leadBase(d).y) * k };
 };
 
+/**
+ * The scale what is in hand is drawn at over the felt. An Ace, which may start a pile wherever there is room: the
+ * size of a pile in the middle, exactly what would lie there. Any other card on a phone: TOUCH_CARD_PX. Otherwise as
+ * it lay.
+ */
+const feltScale = (held: Held, home: number, L: Layout): number =>
+  held.k === 'card' && held.ace ? L.fs : held.k === 'card' && L.phone ? TOUCH_CARD_PX / CARD_W : home;
+
 /** The hand with the pointer at `p`: the card goes with it. */
 function carry(d: Pressed | Carried, p: Pt, { L, game }: Scene): Carried {
   const { home } = d;
@@ -142,12 +152,11 @@ function carry(d: Pressed | Carried, p: Pt, { L, game }: Scene): Carried {
   const grip = d.sy - d.base[0]!.y; // how far down the grabbed card it was taken
   const up = d.touch && d.held.k === 'card' ? clamp(Math.hypot(p.x - d.sx, p.y - d.sy) / TOUCH_RISE_PX, 0, 1) : 0;
   const at = { x: p.x - (d.sx - b.x), y: p.y - up * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX - grip) - (d.sy - b.y) };
-  // It is drawn as it lay while it is over your hand, and comes to the size of a pile in the middle as it reaches the
-  // felt: what you carry over the felt is exactly what would lie there. It changes size about the point it is aimed
-  // by (the pointer, or under a finger its own middle), which stays where it is.
+  // It is drawn as it lay while it is over your hand, and comes to its size over the felt as it reaches it. It changes
+  // size about the point it is aimed by (the pointer, or under a finger its own middle), which stays where it is.
   const aim = d.touch ? { x: at.x + (home * CARD_W) / 2, y: at.y + (home * CARD_H) / 2 } : p;
   const near = clamp(1 - (offFelt(toTable(L.felt, aim.x, aim.y), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1);
-  const k = 1 + (L.fs / home - 1) * near;
+  const k = 1 + (feltScale(d.held, home, L) / home - 1) * near;
   return { ...gripOf(d), phase: 'carried', pointer: d.pointer, px: p.x, py: p.y, at: { x: aim.x + (at.x - aim.x) * k, y: aim.y + (at.y - aim.y) * k }, s: home * k };
 }
 
