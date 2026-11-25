@@ -25,6 +25,7 @@ import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
+import { Dots } from './Dots';
 import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
@@ -1221,7 +1222,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
           // (Paused by the server going down for an update: while it is away, that it will be back; once it is, that play can go on.)
           <>
             <p>The server paused to update the game.</p>
-            <p>{online ? 'Update complete. Ready to resume.' : 'It’ll be back in a moment.'}</p>
+            <p>{online ? 'Update complete. Ready to resume.' : <>It’ll be back in a moment<Dots /></>}</p>
           </>
         ) : (
           <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
