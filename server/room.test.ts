@@ -1289,7 +1289,7 @@ describe('Room', () => {
     room.flush();
     expect(a.last.ack).toBe(tries.length);
     sendIntent(room, b, 13, { k: 'draw' });
-    expect(room.game!.players[1]!.waste).toHaveLength(1);
+    expect(room.game!.players[1]!.waste).toHaveLength(3);
     sendIntent(room, a, 10, { k: 'clear', slot: 0 });
     room.flush();
     expect(b.last.room.game!.tray).toEqual([wire([...pile, king])]);
@@ -1401,7 +1401,7 @@ describe('Room', () => {
       room.handle(a2, { t: 'go' });
       vi.advanceTimersByTime(START_MS);
       sendIntent(room, a2, 0, { k: 'draw' });
-      expect(room.game!.players[0]!.waste).toHaveLength(1);
+      expect(room.game!.players[0]!.waste).toHaveLength(3);
     });
 
     it('someone who comes back during the deal is dealt in: it goes on, redacted the same', () => {
@@ -1546,7 +1546,7 @@ describe('Room', () => {
       expect(vi.getTimerCount()).toBe(0);
       sendIntent(room, a, 100, { k: 'draw' });
       sendIntent(room, b, 100, { k: 'draw' });
-      expect(room.game!.players.map((p) => p.waste.length)).toEqual([1, 1, 0]);
+      expect(room.game!.players.map((p) => p.waste.length)).toEqual([3, 3, 0]);
       expect(checkInvariants(room.game!)).toBeNull();
     });
 

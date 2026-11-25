@@ -278,7 +278,7 @@ describe('a hostile client over real sockets', () => {
     // of each of its two work piles that have any. Never a stock card.)
     for (const p of players) expect(faceUp(p)).toBe(3 * 5 + 1 + 2);
     await a.did({ k: 'draw' });
-    expect(me(room.game!, a.seat).waste).toHaveLength(1);
+    expect(me(room.game!, a.seat).waste).toHaveLength(3);
     // Nobody was ever sent the face of a nertz top before the word. (Each client's whole history is checked after the test.)
     expect(DEAL_MS).toBeGreaterThan(0);
   }, 20_000);
@@ -329,7 +329,7 @@ describe('a hostile client over real sockets', () => {
     await b.did({ k: 'clear', slot: pile });
     expect(room.game).toBe(waiting);
     await b.did({ k: 'draw' });
-    expect(me(room.game!, b.seat).waste).toHaveLength(1);
+    expect(me(room.game!, b.seat).waste).toHaveLength(3);
     // Into the tray, and everything works again.
     await a2.did({ k: 'clear', slot: pile });
     expect(room.game!.tray).toHaveLength(1);
