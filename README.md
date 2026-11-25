@@ -464,6 +464,9 @@ text and voice chat, and between rounds the table rules. Nobody else sees them t
 Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
 bot's spoken "Nertz", the reshuffle), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
 opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
+Under them your microphone, as voice chat sends it: **Mic** (its level, up to 200%) and **Gate** (a noise gate: anything
+quieter is not sent; off at first). Each opens its slider the same way, and while you are in voice the gate's has how loud
+you are now under it, green where it would be sent. The same row is at the foot of the voice slip (Chat.tsx).
 Reduce motion follows the system setting until you touch it, then overrules it either way.
 **Card faces** (`Prefs.faces`: **Owner's**, the default, **Mine** or **Big print**) is whose faces every card has on your
 screen: each card in its owner's style, every card in the style you chose for your own deck, or every card in Big print
@@ -644,7 +647,9 @@ hold a card it fades and lets the pointer through. Keys typed in the panel are n
   (`{ t: 'chat' }`), and the kept history is sent once to every connection that sits down, reconnects included.
 - **Voice chat.** Opt-in: the headset opens a slip of who is in voice, and the microphone is asked for only when you
   press **Join** on it. Then: **Mute**, **Leave** (in Join's place; the slip stays open), a list of who is in voice and
-  who is muted, and a ring around whoever is making sound. It is a WebRTC mesh, audio only:
+  who is muted, a ring around whoever is making sound (your own goes by what is sent), and your microphone's level and
+  gate. The microphone goes out through a Web Audio gain and a gate (an AudioWorklet) in the context made at Join; where
+  there is no running context it goes out as it is. It is a WebRTC mesh, audio only:
   every pair of players in voice has one direct peer connection (15 for a full table of 6). Offers, answers and ICE
   candidates go through the game's websocket (`{ t: 'signal', to: seat }`); the server forwards them only between two
   players of the same table who have both joined voice, stamps the sender's seat, and never looks inside. The player in
