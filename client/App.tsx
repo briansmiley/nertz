@@ -69,12 +69,29 @@ function useBack(status: Status): boolean {
 }
 
 /**
+ * A card at the top of the window saying what the line is doing (`say`). Over the chat bar and the menu on a phone, so
+ * its × puts it away: until it has something else to say.
+ */
+function Toast({ say, className, children }: { say: string; className: string; children: ReactNode }) {
+  const [shut, setShut] = useState<string | null>(null);
+  if (shut === say) return null;
+  return (
+    <p className={`banner net ${className}`} role="status">
+      {children}
+      <button type="button" className="shut" aria-label="Dismiss" onClick={() => setShut(say)}>
+        ×
+      </button>
+    </p>
+  );
+}
+
+/**
  * The line to the table, lost and then back: one card, tipped while the line is down, that sets itself straight with the
  * mended robot when it is back. Both robots and both words are in it at once, one of each shown, so it keeps its size.
  */
 function Line({ back }: { back: boolean }) {
   return (
-    <p className={back ? 'banner net line mended' : 'banner net line'} role="status">
+    <Toast say={back ? 'back' : 'lost'} className={back ? 'line mended' : 'line'}>
       <span className="stack robots">
         <RobotBroken />
         <RobotFixed />
@@ -83,7 +100,7 @@ function Line({ back }: { back: boolean }) {
         <span>Connection lost. Reconnecting…</span>
         <span>Reconnected!</span>
       </span>
-    </p>
+    </Toast>
   );
 }
 
@@ -139,13 +156,13 @@ export function App() {
       <Ping />
       {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
         // (Mid-round the card over the paused table says it: the update paused the round.)
-        <p className="banner net">
+        <Toast say="updating" className="updating">
           <Riffle />
           <span>
             Updating the game
             <Dots />
           </span>
-        </p>
+        </Toast>
       ) : net.status === 'reconnecting' || back ? (
         <Line back={back} />
       ) : (

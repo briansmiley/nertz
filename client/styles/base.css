@@ -60,8 +60,11 @@ input {
   font: inherit;
 }
 
+/* (No phone's own mark over a tapped button: a box round the drawn icons, which are bare; every button shows its own
+   press.) */
 button {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 :focus-visible {
@@ -111,7 +114,7 @@ button {
 
 /* The line to the server, lost or back: not the ink pill but a card lying on the felt (the face's colour, corners and
    shadow, cards.css; its edge firmer, so it holds on the lobby's pad too), the robot climbing out over its top edge.
-   On a phone it lies below the chat bar and the menu rather than between them. */
+   On a phone it lies over the chat bar and the menu: its × (`shut`) puts it away. */
 .banner.net {
   top: 24px;
   display: flex;
@@ -126,12 +129,6 @@ button {
     0 0 0 1.5px var(--ink-soft),
     0 1.5px 2.5px rgba(0, 0, 0, 0.32),
     0 8px 18px rgba(0, 0, 0, 0.28);
-}
-
-@media (max-width: 520px) {
-  .banner.net {
-    top: 50px;
-  }
 }
 
 /* The line lost, and then back (App.tsx `Line`): the card lies tipped while it is down and swings itself straight when
@@ -170,6 +167,26 @@ button {
 
 .banner.line.mended .stack > :nth-child(2) {
   visibility: visible;
+}
+
+/* The connection card's ×: small and quiet, in its top right corner. */
+.banner .shut {
+  flex: none;
+  align-self: flex-start;
+  width: 24px;
+  height: 24px;
+  margin: -8px -14px 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-soft);
+  font: 400 20px/24px var(--ui);
+}
+
+.banner .shut:hover {
+  background: rgba(27, 39, 51, 0.08);
+  color: var(--ink);
 }
 
 /* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */
