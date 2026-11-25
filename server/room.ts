@@ -168,6 +168,8 @@ export interface Kept {
   lastRound: RoundResult | null;
   settings: TableSettings;
   capacity: number;
+  /** Only on a private table. One kept before there were any has none and comes back public, so `KEPT` stands. */
+  unlisted?: boolean;
   social: KeptSocial;
   snipes: { by: number; of: number; card: string }[];
   sitting: string;
@@ -211,6 +213,8 @@ export class Room {
   rev = 0;
   /** When the last of those changes was (ms epoch). */
   changedAt = Date.now();
+  /** When the table was opened, or brought back by a server started anew (ms epoch). */
+  readonly openedAt = Date.now();
   /** The authoritative round, every card known. Null in the lobby; kept through 'results'. Changed only from in here. */
   get game(): GameState | null {
     return this.state;
@@ -220,6 +224,8 @@ export class Room {
   settings: TableSettings = { ...DEFAULT_SETTINGS };
   /** How many seats the table has: the host's to set, between rounds (`resize`). See `seats`. */
   private capacity = MAX_PLAYERS;
+  /** Kept off the home page's list of tables (server/index.ts `/tables`): the host's to set, at any time (`unlist`). Its code still lets anyone in. */
+  unlisted = false;
   /** Text chat, voice presence and the host's two chat switches. Never part of a snapshot. */
   readonly social = new Social();
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
@@ -355,6 +361,8 @@ export class Room {
         return this.configure(player, msg.patch);
       case 'seats':
         return this.resize(player, msg.step);
+      case 'unlisted':
+        return this.unlist(player, msg.on);
       case 'intent':
         return void this.intent(player, msg.seq, msg.intent);
       case 'drag':
@@ -505,6 +513,7 @@ export class Room {
       lastRound: this.lastRound,
       settings: this.settings,
       capacity: this.capacity,
+      ...(this.unlisted ? { unlisted: true } : {}),
       snipes: this.snipes,
       sitting: this.sitting,
       queue: this.queue,
@@ -533,6 +542,7 @@ export class Room {
     room.lastRound = kept.lastRound;
     room.settings = kept.settings;
     room.capacity = kept.capacity;
+    room.unlisted = kept.unlisted ?? false;
     room.social.restore(kept.social);
     room.snipes = kept.snipes;
     room.sitting = kept.sitting;
@@ -600,6 +610,13 @@ export class Room {
     if (to === this.capacity) return;
     this.capacity = to;
     this.fill();
+    this.changed();
+  }
+
+  /** On or off the home page's list: for whoever may deal, like the seats, but at any time, a round on or not. */
+  private unlist(player: Player, on: boolean): void {
+    if (player !== this.dealer || on === this.unlisted) return;
+    this.unlisted = on;
     this.changed();
   }
 
@@ -1345,6 +1362,7 @@ export class Room {
       })),
       settings: this.settings,
       seats: this.seats,
+      unlisted: this.unlisted,
       game,
       timerMs: this.roundTimer ? Math.max(0, this.roundTimer.endsAt - Date.now()) : null,
       clock: this.played === null ? null : { ms: this.playedMs(), running: this.playingSince !== null },

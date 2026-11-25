@@ -33,17 +33,27 @@ export interface PlayerState {
   work: WorkPile[];
   /** Face-down. */
   stock: AnyCard[];
-  /** Face-up; only the top is playable, and not while a group is in flight onto it (`draw`). */
+  /** Face-up; only the top is playable. While a group is in flight onto it (`draw`) that is still the card the group is covering, and taking it calls the draw off. */
   waste: AnyCard[];
   /**
    * The group in flight, or null: no draw under way. A `draw` puts its `n` cards on top of the waste in one step and
    * says when it was made (`at`, on the round's clock: `RoomView.clock`). They count as dealt one at a time,
    * STOCK_CARD_MS apart, and turned up together one step after the last: so the draw is over, and its top card can be
-   * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Each window deals the cards out
+   * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Until then the card under the group
+   * can be taken (`hold`, `move`), which calls the draw off: the group goes back on the stock as it came off, and
+   * there is no draw under way. Each window deals the cards out
    * on its own clock. `off` is only ever on screen: how many of the group this window has dealt off the stock so
-   * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off.
+   * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off. `down`, on screen
+   * only too: the group is down here and gliding onto the waste, its top already playable, while the card it is
+   * covering, still partly in sight, can yet be taken.
    */
-  draw: { n: number; at: number; off?: number } | null;
+  draw: { n: number; at: number; off?: number; down?: true } | null;
+  /**
+   * The latest draw once its group is down (`landed`): when it was made, how many cards, and the top one. Till it is
+   * called off or another draw is made. A take its window made with the group still in flight (`callsOff`) can call
+   * it off yet, for a moment, if the group lies untouched on the waste (the engine's `callable`).
+   */
+  drew?: { n: number; at: number; top: string };
   stuck: boolean;
   /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
@@ -135,7 +145,7 @@ export type Intent =
    * what lies there now (a card they thought had left came back), the move is
    * refused rather than carrying cards that were never picked up.
    */
-  | { k: 'move'; cardId: string; count: number; to: PileRef }
+  | { k: 'move'; cardId: string; count: number; to: PileRef; callsOff?: number }
   /**
    * A group of three off the stock, all at once (`PlayerState.draw`). Refused
    * while a group is in flight.
@@ -154,8 +164,12 @@ export type Intent =
   | { k: 'heard' }
   /** Move the completed pile in `slot` to the tray. Only for the player who placed its King, and the only thing they may do until it is done. */
   | { k: 'clear'; slot: number }
-  /** A drag started on `cardId`. */
-  | { k: 'hold'; cardId: string }
+  /**
+   * A drag started on `cardId`. On it and on a `move`, `callsOff`: the card is the one under the sender's own group,
+   * in flight on its screen, and this is that draw's `at`. Taking it calls the draw off, even if the group is down by
+   * the server's clock by the time it gets there (the engine's `callable`).
+   */
+  | { k: 'hold'; cardId: string; callsOff?: number }
   /** The drag ended without a move. (A move ends the hold by itself, whether it is accepted or refused.) */
   | { k: 'release' };
 
@@ -273,6 +287,8 @@ export interface RoomView {
   /** The table's house rules. Only the host changes them, between rounds. */
   settings: TableSettings;
   seats: Seats;
+  /** The table is kept off the home page's list (and its count): the host's to set, at any time. */
+  unlisted: boolean;
   /**
    * Redacted current round; null in the lobby. Kept through 'results' as the
    * final table (centre slots, tray, hands), so the client can play the

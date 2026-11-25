@@ -144,13 +144,3 @@
 .picker .pile b {
   font-size: 1rem;
 }
-
-/* Settings: the card back while a round is on. Greyed, not to be pressed, and a word as to when. */
-.level.locked .mybacks {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.level.locked .mybacks .mini {
-  transform: rotate(-4deg);
-}

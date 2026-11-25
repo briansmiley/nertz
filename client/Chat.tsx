@@ -1,17 +1,17 @@
 // Chat and voice, in the top-left corner of every screen of a table. Nothing here is a panel over the table: what is
-// said is written on the cloth under the buttons, and "Chat" only adds a line to type in above it. The headset joins
-// voice, and once in it opens a small slip (who is there, mute yourself, leave).
+// said is written on the cloth under the buttons, and "Chat" only adds a line to type in above it. The headset opens a
+// small slip for voice: who is there, and Join; once in, mute yourself and Leave.
 import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour, nameColour } from './cards/Face';
 import { SaidWord, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
-import { Door, Sit, Speaker } from './icons';
+import { Sit, Speaker } from './icons';
 import { useCorners } from './fittings';
 import { kick, sit } from './net';
-import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
-import { joinVoice, toggleMuted, useVoice } from './voice';
+import { PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
+import { joinVoice, leaveVoice, toggleMuted, useVoice } from './voice';
 
 /** How many of the last lines stand under the line you type in. */
 const SHOWN = 8;
@@ -121,8 +121,9 @@ export function Chat({ room }: { room: RoomView }) {
   const at = useCorners(room);
   const wide = (i: number) => ({ minWidth: at.chatParts[i] });
   const voiceAt = mayText ? 1 : 0;
+  const voiceSlip = open === 'voice' && mayVoice;
   // A press anywhere else puts a slip away.
-  const slip = open === 'voice' || open === 'watchers';
+  const slip = voiceSlip || open === 'watchers';
   useEffect(() => {
     if (!slip) return;
     const onDown = (e: PointerEvent) => {
@@ -179,34 +180,19 @@ export function Chat({ room }: { room: RoomView }) {
             {!typing && social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
           </button>
         )}
-        {/* Voice is one press away, and says so: yellow, with how many are in it, while anyone is. */}
-        {mayVoice && !inVoice && (
+        {/* The headset opens the voice slip. Out of voice it beckons while anyone is in it: yellow, with how many. */}
+        {mayVoice && (
           <button
             type="button"
-            className={`mic join${social.inVoice.length ? ' calling' : ''}`}
+            className={`mic${inVoice ? '' : ' join'}${!inVoice && social.inVoice.length ? ' calling' : ''}${inVoice && voice.speaking.includes(room.me) && !voice.muted ? ' speaking' : ''}${voiceSlip ? ' open' : ''}`}
             style={wide(voiceAt)}
-            disabled={voice.status === 'asking'}
-            aria-label={social.inVoice.length ? `Join voice: ${social.inVoice.length} in it` : 'Join voice'}
-            data-tip={social.inVoice.length ? `Join voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}` : 'Join voice'}
-            onClick={() => void joinVoice()}
-          >
-            {headset}
-            {social.inVoice.length > 0 && social.inVoice.length}
-          </button>
-        )}
-        {!inVoice && voice.error && <small className="mic-error">{voice.error}</small>}
-        {inVoice && (
-          <button
-            type="button"
-            className={`mic${voice.speaking.includes(room.me) && !voice.muted ? ' speaking' : ''}${open === 'voice' ? ' open' : ''}`}
-            style={wide(voiceAt)}
-            aria-expanded={open === 'voice'}
-            aria-label={`In voice: ${social.inVoice.length}. Who is there, mute yourself, leave`}
-            data-tip={`In voice: ${social.inVoice.map((m) => name(m.id)).join(', ')}`}
+            aria-expanded={voiceSlip}
+            aria-label={inVoice ? `In voice: ${social.inVoice.length}. Who is there, mute yourself, leave` : `Open voice${social.inVoice.length ? `: ${social.inVoice.length} in it` : ''}`}
+            data-tip={social.inVoice.length ? `${inVoice ? 'In voice' : 'Open voice'}: ${social.inVoice.map((m) => name(m.id)).join(', ')}` : 'Open voice'}
             onClick={() => toggle('voice')}
           >
             {headset}
-            {social.inVoice.length}
+            {(inVoice || social.inVoice.length > 0) && social.inVoice.length}
           </button>
         )}
         {mute}
@@ -259,41 +245,51 @@ export function Chat({ room }: { room: RoomView }) {
         </section>
       )}
 
-      {open === 'voice' && (
+      {/* Join where Leave will be; leaving keeps the slip open, Join back in its place. */}
+      {voiceSlip && (
         <section className="voice-slip" aria-label="Voice">
           <header>
             <h3>Voice</h3>
-            <button type="button" className="out" aria-label="Leave voice" data-tip="Leave voice" onClick={() => outOfVoice()}>
-              <Door />
-            </button>
+            {inVoice ? (
+              <button type="button" className="go leave" onClick={() => leaveVoice()}>
+                Leave
+              </button>
+            ) : (
+              <button type="button" className="go join" disabled={voice.status === 'asking'} onClick={() => void joinVoice()}>
+                Join
+              </button>
+            )}
           </header>
-          <ul>
-            {social.inVoice.map((m) => {
-              const me = m.id === room.me;
-              const off = me ? voice.muted : m.muted;
-              const at = seat(m.id);
-              return (
-                <li key={m.id} className={`${voice.speaking.includes(m.id) && !off ? 'speaking' : ''}${me ? ' you' : ''}`}>
-                  <i style={{ background: at === null ? undefined : backColour(at) }} />
-                  {name(m.id)}
-                  {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
-                  {me ? (
-                    <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} data-tip={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
-                      {mic(off)}
-                    </button>
-                  ) : (
-                    off && (
-                      <span className="mic-at" role="img" aria-label="muted" data-tip="Muted">
-                        {mic(true)}
-                      </span>
-                    )
-                  )}
-                  {!me && voice.links[m.id] === 'failed' && <small className="bad" data-tip="Your two networks cannot reach each other directly">can't connect</small>}
-                  {!me && voice.links[m.id] === 'connecting' && <small>connecting…</small>}
-                </li>
-              );
-            })}
-          </ul>
+          {!inVoice && voice.error && <small className="mic-error">{voice.error}</small>}
+          {social.inVoice.length > 0 && (
+            <ul>
+              {social.inVoice.map((m) => {
+                const me = m.id === room.me;
+                const off = me ? voice.muted : m.muted;
+                const at = seat(m.id);
+                return (
+                  <li key={m.id} className={`${voice.speaking.includes(m.id) && !off ? 'speaking' : ''}${me ? ' you' : ''}`}>
+                    <i style={{ background: at === null ? undefined : backColour(at) }} />
+                    {name(m.id)}
+                    {/* Beside your own name the microphone is a button: it mutes you. Beside another's it only says that they are muted. */}
+                    {me ? (
+                      <button type="button" className={`mic-at${off ? ' on' : ''}`} aria-pressed={off} aria-label={off ? 'Unmute yourself' : 'Mute yourself'} data-tip={`${off ? 'Unmute yourself' : 'Mute yourself'}${key ? ` (${key})` : ''}`} onClick={() => toggleMuted()}>
+                        {mic(off)}
+                      </button>
+                    ) : (
+                      off && (
+                        <span className="mic-at" role="img" aria-label="muted" data-tip="Muted">
+                          {mic(true)}
+                        </span>
+                      )
+                    )}
+                    {!me && voice.links[m.id] === 'failed' && <small className="bad" data-tip="Your two networks cannot reach each other directly">can't connect</small>}
+                    {!me && voice.links[m.id] === 'connecting' && <small>connecting…</small>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
       )}
 

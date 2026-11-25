@@ -2,22 +2,23 @@
 // - `Corner`: on every screen, bottom left, one button (☰) and the menu it opens
 //   (Menu.tsx): your settings at the top (`YourSettings`: sound, motion, keys),
 //   and under them sound on or off (also a key of your choosing, M at first),
-//   what can be done to the table during a round (actions.ts), and the way to
-//   feedback. While the sound is off, a small badge in the chat bar (Chat.tsx)
+//   what can be done to the table during a round (actions.ts), and on a phone
+//   the way to feedback (elsewhere it has a button of its own, bottom right).
+//   While the sound is off, a small badge in the chat bar (Chat.tsx)
 //   says so, and turns it back on. The score sheet's gear opens the same menu.
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
-// - `TableRules`: the house rules on the lobby sheet, for everyone to read.
+// - `TableRules`: the seats and house rules on the lobby sheet, for everyone to read.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx), and the
 // connection banner's robots (`RobotBroken`, `RobotFixed`).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { setSeats, setTableSettings } from './net';
+import { setSeats, setTableSettings, setUnlisted } from './net';
 import { pauseKeyAction, perform, tableActions } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
-import { Gear, MenuIcon } from './icons';
+import { Bug, Gear, MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
@@ -329,32 +330,58 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const actions = room ? tableActions(room) : [];
   useDismiss(root, !!open, () => openCorner(null));
 
-  /** Where the button stands (layout.ts: the table keeps clear of exactly that). */
+  /** Where the buttons stand (layout.ts: the table keeps clear of exactly that). */
   const at = useCorners(room);
+  /** Feedback has a button of its own, bottom right; where there is no room for one (a phone), the menu leads to it. */
+  const own = at.feedback;
+  /** The menu, or a slip it led to, is up: the menu's button is lit, and pressed puts it away. */
+  const menuUp = !!open && !(own && open === 'feedback');
+  const feedback = open === 'feedback' && <FeedbackSlip room={room} back={own ? undefined : () => openCorner('menu')} close={() => openCorner(null)} />;
   return (
-    <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} ref={root} style={{ left: at.knobs.x, top: at.knobs.y }}>
-      <button
-        type="button"
-        className={`knob${open ? ' on' : ''}`}
-        aria-expanded={!!open}
-        aria-controls="menu"
-        aria-label="Menu"
-        data-tip="Menu"
-        onClick={(e) => {
-          openCorner(open ? null : 'menu');
-          e.currentTarget.blur(); // keep Space for drawing
-        }}
-      >
-        <MenuIcon />
-        <SaidWord said={said} />
-      </button>
-      {open === 'menu' && (
-        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onUsage={admin ? () => openCorner('usage') : undefined} onDone={() => openCorner(null)}>
-          <YourSettings room={room} prefs={prefs} />
-        </Menu>
+    // (One root for both: a press on either is inside, and leaves the other's slip to it.)
+    <div className="corners" ref={root}>
+      <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} style={{ left: at.knobs.x, top: at.knobs.y }}>
+        <button
+          type="button"
+          className={`knob${menuUp ? ' on' : ''}`}
+          aria-expanded={menuUp}
+          aria-controls="menu"
+          aria-label="Menu"
+          data-tip="Menu"
+          onClick={(e) => {
+            openCorner(menuUp ? null : 'menu');
+            e.currentTarget.blur(); // keep Space for drawing
+          }}
+        >
+          <MenuIcon />
+          <SaidWord said={said} />
+        </button>
+        {open === 'menu' && (
+          <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={own ? undefined : () => openCorner('feedback')} onUsage={admin ? () => openCorner('usage') : undefined} onDone={() => openCorner(null)}>
+            <YourSettings room={room} prefs={prefs} />
+          </Menu>
+        )}
+        {!own && feedback}
+        {open === 'usage' && admin && <UsageSlip back={() => openCorner('menu')} />}
+      </div>
+      {own && (
+        <div className="corner right" style={{ left: own.x, top: own.y }}>
+          <button
+            type="button"
+            className={`icon${open === 'feedback' ? ' on' : ''}`}
+            aria-expanded={open === 'feedback'}
+            aria-label="Feedback"
+            data-tip="Feedback"
+            onClick={(e) => {
+              openCorner(open === 'feedback' ? null : 'feedback');
+              e.currentTarget.blur(); // keep Space for drawing
+            }}
+          >
+            <Bug />
+          </button>
+          {feedback}
+        </div>
       )}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
-      {open === 'usage' && admin && <UsageSlip back={() => openCorner('menu')} />}
     </div>
   );
 }
@@ -379,10 +406,6 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [keying]);
-
-  /** May the cards' style be changed now? Not once a round is under way (the count, and play). */
-  const stage = room?.game?.status.at;
-  const styling = stage !== 'countdown' && stage !== 'play' && stage !== 'grace';
 
   return (
     <section className="yours" aria-labelledby="your-settings">
@@ -429,10 +452,10 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           ))}
         </span>
       </div>
-      {/* Not while a round is being played (from the count on): cards changing under people's hands is untidy. Before Start, and between rounds, as you like. */}
-      <div className={`level${styling ? '' : ' locked'}`}>
+      {/* Any time, a round or not: everyone sees your cards in the new back at once. */}
+      <div className="level">
         <span>Card back</span>
-        <YourBacks colour={BACKS[0]} locked={!styling} />
+        <YourBacks colour={BACKS[0]} />
       </div>
       {/* Keys: only where there is a keyboard. */}
       {!touchOnly() && (
@@ -451,7 +474,7 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           })}
         </div>
       )}
-      {/* Whoever hosts: whether this table has text chat and voice at all, and between rounds its house rules. */}
+      {/* Whoever hosts: whether this table has text chat and voice at all, whether it is listed, and between rounds its house rules. */}
       {room && hosting && (
         <div className="end-vote">
           <h3>Host</h3>
@@ -470,10 +493,15 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
             </label>
             <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
           </div>
+          {/* (Between rounds it is with the house rules below; mid-round, when they are hidden, here on its own.) */}
+          {room.phase === 'playing' && <Private room={room} mine />}
           {room.phase !== 'playing' && (
-            <div className="rules">
-              <Rules room={room} mine />
-            </div>
+            <>
+              <SeatCount room={room} mine />
+              <div className="rules">
+                <Rules room={room} mine />
+              </div>
+            </>
           )}
         </div>
       )}
@@ -482,11 +510,14 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
   );
 }
 
-/** How many may sit at the table: a number between a minus and a plus. Each tap is one seat more or fewer; the server keeps it within its bounds. */
+/**
+ * How many may sit at the table: a number between a minus and a plus. Each tap is one seat more or fewer; the server keeps it within its bounds.
+ * Not a house rule, so it sits above them. Set by whoever hosts (`mine`); greyed for everyone else, as the rules are.
+ */
 function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
   const n = room.seats.of;
   return (
-    <div className="stepper">
+    <div className={`stepper${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set this.'}>
       <span id="seats-label">Seats</span>
       <span role="group" aria-labelledby="seats-label">
         <button type="button" aria-label="Fewer seats" disabled={!mine || n <= fewestSeats(room.seats)} onClick={() => setSeats(-1)}>
@@ -502,7 +533,7 @@ function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
 }
 
 /**
- * The table's house rules: one row per option of `TableSettings` that the host is offered, and the number of seats.
+ * The table's house rules: one row per option of `TableSettings` that the host is offered, and whether the table is private.
  * Set by whoever hosts (`mine`), between rounds; read by everyone else.
  */
 function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
@@ -515,18 +546,33 @@ function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
           Tap to play <Info>Allows tapping a card then its destination, without dragging</Info>
         </span>
       </label>
-      <SeatCount room={room} mine={mine} />
+      <Private room={room} mine={mine} />
     </>
   );
 }
 
-/** The house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
+/** Whether the table is left off the open tables list. Unlike the house rules it can be switched mid-round too. */
+function Private({ room, mine }: { room: RoomView; mine: boolean }) {
+  return (
+    <label className="check">
+      <input type="checkbox" checked={room.unlisted} disabled={!mine} onChange={(e) => setUnlisted(e.target.checked)} />
+      <span>
+        Private table <Info>Left off the open tables list. Anyone with the code can still join.</Info>
+      </span>
+    </label>
+  );
+}
+
+/** The seats and house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
 export function TableRules({ room }: { room: RoomView }) {
   const mine = room.players.find((p) => p.isHost)?.id === room.me;
   return (
-    <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'}>
-      <legend>Table rules</legend>
-      <Rules room={room} mine={mine} />
-    </fieldset>
+    <>
+      <SeatCount room={room} mine={mine} />
+      <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'}>
+        <legend>Table rules</legend>
+        <Rules room={room} mine={mine} />
+      </fieldset>
+    </>
   );
 }

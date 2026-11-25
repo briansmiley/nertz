@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyIntent, deal, finishDeal, RESHUFFLES_BEFORE_VOTE, resolveEndVote, seatedPeople, startCountdown } from '../shared/engine';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 import type { GameState, PlayerView, RoomView } from '../shared/types';
-import { ballot, canPause, canRedeal, canReset, canResume, pauseKeyAction, standing, tableActions } from './actions';
+import { ballot, canPause, canRedeal, canReset, canResume, openAction, pauseKeyAction, standing, tableActions } from './actions';
 
 const live = inPlay([0, 1, 2], lcg(7));
 const voting = (g: GameState, seat: number): GameState => {
@@ -24,10 +24,21 @@ describe("the table's actions", () => {
     expect(tableActions(roomOf(live, 0)).filter((a) => a.sure).map((a) => a.id)).toEqual(['redeal', 'leave']);
   });
 
-  it('before Start there is nothing to pause or to end: only whoever deals can deal again, and anyone can stand up or leave', () => {
-    const ready = finishDeal(deal([0, 1, 2], lcg(7)));
-    expect(ids(roomOf(ready, 1))).toEqual(['stand', 'leave']);
-    expect(ids(roomOf(ready, 0))).toEqual(['redeal', 'stand', 'leave']);
+  it('before Start, Pause and End round are coming: listed for whoever is dealt in, not yet to be pressed', () => {
+    const dealt = deal([0, 1, 2], lcg(7));
+    for (const game of [dealt, finishDeal(dealt), startCountdown(finishDeal(dealt))]) {
+      expect(ids(roomOf(game, 1))).toEqual(['pause', 'vote', 'stand', 'leave']);
+      expect(ids(roomOf(game, 0))).toEqual(['pause', 'vote', 'redeal', 'stand', 'leave']);
+      expect(tableActions(roomOf(game, 1)).filter((a) => a.coming).map((a) => a.id)).toEqual(['pause', 'vote']);
+      expect(openAction(roomOf(game, 1), 'pause')).toBeUndefined();
+      expect(openAction(roomOf(game, 1), 'leave')).toBeDefined();
+    }
+    // Live, they open; someone watching, or standing up before Start, has neither coming.
+    expect(tableActions(roomOf(live, 1)).some((a) => a.coming)).toBe(false);
+    const ready = roomOf(finishDeal(dealt), 1);
+    const watcher: PlayerView = { ...ready.players[1]!, id: 9, seat: null, name: 'w', isHost: false };
+    expect(ids({ ...ready, me: 9, seat: null, players: [...ready.players, watcher] })).toEqual(['leave']);
+    expect(ids(withPlayer(ready, 1, { standing: true }))).not.toContain('pause');
   });
 
   it('someone watching can only leave', () => {

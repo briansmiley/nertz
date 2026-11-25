@@ -64,27 +64,23 @@ export function YourBackPicker({ colour, onClose }: { colour: string; onClose: (
 }
 
 /** Your usual backs, as a card to press: a picture of what you have (a question mark, for a back by lot) and, unless only the card is wanted (`compact`), its name; pressed, the sheet of backs to choose another. */
-/** `locked`: not to be changed just now (a round is being played): the card is greyed and cannot be pressed, and a sheet that was open is put away. */
-export function YourBacks({ colour, compact, locked }: { colour: string; compact?: boolean; locked?: boolean }) {
+export function YourBacks({ colour, compact }: { colour: string; compact?: boolean }) {
   const prefs = usePrefs();
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (locked) setOpen(false);
-  }, [locked]);
   return (
     <>
-      <button type="button" className={`mybacks${compact ? ' compact' : ''}`} disabled={locked} aria-label="Choose your card backs" data-tip={locked ? 'You can change card styles between rounds' : 'Your card backs: change them'} onClick={() => setOpen(true)}>
+      <button type="button" className={`mybacks${compact ? ' compact' : ''}`} aria-label="Choose your card backs" data-tip="Your card backs: change them" onClick={() => setOpen(true)}>
         <span className="mini">
           <span {...backOf(colour, prefs.random ? null : prefs.back, prefs.bare, true)} />
         </span>
         {!compact && (
           <span className="what">
             <b>{prefs.random ? (prefs.random === 'all' ? 'Random back' : `Random: ${prefs.random}`) : CARD_BACKS[prefs.back]}</b>
-            <small>{locked ? 'Between rounds' : 'Change'}</small>
+            <small>Change</small>
           </span>
         )}
       </button>
-      {open && !locked && <YourBackPicker colour={colour} onClose={() => setOpen(false)} />}
+      {open && <YourBackPicker colour={colour} onClose={() => setOpen(false)} />}
     </>
   );
 }

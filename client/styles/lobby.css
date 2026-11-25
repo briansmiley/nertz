@@ -326,6 +326,17 @@ button.code.copy small {
   font-size: 1.2rem;
 }
 
+/* Someone watching is followed from their name as someone sitting is: the figure close by it, and level with it. */
+.watching .follow {
+  margin-left: 0.15rem;
+  vertical-align: middle;
+}
+
+.watching .follow svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* The lobby: a dot of your colour beside the card back; behind it, the colours still free. */
 .colour {
   position: relative;
@@ -504,6 +515,17 @@ button.code.copy small {
   .pad.lobby > .top .pop {
     top: calc(100% + 8px);
     bottom: auto;
+  }
+
+  /* Seats, then the rules on the same line, so the deal button stays above the fold. */
+  .pad.lobby > .stepper {
+    grid-column: 1;
+    align-self: end;
+  }
+
+  .pad.lobby > fieldset.rules {
+    grid-column: 2 / -1;
+    align-self: end;
   }
 
   .over > .pad.lobby {

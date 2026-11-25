@@ -43,15 +43,36 @@
   stroke: currentColor;
 }
 
-/* What to do, across the foot under a rule: a round button each, its name a tooltip. */
+/* What to do, across the foot under a rule, a button each, its name a tooltip: the table's on a line of their own, and
+   under them, ruled off, sound and the rest of yours from the left and leaving at the far right. */
 .acts {
-  display: flex;
   flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.55rem;
-  padding: 0.75rem 0.9rem 0.85rem;
+  padding: 0 0.9rem;
   border-top: 1px solid var(--rule);
+}
+
+.acts .line {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.75rem 0 0.85rem;
+}
+
+.acts .line + .line {
+  border-top: 1px solid var(--rule);
+}
+
+.acts .end {
+  display: flex;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+/* (A phone on its side is low: the two lines are closer, to leave the settings what height there is.) */
+@media (orientation: landscape) and (max-height: 499px) {
+  .acts .line {
+    padding: 0.4rem 0 0.45rem;
+  }
 }
 
 .acts .icon {

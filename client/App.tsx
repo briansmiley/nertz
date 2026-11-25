@@ -18,7 +18,7 @@ import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
-import { press, tableActions, type ActionId } from './actions';
+import { openAction, press, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt, type Status } from './net';
 import { Corner, Pop, Robot, RobotBroken, RobotFixed, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, SignInDoor, Sit } from './icons';
@@ -393,7 +393,8 @@ function Watching({ room, butYou }: { room: RoomView; butYou?: boolean }) {
         <small>{label}</small>
         {them.map((p) => (
           <span key={p.id} className={p.id === room.me ? 'you' : ''}>
-            {p.name}
+            <Named who={p}>{p.name}</Named>
+            {p.handle && <Follow handle={p.handle} name={p.name} small />}
             {!p.queued && (p.id === room.me || host) && (
               <button type="button" className="sit seat-art" aria-label={p.id === room.me ? 'Take a seat' : `Seat ${p.name}`} data-tip={p.id === room.me ? 'Take a seat' : `Seat ${p.name}`} onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
                 <Sit />
@@ -419,7 +420,7 @@ function Watching({ room, butYou }: { room: RoomView; butYou?: boolean }) {
 
 /** One of the table's actions (actions.ts) as an icon among the sheet's tools, while it is open to you. */
 function Act({ id, room }: { id: ActionId; room: RoomView }) {
-  const a = tableActions(room).find((t) => t.id === id);
+  const a = openAction(room, id);
   if (!a) return null;
   const Icon = ICONS[id];
   return (

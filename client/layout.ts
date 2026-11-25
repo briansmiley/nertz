@@ -441,7 +441,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // hand, as with real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just
   // above the stock, not quite square, so three separate cards are seen to be pulled. The complete group is held
   // there a beat (the last step), then lands on the waste, every card turning over as it goes, the last on top.
-  const lifted = p.draw ? (p.draw.off ?? p.draw.n) : 0;
+  const lifted = p.draw && !p.draw.down ? (p.draw.off ?? p.draw.n) : 0;
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
@@ -662,8 +662,8 @@ export const KNOB = { size: 36 } as const;
 const CLOCK = { above: { w: 58, h: 22 }, beside: { w: 44, h: 16 } } as const;
 /** "I'm stuck" and the vote: as small pills (`h` high, `gap` apart, each as wide as its longest wording; under `min` the wording is cut short; never lower than `low`) or, where there is room under your stock, full buttons. */
 export const PILL = { stuck: 124, vote: 112, h: 32, gap: 6, min: 84, low: 24, full: { h: 39, gap: 8, min: 150, drop: 16 } } as const;
-/** Your own line: one line (`h` high, no narrower than `min`), or under your nertz pile in full, two lines of it (`full`): your name, and the table. */
-const NAME = { h: 20, min: 48, max: 150, full: { h: 56, least: 44, w: 170, min: 120, drop: 14 } } as const;
+/** Your own line, `h` high: as wide as what it says (no narrower than `min`), or in full under your nertz pile (`full`: `w` wide, no narrower than its `min`). */
+const NAME = { h: 20, min: 48, max: 150, full: { w: 170, min: 120, drop: 14 } } as const;
 
 export interface Corners {
   shape: Shape;
@@ -672,6 +672,8 @@ export interface Corners {
   chatParts: number[];
   /** The menu's button: bottom left, or at the right of the bar across the top of an upright phone. */
   knobs: Rect;
+  /** The way to feedback, on its own: bottom right, as large as the menu's button. Null on a phone, where it is in the menu. */
+  feedback: Rect | null;
   /** The places the round's clock may stand, the best first: the table takes the first with nothing else there that leaves your line and the pills whole (`Layout.clock`). `small`: in small figures. */
   clocks: ClockAt[];
 }
@@ -686,8 +688,8 @@ export interface ClockAt extends Rect {
  * Upright, both are in the bar across the top, the chat's buttons from the left and the menu's from the right. When
  * the bar is too narrow for the chat's as they are there (larger, for a thumb), they are no larger than elsewhere, and
  * narrower still they are squeezed; the clock stands between them, by the menu's. Otherwise the chat is top left and the menu's button
- * bottom left; the clock would stand in line after that, or else above it (where your hand or your line is in the way
- * after it), or else after the chat's buttons.
+ * bottom left, and feedback's bottom right; the clock would stand in line after the menu's, or else above it (where
+ * your hand or your line is in the way after it), or else after the chat's buttons.
  */
 export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit: Fittings = NO_FITTINGS): Corners {
   const H = fullH - keep.b;
@@ -707,17 +709,18 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
     const knobs: Rect = { x: W - r - KNOB.size, y: 7, w: KNOB.size, h: KNOB.size };
     // The clock in the bar, just left of the menu's button, where it is clear of the chat's buttons.
     const bar: ClockAt = { x: knobs.x - 10 - CLOCK.above.w, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
-    return { shape, chat, chatParts, knobs, clocks: fit.clock && chat.x + chat.w + 8 <= bar.x ? [bar] : [] };
+    return { shape, chat, chatParts, knobs, feedback: null, clocks: fit.clock && chat.x + chat.w + 8 <= bar.x ? [bar] : [] };
   }
   const chat: Rect = { x: Math.max(10, keep.l), y: 10, w: across(parts(0)), h: CHAT.h };
   const knobs: Rect = { x: Math.max(12, keep.l), y: H - 10 - KNOB.size, w: KNOB.size, h: KNOB.size };
+  const feedback: Rect | null = shape === 'wide' ? { x: W - Math.max(12, keep.r) - KNOB.size, y: knobs.y, w: KNOB.size, h: KNOB.size } : null;
   const after = { x: knobs.x + knobs.w + 10, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
   const above = { x: knobs.x, y: knobs.y - 8 - CLOCK.above.h, ...CLOCK.above, small: false };
   const beside = { x: chat.x + chat.w + 8, y: chat.y + (chat.h - CLOCK.beside.h) / 2, ...CLOCK.beside, small: true };
-  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? [after, above, beside] : [] };
+  return { shape, chat, chatParts: parts(0), knobs, feedback, clocks: fit.clock ? [after, above, beside] : [] };
 }
 
-/** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
+/** Your own line at the table: where, in full (under your nertz pile) or as wide as what it says, and which end of its place it is written from. */
 export interface NameAt extends Rect {
   full: boolean;
   align: 'start' | 'centre' | 'end';
@@ -754,7 +757,7 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
  *   button (or the clock in line after it); narrower than that, its pills shrink.
  * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
- *   (and the clock above it). Otherwise it is one line, as wide as what it says: tucked under the pile and its count
+ *   (and the clock above it). Otherwise it is as wide as what it says: tucked under the pile and its count
  *   while that is clear of everything and short of your work piles; failing that, level with the button: ending under
  *   the end of the nertz pile, or short of the count on the pile or a pill where one of them is in its row; where that
  *   would put it on the button, right after the button (or the clock in line after it), and only then cut short, by
@@ -801,7 +804,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
   const knobsR = at.knobs.x + at.knobs.w;
   // The end of what stands from the left in the row of the menu's button: the button, and the clock where it is in line after it.
   const rowR = clock && clock.y < at.knobs.y + at.knobs.h && clock.y + clock.h > at.knobs.y ? clock.x + clock.w : knobsR;
-  const right = Math.min(trayX, W - keep.r) - 8; // nothing of this goes further right
+  const right = Math.min(trayX, at.feedback?.x ?? W, W - keep.r) - 8; // nothing of this goes further right
   const boxR = h.x + 7 * ow + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const padBase = base + stockDrop(ow); // the bottom of the stock's lowest card
   /** "I'm stuck" and the vote: the first arrangement that fits. */
@@ -844,16 +847,15 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
 
   const name = ((): NameAt | null => {
     const F = NAME.full;
-    // (In full it reaches down past the menu's button, and the clock above that, which may be the wider of the two.)
+    // (In full it may stand beside the menu's button, or the clock above that, which may be the wider of the two.)
     const wall = Math.max(rowR, clock && clock.y < at.knobs.y ? clock.x + clock.w : 0);
     const wide = Math.min(F.w, nertzR - (wall + 4));
     if (roomy && wide >= F.min) {
-      // As low under the pile as it has always stood, while it fits; in a lower window nearer to it, and its lines closer.
+      // As low under the pile as it has always stood, while it fits; in a lower window nearer to it.
       // (Below the count on the pile, which reaches down past the card's corner.)
       const below = (0.5 + COUNT_OUT) * countD(ow) + 4;
-      const y = base + Math.max(below, base + F.drop + F.h <= H - 2 ? F.drop : 8);
-      const high = Math.min(F.h, H - 4 - y);
-      if (high >= F.least) return { x: nertzR - wide, y, w: wide, h: high, full: true, align: 'end' };
+      const y = base + Math.max(below, base + F.drop + NAME.h <= H - 4 ? F.drop : 8);
+      if (y + NAME.h <= H - 4) return { x: nertzR - wide, y, w: wide, h: NAME.h, full: true, align: 'end' };
     }
     const y = at.knobs.y + (at.knobs.h - NAME.h) / 2;
     const w = clamp(fit.name, NAME.min, NAME.max);
@@ -1093,8 +1095,10 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const gapT = ow * TALL.gap;
   const trayIn = tall ? clamp(W - (handX + 4 * ow + 3 * gapT) - 8, tw * 0.3, tw * TRAY_IN) : clamp(W - (handX + OWN_UNITS * ow) - 18, tw * 0.3, tw * TRAY_IN);
   const trayTop = mine ? ownTop : H - 12 - fh * 2.6;
-  // (Upright: beside the work piles, and no lower: the stock and the waste are under it.)
-  const tray: Rect = { x: W - trayIn, y: trayTop, w: 2 * trayIn, h: (tall && mine ? rowY - 8 : H - 10) - trayTop };
+  const at = corners(W, fullH, keep, fit);
+  // (Upright: beside the work piles, and no lower: the stock and the waste are under it. Otherwise down to the
+  // bottom, or to the way to feedback where that stands under it.)
+  const tray: Rect = { x: W - trayIn, y: trayTop, w: 2 * trayIn, h: (tall && mine ? rowY - 8 : at.feedback ? at.feedback.y - 8 : H - 10) - trayTop };
   const trayH = tray.h;
   // Dropping a finished pile is not a precision job: anywhere from a little short of the tray to past the edge of the screen.
   const trayHit: Rect = { x: tray.x - fw * 0.9, y: tray.y - fh * 0.4, w: fw * 0.9 + tray.w + W, h: tray.h + fh * 0.4 + H };
@@ -1132,7 +1136,6 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     return onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - Math.max(cy + u, ...over));
   });
   // What stands by it is placed first, and the work piles fan down as far as that leaves them room.
-  const at = corners(W, fullH, keep, fit);
   // The clock stands in the first of its places where nothing of the table is (the felt, someone's hand and name, your
   // own cards), and that leaves your line and the pills as whole as they are without it: it gives way, not they.
   const taken = [...opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H })), ...(mine ? [{ x: handX, y: ownTop - 6, w: OWN_UNITS * ow, h: H - ownTop + 6 }] : [])];
@@ -1331,6 +1334,9 @@ export function aloftPath(
  * takes `duration` s to land, and the last is down a beat before the server's
  * DEAL_MS is up and the face-up cards turn over.
  */
+/** How long a card takes to glide to its place (`move`) and to turn over (`flip`), in s; reduced motion has none (client/Table.tsx). */
+export const MOTION = { move: 0.15, flip: 0.16 } as const;
+
 export const DEAL = { lead: 100, work: 1300, pause: 180, stream: 50, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
 
 /**

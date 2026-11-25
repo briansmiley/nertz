@@ -512,7 +512,7 @@ describe('Room with bots', () => {
         if (was.draw) {
           // Its group in flight: a step for each card, and nothing of the bot's own meanwhile. Then the group is down, and it looks.
           expect(gap).toBe(was.draw.n * STOCK_CARD_MS);
-          expect(bot()).toEqual({ ...was, draw: null });
+          expect(bot()).toEqual({ ...was, draw: null, drew: { n: was.draw.n, at: was.draw.at, top: was.waste.at(-1)!.id } });
           groups++;
           gaps.step.push(gap);
         } else {
