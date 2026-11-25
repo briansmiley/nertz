@@ -357,10 +357,11 @@ export function resume(): void {
   try {
     seat = JSON.parse(sessionStorage.getItem(SEAT_KEY) ?? 'null') as typeof seat;
   } catch {
-    return; // storage unavailable (or not ours): home
+    return peek(); // storage unavailable (or not ours): home
   }
   const room = roomInUrl();
   if (room && seat?.room === room && typeof seat.name === 'string') open(room, seat.name, 'rejoining');
+  else peek(); // (the boot this page was served by, to know a later one by)
 }
 
 /** The one way out of a session: leaving, sent away, replaced, refused. */
@@ -376,31 +377,42 @@ function stop(error: string | null): void {
   dealing = freshDealing;
   timed(null);
   show({ status: 'idle', error });
-  void renew(); // (the table may be gone because the server was put up anew: then so is this page)
+  renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
 /**
  * A window left open over a deploy still runs the page it loaded, against a server that has moved on: it draws and
- * plays by the old one. Whenever this window is at no table (it has just left one, or come back to the front), it
- * asks for the page again, and if that names another build than the one running (its `<meta name="build">`, a hash
- * of everything the build serves, icons included: vite.config.ts), loads it. At a table it does so only once it is
- * `back` there from an update the server stopped for: the reload sits back down (`resume`).
+ * plays by the old one. Every socket is first told which start of the server it reached (`welcome`: `boot`), and the
+ * first this page hears is the one it belongs to. Another one since means the server was put up anew, so the page is
+ * loaded again whenever this window is at no table. At a table it is only once it is `back` there from an update the
+ * server stopped for: the reload sits back down (`resume`). The same one again was only the line dropping.
  */
-async function renew(back = false): Promise<void> {
-  const free = (): boolean => back || (!state.room && !session);
-  if (typeof document === 'undefined' || !free()) return;
-  const mine = document.querySelector<HTMLMetaElement>('meta[name="build"]')?.content;
-  if (!mine) return; // not a built page (development)
-  try {
-    const page = await (await fetch('/', { cache: 'no-store' })).text();
-    const theirs = /<meta name="build" content="([^"]+)"/.exec(page)?.[1];
-    if (theirs && theirs !== mine && free()) location.reload();
-  } catch {
-    // offline: next time
-  }
+let boot: string | null = null;
+let stale = false;
+function renew(back = false): void {
+  if (stale && (back || (!state.room && !session))) location.reload();
 }
-// Back in front: at a table, is the line still up (`probe`)? At none, is this still the page the server serves?
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && (probe(), void renew()));
+function booted(id: string): void {
+  boot ??= id;
+  stale ||= id !== boot;
+  renew();
+}
+/** A window at no table holds no socket: it opens one only to hear the server's boot, and closes it on the answer. */
+function peek(): void {
+  if (session || typeof document === 'undefined') return;
+  const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
+  ws.onmessage = (e) => {
+    ws.close();
+    try {
+      const msg = JSON.parse(String(e.data)) as ServerMsg;
+      if (msg.t === 'welcome') booted(msg.boot);
+    } catch {
+      // not the server's: next time
+    }
+  };
+}
+// Back in front: at a table, is the line still up (`probe`)? At none, is this still the server this page was served by?
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && (probe(), peek()));
 
 const social = (msg: SocialServerMsg): void => {
   for (const fn of socialListeners) fn(msg);
@@ -420,8 +432,9 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
-    if (updated) void renew(true);
+    if (updated) renew(true);
   },
+  welcome: (msg) => booted(msg.boot),
   error: (msg) => set({ error: msg.message }),
   snipe: (msg) => {
     for (const fn of snipeListeners) fn(msg);

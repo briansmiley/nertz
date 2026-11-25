@@ -73,9 +73,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The start of the server a page was served by (see 'a page put up anew'). */
+const BOOT = 'registry.fly.io/nertz:deployment-old';
+
 /** A window that opened a table and was taken in: the server's first snapshot has come. */
 async function seated(): Promise<typeof import('./net')> {
+  const before = sockets();
   const net = await reload();
+  if (sockets() > before) FakeSocket.all.pop()!.deliver({ t: 'welcome', boot: BOOT }); // (a page at home listens once for the server's boot)
   net.create('Ada');
   last().open();
   expect(last().sent[0]).toMatchObject({ t: 'create', name: 'Ada' });
@@ -467,99 +472,102 @@ describe("this window's session", () => {
 });
 
 describe('a page put up anew while the window was open', () => {
-  const OLD = '0a1b2c3d4e5f';
-  const NEW = '9f8e7d6c5b4a';
-  /** The page the server serves: the same script whatever changed (an icon in public/ alone), and the build's id. */
-  const served = (build: string) =>
-    `<!doctype html><head><script type="module" crossorigin src="/assets/index-Same1.js"></script><meta name="build" content="${build}"></head>`;
-  let fetched: ReturnType<typeof vi.fn>;
+  /** Two starts of the server: the one this page was served by, and one put up since (an icon alone may have changed). */
+  const OLD = BOOT;
+  const NEW = 'registry.fly.io/nertz:deployment-new';
+  /** The server tells this socket which start of it it reached, as it tells every socket first. */
+  const welcome = (ws: FakeSocket, boot: string) => ws.deliver({ t: 'welcome', boot });
   /** The window comes back to the front. */
   let front: () => void;
-  /** The build of the page this window runs (`mine`; null: the dev server's page), and of the page the server serves now. */
-  function built(mine: string | null, theirs: string | Promise<string>): void {
+  beforeEach(() => {
     const listeners: (() => void)[] = [];
     vi.stubGlobal('document', {
       visibilityState: 'visible',
       documentElement: { classList: { toggle: () => {} } }, // (client/prefs.ts)
-      querySelector: (q: string) => (mine && q === 'meta[name="build"]' ? { content: mine } : null),
       addEventListener: (_: string, fn: () => void) => void listeners.push(fn),
     });
-    fetched = vi.fn(async () => ({ text: async () => served(await theirs) }));
-    vi.stubGlobal('fetch', fetched);
     front = () => listeners.at(-1)!();
+  });
+  /** A page just loaded at home: the socket it opened to hear the server's boot has heard `boot`. */
+  async function home(boot = OLD): Promise<typeof import('./net')> {
+    const net = await reload();
+    expect(sockets()).toBe(1);
+    welcome(last(), boot);
+    expect(last()).toMatchObject({ shut: true, sent: [] }); // it only listened
+    return net;
   }
-  /** Whatever the window set going has run to its end. */
-  const settled = () => new Promise((ok) => setTimeout(ok, 0));
 
   it.each([
     ['leaving it', (net: typeof import('./net')) => net.leave()],
     ['sent away from it', () => last().closed(CLOSE_OVER, 'You were removed from the table by whoever deals.')],
   ])('is loaded once the window is at no table: not while it plays, and on %s', async (_, out) => {
-    built(OLD, NEW);
     const net = await seated();
+    welcome(last(), NEW);
     front();
-    await settled();
-    expect(fetched).not.toHaveBeenCalled(); // at a table: it plays on with the page it has
+    expect(page.reload).not.toHaveBeenCalled(); // at a table: it plays on with the page it has
+    expect(sockets()).toBe(1); // (and does not listen apart: it has its line)
     out(net);
-    await settled();
     expect(page.reload).toHaveBeenCalledTimes(1);
   });
 
   it('is loaded when the window comes back to the front at home, though only something beside the script changed', async () => {
-    built(OLD, NEW);
-    await reload();
+    await home();
     front();
-    await settled();
+    expect(sockets()).toBe(2);
+    welcome(last(), NEW);
+    expect(last().shut).toBe(true);
     expect(page.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('is not loaded when it is the page the window has, and not asked for at all from the dev server', async () => {
-    built(OLD, OLD);
-    await reload();
+  it('is not loaded when the server is the same start: a line that dropped, or a window back at home', async () => {
+    vi.useFakeTimers();
+    const net = await home();
+    net.create('Ada');
+    welcome(last(), OLD);
+    last().open();
+    last().deliver(at('ABCD'));
+    last().closed();
+    await vi.advanceTimersByTimeAsync(300);
+    welcome(last(), OLD);
+    last().open();
+    last().deliver(at('ABCD'));
+    expect(net.current().status).toBe('online');
+    net.leave();
     front();
-    await settled();
-    expect(fetched).toHaveBeenCalledTimes(1);
+    welcome(last(), OLD);
     expect(page.reload).not.toHaveBeenCalled();
-
-    built(null, NEW);
-    await reload();
-    front();
-    await settled();
-    expect(fetched).not.toHaveBeenCalled();
   });
 
-  it('does not cut short a table the window sat down at while the page was being asked for', async () => {
-    let answer!: (build: string) => void;
-    built(OLD, new Promise<string>((ok) => (answer = ok)));
-    const net = await reload();
+  it('does not cut short a table the window sat down at while it was listening for the server', async () => {
+    const net = await home();
     front();
+    const listening = last();
     net.join('ABCD', 'Ada');
-    answer(NEW);
-    await settled();
-    expect(fetched).toHaveBeenCalledTimes(1);
+    welcome(listening, NEW);
     expect(page.reload).not.toHaveBeenCalled();
     expect(net.current().status).toBe('connecting');
   });
 
-  it('is loaded at a table once the window is back there from an update the server stopped for; until then the window says that is why the line is down', async () => {
+  it.each([
+    ['put up anew', NEW, 1],
+    ['the same build started again', OLD, 0],
+  ])('at a table it waits until the window is back there from an update the server stopped for: %s, it is loaded that many times', async (_, next, times) => {
     vi.useFakeTimers();
-    built(OLD, NEW);
     const net = await seated();
+    welcome(last(), OLD);
     last().closed(CLOSE_UPDATE);
     expect(net.current()).toMatchObject({ status: 'updating', room: { code: 'ABCD' }, error: null });
     await vi.advanceTimersByTimeAsync(300);
-    expect(sockets()).toBe(2);
     last().closed(); // (the next server is not up yet)
     expect(net.current().status).toBe('updating');
     await vi.advanceTimersByTimeAsync(600);
     expect(sockets()).toBe(3);
+    welcome(last(), next);
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
-    await vi.advanceTimersByTimeAsync(0);
     expect(page.reload).not.toHaveBeenCalled();
     last().deliver(at('ABCD'));
     expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' } });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(page.reload).toHaveBeenCalledTimes(1);
+    expect(page.reload).toHaveBeenCalledTimes(times);
   });
 });
