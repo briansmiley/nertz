@@ -3,7 +3,7 @@
 // keyed by its id, so a card moving between piles - yours or anyone's - is
 // just the same element animating to new coordinates.
 import { OPP } from '../shared/flight';
-import { DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/engine';
+import { canDrop, DEAL_MS, hasOpened, isHidden, WORK_PILES } from '../shared/engine';
 import { cardSize, feltHw, offFelt, pileGap, TABLE, type Pt } from '../shared/table';
 import type { AnyCard, GameState, PlayerState } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -1232,8 +1232,54 @@ function nearestEdge(felt: Felt, n: number, p: Pt): Pt {
   return { x: (q.x - t.x) * felt.u, y: (q.y - t.y) * felt.u };
 }
 
+/** What a window is told of a card another player is carrying (protocol.ts `DragAt`): how far along its path, and where it is. */
+type Report = { h: readonly [number, number]; p: readonly [number, number]; w: number };
+
+/** Another player's card in the air as this window draws it: its middle on screen, its scale, and its tilt in degrees. */
+export interface Aloft {
+  x: number;
+  y: number;
+  s: number;
+  rot: number;
+}
+
 /**
- * Where the middle of a card that another player is carrying is drawn in this
+ * How another player's carried card is drawn this frame: the cards `ids` (the one reported first, a run under it),
+ * whose place in their hand as drawn here is `home`, by their latest report `at`; `linger` (0 to 1) is how far it has
+ * come over to where it really is while it lingers over the felt. It goes along its path (`aloftPath`) to the pile it
+ * is heading for (`pileFor`). It grows from its size in their hand to the middle's (`fs`) as it goes out, half way by
+ * the felt's edge, or as it lingers, whichever is further: this window cannot know its owner's screen, so not by how
+ * your own grows (hand.ts `feltScale`). And it turns upright for whoever is watching as it leaves the hand (a
+ * neighbour's hand is turned to face the felt).
+ */
+export function aloftAt(L: Pick<Layout, 'felt' | 'fs' | 'slots' | 'opponents'>, game: GameState, carried: { seat: number; ids: readonly string[]; home: Placed; at: Report; linger: number }): Aloft {
+  const { seat, ids, home, at, linger } = carried;
+  const hw = home.s * CARD_W;
+  const middle = { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 };
+  const pile = ids.length === 1 ? pileFor(L, game, seat, ids[0]!, at) : undefined;
+  const c = aloftPath(L.felt, game.players.length, { home: middle, hw, hand: L.opponents.find((o) => o.seat === seat), at, pile, linger });
+  return { ...c, s: home.s + (L.fs - home.s) * Math.max(at.w / 2, linger), rot: home.rot * (1 - clamp(Math.max(at.h[1] / 0.6, at.w * 4, linger), 0, 1)) };
+}
+
+/**
+ * The pile in the middle another player's card `id` is heading for, on this screen (its middle): of those that would
+ * take it, the nearest to where it is. None until it is past the felt's edge (`at.w` over 1), nor if none would.
+ */
+export function pileFor(L: Pick<Layout, 'felt' | 'slots'>, game: GameState, seat: number, id: string, at: Report): Pt | undefined {
+  if (at.w <= 1) return undefined;
+  const there = toScreen(L.felt, { x: at.p[0], y: at.p[1] });
+  const off = (q: Pt) => Math.hypot(q.x - there.x, q.y - there.y);
+  let pile: Pt | undefined;
+  L.slots.forEach((r, i) => {
+    if (!r || !canDrop(game, seat, id, { k: 'slot', i })) return;
+    const q = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+    if (!pile || off(q) < off(pile)) pile = q;
+  });
+  return pile;
+}
+
+/**
+ * The path of a card that another player is carrying: where its middle is drawn in this
  * window. The felt is the same on every screen and the hands are not: its
  * owner carries the card up from the bottom of their screen, and here it has
  * to come from wherever this window seats them. So it is not simply drawn
@@ -1250,15 +1296,10 @@ function nearestEdge(felt: Felt, n: number, p: Pt): Pt {
  * is (`at.p`, its point of the felt) as it lingers over the felt (`linger`, 0
  * to 1).
  */
-export function aloftAt(
+export function aloftPath(
   felt: Felt,
   n: number,
-  home: Pt,
-  hw: number,
-  hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined,
-  at: { h: readonly [number, number]; p: readonly [number, number]; w: number },
-  pile: Pt | undefined,
-  linger: number,
+  { home, hw, hand, at, pile, linger }: { home: Pt; hw: number; hand: Pick<Seat, 'box' | 'flip' | 'turn'> | undefined; at: Report; pile: Pt | undefined; linger: number },
 ): Pt {
   const there = toScreen(felt, { x: at.p[0], y: at.p[1] });
   // "Towards the middle" is up the screen for whoever is dragging; for their hand as drawn here it is wherever the felt lies.
