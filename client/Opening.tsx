@@ -7,12 +7,12 @@ import { hasSay, plays } from '../shared/engine';
 import { MIN_PLAYERS, START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { PlayerView, RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
+import { Dots } from './Dots';
+import { Unplugged } from './icons';
 import { go, ready } from './net';
 
 /** How long the word stays up once play is open. It lets every click through. */
 const WORD_MS = 650;
-/** How long a warned Start waits for a second press, or for the last of those it waits on to say ready, before it is forgotten. */
-const WARN_MS = 5000;
 /** How soon after the warning a press is still the same one (a double click, a held key): too soon to have read it. */
 const SAME_PRESS_MS = 400;
 
@@ -41,6 +41,16 @@ export const notReady = (room: RoomView): PlayerView[] => {
   const game = room.game;
   if (game?.status.at !== 'ready') return [];
   return room.players.filter((p) => !p.isHost && hasSay(p) && !p.ready && game.players.some((g) => g.seat === p.seat));
+};
+
+/**
+ * The tally under the names: of those dealt in who wait on the dealer (`waiting`), how many have said ready, out of those
+ * here to say it. Someone away is out of both, as `notReady` leaves them out of what Start waits on: the tally is full
+ * exactly when Start goes at once.
+ */
+export const readyCount = (waiting: readonly PlayerView[]): { ready: number; of: number } => {
+  const here = waiting.filter(hasSay);
+  return { ready: here.filter((p) => p.ready).length, of: here.length };
 };
 
 /** The number being said when `startMs` of the count are left: 1, 2, 3. */
@@ -75,6 +85,7 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
   /** Start is for a round someone will play against someone: not when all but one have got up from the cards dealt (the server's rule: `go`, server/room.ts). */
   const enough = dealt.length >= MIN_PLAYERS;
   const lateKey = late.map((p) => p.id).join();
+  const tally = readyCount(waiting);
   const beat = useBeat(stage === 'countdown' ? room.timerMs : null);
 
   // The word, only in a window that watched the count: a reload into a round that is already on shows nothing.
@@ -90,9 +101,9 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
     return () => clearTimeout(done);
   }, [stage]);
 
-  // Start goes at once when everyone is ready. If not, the first press only asks, naming who is not (`warned`), and
-  // the next one goes ahead: never a block. So does the last of them saying ready; anyone taking a ready back ends
-  // it. It lapses a while after the press.
+  // Start goes at once when everyone is ready. If not, the first press only asks (`warned`), and the next one goes
+  // ahead: never a block. So does the last of them saying ready; anyone taking a ready back ends it, and so does the
+  // dealer's Cancel. Otherwise it stands, for as long as it takes.
   const [ask, setAsk] = useState<Ask | null>(null);
   const warned = ask !== null;
   useEffect(() => {
@@ -101,11 +112,6 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
     if (next === 'go') go();
     setAsk(next === 'go' ? null : next);
   }, [lateKey, mine]);
-  useEffect(() => {
-    if (ask === null) return;
-    const lapse = setTimeout(() => setAsk(null), ask.at + WARN_MS - Date.now());
-    return () => clearTimeout(lapse);
-  }, [ask?.at]);
   const press = () => {
     if (!enough) return;
     const now = Date.now();
@@ -131,7 +137,20 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
       <>
         {mine && !enough ? null : mine ? (
           <>
-            {warned && <p className="waitfor">Waiting for {late.map((p) => p.name).join(', ')}</p>}
+            {/* How many it waits on (the names say who), and Cancel, which takes the ask back: nothing goes when the rest say
+                ready, and the button is plain Start again. Out of the flow, over the button, so nothing moves up into its
+                place when it goes (a second tap on Cancel lands on bare felt, not on Start or the names). */}
+            {warned && (
+              <p className="waitfor">
+                <span>
+                  Waiting for {late.length} {late.length === 1 ? 'player' : 'players'}
+                  <Dots />
+                </span>
+                <button type="button" className="unask" onClick={() => setAsk(null)}>
+                  Cancel
+                </button>
+              </p>
+            )}
             <button type="button" className={`kickoff${warned ? ' warned' : late.length === 0 ? ' all' : ''}`} onClick={press}>
               {warned ? 'Start anyway' : 'Start'}
             </button>
@@ -144,7 +163,8 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
         ) : (
           <p className="waiting">Waiting for {dealer?.name ?? 'the dealer'} to start</p>
         )}
-        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick. Under them, how many have.
+        {/* Everyone who waits on the dealer: colour and name, three dots until they have said ready, then a tick; someone away, a
+            plug pulled out (Start does not wait on them). Under them, how many have (`readyCount`).
             The dealer's opens the table's sheet (`onSeats`), the lobby's, to seat and unseat as there; alone, so does the line that says so. */}
         <div className={`roster${mine ? ' dealer' : ''}`} {...(mine && onSeats ? { role: 'button', tabIndex: 0, 'data-tip': 'Seats', onClick: onSeats, onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSeats()) } : {})}>
           {mine && !enough && <p className="waiting">Waiting for a second player</p>}
@@ -152,10 +172,12 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
             <>
               <ul className="readies" aria-label="Who is ready">
                 {waiting.map((p) => (
-                  <li key={p.id} className={p.ready ? 'on' : warned && late.includes(p) ? 'late' : ''} aria-label={`${p.name}: ${p.ready ? 'ready' : 'not ready yet'}`}>
+                  <li key={p.id} className={!hasSay(p) ? 'away' : p.ready ? 'on' : warned && late.includes(p) ? 'late' : ''} aria-label={`${p.name}: ${!hasSay(p) ? 'away' : p.ready ? 'ready' : 'not ready yet'}`}>
                     <i style={{ background: backColour(p.seat ?? 0) }} />
                     {p.name}
-                    {p.ready ? (
+                    {!hasSay(p) ? (
+                      <Unplugged />
+                    ) : p.ready ? (
                       <b className="tick">✓</b>
                     ) : (
                       <span className="waiting-dots" aria-hidden="true">
@@ -167,9 +189,11 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
                   </li>
                 ))}
               </ul>
-              <p className={`tally${warned ? ' late' : ''}`}>
-                {waiting.filter((p) => p.ready).length}/{waiting.length}
-              </p>
+              {tally.of > 0 && (
+                <p className={`tally${warned ? ' late' : ''}`}>
+                  {tally.ready}/{tally.of}
+                </p>
+              )}
             </>
           )}
         </div>

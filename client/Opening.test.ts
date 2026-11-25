@@ -3,7 +3,7 @@ import { START_BEAT_MS, START_MS } from '../shared/protocol';
 import { deal, finishDeal } from '../shared/engine';
 import { lcg, roomOf } from '../shared/testkit';
 import type { RoomView } from '../shared/types';
-import { type Ask, askAfter, beatAt, notReady, pressStart } from './Opening';
+import { type Ask, askAfter, beatAt, notReady, pressStart, readyCount } from './Opening';
 
 describe('the opening count', () => {
   it('says 1, 2, 3, one beat each, from the duration left; a window that arrives late starts on the right number', () => {
@@ -44,6 +44,21 @@ describe('who the dealer is waiting on', () => {
     expect(notReady({ ...r, game: null })).toEqual([]);
     const sitting = { ...r.players[3]!, seat: 7 };
     expect(notReady({ ...r, players: [...r.players.slice(0, 3), sitting] }).map((p) => p.seat)).toEqual([1, 2]);
+  });
+});
+
+describe('the tally under the names', () => {
+  const waiting = roomOf(finishDeal(deal([0, 1, 2, 3], lcg(5))), 0).players.filter((p) => !p.isHost);
+
+  it('counts who has said ready out of everyone waiting on the dealer', () => {
+    expect(readyCount(waiting)).toEqual({ ready: 0, of: 3 });
+    expect(readyCount(waiting.map((p) => (p.seat === 2 ? { ...p, ready: true } : p)))).toEqual({ ready: 1, of: 3 });
+  });
+
+  it('leaves out someone away, as Start does: it is full exactly when nobody is waited on', () => {
+    const away = waiting.map((p) => (p.seat === 3 ? { ...p, connected: false } : p.seat === 1 ? { ...p, standing: true as const } : { ...p, ready: true }));
+    expect(readyCount(away)).toEqual({ ready: 1, of: 1 });
+    expect(readyCount(waiting.map((p) => ({ ...p, connected: false, ready: true })))).toEqual({ ready: 0, of: 0 });
   });
 });
 
