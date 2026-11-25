@@ -244,7 +244,8 @@ function show(next: Partial<NetState> = {}): void {
 
 /**
  * Per-window identity. sessionStorage, not localStorage: two windows of one
- * browser are two players, while a reload keeps its seat.
+ * browser are two players (signed in to one account, they are one: `Room.join`),
+ * while a reload keeps its seat.
  */
 function token(): string {
   const make = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');

@@ -1034,6 +1034,29 @@ describe('Room', () => {
     expect(again.last.room.players.map((p) => p.name)).toEqual(['Ada', 'Bob']); // the watcher is gone
   });
 
+  it('a device at the table before it was signed in keeps its seat as the account, and whoever the account was here watching leaves', () => {
+    const { room } = roomWith(0);
+    const [laptop, b, phone] = [new FakeConn(), new FakeConn(), new FakeConn()];
+    room.join(laptop, 'Guest', 'tok-laptop', true);
+    room.join(b, 'Bob', 'tok-bbbb', true);
+    startRound(room, laptop);
+    room.join(phone, 'Ada', 'tok-phone', false, signedAs('ada')); // in to watch, signed in
+    room.flush();
+    expect(phone.last.room).toMatchObject({ me: 2, seat: null });
+
+    const again = new FakeConn();
+    room.join(again, 'Ada', 'tok-laptop', false, signedAs('ada'));
+    expect([laptop.closed, phone.closed]).toEqual([true, true]);
+    room.flush();
+    expect(again.last.room).toMatchObject({ me: 0, seat: 0 });
+    expect(again.last.room.players.map((p) => p.name)).toEqual(['Ada', 'Bob']);
+
+    const other = new FakeConn(); // the seat is the account's from now on: another device of it finds it there
+    room.join(other, 'Ada', 'tok-other', false, signedAs('ada'));
+    room.flush();
+    expect(other.last.room).toMatchObject({ me: 0, seat: 0 });
+  });
+
   it('hands the host role on when the host is gone outside a round, and frees a seat on leaving the lobby', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];

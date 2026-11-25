@@ -909,8 +909,8 @@ file cannot be opened the game runs without it, and the log says so (`nothing is
 Who someone at a table is signed in as is what their socket's cookie said as it opened, and is never sent to anyone
 else: the room tells someone signed in only where the others signed in have their pages (`PlayerView.handle`), unless
 a page is private, and a guest not even that. Only a socket opened from a page of ours (its `Origin` is `PUBLIC_URL`) is signed in as anyone: from any other
-page it is a guest's. The same account in two windows is one seat at a table: the second window watches until the first stands up
-(`Room.seatQueue`), so a round has at most one hand of an account, and the database holds it to that.
+page it is a guest's. The same account in two windows is one player at a table: the newer window takes them over and the older is closed
+(`Room.join`), so a round has at most one hand of an account, and the database holds it to that.
 
 `GET /stats?among=all|humans|mixed|bots` answers whoever asks, by their cookie, with their own record (`Stats`,
 shared/types.ts) over every round, or those of one kind (`GameKind`, by who held hands in the round, a guest counting as

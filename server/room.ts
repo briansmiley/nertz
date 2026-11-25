@@ -290,10 +290,10 @@ export class Room {
   }
 
   /**
-   * Brings `conn` into the room, or re-attaches it to the player its token already is. Whoever is new sits down at
-   * once if a seat is free and no round is being played, and otherwise comes in to watch, with a seat only by asking
-   * for one (`sit`); with `sit`, they ask at once whatever the table is doing (whoever opens it).
-   * Returns an error message on refusal.
+   * Brings `conn` into the room, or re-attaches it to the player its token, or the account it is signed in as, already
+   * is. Whoever is new sits down at once if a seat is free and no round is being played, and otherwise comes in to
+   * watch, with a seat only by asking for one (`sit`); with `sit`, they ask at once whatever the table is doing
+   * (whoever opens it). Returns an error message on refusal.
    */
   join(conn: Conn, name: string, token: string, sit = false, signed: SignedAs | null = null): string | null {
     const account = signed && kept(signed);
