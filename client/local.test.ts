@@ -1,6 +1,6 @@
 // The table of a window that plays offline (client/local.ts): the server's own room behind a line, spoken to as the
 // store speaks to any line.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CLOSE_OVER, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import { dragsOn } from '../shared/engine';
 import { lcg } from '../shared/testkit';
@@ -35,9 +35,16 @@ async function seated() {
   return w;
 }
 
+/** What the browser keeps for this page: here, the bots the last table had. Nothing, as each test begins. */
+let storage: Map<string, string>;
+beforeEach(() => {
+  storage = new Map();
+  vi.stubGlobal('localStorage', { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => void storage.set(k, v) });
+});
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('a local line', () => {
@@ -59,7 +66,6 @@ describe('a local line', () => {
       real(fn);
     });
     const w = await seated();
-    vi.unstubAllGlobals();
     expect(w.room()).toMatchObject({ phase: 'lobby' });
   });
 
@@ -85,6 +91,28 @@ describe('a local line', () => {
     expect(w.heard).toContainEqual({ t: 'pong', at: 12.5 });
     expect(w.heard).toContainEqual({ t: 'error', message: 'Malformed message' });
     expect(w.room()!.players.filter((p) => p.bot).map((p) => p.bot).sort()).toEqual(['fast', 'medium', 'medium', 'slow']);
+  });
+
+  it('opens with the bots the last table had (how many, and how quick): none at all is not remembered', async () => {
+    const first = await seated();
+    const bots = () => first.room()!.players.filter((p) => p.bot);
+    first.say({ t: 'removeBot', seat: bots()[0]!.seat! });
+    first.say({ t: 'addBot', level: 'fast' });
+    first.say({ t: 'addBot', level: 'slow' });
+    await settled();
+    first.say({ t: 'leave' });
+    first.line.close();
+    const levels = async () => (await seated()).room()!.players.flatMap((p) => (p.bot ? [p.bot] : [])).sort();
+    expect(await levels()).toEqual(['fast', 'medium', 'medium', 'slow']);
+
+    const emptied = await seated();
+    for (const p of emptied.room()!.players.filter((p) => p.bot)) emptied.say({ t: 'removeBot', seat: p.seat! });
+    await settled();
+    expect(emptied.room()!.players.filter((p) => p.bot)).toEqual([]);
+    expect(await levels()).toEqual(['fast', 'medium', 'medium', 'slow']);
+
+    storage.set('nertz.company', '["fast","nonsense",7]'); // (whatever is kept there: only what a bot can be)
+    expect(await levels()).toEqual(['fast']);
   });
 
   it('has no table but the one it opens: one asked for by its code is not found, and nonsense for a hello ends it', async () => {

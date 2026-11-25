@@ -35,6 +35,16 @@ export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture' | 'private'>;
 /** Only what a room keeps, of whatever it is handed. */
 const kept = ({ id, handle, picture, private: hidden }: SignedAs): SignedAs => ({ id, handle, picture, private: hidden });
 
+/** A random id. (A window that plays offline has no `randomUUID` where its page is not a secure one: plain http, on anything but localhost.) */
+function uuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** A live client connection, as far as a room cares. */
 export interface Conn {
   send(msg: ServerMsg): void;
@@ -233,7 +243,7 @@ export class Room {
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
   private snipes: { by: number; of: number; card: string }[] = [];
   /** This sitting at the table (see `RoundRecord.game`): made when the table opens, and again when it starts over. */
-  private sitting: string = crypto.randomUUID();
+  private sitting: string = uuid();
   /** The last number given out to someone who began to wait for a seat (`Player.queued`), and the last `Player.id`. */
   private queue = 0;
   /** The count `sat` goes by. */
@@ -1158,7 +1168,7 @@ export class Room {
       if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
-    this.sitting = crypto.randomUUID();
+    this.sitting = uuid();
     this.startTold = 0;
     this.lastRound = null;
     this.state = null;

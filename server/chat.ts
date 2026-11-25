@@ -141,7 +141,7 @@ export class Social {
     b.bytes = Math.min(SIGNAL_BURST_BYTES, b.bytes + (now - b.at) * SIGNAL_REFILL_PER_MS);
     b.at = now;
     this.signalBudget.set(member, b);
-    const size = Buffer.byteLength(JSON.stringify(data)); // as relayed: a control character is sent as six bytes
+    const size = new TextEncoder().encode(JSON.stringify(data)).length; // as relayed: a control character is sent as six bytes
     if (size > b.bytes) return false;
     b.bytes -= size;
     return true;
