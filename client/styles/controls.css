@@ -199,12 +199,12 @@ img.art {
 }
 
 /* One that is not open yet (actions.ts: coming): there, faded, and still. */
-.icon:disabled {
+.icon[aria-disabled='true'] {
   opacity: 0.35;
   cursor: default;
 }
 
-.icon:disabled > img.art {
+.icon[aria-disabled='true'] > img.art {
   transform: none;
 }
 

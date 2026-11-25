@@ -16,7 +16,17 @@
   display: contents;
 }
 
-/* Feedback's own button, bottom right: its slip opens up from it, to its left. */
+/* Feedback's own button, bottom right, the size of the menu's (layout.ts KNOB): its slip opens up from it, to its left. */
+.corner.right > .icon {
+  width: 36px;
+  height: 36px;
+}
+
+.corner.right > .icon > img.art {
+  width: 34px;
+  height: 34px;
+}
+
 .corner.right .slip {
   left: auto;
   right: 0;
@@ -50,6 +60,11 @@
   color: var(--chalk);
   opacity: 0.55;
   pointer-events: none;
+}
+
+/* (Where feedback has its own button in that corner, the time stands to the left of it.) */
+body:has(.corner.right) .ping {
+  right: 56px;
 }
 
 .clock.stopped {

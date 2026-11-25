@@ -285,6 +285,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const at = useCorners(room);
   /** Feedback has a button of its own, bottom right; where there is no room for one (a phone), the menu leads to it. */
   const own = at.feedback;
+  /** The menu, or a slip it led to, is up: the menu's button is lit, and pressed puts it away. */
+  const menuUp = !!open && !(own && open === 'feedback');
   const feedback = open === 'feedback' && <FeedbackSlip room={room} back={own ? undefined : () => openCorner('menu')} close={() => openCorner(null)} />;
   return (
     // (One root for both: a press on either is inside, and leaves the other's slip to it.)
@@ -292,13 +294,13 @@ export function Corner({ room }: { room?: RoomView | null }) {
       <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} style={{ left: at.knobs.x, top: at.knobs.y }}>
         <button
           type="button"
-          className={`knob${open ? ' on' : ''}`}
-          aria-expanded={!!open}
+          className={`knob${menuUp ? ' on' : ''}`}
+          aria-expanded={menuUp}
           aria-controls="menu"
           aria-label="Menu"
           data-tip="Menu"
           onClick={(e) => {
-            openCorner(open ? null : 'menu');
+            openCorner(menuUp ? null : 'menu');
             e.currentTarget.blur(); // keep Space for drawing
           }}
         >

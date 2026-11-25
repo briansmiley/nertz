@@ -54,11 +54,12 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
         type="button"
         className={a.on ? 'icon on' : 'icon'}
         aria-pressed={a.on}
-        disabled={a.coming}
+        aria-disabled={a.coming}
         aria-label={a.tally ? `${a.label} ${a.tally}` : a.label}
         data-tip={a.label}
         onClick={(e) => {
           e.currentTarget.blur(); // keep Space for the cards
+          if (a.coming) return; // (not yet: it stays, and so does the menu; its name is still its tip)
           if (room) press(a.id, room);
           if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
         }}
