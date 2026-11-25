@@ -589,9 +589,11 @@ no timer for it: `applyIntent` is handed the clock, and first takes down every g
 one place a draw ends, and only while the round is live: a group in flight at a call stays as it lies). Until then
 another draw is refused and `grab` refuses the waste top. The faces of the group go out in that one snapshot. Each
 window deals it out itself (`client/net.ts`: `show`, `dealtBy`): it reckons the round's clock from the snapshot that
-reached it quickest, shows the cards leaving the stock one step apart from when it first had the draw (a window that
-has it late finds the cards already due off the stock), face-down, and turns the group up at its time, which for your
-own draw is the server's: it lands when the server would take a play from it. A bot waits for its group to be down
+reached it quickest, shows the cards leaving the stock one step apart from when it first had the draw, however late
+that snapshot came (only a window that was not there when the draw was made, back from a reload or a reconnect, goes by
+the draw's own time and finds the cards already due off the stock), face-down, and turns the group up at its time and
+not before all its cards are off; for your own draw that time is the server's: it lands when the server would take a
+play from it. A bot waits for its group to be down
 before it looks again. On an empty stock the same intent turns the waste over, which can only happen with no group in
 flight.
 

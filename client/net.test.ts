@@ -184,6 +184,9 @@ describe('prediction', () => {
     expect(dealtBy(answered, AT + STOCK_CARD_MS, AT).draw!.n).toBe(2);
     expect(dealtBy(answered, AT + 3 * STOCK_CARD_MS, AT).draw!.n).toBe(3);
     expect(dealtBy(answered, AT + 80 + 3 * STOCK_CARD_MS, AT).draw).toBeNull();
+    // Seen a little late, its cards still leave a step apart from then, and it is down a step after the last of them.
+    expect(dealtBy(p, landsAt(p.draw!), AT + 100).draw!.n).toBe(3);
+    expect(dealtBy(p, AT + 100 + 3 * STOCK_CARD_MS, AT + 100).draw).toBeNull();
     // Your own draw before the server has answered: its faces are not here, so it does not turn up, however late.
     const mine = applyIntent(roomOf(start, 0).game!, 0, { k: 'draw' }, AT);
     if (!mine.ok) throw new Error(mine.reason);

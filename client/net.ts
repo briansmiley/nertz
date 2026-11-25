@@ -105,15 +105,14 @@ const unknown = (c: AnyCard): AnyCard => ({ id: c.id, owner: c.owner, hidden: tr
 /**
  * A hand as it is drawn while its group is in flight (`PlayerState.draw`), `now` by the round's clock. The group came
  * in one step, and is dealt out here: its cards counted off the stock one at a time, STOCK_CARD_MS apart from `from`
- * (when this window first had the draw), face-down. `draw.n` is how many are off so far, and the rest lie on the stock
- * yet. A window that has it late finds the cards due by then already off. Its time come (`landsAt`), the group is
- * down: the hand as it is, with no draw. Not before its faces are here, though: those of your own draw come in the
- * server's answer to it.
+ * (when the first left, here: `show`), face-down. `draw.n` is how many are off so far, and the rest lie on the stock
+ * yet. Its time come (`landsAt`) and its cards all off here a step, the group is down: the hand as it is, with no
+ * draw. Not before its faces are here, though: those of your own draw come in the server's answer to it.
  */
 export function dealtBy(p: PlayerState, now: number, from: number): PlayerState {
   if (!p.draw) return p;
   const group = p.waste.slice(-p.draw.n);
-  if (now >= landsAt(p.draw) && !group.some(isHidden)) return { ...p, draw: null };
+  if (now >= Math.max(landsAt(p.draw), from + p.draw.n * STOCK_CARD_MS) && !group.some(isHidden)) return { ...p, draw: null };
   const n = Math.min(p.draw.n, Math.max(1, Math.floor((now - from) / STOCK_CARD_MS) + 1));
   return { ...p, stock: [...p.stock, ...group.slice(n).reverse().map(unknown)], waste: [...p.waste.slice(0, -p.draw.n), ...group.slice(0, n).map(unknown)], draw: { ...p.draw, n } };
 }
@@ -154,13 +153,17 @@ let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
 /**
  * By seat, the group this window is dealing out: its first card, and when its cards began to leave the stock here, by
- * the round's clock as it now reads. That is when the draw was made as first seen (your own draw's time changes when
- * the server answers it; its cards do not start over), put forward with the clock whenever a quicker snapshot puts
- * that forward (`led`): so the cards leave a step apart by this window's own clock, whatever the round's is found to be.
+ * the round's clock as it now reads. That is when this window first had the draw, however late its snapshot came (and
+ * your own draw's cards do not start over when the server answers it); only a window that was not looking when the
+ * draw was made (`looking`: it has just sat back down) goes by the draw's own time, and finds the cards due by then
+ * already off. It is put forward with the clock whenever a quicker snapshot puts that forward (`led`). So the cards
+ * leave a step apart by this window's own clock, whatever the network does.
  */
 const flights = new Map<number, { card: string; at: number }>();
 /** `Sync.lead` when the room was last put on screen. */
 let led: number | null = null;
+/** This connection has had the table on screen: a draw first seen from now on is seen as it is made. */
+let looking = false;
 let step: ReturnType<typeof setTimeout> | undefined;
 /** What the round's clock read when the groups in flight were last dealt on: they stay there once the round is not live (a group in flight at a call stays as it lies). */
 let dealtAt: number | null = null;
@@ -200,13 +203,14 @@ function show(next: Partial<NetState> = {}): void {
     if (!p.draw) return flights.delete(p.seat), p;
     const card = p.waste[p.waste.length - p.draw.n]!.id;
     const had = flights.get(p.seat);
-    const flight = had?.card !== card ? { card, at: p.draw.at } : isLive(game) ? { card, at: had.at + gained } : had;
+    const flight = had?.card !== card ? { card, at: looking ? now : p.draw.at } : isLive(game) ? { card, at: had.at + gained } : had;
     flights.set(p.seat, flight);
     const seen = dealtBy(p, now, flight.at);
-    if (seen.draw) due = Math.min(due, seen.draw.n < p.draw.n ? flight.at + seen.draw.n * STOCK_CARD_MS : landsAt(p.draw));
+    if (seen.draw) due = Math.min(due, seen.draw.n < p.draw.n ? flight.at + seen.draw.n * STOCK_CARD_MS : Math.max(landsAt(p.draw), flight.at + p.draw.n * STOCK_CARD_MS));
     return seen;
   });
   if (isLive(game) && sync.lead !== null && due > now && due < Infinity) step = setTimeout(show, due - now);
+  looking = sync.server !== null;
   set({ ...next, room: players.every((p, i) => p === game.players[i]) ? room : { ...room, game: { ...game, players } } });
 }
 
@@ -320,6 +324,7 @@ function stop(error: string | null): void {
   socket = null;
   old?.close();
   sync = freshSync;
+  looking = false;
   timed(null);
   show({ status: 'idle', error, rejoining: false });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
@@ -389,6 +394,7 @@ function connect(): void {
   socket = ws;
   heard = Date.now();
   sync = freshSync; // seq, pending and rev all belong to the connection
+  looking = false;
   ws.onopen = () => {
     if (socket === ws && session) {
       post(hello(session.room, session.name, token()));
