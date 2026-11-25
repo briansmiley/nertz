@@ -251,6 +251,13 @@ export interface Seats {
   taken: number;
 }
 
+
+/**
+ * Who paused a round in play: a player (`id`); or the server, stopped for an update. While the server that stopped is
+ * going down the update is under way; `done` once a server is back with the table (server/room.ts `restored`), and
+ * only then: the stopping server's last word is not yet done, whatever the line is doing when it is heard.
+ */
+export type Pause = { by: 'player'; id: number } | { by: 'update'; done: boolean };
 /** Everything one client needs to render, personalised for the player `me`. */
 export interface RoomView {
   code: string;
@@ -285,8 +292,8 @@ export interface RoomView {
    * at what the round took. Null before the first round is under way.
    */
   clock: { ms: number; running: boolean } | null;
-  /** The round is paused (by this player, an `id`; or by nobody at the table, null: the server stopped for an update; `done` once a server is back with it, the update over): every card is hidden, no move is taken and the bots wait. Null otherwise. */
-  paused: { by: number | null; done?: true } | null;
+  /** The round is paused (`Pause`): every card is hidden, no move is taken and the bots wait. Null otherwise. */
+  paused: Pause | null;
   lastRound: RoundResult | null;
   /** The server has its aids for trying things out on (locally, and on previews): set-up deals (`?deal=`), Shift+N. */
   testing: boolean;

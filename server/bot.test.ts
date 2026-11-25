@@ -467,7 +467,7 @@ describe('Room with bots', () => {
     opening(room, host);
     room.handle(guest, { t: 'pause', on: true });
     room.flush();
-    expect(host.last.room.paused).toEqual({ by: 1 });
+    expect(host.last.room.paused).toEqual({ by: 'player', id: 1 });
     const frozen = JSON.stringify(room.game);
     vi.advanceTimersByTime(30_000);
     room.handle(host, { t: 'intent', seq: 1, intent: { k: 'draw' } });

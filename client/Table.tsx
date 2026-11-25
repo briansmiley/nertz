@@ -731,6 +731,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     return plan;
   }, [dealing, dealMs, game.players, L, you]);
   const grace = inGrace(game);
+  /** Who paused the round, if it is paused (`Pause`). */
+  const pausedBy = room.paused;
   const info = (seat: number) => room.players.find((p) => p.seat === seat);
   const hosting = !!room.players.find((p) => p.id === room.me)?.isHost;
   /** My own faces and backs: my choice, shown at once; or, if my backs are by lot, the one the table drew for me (it comes with the deal). */
@@ -1214,17 +1216,17 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         </button>
       )}
     </div>
-    {paused && (
+    {paused && pausedBy && (
       <div className="paper-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
-        {room.paused!.by === null ? (
+        {pausedBy.by === 'update' ? (
           // (Paused by the server going down for an update: while it is away, that it will be back; once it is, that play can go on.)
           <>
             <p>Game paused while the server updates.</p>
-            {room.paused!.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
+            {pausedBy.done ? <p className="done">Update complete. Ready to resume.</p> : <p>It’ll be back in a moment<Dots /></p>}
           </>
         ) : (
-          <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
+          <p>{pausedBy.id === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === pausedBy.id)?.name ?? 'Someone'} paused the round.`}</p>
         )}
         {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
