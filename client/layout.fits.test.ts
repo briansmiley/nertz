@@ -128,7 +128,7 @@ describe('what stands round the cards', () => {
           const fit: Fittings = { chat, clock: true, vote: false, name: nameWidth('Brian', '120') };
           const L = computeLayout(W, H, longPiles(n, 8), 0, 'live', null, { l: 0, r: 0, b: 34 }, [], fit);
           const where = `${W}x${H}, ${n} players, ${chat.join(' ')}`;
-          expect(L.tall, where).toBe(true);
+          expect(L.shape, where).toBe('tall');
           expect(L.clock, where).not.toBeNull();
           expect(L.clock!.y + L.clock!.h, where).toBeLessThanOrEqual(L.bar);
           expect(L.clock!.x + L.clock!.w, where).toBeLessThan(L.at.knobs.x);
@@ -189,7 +189,7 @@ describe('what stands round the cards', () => {
         for (const keep of insetsOf(W, H)) {
           const game = inPlay(seats(n), lcg(n));
           const L = computeLayout(W, H, game, 0, 'live', null, keep);
-          expect(L.low).toBe(true);
+          expect(L.shape).toBe('low');
           for (const left of [true, false]) {
             const column = L.opponents.filter((o) => (o.box.x < W / 2) === left).sort((a, b) => a.box.y - b.box.y);
             column.slice(1).forEach((o, i) => {

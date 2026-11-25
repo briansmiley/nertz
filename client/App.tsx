@@ -5,7 +5,7 @@ import { SignIn } from './SignIn';
 import { Follow, FollowingList, Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
 import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
@@ -13,6 +13,7 @@ import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
+import { usePicture } from './picture';
 import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
@@ -54,7 +55,7 @@ export function App() {
   useSounds(room, net.status === 'online');
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
-  if (!room && net.rejoining && net.status === 'connecting') return null;
+  if (!room && net.status === 'rejoining') return null;
   // (Whose it is, yours or not, is not known until the server says who is signed in.)
   if (!room && page && page.handle !== signedInAs(account)?.handle) return account === 'unknown' ? null : <Someone handle={page.handle} />;
   if (!room) {
@@ -154,10 +155,11 @@ const PAD_PERSPECTIVE = [1400, 1400];
  * showing what it had until it is edge-on and the new side from there, away from the side it was first shown on and
  * back the other way. Reduced motion (`calm`): the new side, without the turn.
  */
-function Pad({ children, wide, side }: { children: ReactNode; wide?: boolean; side?: string }) {
+function Pad({ children, wide, side, onUp, className }: { children: ReactNode; wide?: boolean; side?: string; onUp?: (side: string | undefined) => void; className?: string }) {
   const [scope, animate] = useAnimate<HTMLElement>();
-  /** The side up now: behind `side` while the pad turns away from it. */
+  /** The side up now: behind `side` while the pad turns away from it. Told to `onUp` as it changes, before it is seen. */
   const [up, setUp] = useState(side);
+  useLayoutEffect(() => onUp?.(up), [up]);
   const first = useRef(side);
   /** What the side up showed last, kept on it while it turns away. */
   const shown = useRef(children);
@@ -192,7 +194,7 @@ function Pad({ children, wide, side }: { children: ReactNode; wide?: boolean; si
     };
   }, [up, side, animate, scope]);
   return (
-    <section ref={scope} className={`pad${wide ? ' wide' : ''}`}>
+    <section ref={scope} className={`pad${wide ? ' wide' : ''}${className ? ` ${className}` : ''}`}>
       {up === side ? children : shown.current}
     </section>
   );
@@ -450,8 +452,8 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
 
 /** Your picture, or where there is none (or it will not load) the first letter of your name; for no name yet (a guest's, or an account's), the figure of nobody in particular. */
 function Avatar({ image, name }: { image: string | null; name: string | null }) {
-  const [broken, setBroken] = useState<string | null>(null);
-  if (image && broken !== image) return <img src={image} alt="" referrerPolicy="no-referrer" onError={() => setBroken(image)} />;
+  const picture = usePicture(image);
+  if (picture.src) return <img src={picture.src} alt="" referrerPolicy="no-referrer" onError={picture.onError} />;
   if (!name)
     return (
       <i className="nobody" aria-hidden="true">
@@ -493,6 +495,8 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
   }, [signedIn, wayIn]);
   /** The side of the pad up: the form, your page, who you follow, or the way in. */
   const side = yours && signedIn ? (yours.following ? 'following' : 'page') : wayIn && ways ? 'in' : 'form';
+  /** The side the pad shows, which is `side` once it has turned over to it: on your page (or who you follow), the page is laid out for it. */
+  const [up, setUp] = useState<string | undefined>(side);
   /** Sign in: the ways in, on the pad; or straight to Google, where it is the only way. */
   const signInNow = () => (ways?.length === 1 && ways[0] === 'google' ? void signIn() : setWayIn(true));
   const [code, setCode] = useState(invited);
@@ -528,13 +532,13 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
   };
 
   return (
-    <main className="home">
+    <main className={`home${up === 'page' || up === 'following' ? ' ownpage' : ''}`}>
       <div className="hero">
         <Spread />
         <h1>Nertz!</h1>
       </div>
 
-      <Pad side={side}>
+      <Pad side={side} onUp={setUp}>
         {side === 'following' && signedIn ? (
           <FollowingList head={<Back onClick={() => goBack(signedIn.handle)} />} />
         ) : side === 'page' && signedIn ? (
@@ -633,7 +637,7 @@ function Lobby({ room }: { room: RoomView }) {
   const ready = enoughToDeal(room);
   return (
     <main className="solo">
-      <Pad>
+      <Pad className="lobby">
         <TableHead room={room} />
         <Sitters room={room} />
         <TableRules room={room} />
@@ -661,8 +665,8 @@ function TableSheet({ room, onClose }: { room: RoomView; onClose: () => void }) 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <main className="solo over" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <Pad>
+    <main className="solo over lobby" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <Pad className="lobby">
         <TableHead room={room} />
         <Sitters room={room} />
         <button className="go" autoFocus onClick={onClose}>
@@ -673,30 +677,26 @@ function TableSheet({ room, onClose }: { room: RoomView; onClose: () => void }) 
   );
 }
 
-/** The head of the table's sheet: the tools (a bot, for whoever deals; leaving), and the table's code and its link to copy. */
-function TableHead({ room }: { room: RoomView }) {
+/** Copies `text` to the clipboard, and says so for a moment. Where the clipboard is blocked, nothing: what it would copy is there to read. */
+function useCopy(text: string): [copied: boolean, copy: () => Promise<void>] {
   const [copied, setCopied] = useState(false);
-  const link = `${location.origin}/?room=${room.code}`;
-  const me = room.players.find((p) => p.id === room.me);
-  const [codeCopied, setCodeCopied] = useState(false);
-  const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(room.code);
-      setCodeCopied(true);
-      setTimeout(() => setCodeCopied(false), 1500);
-    } catch {
-      // clipboard blocked: the code is there to read
-    }
-  };
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard blocked: the link is selectable right there
+      // clipboard blocked
     }
   };
+  return [copied, copy];
+}
+
+/** The head of the table's sheet: the tools (a bot, for whoever deals; leaving), and the table's code and its link to copy. */
+function TableHead({ room }: { room: RoomView }) {
+  const me = room.players.find((p) => p.id === room.me);
+  const [codeCopied, copyCode] = useCopy(room.code);
+  const [copied, copy] = useCopy(`${location.origin}/?room=${room.code}`);
 
   return (
     <>

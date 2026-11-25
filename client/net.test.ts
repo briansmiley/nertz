@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { roomWith, send as told, startRound } from '../server/testkit';
-import { applyIntent, checkInvariants, deal as dealRound, dealOn, finishDeal, inGrace, isHidden, refused, startCountdown } from '../shared/engine';
+import { applyIntent, checkInvariants, deal as dealRound, finishDeal, inGrace, isHidden, landsAt, refused, startCountdown } from '../shared/engine';
+import { STOCK_CARD_MS } from '../shared/protocol';
 import { card as c, felt, inPlay, lcg, move, roomOf, table, toPlay, upWork, withPile, work } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
-import { freshSync, hearsCall, hello, onSend, onSnapshot, predict, type Sync } from './net';
+import { dealOut, dealtBy, freshDealing, freshSync, hearsCall, hello, onSend, onSnapshot, predict, roundNow, type Sync } from './net';
 
 /** A tiny authoritative server for one player's messages. */
 function server(game: GameState, you: number) {
@@ -21,11 +22,6 @@ function server(game: GameState, you: number) {
       if (seq !== undefined) ack = seq;
       rev++;
       return r.ok;
-    },
-    /** The server's step of `seat`'s group in flight. */
-    step(seat: number) {
-      game = dealOn(game, seat);
-      rev++;
     },
   };
 }
@@ -80,7 +76,7 @@ describe('prediction', () => {
     sync = onSnapshot({ ...sync, rev: -1 }, open.snapshot());
     expect(isHidden(sync.server!.game!.players[0]!.nertz.at(-1)!)).toBe(false);
     sync = send(sync, { k: 'draw' });
-    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
   });
 
   it('clear-first is predicted too: after my King nothing else of mine applies until the pile is in the tray; a King that lost its race holds nothing up', () => {
@@ -113,7 +109,7 @@ describe('prediction', () => {
     sync = onSnapshot(sync, s.snapshot());
     expect(predict(sync)).toBe(sync.server);
     sync = send(sync, { k: 'draw' });
-    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1);
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3);
 
     // The other way round: the server refuses my King (the pile is no longer there for it). I am not held up by a pile I never finished.
     const lost = server({ ...rigged, slots: rigged.slots.map(() => null) }, 0);
@@ -122,7 +118,7 @@ describe('prediction', () => {
     expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(0); // predicted: blocked behind my King
     expect(sync.pending.map((p) => lost.apply(0, p.intent, p.seq))).toEqual([false, true]);
     sync = onSnapshot(sync, lost.snapshot());
-    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(1); // the truth: the King went home, the flip counted
+    expect(predict(sync)!.game!.players[0]!.waste).toHaveLength(3); // the truth: the King went home, the flip counted
     function s2snap(game: GameState) {
       return { rev: 0, ack: -1, room: roomOf(game, 0) };
     }
@@ -134,28 +130,143 @@ describe('prediction', () => {
     expect(predict(sync)).toBe(sync.server);
   });
 
-  it('predicts a draw: its first card face-down at once; the rest, and the faces, come with the server\'s steps', () => {
+  it('predicts a draw: the whole group on the waste at once, face-down and in flight; the faces come in the server\'s one answer, and its top card plays when its time is up', () => {
     const s = server(inPlay([0, 1], lcg(2)), 0);
     let sync = onSnapshot(freshSync, s.snapshot());
     const mine = () => predict(sync)!.game!.players[0]!;
     sync = send(sync, { k: 'draw' });
-    expect([mine().waste.length, mine().dealt]).toEqual([1, 1]);
+    expect([mine().waste.length, mine().draw?.n]).toEqual([3, 3]);
+    expect(mine().waste.every(isHidden)).toBe(true);
     expect(applyIntent(predict(sync)!.game!, 0, { k: 'draw' }).ok).toBe(false); // in flight: nothing more to send
     s.apply(0, { k: 'draw' }, 1);
     sync = onSnapshot(sync, s.snapshot());
     expect(sync.pending).toHaveLength(0);
-    for (const dealt of [2, 3]) {
-      s.step(0);
-      sync = onSnapshot(sync, s.snapshot());
-      expect([mine().waste.length, mine().dealt]).toEqual([dealt, dealt]);
-      expect(mine().waste.every(isHidden)).toBe(true);
-    }
-    s.step(0);
-    sync = onSnapshot(sync, s.snapshot());
-    expect([mine().waste.length, mine().dealt]).toEqual([3, 0]);
+    expect([mine().waste.length, mine().draw?.n]).toEqual([3, 3]); // one snapshot, and the group is all there
     expect(mine().waste.some(isHidden)).toBe(false);
     expect(checkInvariants(predict(sync)!.game!)).toBeNull();
-    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: mine().waste.at(-1)!.id }).ok).toBe(true);
+    const top = mine().waste.at(-1)!.id;
+    const down = landsAt(mine().draw!);
+    expect(down).toBe(mine().draw!.at + 3 * STOCK_CARD_MS);
+    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: top }, down - 1).ok).toBe(false);
+    expect(applyIntent(predict(sync)!.game!, 0, { k: 'hold', cardId: top }, down).ok).toBe(true);
+    // What is sent is replayed by the round's clock as it read when it was sent.
+    expect(predict(onSend(sync, { k: 'hold', cardId: top }, down - 1))!.game!.players[0]!.holding).toBeNull();
+    expect(predict(onSend(sync, { k: 'hold', cardId: top }, down))!.game!.players[0]).toMatchObject({ holding: top, draw: null });
+  });
+
+  it('a group in flight is dealt out by the round\'s clock: a card off the stock every step, the rest on the stock yet, and the group down at its time', () => {
+    const start = inPlay([0, 1], lcg(2));
+    const AT = 1000;
+    const r = applyIntent(start, 0, { k: 'draw' }, AT);
+    if (!r.ok) throw new Error(r.reason);
+    const p = r.state.players[0]!;
+    const ids = (cards: readonly { id: string }[]) => cards.map((c) => c.id);
+    const group = ids(p.waste.slice(-3)); // in the order dealt
+    expect(p.draw).toEqual({ n: 3, at: AT });
+    expect(dealtBy(start.players[0]!, AT, AT)).toBe(start.players[0]); // no draw: the hand as it is
+    for (const k of [1, 2, 3]) {
+      const seen = dealtBy(p, AT + (k - 1) * STOCK_CARD_MS, AT);
+      expect(seen.draw).toEqual({ n: 3, at: AT, off: k }); // the group keeps its size
+      expect(ids(seen.waste)).toEqual(group.slice(0, k));
+      expect(ids(seen.stock)).toEqual([...ids(p.stock), ...group.slice(k).reverse()]); // the next to come off is on top
+      expect([...seen.waste, ...seen.stock.slice(p.stock.length)].every(isHidden)).toBe(true);
+    }
+    expect(dealtBy(p, AT + STOCK_CARD_MS - 1, AT).draw!.off).toBe(1);
+    expect(dealtBy(p, AT - 50, AT).draw!.off).toBe(1); // (the first card is off when the draw is seen)
+    // The group is held whole a step, then down: the hand as it is, faces up, with no draw.
+    expect(dealtBy(p, landsAt(p.draw!) - 1, AT).draw!.off).toBe(3);
+    expect(dealtBy(p, landsAt(p.draw!), AT)).toEqual({ ...p, draw: null });
+    // A window that has it late finds the cards due by then already off, and one long after, the group down.
+    expect(dealtBy(p, AT + STOCK_CARD_MS + 5, AT).draw!.off).toBe(2);
+    expect(dealtBy(p, AT + 60_000, AT).draw).toBeNull();
+    // The cards leave from when the draw was first seen here; the group lands by the draw's own time (your own draw's is the server's, once it answers).
+    const answered = { ...p, draw: { n: 3, at: AT + 80 } };
+    expect(dealtBy(answered, AT + STOCK_CARD_MS, AT).draw!.off).toBe(2);
+    expect(dealtBy(answered, AT + 3 * STOCK_CARD_MS, AT).draw!.off).toBe(3);
+    expect(dealtBy(answered, AT + 80 + 3 * STOCK_CARD_MS, AT).draw).toBeNull();
+    // Seen a little late, its cards still leave a step apart from then, and it is down a step after the last of them.
+    expect(dealtBy(p, landsAt(p.draw!), AT + 100).draw!.off).toBe(3);
+    expect(dealtBy(p, AT + 100 + 3 * STOCK_CARD_MS, AT + 100).draw).toBeNull();
+    // Your own draw before the server has answered: its faces are not here, so it does not turn up, however late.
+    const mine = applyIntent(roomOf(start, 0).game!, 0, { k: 'draw' }, AT);
+    if (!mine.ok) throw new Error(mine.reason);
+    expect(mine.state.players[0]!.waste.every(isHidden)).toBe(true);
+    expect(dealtBy(mine.state.players[0]!, AT + 60_000, AT).draw).toEqual({ n: 3, at: AT, off: 3 });
+  });
+
+  it('deals out a group in flight at this window\'s own pace, from when it first had the draw, whenever the snapshots come', () => {
+    const start = inPlay([0, 1], lcg(2));
+    const AT = 1000;
+    const r = applyIntent(start, 1, { k: 'draw' }, AT); // seat 1 draws: the group comes to this window in one snapshot
+    if (!r.ok) throw new Error(r.reason);
+    // (This window's clock and the round's read alike, until a quicker snapshot puts the round's forward.)
+    const snap = (rev: number, game: GameState, ms: number) => ({ rev, ack: -1, room: { ...roomOf(game, 0), clock: { ms, running: true } } });
+    const theirs = (out: ReturnType<typeof dealOut>) => out.room!.game!.players[1]!;
+    // On screen before the draw: nothing is due.
+    let sync = onSnapshot(freshSync, snap(0, start, AT - 500), AT - 500);
+    let out = dealOut(freshDealing, sync, AT - 500);
+    expect([out.wait, out.dealing.looking, out.dealing.flights.size]).toEqual([null, true, 0]);
+    // Their draw reaches this window 400 ms late: its first card leaves now, and the next a step on.
+    const seen = AT + 400;
+    sync = onSnapshot(sync, snap(1, r.state, seen), seen);
+    out = dealOut(out.dealing, sync, seen);
+    expect([theirs(out).draw, out.wait, out.dealing.flights.get(1)]).toEqual([{ n: 3, at: AT, off: 1 }, STOCK_CARD_MS, { card: r.state.players[1]!.waste.at(-3)!.id, at: seen }]);
+    // Dealt on when its timer is up: a card a step, then held whole a step, then down. The group keeps its size (`n`).
+    out = dealOut(out.dealing, sync, seen + STOCK_CARD_MS);
+    expect([theirs(out).draw, out.wait]).toEqual([{ n: 3, at: AT, off: 2 }, STOCK_CARD_MS]);
+    out = dealOut(out.dealing, sync, seen + 2 * STOCK_CARD_MS);
+    expect([theirs(out).draw, out.wait]).toEqual([{ n: 3, at: AT, off: 3 }, STOCK_CARD_MS]);
+    const held = out.dealing;
+    // Another snapshot of the same draw does not start it over; one that came 100 ms quicker puts its cards forward with the clock.
+    const quicker = onSnapshot(sync, snap(2, r.state, seen + 2 * STOCK_CARD_MS + 100), seen + 2 * STOCK_CARD_MS);
+    expect(dealOut(held, quicker, seen + 2 * STOCK_CARD_MS).dealing.flights.get(1)!.at).toBe(seen + 100);
+    out = dealOut(held, onSnapshot(sync, snap(2, r.state, seen + 2 * STOCK_CARD_MS), seen + 2 * STOCK_CARD_MS), seen + 2 * STOCK_CARD_MS + 1);
+    expect(out.dealing.flights.get(1)!.at).toBe(seen);
+    out = dealOut(held, sync, seen + 3 * STOCK_CARD_MS);
+    expect([theirs(out).draw, out.wait]).toEqual([null, null]); // down here, though the snapshot has it in flight yet
+    // A window that was not looking when the draw was made (it has just sat back down) goes by the draw's own time,
+    // and finds the cards due by then already off.
+    const back = dealOut({ ...held, looking: false, flights: new Map() }, onSnapshot(freshSync, snap(0, r.state, seen), seen), seen);
+    expect([back.dealing.flights.get(1)!.at, theirs(back).draw!.off]).toEqual([AT, 3]);
+  });
+
+  it('holds a group in flight where it lies once the round is not live, and starts afresh at no table', () => {
+    const start = inPlay([0, 1], lcg(2));
+    const r = applyIntent(start, 1, { k: 'draw' }, 1000);
+    if (!r.ok) throw new Error(r.reason);
+    const snap = (rev: number, game: GameState, ms: number, running = true) => ({ rev, ack: -1, room: { ...roomOf(game, 0), clock: { ms, running } } });
+    let sync = onSnapshot(freshSync, snap(0, r.state, 1000), 1000);
+    let out = dealOut(freshDealing, onSnapshot(freshSync, snap(0, start, 1000), 1000), 1000);
+    out = dealOut(out.dealing, sync, 1000);
+    expect(out.room!.game!.players[1]!.draw!.off).toBe(1);
+    // The round ends: the clock stops, and the group stays as it lies however long the window looks.
+    const over: GameState = { ...r.state, status: { at: 'over', end: { by: 'jam' } } };
+    sync = onSnapshot(sync, snap(1, over, 1000 + 2 * STOCK_CARD_MS, false), 1000 + 2 * STOCK_CARD_MS);
+    out = dealOut(out.dealing, sync, 60_000);
+    expect([out.room!.game!.players[1]!.draw!.off, out.wait, out.dealing.at]).toEqual([1, null, 1000]);
+    // No table: nothing in flight and nothing remembered, but that the window was looking.
+    out = dealOut(out.dealing, freshSync, 60_000);
+    expect([out.room, out.wait, out.dealing]).toEqual([null, null, { flights: new Map(), led: null, looking: true, at: null }]);
+  });
+
+  it('reckons the round\'s clock from the snapshot that came quickest: steadily, never backwards, and afresh when it has been stopped or the round is another', () => {
+    const s = server(inPlay([0, 1], lcg(6)), 0);
+    const snap = (ms: number, running = true, round = 1) => ({ ...s.snapshot(), room: { ...s.snapshot().room, round, clock: { ms, running } } });
+    expect([freshSync.lead, roundNow(freshSync, 123)]).toEqual([null, 0]);
+    let sync = onSnapshot(freshSync, snap(1000), 5000);
+    expect(roundNow(sync, 5100)).toBe(1100);
+    sync = onSnapshot(sync, snap(1200), 5250); // 50 ms slower on the way: the clock is not put back
+    expect(roundNow(sync, 5250)).toBe(1250);
+    sync = onSnapshot(sync, snap(1400), 5380); // 20 ms quicker: nearer the server's
+    expect(roundNow(sync, 5380)).toBe(1400);
+    sync = onSnapshot(sync, snap(1500, false), 6000); // paused: it reads what the server said
+    expect([sync.lead, roundNow(sync, 9000)]).toEqual([null, 1500]);
+    sync = onSnapshot(sync, snap(1500), 20_000);
+    expect(roundNow(sync, 20_010)).toBe(1510);
+    sync = onSnapshot(sync, snap(0, true, 2), 30_000); // the next round's clock
+    expect(roundNow(sync, 30_040)).toBe(40);
+    // An intent is sent with what the clock read.
+    expect(onSend(sync, { k: 'draw' }, 77).pending.at(-1)).toMatchObject({ at: 77 });
   });
 
   it('turns up a buried work card at once for a move between your own piles, and only once confirmed for a move to the middle', () => {
@@ -207,8 +318,8 @@ describe('prediction', () => {
     expect(sync.pending).toHaveLength(2);
     let game = predict(sync)!.game!;
     expect(game.slots[0]!.cards.map((c) => c.id)).toEqual([ace.id]);
-    expect(game.players[0]!.waste).toHaveLength(1);
-    expect(game.players[1]!.waste).toHaveLength(1);
+    expect(game.players[0]!.waste).toHaveLength(3);
+    expect(game.players[1]!.waste).toHaveLength(3);
 
     // The server processes the first intent only.
     s.apply(0, sync.pending[0]!.intent, 1);
@@ -216,7 +327,7 @@ describe('prediction', () => {
     expect(sync.pending.map((p) => p.seq)).toEqual([2]);
     game = predict(sync)!.game!;
     expect(game.slots.filter((pile) => pile !== null)).toHaveLength(1);
-    expect(game.players[0]!.waste).toHaveLength(1);
+    expect(game.players[0]!.waste).toHaveLength(3);
     expect(checkInvariants(game)).toBeNull();
   });
 
@@ -466,7 +577,7 @@ describe('against the real Room', () => {
     const players = () => predict(sync)!.game!.players;
     const mine = () => players().find((p) => p.seat === seat)!;
     const predicted = mine().waste.map((c) => c.id);
-    expect(predicted).toHaveLength(1); // (the second draw is refused: the first one's group is in flight)
+    expect(predicted).toHaveLength(3); // (the second draw is refused: the first one's group is in flight)
 
     expect(told(room, them, { t: 'intent', seq: 1, intent: { k: 'draw' } })).toBe(true); // reaches the Room first
     for (const msg of sent.slice(0, 2)) told(room, me, msg);
@@ -474,7 +585,7 @@ describe('against the real Room', () => {
     sync = onSnapshot(sync, me.last);
     expect(sync.pending.map((p) => p.seq)).toEqual([3, 4]);
     expect(mine().waste.map((c) => c.id)).toEqual(predicted);
-    expect(players().find((p) => p.seat !== seat)!.waste).toHaveLength(1);
+    expect(players().find((p) => p.seat !== seat)!.waste).toHaveLength(3);
 
     for (const msg of sent.slice(2)) told(room, me, msg);
     room.flush();
@@ -482,6 +593,6 @@ describe('against the real Room', () => {
     expect(sync.pending).toEqual([]);
     expect(predict(sync)).toBe(sync.server);
     expect(mine().waste.map((c) => c.id)).toEqual(predicted);
-    expect(mine()).toMatchObject({ dealt: 1, stuck: true });
+    expect(mine()).toMatchObject({ draw: { n: 3 }, stuck: true });
   });
 });

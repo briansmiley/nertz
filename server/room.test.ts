@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +9,7 @@ import { CLOSE_OVER, CLOSE_UPDATE, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, ST
 import { downs, faceUps, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
-import { Room, testing, type Conn } from './room';
+import { KEPT, KEPT_SHAPES, Room, testing, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, rows, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
@@ -740,9 +740,9 @@ describe('Room', () => {
 
     room.handle(b, { t: 'pause', on: true });
     room.handle(b, { t: 'leave' }); // and goes, for good
-    expect(paused()).toEqual({ by: 1 });
+    expect(paused()).toEqual({ by: 'player', id: 1 });
     room.handle(w, { t: 'pause', on: false });
-    expect(paused()).toEqual({ by: 1 });
+    expect(paused()).toEqual({ by: 'player', id: 1 });
     room.handle(c, { t: 'pause', on: false });
     expect(paused()).toBeNull();
 
@@ -758,9 +758,9 @@ describe('Room', () => {
     startRound(room, a);
     room.handle(b, { t: 'pause', on: true });
     standUp(room, a, 1); // whoever deals stands B up, for good
-    expect(paused()).toEqual({ by: 1 });
+    expect(paused()).toEqual({ by: 'player', id: 1 });
     room.handle(b, { t: 'pause', on: false }); // not theirs any more: they play none of it
-    expect(paused()).toEqual({ by: 1 });
+    expect(paused()).toEqual({ by: 'player', id: 1 });
     room.handle(c, { t: 'pause', on: false });
     expect(paused()).toBeNull();
     standUp(room, a, 2);
@@ -895,7 +895,7 @@ describe('Room', () => {
     expect(b.states.length).toBe(sentB + 1);
     expect(a.last).toMatchObject({ ack: 4, rev: rev + 5 });
     expect(b.last).toMatchObject({ ack: -1, rev: rev + 5 });
-    expect(a.last.room.game!.players[0]!).toMatchObject({ waste: { length: 1 }, dealt: 1 }); // one draw: the rest were refused while its group is in flight
+    expect(a.last.room.game!.players[0]!).toMatchObject({ waste: { length: 3 }, draw: { n: 3 } }); // one draw: the rest were refused while its group is in flight
 
     const before = room.game;
     sendIntent(room, a, 5, move('no-such-card', { k: 'work', i: 0 }));
@@ -1068,13 +1068,13 @@ describe('Room', () => {
     sendIntent(room, b, 0, { k: 'stuck', on: true });
     room.flush();
     expect(c.last.room.game!.players.map((p) => p.stuck)).toEqual([true, true, false]);
-    expect(room.game!.players[0]!).toMatchObject({ waste: { length: 1 }, dealt: 1 }); // a group left half-dealt
+    expect(room.game!.players[0]!).toMatchObject({ waste: { length: 3 }, draw: { n: 3 } }); // a group left in flight
 
     room.disconnect(c); // the only hold-out leaves: the two who remain are both stuck
     room.flush();
     const p0 = room.game!.players[0]!;
     expect(p0.waste).toHaveLength(0);
-    expect(p0.dealt).toBe(0); // the half-dealt card went back with the rest
+    expect(p0.draw).toBeNull(); // the group in flight went back with the rest
     expect(p0.stock).toHaveLength(32); // three players: the small-table deal (on by default)
     expect(p0.stock[0]!.id).toBe(firstTop); // old top card went to the bottom
     expect(a.last.room.game!.players.map((p) => p.stuck)).toEqual([false, false, false]);
@@ -1289,7 +1289,7 @@ describe('Room', () => {
     room.flush();
     expect(a.last.ack).toBe(tries.length);
     sendIntent(room, b, 13, { k: 'draw' });
-    expect(room.game!.players[1]!.waste).toHaveLength(1);
+    expect(room.game!.players[1]!.waste).toHaveLength(3);
     sendIntent(room, a, 10, { k: 'clear', slot: 0 });
     room.flush();
     expect(b.last.room.game!.tray).toEqual([wire([...pile, king])]);
@@ -1401,7 +1401,7 @@ describe('Room', () => {
       room.handle(a2, { t: 'go' });
       vi.advanceTimersByTime(START_MS);
       sendIntent(room, a2, 0, { k: 'draw' });
-      expect(room.game!.players[0]!.waste).toHaveLength(1);
+      expect(room.game!.players[0]!.waste).toHaveLength(3);
     });
 
     it('someone who comes back during the deal is dealt in: it goes on, redacted the same', () => {
@@ -1546,7 +1546,7 @@ describe('Room', () => {
       expect(vi.getTimerCount()).toBe(0);
       sendIntent(room, a, 100, { k: 'draw' });
       sendIntent(room, b, 100, { k: 'draw' });
-      expect(room.game!.players.map((p) => p.waste.length)).toEqual([1, 1, 0]);
+      expect(room.game!.players.map((p) => p.waste.length)).toEqual([3, 3, 0]);
       expect(checkInvariants(room.game!)).toBeNull();
     });
 
@@ -2035,7 +2035,7 @@ describe('Room', () => {
   it('keeps every invariant through thousands of random intents decided on stale views', () => {
     // Seeds until the middle has filled up and face-down work cards have been turned over.
     untilReached(['centre', 'reveal'], 8, (rnd, reached) => {
-      vi.useFakeTimers(); // (the server's steps of each group in flight, at random moments between the intents)
+      vi.useFakeTimers(); // (the round's clock, which each group in flight lands by, goes on at random moments between the intents)
       const { room, conns } = roomWith(4, { rng: rnd });
       startRound(room, conns[0]!);
       room.flush();
@@ -2303,7 +2303,7 @@ describe('server over real sockets', () => {
     const { room, code, players } = await table(2);
     const [a, b] = players as [Client, Client];
     b.intent({ k: 'draw' });
-    await vi.waitFor(() => expect(b.last.room.game!.players.find((p) => p.seat === b.last.room.seat)).toMatchObject({ dealt: 0, waste: { length: 3 } })); // the group is up
+    await vi.waitFor(() => expect(b.last.room.game!.players.find((p) => p.seat === b.last.room.seat)).toMatchObject({ draw: { n: 3 }, waste: { length: 3 } })); // the group is on the waste
     const before = b.last;
     await b.close();
     await vi.waitFor(() => expect(a.last.room.players[1]!.connected).toBe(false));
@@ -2428,7 +2428,7 @@ describe('server over real sockets', () => {
   });
 });
 
-describe('a draw is one intent, and the server deals its group', () => {
+describe('a draw is one intent and one step, and the server holds it to its time', () => {
   afterEach(() => vi.useRealTimers());
   const drawing = () => {
     vi.useFakeTimers();
@@ -2438,44 +2438,78 @@ describe('a draw is one intent, and the server deals its group', () => {
     return { room, a, b, me: () => room.game!.players[1]! };
   };
 
-  it('deals the three STOCK_CARD_MS apart, and turns them up together a step after the third; another draw meanwhile is refused', () => {
+  it('puts the whole group on the waste at once, with when it was made: one state change, one snapshot each, faces and all', () => {
+    const { room, a, b, me } = drawing();
+    vi.advanceTimersByTime(1000);
+    room.flush();
+    const three = me().stock.slice(-3).reverse().map((c) => c.id); // in the order dealt: the stock's top card first
+    const [stock, rev, sentA, sentB] = [me().stock.length, room.rev, a.states.length, b.states.length];
+    sendIntent(room, b, 0, { k: 'draw' });
+    expect(room.rev).toBe(rev + 1);
+    expect(me()).toMatchObject({ draw: { n: 3 }, waste: { length: 3 }, stock: { length: stock - 3 } });
+    expect(me().waste.map((c) => c.id)).toEqual(three);
+    room.flush();
+    expect(b.last.room.clock).toEqual({ ms: me().draw!.at, running: true }); // made now, by the round's clock
+    vi.advanceTimersByTime(10 * STOCK_CARD_MS);
+    room.flush();
+    expect([room.rev, a.states.length, b.states.length]).toEqual([rev + 1, sentA + 1, sentB + 1]); // nothing per card, nothing when it lands
+    for (const conn of [a, b]) {
+      const seen = conn.last.room.game!.players[1]!;
+      expect(seen.draw).toEqual(me().draw);
+      expect(seen.waste.some(isHidden)).toBe(false);
+      expect(seen.stock.every(isHidden)).toBe(true);
+    }
+    expect(checkInvariants(room.game!)).toBeNull();
+  });
+
+  it('until three steps have passed another draw and its top card are refused; from then on both are taken', () => {
     const { room, b, me } = drawing();
     const stock = me().stock.length;
     sendIntent(room, b, 0, { k: 'draw' });
-    expect(me()).toMatchObject({ dealt: 1, waste: { length: 1 } });
+    const top = me().waste.at(-1)!.id;
+    vi.advanceTimersByTime(3 * STOCK_CARD_MS - 1);
+    const flying = room.game;
     sendIntent(room, b, 1, { k: 'draw' }); // in flight: refused, and nothing more comes off the stock
-    expect(me()).toMatchObject({ dealt: 1, stock: { length: stock - 1 } });
-    vi.advanceTimersByTime(STOCK_CARD_MS - 1);
-    expect(me().dealt).toBe(1);
+    sendIntent(room, b, 2, hold(top));
+    expect(room.game).toBe(flying);
+    expect(me()).toMatchObject({ draw: { n: 3 }, holding: null, stock: { length: stock - 3 } });
     vi.advanceTimersByTime(1);
-    expect(me()).toMatchObject({ dealt: 2, waste: { length: 2 } });
-    vi.advanceTimersByTime(STOCK_CARD_MS);
-    expect(me()).toMatchObject({ dealt: 3, waste: { length: 3 }, stock: { length: stock - 3 } });
-    room.flush();
-    expect(b.last.room.game!.players[1]!.waste.every(isHidden)).toBe(true); // all three held, face-down, their owner's too
-    vi.advanceTimersByTime(STOCK_CARD_MS);
-    expect(me()).toMatchObject({ dealt: 0, waste: { length: 3 } });
-    room.flush();
-    expect(b.last.room.game!.players[1]!.waste.some(isHidden)).toBe(false);
-    expect(checkInvariants(room.game!)).toBeNull();
+    sendIntent(room, b, 3, hold(top));
+    expect(me()).toMatchObject({ draw: null, holding: top });
+    sendIntent(room, b, 4, { k: 'release' });
     vi.advanceTimersByTime(10 * STOCK_CARD_MS);
     expect(me().waste).toHaveLength(3); // nothing more without another draw, which now deals
-    sendIntent(room, b, 2, { k: 'draw' });
-    expect(me()).toMatchObject({ dealt: 1, waste: { length: 4 } });
+    sendIntent(room, b, 5, { k: 'draw' });
+    expect(me()).toMatchObject({ draw: { n: 3 }, waste: { length: 6 }, stock: { length: stock - 6 } });
+    expect(checkInvariants(room.game!)).toBeNull();
   });
 
-  it('a pause holds a group where it lies, and it deals on when play does', () => {
+  it('an intent refused after the group\'s time still finds it down, and every window is told so', () => {
     const { room, a, b, me } = drawing();
     sendIntent(room, b, 0, { k: 'draw' });
-    room.handle(a, { t: 'pause', on: true });
-    vi.advanceTimersByTime(5 * STOCK_CARD_MS);
-    expect(me().dealt).toBe(1);
-    room.handle(a, { t: 'pause', on: false });
-    vi.advanceTimersByTime(STOCK_CARD_MS);
-    expect(me().dealt).toBe(2);
+    vi.advanceTimersByTime(3 * STOCK_CARD_MS);
+    sendIntent(room, b, 1, hold('not a card'));
+    expect(me()).toMatchObject({ draw: null, holding: null });
+    room.flush();
+    for (const conn of [a, b]) expect(conn.last.room.game!.players[1]!.draw).toBeNull(); // b's window had the group down when it sent that: it is not sent it in flight again
   });
 
-  it('a call freezes a group in flight where it lies: no more steps, then or after', () => {
+  it('a pause holds a group in flight: the time paused does not count', () => {
+    const { room, a, b, me } = drawing();
+    sendIntent(room, b, 0, { k: 'draw' });
+    vi.advanceTimersByTime(STOCK_CARD_MS);
+    room.handle(a, { t: 'pause', on: true });
+    vi.advanceTimersByTime(10 * STOCK_CARD_MS);
+    room.handle(a, { t: 'pause', on: false });
+    vi.advanceTimersByTime(2 * STOCK_CARD_MS - 1);
+    sendIntent(room, b, 1, { k: 'draw' });
+    expect(me()).toMatchObject({ draw: { n: 3 }, waste: { length: 3 } }); // still in flight
+    vi.advanceTimersByTime(1);
+    sendIntent(room, b, 2, { k: 'draw' });
+    expect(me().waste).toHaveLength(6);
+  });
+
+  it('a call freezes a group in flight as it is: it does not land, then or after', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
@@ -2484,14 +2518,14 @@ describe('a draw is one intent, and the server deals its group', () => {
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(room.game!.status.at).not.toBe('play');
     const frozen = room.game!.players[1]!;
-    expect(frozen.dealt).toBe(1);
+    expect(frozen.draw).toMatchObject({ n: 3 });
     vi.advanceTimersByTime(GRACE_MS + 10 * STOCK_CARD_MS);
     expect(room.phase).toBe('results');
     expect(room.game!.players[1]).toEqual(frozen);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('a reconnect mid-group is sent the group as it lies, and the rest of it comes on schedule', () => {
+  it('a reconnect mid-group is sent the group whole, with when it was drawn and what the clock reads now', () => {
     const { room, b, me } = drawing();
     sendIntent(room, b, 0, { k: 'draw' });
     vi.advanceTimersByTime(STOCK_CARD_MS);
@@ -2500,12 +2534,9 @@ describe('a draw is one intent, and the server deals its group', () => {
     expect(room.join(back, 'P1', 'tok-0001', true)).toBeNull();
     room.flush();
     const mine = () => back.last.room.game!.players[1]!;
-    expect(mine()).toMatchObject({ dealt: 2, waste: { length: 2 } });
-    expect(mine().waste.every(isHidden)).toBe(true);
-    vi.advanceTimersByTime(2 * STOCK_CARD_MS);
-    room.flush();
-    expect(mine()).toMatchObject({ dealt: 0, waste: { length: 3 } });
+    expect(mine()).toMatchObject({ draw: { n: 3 }, waste: { length: 3 } });
     expect(mine().waste.some(isHidden)).toBe(false);
+    expect(back.last.room.clock!.ms - mine().draw!.at).toBe(STOCK_CARD_MS); // a step of it gone: this window deals the rest on its own
     expect(me().waste).toEqual(mine().waste);
   });
 });
@@ -2544,7 +2575,7 @@ describe('a table kept over a restart of the server', () => {
   /** `room` as the next server has it: what it keeps, through the database's JSON. */
   const restart = (room: Room): Room => Room.restored(wire(room.kept()), { rng: seeded(2), schedule: () => {} })!;
   /** Where every card of the round lies (not what is in whose hand). */
-  const cards = (g: GameState) => ({ slots: g.slots, hands: g.players.map(({ seat, nertz, work, stock, waste, dealt }) => ({ seat, nertz, work, stock, waste, dealt })) });
+  const cards = (g: GameState) => ({ slots: g.slots, hands: g.players.map(({ seat, nertz, work, stock, waste, draw }) => ({ seat, nertz, work, stock, waste, draw })) });
   const hand = (g: GameState, seat: number) => g.players.find((p) => p.seat === seat)!;
   const lines = (c: FakeConn) => c.room.players.map(({ id, name, seat, score }) => ({ id, name, seat, score }));
 
@@ -2563,7 +2594,7 @@ describe('a table kept over a restart of the server', () => {
     sendIntent(room, b, 2, { k: 'end', on: true }); // and b's word that it should end, which is not a's
     room.flush();
     const was = room.game!;
-    expect(hand(was, 0).dealt).toBeGreaterThan(0);
+    expect(hand(was, 0).draw).toMatchObject({ n: 3 });
     expect(hand(was, 1).holding).not.toBeNull();
     expect(lines(b).some((l) => l.score !== 0)).toBe(true);
     const back = restart(room);
@@ -2579,7 +2610,7 @@ describe('a table kept over a restart of the server', () => {
     const b2 = new FakeConn();
     expect(back.join(b2, 'P1', 'tok-0001')).toBeNull(); // (a guest: who they are is their token)
     back.flush();
-    expect(b2.room).toMatchObject({ me: b.room.me, seat: 1, phase: 'playing', round: 2, paused: { by: null, done: true } });
+    expect(b2.room).toMatchObject({ me: b.room.me, seat: 1, phase: 'playing', round: 2, paused: { by: 'update', done: true } });
     expect(lines(b2)).toEqual(lines(b));
     expect(b2.room.players.find((p) => p.id === a.room.me)).toMatchObject({ connected: false });
 
@@ -2593,9 +2624,37 @@ describe('a table kept over a restart of the server', () => {
     expect(b2.room.paused).toBeNull();
     expect(b2.room.clock).toMatchObject({ running: true });
     vi.advanceTimersByTime(30_000);
-    expect(hand(back.game!, 0).dealt).toBe(0); // a's group has landed
+    expect(hand(back.game!, 0).draw).toBeNull(); // a's group is down: its time came once the clock ran again
     expect(hand(back.game!, 2)).not.toEqual(hand(was, 2)); // and the bot plays on
     back.close();
+  });
+
+  it('keeps a table in the shape its version says: a change to what is kept, without `KEPT` put up for it, fails here', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'chat', text: 'hello' });
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    sendIntent(room, b, 0, { k: 'end', on: true }); // a round over, for `lastRound`
+    startRound(room, a);
+    sendIntent(room, a, 1, { k: 'draw' }); // a group in flight
+    sendIntent(room, b, 1, hold(workTop(room.game!, 1, 0))); // a card in hand
+    vi.advanceTimersByTime(1000);
+    /** Every path in `v` and the kind of value at it: an array's items as one, and a key that is a number as any number. */
+    const paths = (v: unknown, at: string, into: Set<string>): Set<string> => {
+      into.add(`${at}:${v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v}`);
+      if (Array.isArray(v)) for (const item of v) paths(item, `${at}[]`, into);
+      else if (v && typeof v === 'object') for (const [k, item] of Object.entries(v)) paths(item, `${at}.${/^\d+$/.test(k) ? '#' : k}`, into);
+      return into;
+    };
+    const shape = createHash('sha256')
+      .update([...paths(wire(room.kept()), '', new Set())].sort().join('\n'))
+      .digest('hex')
+      .slice(0, 12);
+    expect(shape, `what a table keeps has changed: put KEPT up to ${KEPT + 1} and add ${KEPT + 1}: '${shape}' to KEPT_SHAPES (server/room.ts)`).toBe(KEPT_SHAPES[KEPT]);
+    room.close();
   });
 
   it("kept while its cards were being dealt, the round comes back waiting for the dealer's Start; a table kept by a server that kept them otherwise does not come back", () => {
@@ -2645,15 +2704,15 @@ describe('a table kept over a restart of the server', () => {
       await b.did({ k: 'end', on: true }); // (said by one of two: it must not end the round as the other's window goes, nor as Bob's comes back first)
       server.update();
       await vi.waitFor(() => expect([a.closeCode, b.closeCode]).toEqual([CLOSE_UPDATE, CLOSE_UPDATE]));
-      expect(a.last.room.paused).toEqual({ by: null }); // (the update under way: not yet `done`)
-      expect(b.last.room.paused).toEqual({ by: null });
+      expect(a.last.room.paused).toEqual({ by: 'update', done: false }); // (the update under way: not yet `done`)
+      expect(b.last.room.paused).toEqual({ by: 'update', done: false });
 
       await restarted();
       const room = server.rooms.get(code)!;
       expect(room.game!.players).toEqual(hands);
       const back = await Client.open(server.port, code, 'Bob', b.token, false);
       await vi.waitFor(() => expect(back.states.length).toBeGreaterThan(0));
-      expect(back.last.room).toMatchObject({ me: b.last.room.me, seat: b.seat, phase: 'playing', paused: { by: null, done: true } }); // (back: the update over)
+      expect(back.last.room).toMatchObject({ me: b.last.room.me, seat: b.seat, phase: 'playing', paused: { by: 'update', done: true } }); // (back: the update over)
       back.send({ t: 'pause', on: false });
       await vi.waitFor(() => expect(back.last.room.paused).toBeNull());
       await back.did({ k: 'draw' });

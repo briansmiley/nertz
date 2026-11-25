@@ -33,16 +33,17 @@ export interface PlayerState {
   work: WorkPile[];
   /** Face-down. */
   stock: AnyCard[];
-  /** Face-up, except the top `dealt` cards; only the top is playable, and only when `dealt` is 0. */
+  /** Face-up; only the top is playable, and not while a group is in flight onto it (`draw`). */
   waste: AnyCard[];
   /**
-   * The group in flight: how many cards of a `draw` lie face-down on top of the
-   * waste, held over the stock (0: no draw under way). The server deals them
-   * one at a time, STOCK_CARD_MS apart (`dealOn`), and one step after the
-   * third (or the last card of the stock) the group turns up together and this
-   * is 0 again.
+   * The group in flight, or null: no draw under way. A `draw` puts its `n` cards on top of the waste in one step and
+   * says when it was made (`at`, on the round's clock: `RoomView.clock`). They count as dealt one at a time,
+   * STOCK_CARD_MS apart, and turned up together one step after the last: so the draw is over, and its top card can be
+   * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Each window deals the cards out
+   * on its own clock. `off` is only ever on screen: how many of the group this window has dealt off the stock so
+   * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off.
    */
-  dealt: number;
+  draw: { n: number; at: number; off?: number } | null;
   stuck: boolean;
   /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
@@ -136,8 +137,8 @@ export type Intent =
    */
   | { k: 'move'; cardId: string; count: number; to: PileRef }
   /**
-   * A group of three off the stock: the first card at once, the rest on the
-   * server's steps (`PlayerState.dealt`). Refused while a group is in flight.
+   * A group of three off the stock, all at once (`PlayerState.draw`). Refused
+   * while a group is in flight.
    * On an empty stock: turn the waste back over into the stock.
    */
   | { k: 'draw' }
@@ -250,6 +251,13 @@ export interface Seats {
   taken: number;
 }
 
+
+/**
+ * Who paused a round in play: a player (`id`); or the server, stopped for an update. While the server that stopped is
+ * going down the update is under way; `done` once a server is back with the table (server/room.ts `restored`), and
+ * only then: the stopping server's last word is not yet done, whatever the line is doing when it is heard.
+ */
+export type Pause = { by: 'player'; id: number } | { by: 'update'; done: boolean };
 /** Everything one client needs to render, personalised for the player `me`. */
 export interface RoomView {
   code: string;
@@ -284,8 +292,8 @@ export interface RoomView {
    * at what the round took. Null before the first round is under way.
    */
   clock: { ms: number; running: boolean } | null;
-  /** The round is paused (by this player, an `id`; or by nobody at the table, null: the server stopped for an update; `done` once a server is back with it, the update over): every card is hidden, no move is taken and the bots wait. Null otherwise. */
-  paused: { by: number | null; done?: true } | null;
+  /** The round is paused (`Pause`): every card is hidden, no move is taken and the bots wait. Null otherwise. */
+  paused: Pause | null;
   lastRound: RoundResult | null;
   /** The server has its aids for trying things out on (locally, and on previews): set-up deals (`?deal=`), Shift+N. */
   testing: boolean;

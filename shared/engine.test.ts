@@ -8,7 +8,8 @@ import {
   CLEAR_FIRST,
   completedBy,
   deal as dealRound,
-  dealOn,
+  landed,
+  landsAt,
   expireGrace,
   feltFree,
   finishDeal,
@@ -43,7 +44,7 @@ import {
   type Rng,
 } from './engine';
 import { allCards, card as c, cards as cs, downs, faceUps, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seats, seeded, slot, stepDraws, deals, table, toPlay, untilReached, work, type Hand } from './testkit';
-import { SET_UPS } from './protocol';
+import { SET_UPS, STOCK_CARD_MS } from './protocol';
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
@@ -64,8 +65,6 @@ const run = (s: GameState, ...steps: [number, Intent][]): GameState => steps.red
 
 const FLIP: Intent = { k: 'draw' };
 const flips = deals;
-/** `seat`'s group in flight, if it has one, dealt out and turned up: every step the server would take. */
-const whole = (g: GameState, seat: number): GameState => dealOn(dealOn(dealOn(g, seat), seat), seat);
 /** The ids of `seat`'s stock but its top `n`: on a table built by hand, the rest of the deck beneath the stock it names. */
 const under = (s: GameState, seat: number, n: number) => {
   const stock = s.players[seat]!.stock;
@@ -713,95 +712,79 @@ describe('dealing off the stock and recycling', () => {
   const s = table([{ stock: 'S7 S6 S5 S4 S3 S2 SA' }, {}]); // SA is the top
   const me = (g: GameState) => g.players[0]!;
 
-  it('one draw deals a group: its first card at once, the rest on the steps, and one step more turns it up, its last card on top', () => {
-    const a = run(s, [0, FLIP]);
-    expect([ids(me(a).waste), me(a).dealt, me(a).stock.length]).toEqual([['0:SA'], 1, 51]);
-    // Another draw while it is in flight is refused; the server's steps deal the rest.
-    expect(applyIntent(a, 0, FLIP)).toEqual({ ok: false, reason: 'A draw is under way' });
-    const b = dealOn(a, 0);
-    expect([ids(me(b).waste), me(b).dealt, me(b).stock.length]).toEqual([['0:SA', '0:S2'], 2, 50]);
-    const held = dealOn(b, 0);
-    expect([ids(me(held).waste), me(held).dealt, me(held).stock.length]).toEqual([['0:SA', '0:S2', '0:S3'], 3, 49]);
-    expect(grab(held, 0, '0:S3')).toBeNull(); // all three are off the stock, still face-down
-    const d = dealOn(held, 0);
-    expect([ids(me(d).waste), me(d).dealt, me(d).stock.length]).toEqual([['0:SA', '0:S2', '0:S3'], 0, 49]);
+  it('one draw is one step: the whole group on the waste, its last card on top, and when it was made; it is down, and in play, when its time has come', () => {
+    const a = ok(applyIntent(s, 0, FLIP, 1000));
+    expect([ids(me(a).waste), me(a).draw, me(a).stock.length]).toEqual([['0:SA', '0:S2', '0:S3'], { n: 3, at: 1000 }, 49]);
+    expect(grab(a, 0, '0:S3')).toBeNull(); // in flight: its top is not in play
+    // Until the group's time (a step for each card) another draw and its top card are refused.
+    const due = 1000 + 3 * STOCK_CARD_MS;
+    expect(landsAt(me(a).draw!)).toBe(due);
+    expect(landed(a, due - 1)).toBe(a);
+    expect(applyIntent(a, 0, FLIP, due - 1)).toEqual({ ok: false, reason: 'A draw is under way' });
+    rejected(applyIntent(a, 0, hold('0:S3'), due - 1));
+    const d = landed(a, due);
+    expect([ids(me(d).waste), me(d).draw, me(d).stock.length]).toEqual([['0:SA', '0:S2', '0:S3'], null, 49]);
     expect(grab(d, 0, '0:S3')).toEqual({ from: { k: 'waste' }, cards: [c('S3')] });
-    expect(dealOn(d, 0)).toBe(d); // no group in flight: a step does nothing
-    for (const g of [b, held]) expect(checkInvariants(g)).toBeNull();
-    // The next group lands on the first: the cards beneath stay face-up, but only a face-up top is in play.
-    const e = flips(d, 0, 2);
-    expect([ids(me(e).waste), me(e).dealt]).toEqual([['0:SA', '0:S2', '0:S3', '0:S4', '0:S5'], 2]);
-    expect(ids(me(flips(e, 0, 1)).waste).at(-1)).toBe('0:S6');
-    for (const g of [a, b, d, e]) expect(checkInvariants(g)).toBeNull();
+    expect(landed(d, due)).toBe(d); // no group in flight: nothing lands
+    // Asked at its time, the engine has it down first: the top card is taken up, or the next group dealt onto it.
+    expect(ok(applyIntent(a, 0, hold('0:S3'), due)).players[0]).toMatchObject({ holding: '0:S3', draw: null });
+    const e = ok(applyIntent(a, 0, FLIP, due));
+    expect([ids(me(e).waste), me(e).draw]).toEqual([['0:SA', '0:S2', '0:S3', '0:S4', '0:S5', '0:S6'], { n: 3, at: due }]);
+    for (const g of [a, d, e]) expect(checkInvariants(g)).toBeNull();
   });
 
-  it('turns a short group up as soon as the stock runs out', () => {
-    const one = run(flips(s, 0, 51), [0, FLIP]);
-    expect([me(one).dealt, me(one).stock.length]).toEqual([1, 0]);
-    expect(applyIntent(one, 0, FLIP).ok).toBe(false); // not the waste turned over: the group is still in flight
-    expect(me(dealOn(one, 0)).dealt).toBe(0);
+  it('a group is short when the stock runs out, and takes a step for each card it has', () => {
     const bottom = me(s).stock[0]!.id;
     const oneLeft = flips(s, 0, 51);
-    expect([me(oneLeft).dealt, me(oneLeft).stock.length]).toEqual([0, 1]);
-    const last = flips(oneLeft, 0, 1); // a group of one
-    expect([me(last).dealt, me(last).stock.length, ids(me(last).waste).at(-1)]).toEqual([0, 0, bottom]);
-    expect(viewFor(last, 1).players[0]!.waste.some(isHidden)).toBe(false);
+    expect([me(oneLeft).draw, me(oneLeft).stock.length]).toEqual([null, 1]);
+    const one = ok(applyIntent(oneLeft, 0, FLIP, 50)); // a group of one
+    expect([me(one).draw, me(one).stock.length, ids(me(one).waste).at(-1)]).toEqual([{ n: 1, at: 50 }, 0, bottom]);
+    expect(applyIntent(one, 0, FLIP, 50 + STOCK_CARD_MS - 1).ok).toBe(false); // not the waste turned over: the group is still in flight
+    const last = landed(one, 50 + STOCK_CARD_MS);
+    expect(me(last).draw).toBeNull();
     expect(grab(last, 0, bottom)).not.toBeNull();
     const fifty = table([{ nertz: 'SA S2' }]);
-    expect(me(flips(fifty, 0, 49)).dealt).toBe(1);
-    const two = flips(fifty, 0, 50); // a group of two
-    expect([me(two).dealt, me(two).stock.length]).toEqual([0, 0]);
+    const two = ok(applyIntent(flips(fifty, 0, 48), 0, FLIP)); // a group of two
+    expect([me(two).draw, me(two).stock.length]).toEqual([{ n: 2, at: 0 }, 0]);
     expect(checkInvariants(two)).toBeNull();
   });
 
-  it('shows nobody a card of a group in flight, its owner included; ids are stable and the faces come when it turns up', () => {
-    const under = flips(s, 0, 3);
-    for (const n of [1, 2]) {
-      const mid = flips(under, 0, n);
-      for (const seat of [0, 1]) {
-        const waste = viewFor(mid, seat).players[0]!.waste;
-        expect(ids(waste)).toEqual(ids(me(mid).waste));
-        expect(waste.slice(0, 3)).toEqual(me(under).waste); // the group beneath stays as it was
-        expect(waste.slice(3)).toEqual(me(mid).waste.slice(3).map((x) => ({ id: x.id, owner: 0, hidden: true })));
-        expect(checkInvariants(viewFor(mid, seat))).toBeNull();
-      }
-      for (const seat of [0, 1]) expect(JSON.stringify(viewFor(mid, seat))).not.toContain(`"rank":${3 + n}`);
+  it('sends everyone the faces of a group in flight with the draw, in the one state it makes; the stock stays hidden', () => {
+    const mid = run(flips(s, 0, 3), [0, FLIP]);
+    for (const seat of [0, 1]) {
+      expect(viewFor(mid, seat).players[0]!.waste).toEqual(me(mid).waste);
+      expect(viewFor(mid, seat).players[0]!.stock.every(isHidden)).toBe(true);
+      expect(checkInvariants(viewFor(mid, seat))).toBeNull();
     }
-    const up = flips(under, 0, 3);
-    expect(viewFor(up, 1).players[0]!.waste).toEqual(me(up).waste);
   });
 
-  it('keeps the waste out of play while a group is half-dealt; the other piles play on and the deal resumes', () => {
+  it('keeps the waste out of play while a group is in flight; the other piles play on and the group is down at its time', () => {
     const g = table([{ stock: 'S4 S3 S2 SA', waste: 'D2 H4', nertz: 'C9 H6', work: ['S7', 'C7', 'D8', []] }]);
     expect(legalDrops(g, 0, '0:H4')).toEqual([work(3)]);
-    for (const n of [1, 2]) {
-      const mid = flips(g, 0, n);
-      const top = me(mid).waste.at(-1)!.id;
-      for (const id of [top, '0:H4', '0:D2']) {
-        expect(grab(mid, 0, id)).toBeNull();
-        expect(legalDrops(mid, 0, id)).toEqual([]);
-        rejected(applyIntent(mid, 0, hold(id)));
-        for (const to of [work(1), work(3), slot(0)]) rejected(applyIntent(mid, 0, move(id, to)));
-      }
-      // Nertz and work piles are as playable as ever, drags included, and none of it disturbs the group.
-      const played = run(mid, [0, hold('0:H6')], [0, move('0:H6', work(0))], [0, move('0:C7', work(2))], [0, { k: 'stuck', on: true }]);
-      expect([me(played).dealt, ids(me(played).waste)]).toEqual([n, ids(me(mid).waste)]);
-      expect(checkInvariants(played)).toBeNull();
-      // ...and the deal is taken up where it was left.
-      const done = flips(played, 0, 3 - n);
-      expect([me(done).dealt, ids(me(done).waste)]).toEqual([0, ['0:D2', '0:H4', '0:SA', '0:S2', '0:S3']]);
-      expect(ok(applyIntent(done, 0, move('0:S3', work(3)))).players[0]!.waste).toHaveLength(4);
+    const mid = run(g, [0, FLIP]);
+    for (const id of ['0:S3', '0:H4', '0:D2']) {
+      expect(grab(mid, 0, id)).toBeNull();
+      expect(legalDrops(mid, 0, id)).toEqual([]);
+      rejected(applyIntent(mid, 0, hold(id)));
+      for (const to of [work(1), work(3), slot(0)]) rejected(applyIntent(mid, 0, move(id, to)));
     }
+    // Nertz and work piles are as playable as ever, drags included, and none of it disturbs the group.
+    const played = run(mid, [0, hold('0:H6')], [0, move('0:H6', work(0))], [0, move('0:C7', work(2))], [0, { k: 'stuck', on: true }]);
+    expect([me(played).draw, ids(me(played).waste)]).toEqual([{ n: 3, at: 0 }, ids(me(mid).waste)]);
+    expect(checkInvariants(played)).toBeNull();
+    const done = landed(played, 3 * STOCK_CARD_MS);
+    expect([me(done).draw, ids(me(done).waste)]).toEqual([null, ['0:D2', '0:H4', '0:SA', '0:S2', '0:S3']]);
+    expect(ok(applyIntent(done, 0, move('0:S3', work(3)))).players[0]!.waste).toHaveLength(4);
   });
 
   it('recycles the waste into the stock in the original order: one action, on an empty stock only', () => {
     const out = flips(s, 0, 52);
     expect(me(out).stock).toEqual([]);
     const back = flips(out, 0, 1);
-    expect([me(back).waste, me(back).dealt]).toEqual([[], 0]);
+    expect([me(back).waste, me(back).draw]).toEqual([[], null]);
     expect(me(back).stock).toEqual(me(s).stock);
-    // While any card is left in the stock a flip deals; it never turns the waste over, half-dealt group or not.
-    for (let n = 1; n < 7; n++) expect(me(flips(s, 0, n)).waste).toHaveLength(n);
+    // While any card is left in the stock a flip deals; it never turns the waste over.
+    for (let n = 3; n < 13; n += 3) expect(me(flips(s, 0, n)).waste).toHaveLength(n);
   });
 
   it('rejects a flip with nothing to flip, and does not clear the stuck flag', () => {
@@ -811,16 +794,17 @@ describe('dealing off the stock and recycling', () => {
     expect(ok(applyIntent(stuck, 0, FLIP)).players[0]!.stuck).toBe(true);
   });
 
-  it('the invariant check knows a group in flight: 0 to 3 cards, on the waste, never before play opens', () => {
-    const mid = flips(s, 0, 2);
-    const withDealt = (g: GameState, dealt: number): GameState => ({ ...g, players: g.players.map((p, i) => (i === 0 ? { ...p, dealt } : p)) });
+  it('the invariant check knows a group in flight: 1 to 3 cards, on the waste, made at some time, never before play opens', () => {
+    const mid = run(s, [0, FLIP]);
+    const withDraw = (g: GameState, draw: PlayerState['draw']): GameState => ({ ...g, players: g.players.map((p, i) => (i === 0 ? { ...p, draw } : p)) });
     expect(checkInvariants(mid)).toBeNull();
-    expect(checkInvariants(withDealt(flips(s, 0, 3), 3))).toBeNull();
-    for (const bad of [4, -1, 1.5, NaN]) expect(checkInvariants(withDealt(flips(s, 0, 6), bad))).toMatch(/group in flight/);
-    expect(checkInvariants(withDealt(flips(s, 0, 1), 2))).toMatch(/group in flight/); // more than lie on the waste
+    expect(checkInvariants(withDraw(flips(s, 0, 3), { n: 2, at: 40 }))).toBeNull();
+    for (const bad of [4, 0, -1, 1.5, NaN]) expect(checkInvariants(withDraw(flips(s, 0, 6), { n: bad, at: 0 }))).toMatch(/group in flight/);
+    expect(checkInvariants(withDraw(mid, { n: 3, at: NaN }))).toMatch(/group in flight/);
+    expect(checkInvariants(withDraw(s, { n: 1, at: 0 }))).toMatch(/group in flight/); // more than lie on the waste
     const fresh = dealRound([0, 1], seeded(5));
     expect(checkInvariants(fresh)).toBeNull();
-    const early = { ...fresh, players: fresh.players.map((p, i) => (i === 0 ? { ...p, waste: p.stock.slice(-1), stock: p.stock.slice(0, -1), dealt: 1 } : p)) };
+    const early = { ...fresh, players: fresh.players.map((p, i) => (i === 0 ? { ...p, waste: p.stock.slice(-1), stock: p.stock.slice(0, -1), draw: { n: 1, at: 0 } } : p)) };
     expect(checkInvariants(early)).toMatch(/before the round was open/);
   });
 });
@@ -1124,58 +1108,56 @@ describe('voting to end the round', () => {
 });
 
 describe('a group in flight, the stuck rotation and the Nertz call', () => {
-  // Seat 0 has turned one group up (SA S2 S3) and dealt two cards of the next (S4 S5); seat 1 is one card into its first.
+  // Seat 0 has turned one group up (SA S2 S3) and has the next in flight (S4 S5 S6); seat 1 has its first in flight.
   const start = table([{ stock: 'S7 S6 S5 S4 S3 S2 SA', nertz: 'H6' }, { stock: 'D9 D8 D7', nertz: 'C6' }]);
-  const base = flips(flips(start, 0, 5), 1, 1);
+  const base = run(flips(start, 0, 3), [0, FLIP], [1, FLIP]);
 
-  it('the rotation takes the half-dealt cards back with the rest of the waste, in the original order', () => {
-    expect(base.players.map((p) => p.dealt)).toEqual([2, 1]);
+  it('the rotation takes the cards in flight back with the rest of the waste, in the original order', () => {
+    expect(base.players.map((p) => p.draw?.n)).toEqual([3, 3]);
     const r = resolveStuck(run(base, [0, { k: 'stuck', on: true }], [1, { k: 'stuck', on: true }]), [0, 1]);
-    expect(r.players.map((p) => [p.dealt, p.waste.length, p.stuck])).toEqual([[0, 0, false], [0, 0, false]]);
+    expect(r.players.map((p) => [p.draw, p.waste.length, p.stuck])).toEqual([[null, 0, false], [null, 0, false]]);
     expect(ids(r.players[0]!.stock)).toEqual(['0:SA', ...under(start, 0, 7), '0:S7', '0:S6', '0:S5', '0:S4', '0:S3', '0:S2']); // the old top went to the bottom
     expect(ids(r.players[1]!.stock)).toEqual(['1:D7', ...under(start, 1, 3), '1:D9', '1:D8']);
     expect(checkInvariants(r)).toBeNull();
     // That is a reshuffle, between the state before it and the one after; what is played next is not another.
-    expect([reshuffledSince(base, r), reshuffledSince(r, flips(r, 0, 1)), reshuffledSince(start, base)]).toEqual([true, false, false]);
+    expect([reshuffledSince(base, r), reshuffledSince(r, flips(r, 0, 3)), reshuffledSince(start, base)]).toEqual([true, false, false]);
     // The next group starts from scratch.
-    expect(flips(r, 0, 1).players[0]!.dealt).toBe(1);
+    expect(run(r, [0, FLIP]).players[0]!.draw).toEqual({ n: 3, at: 0 });
     expect(ids(flips(r, 0, 3).players[0]!.waste)).toEqual(['0:S2', '0:S3', '0:S4']);
   });
 
-  it("Nertz can be called with a group half-dealt, and freezes everyone else's where it lies", () => {
+  it("Nertz can be called with a group in flight, and freezes everyone's where it lies", () => {
     const empty = { ...base, players: base.players.map((p, i) => (i === 0 ? { ...p, nertz: [], stock: [...p.nertz, ...p.stock] } : p)) };
     const called = ok(applyIntent(empty, 0, NERTZ));
     expect(isOver(called)).toBe(true);
-    expect(called.players.map((p) => p.dealt)).toEqual([2, 1]); // nothing is turned up or taken back
-    for (const seat of [0, 1]) expect(dealOn(called, seat)).toBe(called); // and the server's steps stop: the groups stay in flight
+    expect(called.players.map((p) => p.draw?.n)).toEqual([3, 3]); // nothing is taken back
+    expect(landed(called, Infinity)).toBe(called); // and no time brings them down: the groups stay in flight
     expect(checkInvariants(called)).toBeNull();
     for (const seat of [0, 1]) rejected(applyIntent(called, seat, FLIP));
     expect(resolveStuck(called, [0, 1])).toBe(called);
     expect(scoreRound(called).map((x) => x.delta)).toEqual([0, -2]);
-    // The face-down cards stay face-down on the final table.
-    expect(viewFor(called, 1).players[0]!.waste.slice(-2).every(isHidden)).toBe(true);
   });
 
-  it('a half-dealt group never earns grace, but a card from another pile held meanwhile does', () => {
+  it('a group in flight never earns grace, but a card from another pile held meanwhile does', () => {
     const g = table([{ stock: 'S7 S6 S5 S4', waste: 'HA', nertz: 'D2' }, {}], { slots: [pile('DA', 1)] });
-    const mid = flips(g, 0, 1);
+    const mid = run(g, [0, FLIP]);
     rejected(applyIntent(mid, 0, hold(mid.players[0]!.waste.at(-1)!.id)));
     const idle = ok(applyIntent(mid, 1, NERTZ));
     expect([inGrace(idle), isOver(idle)]).toEqual([[], true]);
     const holding = run(mid, [0, hold('0:D2')], [1, NERTZ]);
     expect(inGrace(holding)).toEqual([0]);
     rejected(applyIntent(holding, 0, FLIP)); // in grace only the held card may be played
-    const landed = ok(applyIntent(holding, 0, move('0:D2', slot(0))));
-    expect([isOver(landed), landed.players[0]!.dealt]).toEqual([true, 1]);
-    expect(checkInvariants(landed)).toBeNull();
+    const put = ok(applyIntent(holding, 0, move('0:D2', slot(0))));
+    expect([isOver(put), put.players[0]!.draw]).toEqual([true, { n: 3, at: 0 }]);
+    expect(checkInvariants(put)).toBeNull();
   });
 
-  it('a held waste card is let go of by the first card dealt onto it', () => {
+  it('a held waste card is let go of by the group dealt onto it', () => {
     const g = table([{ stock: 'S7 S6 S5 S4', waste: 'HA', work: ['S9', [], [], []] }]);
     const held = ok(applyIntent(g, 0, hold('0:HA')));
-    const dealt = flips(held, 0, 1);
-    expect([dealt.players[0]!.holding, dealt.players[0]!.dealt]).toEqual([null, 1]);
-    expect(flips(ok(applyIntent(g, 0, hold('0:S9'))), 0, 1).players[0]!.holding).toBe('0:S9');
+    const dealt = run(held, [0, FLIP]);
+    expect([dealt.players[0]!.holding, dealt.players[0]!.draw?.n]).toEqual([null, 3]);
+    expect(run(ok(applyIntent(g, 0, hold('0:S9'))), [0, FLIP]).players[0]!.holding).toBe('0:S9');
   });
 });
 
@@ -1695,9 +1677,9 @@ describe('viewFor', () => {
   });
 
   it('lets the reducer run structurally on hidden cards but never judge them', () => {
-    // dealing on a view: hidden cards land in the waste, and stay hidden when the group turns up (the faces come with the snapshot)
+    // dealing on a view: hidden cards land in the waste, and stay hidden (the faces come with the snapshot)
     const predicted = flips(viewFor(full, WATCHER), 0, 3);
-    expect(predicted.players[0]!.dealt).toBe(0);
+    expect(predicted.players[0]!.draw).toBeNull();
     expect(predicted.players[0]!.waste.every(isHidden)).toBe(true);
     expect(ids(predicted.players[0]!.waste)).toEqual(ids(flipped.players[0]!.waste));
     // a hidden waste top cannot be moved anywhere, not even to an empty pile
@@ -2129,7 +2111,7 @@ describe('random play keeps every invariant', () => {
       // An Ace takes the first slot nobody is using.
       const into = intent.k === 'move' && intent.to.k === 'felt' ? state.slots.indexOf(null) : -1;
       if (freed.has(into) && r.state.slots[into]?.cards.length === 1) reused++;
-      state = resolveStuck(whole(r.state, seat), seats);
+      state = resolveStuck(landed(r.state, Infinity), seats);
       expect(checkInvariants(state)).toBeNull();
     }
     expect(state.tray.length).toBe(cleared);
@@ -2176,7 +2158,7 @@ describe('greedy bots can finish a round', () => {
         const r = applyIntent(state, seat, intent);
         if (!r.ok) throw new Error(`bot move rejected at step ${step}: ${JSON.stringify(intent)} (${r.reason})`);
         idle.set(seat, intent.k === 'move' ? 0 : idle.get(seat)! + 1);
-        const played = whole(r.state, seat);
+        const played = landed(r.state, Infinity);
         state = resolveStuck(played, seats);
         if (state !== played) seats.forEach((s) => idle.set(s, 0));
         expect(checkInvariants(state)).toBeNull();
@@ -2215,7 +2197,7 @@ function expectPredictionMatches(predicted: GameState, truth: GameState) {
     expect(pred.stuck).toBe(real.stuck);
     expect(pred.holding).toBe(real.holding);
     expect(downs(pred)).toEqual(downs(real));
-    expect(pred.dealt).toBe(real.dealt);
+    expect(pred.draw).toEqual(real.draw);
     const piles = (p: PlayerState) => [p.nertz, p.stock, p.waste, ...p.work.map((w) => w.cards)];
     const realPiles = piles(real);
     for (const [j, pile] of piles(pred).entries()) {
@@ -2230,7 +2212,7 @@ const unrevealed = (predicted: GameState, freshView: GameState): number => {
   const lyingUp = [
     ...freshView.slots.flatMap((pile) => pile?.cards ?? []),
     ...freshView.tray.flat(),
-    ...freshView.players.flatMap((p) => [...p.nertz.slice(-1), ...p.work.flatMap((w) => w.cards.slice(w.down)), ...p.waste.slice(0, p.waste.length - p.dealt)]),
+    ...freshView.players.flatMap((p) => [...p.nertz.slice(-1), ...p.work.flatMap((w) => w.cards.slice(w.down)), ...p.waste.slice(0, p.waste.length - (p.draw?.n ?? 0))]),
   ];
   const shown = new Set(lyingUp.filter((x) => !isHidden(x)).map((x) => x.id));
   return allCards(predicted).filter((x) => isHidden(x) && shown.has(x.id)).length;
@@ -2273,7 +2255,7 @@ describe('client prediction on a redacted view agrees with the server', () => {
       let state = inPlay(seats, rng);
       let diverged = 0;
       for (let round = 0; round < CHAINS; round++) {
-        state = seats.reduce(whole, state); // (the snapshot a chain starts from: the server has dealt every group out)
+        state = landed(state, Infinity); // (the snapshot a chain starts from: every group is down)
         const seat = seats[Math.floor(rng() * seats.length)]!;
         let predicted = viewFor(state, seat);
         const length = 1 + Math.floor(rng() * 6);

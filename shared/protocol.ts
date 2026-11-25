@@ -3,6 +3,7 @@ import { parseSocialMsg, type SocialClientMsg, type SocialServerMsg, isId as isP
 import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, PlayerView, RoomView, Seats } from './types';
+import { round3 } from './numbers';
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
@@ -115,6 +116,19 @@ export const CARD_BACKS = {
   poppies: 'Poppies',
   sequoia: 'Sequoia',
   birch: 'Birch',
+  fox: 'Fox',
+  owl: 'Owl',
+  loong: 'Loong',
+  rabbit: 'Rabbit',
+  crane: 'Crane',
+  phoenix: 'Phoenix',
+  deer: 'Deer',
+  koi: 'Koi',
+  falcon: 'Falcon',
+  swallowtail: 'Swallowtail',
+  butterflies: 'Butterflies',
+  ants: 'Ants',
+  aster: 'Aster',
   'tarot-star-tint': 'Medallion',
   'tarot-eye-tint': 'Vision',
 } as const;
@@ -126,6 +140,7 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
   { name: 'Maths', backs: ['hilbert', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'life', 'pulsar', 'penrose-triangle'] },
   { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'clover', 'clover-2', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia', 'birch'] },
   { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
+  { name: 'Animals', backs: ['fox', 'owl', 'loong', 'rabbit', 'crane', 'phoenix', 'deer', 'koi', 'falcon', 'swallowtail', 'butterflies', 'ants', 'aster'] },
   { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'giglio', 'earth'] },
   { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye'] },
 ];
@@ -286,7 +301,7 @@ export const CLOSE_UPDATE = 1012;
  *   the edge of the felt, 2 over a pile in the middle that would take it (a
  *   card with no such pile, an Ace above all, stops at 1). A window draws the
  *   card that far along one path: out from that player's hand, wherever the
- *   window seats them, to the felt's edge, and on to the pile (`aloftAt` in
+ *   window seats them, to the felt's edge, and on to the pile (`aloftPath` in
  *   client/layout.ts, which also says how a card with no pile to go by gets
  *   to `p`).
  */
@@ -330,9 +345,10 @@ export const HEAR_MS = 1000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
 /**
- * Dealing from the stock takes time, as it does with real cards: one draw deals a group of three, and the server
- * takes the cards off the stock one at a time, this far apart, and turns the group up this long after the third. So
- * a draw takes half a second, and the next can start once its group is up.
+ * Dealing from the stock takes time, as it does with real cards: one draw deals a group of three, and its cards
+ * come off the stock one at a time, this far apart, the group turning up this long after the third. So a draw takes
+ * half a second, and the next can start once its group is up. The server puts the group on the waste in one step and
+ * holds everyone to that time by the round's clock (`PlayerState.draw`); each window deals the cards out on its own.
  */
 export const STOCK_CARD_MS = 170;
 /** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */
@@ -375,7 +391,6 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LENGTH;
 
 const isCoord = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= max;
-const round3 = (v: number): number => Math.round(v * 1000) / 1000 || 0;
 const isIndex = (v: unknown, below: number): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < below;
 const MAX_SLOTS = SLOTS_PER_PLAYER * MAX_PLAYERS;
 /** The longest run there is: King down to Ace. */

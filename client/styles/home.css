@@ -283,7 +283,7 @@
 
 /* A phone on its side: the wide screen's two columns, the name standing still at the left, and the pad pared down to
    fit the height (a longer one, with your record under it, scrolls by). */
-@media (orientation: landscape) and (max-height: 500px) {
+@media (orientation: landscape) and (max-height: 499px) {
   .home {
     grid-template-columns: minmax(0, 1fr) minmax(0, 23rem);
     align-items: safe center;
@@ -322,32 +322,30 @@
   .home .pad h2 {
     display: none;
   }
-}
 
-/* Your page there (and who you follow): the name and the fan a size down, holding only the room they need, and the pad
-   as wide as the rest of the line lets it be, up to 29rem; wide enough, your record goes to two lines of five, each
-   average over its best. The height pared to fit. (The way in, laid out as a page is, keeps the pad as it was.) */
-@media (orientation: landscape) and (max-height: 500px) {
-  .home:has(.profile:not(.signin)) {
+  /* Your page there (and who you follow): the name and the fan a size down, holding only the room they need, and the
+     pad as wide as the rest of the line lets it be, up to 29rem; wide enough, your record goes to two lines of five,
+     each average over its best. The height pared to fit. (The way in, laid out as a page is, keeps the pad as it was.) */
+  .home.ownpage {
     grid-template-columns: minmax(13rem, 1fr) minmax(0, 29rem);
     gap: 1rem;
     padding-block: 0.5rem;
   }
 
-  .home:has(.profile:not(.signin)) .hero {
+  .home.ownpage .hero {
     height: calc(100dvh - 1rem);
   }
 
-  .home:has(.profile:not(.signin)) .spread {
+  .home.ownpage .spread {
     zoom: 0.4;
     margin-left: 1.5rem;
   }
 
-  .home:has(.profile:not(.signin)) .hero h1 {
+  .home.ownpage .hero h1 {
     font-size: min(7vw, 3.75rem);
   }
 
-  .home .pad:has(> .profile:not(.signin)) {
+  .home.ownpage .pad {
     width: 100%;
     padding: 1.2rem 1.25rem 0.6rem 2.9rem;
   }
@@ -388,8 +386,23 @@
     padding-bottom: 1rem;
   }
 
+  /* The name and the fan stand over the middle of the pad, which fills the width here. */
+  .hero {
+    text-align: center;
+  }
+
+  .hero h1 {
+    transform-origin: 50% 100%;
+  }
+
   .spread {
     zoom: 0.6;
+    justify-content: center;
+    margin-left: 0;
+  }
+
+  .spread .mini:last-child {
+    margin-right: 0; /* (the overlap trailing the last card would pull the fan off the middle) */
   }
 }
 

@@ -7,11 +7,15 @@
 // applies (someone beat us to a pile or a slot) is skipped, so the card simply
 // animates back - there is no rollback code anywhere. Picking a card up and
 // putting it back (`hold`, `release`) are intents like any other.
+//
+// A draw comes as one step, its group on the waste and the time it was made.
+// What is on screen deals it out card by card on this window's own clock
+// (`dealOut`, `dealtBy`): no snapshot sets the pace.
 import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
-import { applyIntent, grab, refused, yetToHear } from '../shared/engine';
+import { applyIntent, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, CLOSE_UPDATE, isRoomCode, PING_MS, SET_UPS, SILENT_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
 
@@ -20,6 +24,8 @@ import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from
 export interface Pending {
   seq: number;
   intent: Intent;
+  /** What the round's clock read here when it was sent (`roundNow`): a draw is timed by it. */
+  at: number;
 }
 
 /** Everything that belongs to ONE websocket connection. A new socket starts from `freshSync`. */
@@ -31,20 +37,31 @@ export interface Sync {
   pending: readonly Pending[];
   /** Last seq handed out. */
   seq: number;
+  /**
+   * While the round's clock runs: how far ahead of this window's own (`performance.now`) it reads, going by the
+   * snapshot of this round that got here quickest. So it is reckoned steadily whatever the network does to the
+   * snapshots after, never runs backwards, and is never ahead of the server's. Null while it is stopped.
+   */
+  lead: number | null;
 }
 
-export const freshSync: Sync = { rev: -1, server: null, pending: [], seq: 0 };
+export const freshSync: Sync = { rev: -1, server: null, pending: [], seq: 0, lead: null };
 
-/** A snapshot arrived: adopt it unless it is older than what we have, and drop the intents it answers. */
-export function onSnapshot(sync: Sync, msg: { rev: number; ack: number; room: RoomView }): Sync {
+/** A snapshot arrived (at `heardAt` by this window's clock): adopt it unless it is older than what we have, and drop the intents it answers. */
+export function onSnapshot(sync: Sync, msg: { rev: number; ack: number; room: RoomView }, heardAt = performance.now()): Sync {
   if (msg.rev < sync.rev) return sync;
-  return { ...sync, rev: msg.rev, server: msg.room, pending: sync.pending.filter((p) => p.seq > msg.ack) };
+  const lead = msg.room.clock?.running ? msg.room.clock.ms - heardAt : null;
+  const had = sync.server?.round === msg.room.round ? sync.lead : null;
+  return { ...sync, rev: msg.rev, server: msg.room, pending: sync.pending.filter((p) => p.seq > msg.ack), lead: lead !== null && had !== null ? Math.max(lead, had) : lead };
 }
+
+/** What the round's clock reads (`RoomView.clock`) as this window reckons it, `at` by its own clock. */
+export const roundNow = (sync: Sync, at = performance.now()): number => (sync.lead !== null ? at + sync.lead : (sync.server?.clock?.ms ?? 0));
 
 /** We are about to send `intent`: give it the next seq and remember it until it is acknowledged. */
-export function onSend(sync: Sync, intent: Intent): Sync {
+export function onSend(sync: Sync, intent: Intent, at = roundNow(sync)): Sync {
   const seq = sync.seq + 1;
-  return { ...sync, seq, pending: [...sync.pending, { seq, intent }] };
+  return { ...sync, seq, pending: [...sync.pending, { seq, intent, at }] };
 }
 
 /** The room to render: pending intents replayed over the server snapshot, skipping any that no longer apply. */
@@ -54,7 +71,7 @@ export function predict(sync: Sync): RoomView | null {
   const seat = room.seat ?? -1;
   let game = room.game;
   for (const p of sync.pending) {
-    const result = applyIntent(game, seat, p.intent);
+    const result = applyIntent(game, seat, p.intent, p.at);
     game = result.ok ? unconfirmed(game, result.state, seat, p.intent) : refused(game, seat, p.intent); // as the server will see it
   }
   return game === room.game ? room : { ...room, game };
@@ -70,7 +87,6 @@ function unconfirmed(before: GameState, after: GameState, seat: number, intent: 
   if (intent.k !== 'move' || intent.to.k === 'work') return after;
   const from = grab(before, seat, intent.cardId)?.from;
   const me = after.players.find((p) => p.seat === seat)!;
-  const unknown = (c: AnyCard): AnyCard => ({ id: c.id, owner: c.owner, hidden: true as const });
   const swap = (p: PlayerState): GameState => ({ ...after, players: after.players.map((q) => (q === me ? p : q)) });
   if (from?.k === 'nertz') {
     const top = me.nertz.at(-1);
@@ -84,6 +100,84 @@ function unconfirmed(before: GameState, after: GameState, seat: number, intent: 
   return swap({ ...me, work: me.work.map((w, i) => (i === from.i ? { ...w, cards: [...w.cards.slice(0, -1), unknown(top)] } : w)) });
 }
 
+const unknown = (c: AnyCard): AnyCard => ({ id: c.id, owner: c.owner, hidden: true as const });
+
+/**
+ * A hand as it is drawn while its group is in flight (`PlayerState.draw`), `now` by the round's clock. The group came
+ * in one step, and is dealt out here: its cards counted off the stock one at a time, STOCK_CARD_MS apart from `from`
+ * (when the first left, here: `dealOut`), face-down. `draw.off` is how many are off so far, and the rest lie on the
+ * stock yet. Its time come and its cards all off here a step (`downAt`), the group is down: the hand as it is, with no
+ * draw. Not before its faces are here, though: those of your own draw come in the server's answer to it.
+ */
+export function dealtBy(p: PlayerState, now: number, from: number): PlayerState {
+  if (!p.draw) return p;
+  const group = p.waste.slice(-p.draw.n);
+  if (now >= downAt(p.draw, from) && !group.some(isHidden)) return { ...p, draw: null };
+  const off = Math.min(p.draw.n, Math.max(1, Math.floor((now - from) / STOCK_CARD_MS) + 1));
+  return { ...p, stock: [...p.stock, ...group.slice(off).reverse().map(unknown)], waste: [...p.waste.slice(0, -p.draw.n), ...group.slice(0, off).map(unknown)], draw: { ...p.draw, off } };
+}
+
+/** When a group whose cards began to leave the stock here at `from` is down here: at its own time (`landsAt`), and not before its last card has been off a step. */
+const downAt = (draw: NonNullable<PlayerState['draw']>, from: number): number => Math.max(landsAt(draw), from + draw.n * STOCK_CARD_MS);
+
+/**
+ * How far this window has dealt out the groups in flight: what it needs to go on dealing them at its own pace,
+ * whenever the snapshots come (`dealOut`). A new connection is no longer `looking`; leaving the table starts afresh.
+ */
+export interface Dealing {
+  /**
+   * By seat, the group this window is dealing out: its first card, and when its cards began to leave the stock here, by
+   * the round's clock as it now reads. That is when this window first had the draw, however late its snapshot came (and
+   * your own draw's cards do not start over when the server answers it); only a window that was not `looking` when the
+   * draw was made (it has just sat back down) goes by the draw's own time, and finds the cards due by then already off.
+   * It is put forward with the clock whenever a quicker snapshot puts that forward (`led`). So the cards leave a step
+   * apart by this window's own clock, whatever the network does.
+   */
+  flights: ReadonlyMap<number, { card: string; at: number }>;
+  /** `Sync.lead` when the room was last dealt out. */
+  led: number | null;
+  /** This connection has had the table on screen: a draw first seen from now on is seen as it is made. */
+  looking: boolean;
+  /** What the round's clock read when the groups in flight were last dealt on: they stay there once the round is not live (a group in flight at a call stays as it lies). */
+  at: number | null;
+}
+
+export const freshDealing: Dealing = { flights: new Map(), led: null, looking: false, at: null };
+
+/**
+ * The room to put on screen `at` (this window's clock): the `predict`ed one, each group in flight dealt out as far as
+ * the round's clock has it here (`dealtBy`). With it, the dealing as it now stands, and how long until it must be dealt
+ * out again (its next card is due, or it lands), or null if nothing is due while the round's clock runs.
+ */
+export function dealOut(dealing: Dealing, sync: Sync, at = performance.now()): { dealing: Dealing; room: RoomView | null; wait: number | null } {
+  const gained = sync.lead !== null && dealing.led !== null ? sync.lead - dealing.led : 0;
+  const led = sync.lead;
+  const room = predict(sync);
+  const game = room?.game;
+  if (!room || !game) return { dealing: { ...dealing, flights: new Map(), led, at: null }, room, wait: null };
+  const live = isLive(game);
+  const now = live || dealing.at === null ? roundNow(sync, at) : dealing.at;
+  const flights = new Map(dealing.flights);
+  let due = Infinity;
+  const players = game.players.map((p) => {
+    if (!p.draw) return flights.delete(p.seat), p;
+    const card = p.waste[p.waste.length - p.draw.n]!.id;
+    const had = flights.get(p.seat);
+    const flight = had?.card !== card ? { card, at: dealing.looking ? now : p.draw.at } : live ? { card, at: had.at + gained } : had;
+    flights.set(p.seat, flight);
+    const seen = dealtBy(p, now, flight.at);
+    const off = seen.draw?.off;
+    if (off !== undefined) due = Math.min(due, off < p.draw.n ? flight.at + off * STOCK_CARD_MS : downAt(p.draw, flight.at));
+    return seen;
+  });
+  const wait = live && sync.lead !== null && due > now && due < Infinity ? due - now : null;
+  return {
+    dealing: { flights, led, looking: sync.server !== null, at: now },
+    room: players.every((p, i) => p === game.players[i]) ? room : { ...room, game: { ...game, players } },
+    wait,
+  };
+}
+
 /** A Nertz call is on the table that this window has not yet said it heard (it has not sent `heard`, or not been answered). */
 export const hearsCall = (room: RoomView | null): boolean => !!room?.game && room.seat !== null && yetToHear(room.game).includes(room.seat);
 
@@ -94,22 +188,24 @@ export function hello(room: string | null, name: string, token: string): ClientM
 
 // ---------------------------------------------------------------- store
 
-/** `updating`: reconnecting, and the line went down because the server stopped to be put up anew (it said so: `CLOSE_UPDATE`). */
-export type Status = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'updating';
+/**
+ * `rejoining`: connecting, to sit back down at the table it was at, after a reload (`resume`), until it is seated or
+ * gives up. `updating`: reconnecting, and the line went down because the server stopped to be put up anew (it said so:
+ * `CLOSE_UPDATE`).
+ */
+export type Status = 'idle' | 'connecting' | 'rejoining' | 'online' | 'reconnecting' | 'updating';
 
 export interface NetState {
   status: Status;
   /** Predicted room, or null when not in one. */
   room: RoomView | null;
   error: string | null;
-  /** Sitting back down at the table it was at, after a reload: until it is seated, or gives up (`resume`). */
-  rejoining: boolean;
 }
 
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null, rejoining: false };
+let state: NetState = { status: 'idle', room: null, error: null };
 const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
@@ -118,6 +214,8 @@ const listeners = new Set<() => void>();
 let session: { room: string | null; name: string } | null = null;
 let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
+let dealing: Dealing = freshDealing;
+let step: ReturnType<typeof setTimeout> | undefined;
 let attempts = 0;
 let retry: ReturnType<typeof setTimeout> | undefined;
 /** When this window's socket last heard anything from the server (or was opened): see `SILENT_MS`. */
@@ -130,6 +228,18 @@ let memoryToken: string | undefined;
 function set(next: Partial<NetState>): void {
   state = { ...state, ...next };
   for (const l of listeners) l();
+}
+
+/**
+ * Puts the room on screen as it is now, each group in flight dealt out as far as this window has it (`dealOut`). And
+ * again when its next card is due, or it lands: the pace is this window's own, whenever the snapshots come.
+ */
+function show(next: Partial<NetState> = {}): void {
+  clearTimeout(step);
+  const out = dealOut(dealing, sync);
+  dealing = out.dealing;
+  if (out.wait !== null) step = setTimeout(show, out.wait);
+  set({ ...next, room: out.room });
 }
 
 /**
@@ -191,10 +301,10 @@ export function roomInUrl(): string {
 }
 
 /**
- * Whether this window has the aids for trying things out: in development, and wherever the server says it has its own on
- * (`RoomView.testing`: locally and on previews). Start then asks for the set-up the address names; Shift+D and Shift+N work.
+ * Whether this window has the aids for trying things out: wherever the server says it has its own on (`RoomView.testing`:
+ * locally and on previews). Start then asks for the set-up the address names; Shift+D and Shift+N work.
  */
-export const testing = (room: RoomView | null): boolean => import.meta.env.DEV || !!room?.testing;
+export const testing = (room: RoomView | null): boolean => !!room?.testing;
 
 /** The set-up deal the address names (`?deal=aces`), which Start asks for where `testing` is on. */
 function setUpInUrl(): SetUp | undefined {
@@ -205,7 +315,8 @@ function setUpInUrl(): SetUp | undefined {
 
 /**
  * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
- * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone.
+ * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone. Only
+ * `room` is the session's: anything else in the address (a set-up deal) stays as it was.
  */
 function keep(seat: { room: string; name: string } | null): void {
   try {
@@ -215,9 +326,10 @@ function keep(seat: { room: string; name: string } | null): void {
     // storage unavailable: a reload just lands at home
   }
   if (typeof history === 'undefined') return;
-  const setUp = setUpInUrl(); // (kept in the address, so that it holds across a reload)
-  const query = [seat && `room=${seat.room}`, setUp && `deal=${setUp}`].filter(Boolean).join('&');
-  history.replaceState(null, '', query ? `/?${query}` : '/');
+  const query = new URLSearchParams(location.search);
+  if (seat) query.set('room', seat.room);
+  else query.delete('room');
+  history.replaceState(null, '', query.size ? `/?${query}` : '/');
 }
 
 /** On page load: if this window was at the table in the address, it sits back down. */
@@ -229,7 +341,7 @@ export function resume(): void {
     return; // storage unavailable (or not ours): home
   }
   const room = roomInUrl();
-  if (room && seat?.room === room && typeof seat.name === 'string') (join(room, seat.name), set({ rejoining: true }));
+  if (room && seat?.room === room && typeof seat.name === 'string') open(room, seat.name, 'rejoining');
 }
 
 /** The one way out of a session: leaving, sent away, replaced, refused. */
@@ -242,8 +354,9 @@ function stop(error: string | null): void {
   socket = null;
   old?.close();
   sync = freshSync;
+  dealing = freshDealing;
   timed(null);
-  set({ status: 'idle', room: null, error, rejoining: false });
+  show({ status: 'idle', error });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
@@ -283,7 +396,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
       keep({ room: session.room, name: session.name });
     }
     sync = onSnapshot(sync, msg);
-    set({ status: 'online', room: predict(sync), error: null, rejoining: false });
+    show({ status: 'online', error: null });
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
@@ -311,6 +424,7 @@ function connect(): void {
   socket = ws;
   heard = Date.now();
   sync = freshSync; // seq, pending and rev all belong to the connection
+  dealing = { ...dealing, looking: false };
   ws.onopen = () => {
     if (socket === ws && session) {
       post(hello(session.room, session.name, token()));
@@ -349,11 +463,14 @@ function dropped(update = false): void {
     old.onopen = old.onmessage = old.onclose = null; // (a silent socket may say it closed much later, or never)
     old.close();
   }
-  // Unacknowledged intents died with the connection: show the plain snapshot until we are back.
+  // Unacknowledged intents died with the connection: show the plain snapshot until we are back, its groups in flight
+  // as far as this window has dealt them (one that is down here stays down), and no further.
   sync = { ...sync, pending: [] };
   timed(null);
-  const room = sync.server ?? state.room;
-  set({ status: update || state.status === 'updating' ? 'updating' : 'reconnecting', room, error: room ? null : 'Cannot reach the game server. Still trying…' });
+  const status = update || state.status === 'updating' ? 'updating' : 'reconnecting';
+  if (sync.server) show({ status, error: null });
+  else set({ status, error: state.room ? null : 'Cannot reach the game server. Still trying…' });
+  clearTimeout(step);
   clearTimeout(retry);
   retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempts++));
 }
@@ -388,11 +505,11 @@ function probe(): void {
 }
 if (typeof window !== 'undefined') window.addEventListener('online', probe);
 
-function open(room: string | null, name: string): void {
+function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting'): void {
   if (session) stop(null);
   session = { room, name };
   attempts = 0;
-  set({ status: 'connecting', error: null });
+  set({ status, error: null });
   connect();
   watch = setInterval(check, PING_MS);
 }
@@ -468,7 +585,7 @@ export function send(intent: Intent): boolean {
   if (!playable(intent)) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });
-  set({ room: predict(sync) });
+  show();
   return true;
 }
 

@@ -408,7 +408,7 @@ label.check {
   overflow: auto;
 }
 
-@media (max-height: 499px) and (orientation: landscape) {
+@media (orientation: landscape) and (max-height: 499px) {
   .slip {
     max-height: calc(100dvh - 64px);
     overflow-y: auto;
@@ -482,7 +482,7 @@ label.check {
   font: 700 0.85rem/1.4 var(--num);
   text-align: center;
   color: var(--ink);
-  background: #fffdf6;
+  background: var(--card);
   cursor: pointer;
 }
 

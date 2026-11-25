@@ -83,8 +83,8 @@ export function Robot() {
 export function RobotPlus() {
   return (
     <svg className="robotplus" viewBox="0 0 24 24" aria-hidden="true">
-      {/* (The head low in the square, level with the plus beside it, the antennae with the room above; tipped, as a card is.) */}
-      <g transform="translate(0 2.2) rotate(-10 10 14.25)">
+      {/* (The head and the plus level with each other and with the centre of the round buttons beside it, the antennae in the room above; tipped, as a card is.) */}
+      <g transform="translate(0 -1) rotate(-10 10 14.25)">
         <path d="M7 8.5V5.6M13 8.5V5.6" />
         <circle className="bulb" cx="7" cy="4.3" r="1.3" />
         <circle className="bulb" cx="13" cy="4.3" r="1.3" />
@@ -101,12 +101,10 @@ export function RobotPlus() {
         </g>
         <path d="M8 17h4" />
       </g>
-      <path className="plus" d="M21.1 14v5M18.6 16.5h5" />
+      <path className="plus" d="M21.1 10.8v5M18.6 13.3h5" />
     </svg>
   );
 }
-
-/** An eye: standing up from the table to watch. */
 
 /**
  * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away. (`bare`: the icon

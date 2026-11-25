@@ -11,6 +11,7 @@ import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
 import { drawnMini, LOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
+import { clamp } from '../shared/numbers';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 3250 };
@@ -183,7 +184,6 @@ export function pileReach(pile: Rect): Rect {
   return { x: pile.x - lean * LEAN_X - ex, y: pile.y - lean - ey, w: pile.w + lean * LEAN_X + 2 * ex, h: pile.h + lean + 2 * ey };
 }
 
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 /** A gentle start and a gentle stop, and never fast in between (a sine's half turn): a card slid by a hand, not flung. */
 const glideEase = (t: number) => (1 - Math.cos(Math.PI * t)) / 2;
@@ -269,7 +269,7 @@ const overlap = (a: Rect, b: Rect): number =>
  * (`aroundEdges`).
  */
 export function planFinale(L: Layout, game: GameState): Plan {
-  const table = L.phone ? aroundEdges(L, game) : onTheFelt(L, game);
+  const table = L.shape !== 'wide' ? aroundEdges(L, game) : onTheFelt(L, game);
   const { piles } = table;
   const pileOf = new Map(piles.map((p, i) => [p.seat, i]));
 
@@ -301,7 +301,7 @@ export function planFinale(L: Layout, game: GameState): Plan {
     mv.k = piles[mv.pile]!.total++;
   });
   for (const mv of shuffled) mv.of = piles[mv.pile]!.total;
-  return { ...table, sortAt: sortAt(game.tray.length, L.phone), movers: shuffled };
+  return { ...table, sortAt: sortAt(game.tray.length, L.shape !== 'wide'), movers: shuffled };
 }
 
 /** The wash keeps to the felt: an oval well inside its edge, clear of the rounded corners. */
@@ -464,40 +464,42 @@ function onTheFelt(L: Layout, game: GameState): Ground {
 function aroundEdges(L: Layout, game: GameState): Ground {
   const n = game.players.length;
   const { w: W, h: H } = L.window;
+  /** Held upright (`tall`), or on its side (`low`): this is only ever a phone's. */
+  const upright = L.shape === 'tall';
   const view = Math.max(0, game.players.findIndex((p) => p.seat === L.me?.seat));
-  const box: Rect = { x: Math.max(EDGE, L.keep.l + BLOCK_PAD), y: L.tall ? L.bar + 4 : EDGE, w: 0, h: 0 };
+  const box: Rect = { x: Math.max(EDGE, L.keep.l + BLOCK_PAD), y: upright ? L.bar + 4 : EDGE, w: 0, h: 0 };
   box.w = W - Math.max(EDGE, L.keep.r + BLOCK_PAD) - box.x;
   box.h = H - EDGE - box.y;
   const [cx, cy] = [box.x + box.w / 2, box.y + box.h / 2];
   // On its side: the chat button in the top left corner, the sound and settings buttons (and Skip) in the bottom left.
-  const buttons: Rect[] = L.tall ? [] : [{ x: 0, y: 0, w: L.keep.l + 150, h: LOW.top }, { x: 0, y: H - LOW.knobs, w: L.keep.l + 210, h: LOW.knobs }];
+  const buttons: Rect[] = upright ? [] : [{ x: 0, y: 0, w: L.keep.l + 150, h: LOW.top }, { x: 0, y: H - LOW.knobs, w: L.keep.l + 210, h: LOW.knobs }];
   const apart = (a: Rect, b: Rect, by: number): boolean => a.x + a.w + by <= b.x || b.x + b.w + by <= a.x || a.y + a.h + by <= b.y || b.y + b.h + by <= a.y;
 
   const lay = (k: number, power: number) => {
-    const label = L.tall ? { w: LABEL_TILE.w * k, h: LABEL_TILE.h * k } : { w: LABEL_SHORT.w * k, h: LABEL_SHORT.h * k };
+    const label = upright ? { w: LABEL_TILE.w * k, h: LABEL_TILE.h * k } : { w: LABEL_SHORT.w * k, h: LABEL_SHORT.h * k };
     // A pile is as high as there is room for beside (or over) its label once it leans. The cards of the drawn-in wash
     // are that size too: there is room for it now, whatever size the felt had them at.
-    const h = (L.tall ? TILE_PILE * k : label.h) / 1.24;
+    const h = (upright ? TILE_PILE * k : label.h) / 1.24;
     const w = (h * CARD_W) / CARD_H;
     const reach = pileReach({ x: 0, y: 0, w, h });
-    const uw = L.tall ? label.w : reach.w + GAP + label.w;
-    const uh = L.tall ? label.h : Math.max(reach.h, label.h);
+    const uw = upright ? label.w : reach.w + GAP + label.w;
+    const uh = upright ? label.h : Math.max(reach.h, label.h);
     /** A pile and its label in the box uw x uh with its top left corner at (x, y): the pile at its left end, or at its right. */
     const unit = (seat: number, x: number, y: number, side: LabelSide): SortedPile => ({
       seat,
-      x: (side === 'right' ? x + (L.tall ? 2 * k : 0) : x + uw - reach.w - (L.tall ? 2 * k : 0)) - reach.x,
-      y: (L.tall ? y + 2 * k : y + (uh - reach.h) / 2) - reach.y,
+      x: (side === 'right' ? x + (upright ? 2 * k : 0) : x + uw - reach.w - (upright ? 2 * k : 0)) - reach.x,
+      y: (upright ? y + 2 * k : y + (uh - reach.h) / 2) - reach.y,
       w,
       h,
       total: 0,
       // (Upright the label's box is the whole of it, the pile standing in its top corner.)
-      label: L.tall ? { x, y, ...label } : { x: side === 'right' ? x + reach.w + GAP : x, y: y + (uh - label.h) / 2, ...label },
+      label: upright ? { x, y, ...label } : { x: side === 'right' ? x + reach.w + GAP : x, y: y + (uh - label.h) / 2, ...label },
       side,
     });
     // Where the middles of the units go, so that each lies wholly inside `box`: yours first, then clockwise.
     const [A, B] = [(box.w - uw) / 2, (box.h - uh) / 2];
     let places: { x: number; y: number }[];
-    if (L.tall) {
+    if (upright) {
       const bend = (v: number) => Math.sign(v) * Math.abs(v) ** (2 / power);
       const at = (t: number) => ({ x: cx - A * bend(Math.sin(t)), y: cy + B * bend(Math.cos(t)) }); // from straight down, clockwise
       const STEPS = 1440;
@@ -540,7 +542,7 @@ function aroundEdges(L: Layout, game: GameState): Ground {
     return { piles: game.players.map((p) => piles.find((u) => u.seat === p.seat)!), fits, w, h, rx: rx - span, ry: ry - span, my };
   };
   let [k, laid] = [1, lay(1, RING[0]!)];
-  search: for (; k > 0.4; k -= 0.04) for (const power of L.tall ? RING : RING.slice(0, 1)) if ((laid = lay(k, power)).fits) break search;
+  search: for (; k > 0.4; k -= 0.04) for (const power of upright ? RING : RING.slice(0, 1)) if ((laid = lay(k, power)).fits) break search;
   const { piles, w, h, my } = laid;
   // (No thinner than a wash is, and no wider than a heap of cards spreads.)
   const rx = Math.max(w * 0.4, Math.min(laid.rx, w * 4.5));
@@ -552,7 +554,7 @@ function aroundEdges(L: Layout, game: GameState): Ground {
     w: fw,
     h: fh,
     scale: w / fw,
-    label: { ...(L.tall ? LABEL_TILE : LABEL_SHORT), short: true, tile: L.tall, k },
+    label: { ...(upright ? LABEL_TILE : LABEL_SHORT), short: true, tile: upright, k },
     ...washOnFelt(L, n, fw, fh),
     gather: { at: washedAt(game.tray.length), cx, cy: my, rx, ry },
     heap: { x: cx - rx - w / 2, y: my - ry - h / 2, w: 2 * rx + w, h: 2 * ry + h },
@@ -671,7 +673,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
     if (!onCanvas(stage, mv.tray ? 'tray' : 'slot')) continue; // still a pile in the tray, or on its way out of it: drawn by the table
-    const q = glideEase(clamp01((t - setsOut(plan.sortAt, order[mv.pile] ?? mv.pile, mv.k, mv.of)) / LAND_MS));
+    const q = glideEase(clamp((t - setsOut(plan.sortAt, order[mv.pile] ?? mv.pile, mv.k, mv.of)) / LAND_MS, 0, 1));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
@@ -680,7 +682,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
       continue;
     }
     // In the wash: out from its pile to a spot on the felt, where it lies.
-    const spread = glideEase(clamp01((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
+    const spread = glideEase(clamp((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS, 0, 1));
     const a = mv.angle;
     const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
@@ -688,7 +690,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
     let rot = lerp(mv.rot0, mv.spin * 0.5, spread);
     let size = 1;
     if (plan.gather) {
-      const g = glideEase(clamp01((t - plan.gather.at - mv.delay * (GATHER_MS * 0.3)) / (GATHER_MS * 0.7)));
+      const g = glideEase(clamp((t - plan.gather.at - mv.delay * (GATHER_MS * 0.3)) / (GATHER_MS * 0.7), 0, 1));
       x = lerp(x, plan.gather.cx + Math.cos(a) * r * plan.gather.rx, g);
       y = lerp(y, plan.gather.cy + Math.sin(a) * r * plan.gather.ry, g);
       size = lerp(1, plan.scale, g);

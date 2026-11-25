@@ -11,6 +11,7 @@ import { cardSize, offFelt, type Pt } from '../shared/table';
 import type { GameState, Intent, PileRef } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 import { dropTarget, landingAt, toTable, type Layout, type Placed, type Rect } from './layout';
+import { clamp, round3 } from '../shared/numbers';
 
 const DRAG_SLOP = 6; // px of travel before a press becomes a carry
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
@@ -22,8 +23,6 @@ const TOUCH_CARD_PX = 48;
 const SHRINK_PX = 14;
 /** A card taken up by a tap stands this much of its height above where it lay. */
 const STAND = 0.16;
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 // ---------------------------------------------------------------- the hand
 
@@ -141,7 +140,7 @@ export const drawnAt = (d: InHand, i: number): Pt => {
  * it lay.
  */
 const feltScale = (held: Held, home: number, L: Layout): number =>
-  held.k === 'card' && held.ace ? L.fs : held.k === 'card' && L.phone ? TOUCH_CARD_PX / CARD_W : home;
+  held.k === 'card' && held.ace ? L.fs : held.k === 'card' && L.shape !== 'wide' ? TOUCH_CARD_PX / CARD_W : home;
 
 /** The hand with the pointer at `p`: the card goes with it. */
 function carry(d: Pressed | Carried, p: Pt, { L, game }: Scene): Carried {

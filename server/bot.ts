@@ -49,7 +49,7 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
 /**
  * One look at the table. Rules in priority order; every candidate move is
  * noticed with a probability, and the highest-priority noticed one is taken. While its draw is in flight it does
- * nothing but a and b: it waits to see what comes up (the Room has it look again when the group is up).
+ * nothing but a and b: it waits to see what comes up (the Room has it look again when the group is down).
  *
  *   a. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
  *   b. nertz pile empty: call Nertz (always noticed)
@@ -71,7 +71,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   const nertz = top(me.nertz);
   const waste = top(me.waste);
   // Cards that are face-up in play but hidden in this view: the table is not open yet. Look again later.
-  if ([nertz, ...(me.dealt > 0 ? [] : [waste]), ...me.work.map((w) => top(w.cards))].some((c) => c && isHidden(c))) return null;
+  if ([nertz, ...(me.draw ? [] : [waste]), ...me.work.map((w) => top(w.cards))].some((c) => c && isHidden(c))) return null;
 
   const noticed = (focus = 1): boolean => rng() < observance ** focus;
   /** Nobody overlooks an Ace: it always goes out to the middle. */
@@ -110,7 +110,7 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   if (finished >= 0) return acted({ k: 'clear', slot: finished });
   // b
   if (!nertz) return acted({ k: 'nertz' });
-  if (me.dealt > 0) return null;
+  if (me.draw) return null;
   // c
   const out = slotFor(nertz);
   if (out && (ace(nertz) || noticed(NERTZ_FOCUS))) return acted(move(nertz, out));
