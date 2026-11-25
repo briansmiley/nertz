@@ -657,6 +657,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const mine = hands.find((p) => p.seat === you);
   /** Nertz has been called: the round is in grace, or over by the call. */
   const called = calledBy(game) !== null;
+  /** The round ended by everyone voting to end it. */
+  const agreed = game.status.at === 'over' && game.status.end.by === 'vote';
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
   const out = wentOut(game);
   // Aid for trying things out (`testing`): Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
@@ -1138,14 +1140,14 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       {/* (Not while the pile is in hand, on its way: that is what the notice asks for.) */}
       <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} onSeats={seatsOpen ? undefined : () => setSeating(true)} />
 
-      {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
-      {called && stage !== 'sheet' && (
+      {/* And for everyone, across the middle of the table: who it was, or that the round was ended by agreement. It comes, stands a moment, and is gone before the piles are washed. */}
+      {(called || agreed) && stage !== 'sheet' && (
         <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
-          <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
+          <span>{agreed ? 'Round ended by agreement' : `${andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!`}</span>
         </div>
       )}
       {/* Snipes you were in (who by, or whom) and the reshuffle of a table that was stuck: across the middle, each there and gone in a second or so; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
-      {said.length > 0 && !called && (
+      {said.length > 0 && !called && !agreed && (
         <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
           {said.map((s) =>
             s.k === 'reshuffle' ? (
@@ -1161,7 +1163,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies; more at once stack upward. */}
-      {asides.length > 0 && !called && (
+      {asides.length > 0 && !called && !agreed && (
         <div className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           {asides.map((a) => (
             <motion.span layout="position" key={a.id} onAnimationEnd={(e) => e.target === e.currentTarget && asideDone(a.id)}>
