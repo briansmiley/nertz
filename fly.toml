@@ -2,6 +2,9 @@
 # and the PR previews `nertz-pr-<number>` (.github/workflows/preview.yml), each named with --app.
 app = "nertz"
 primary_region = "sjc"
+# Stopped (a deploy), the server pauses every round, tells the windows, and writes the open tables to /data
+# (server/index.ts, `update`), then exits by itself within a second. This is how long it is given before it is killed.
+kill_timeout = "15s"
 
 [http_service]
   internal_port = 8080
@@ -25,7 +28,7 @@ primary_region = "sjc"
     timeout = "2s"
     grace_period = "5s"
 
-# What has to outlive a deploy: the accounts (server/accounts.ts keeps them in /data/nertz.db). One volume of this name
+# What has to outlive a deploy: the accounts and the open tables (server/db.ts keeps them in /data/nertz.db). One volume of this name
 # per app, made once before the first deploy that mounts it: `fly volumes create nertz_data --size 1 -r sjc -a <app>`.
 [mounts]
   source = "nertz_data"

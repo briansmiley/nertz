@@ -313,3 +313,32 @@
     transition: none;
   }
 }
+
+/* Under way (`Dots`): an ellipsis whose dots light one after another. */
+.dots i {
+  font-style: normal;
+  animation: dots 1.2s infinite;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dots {
+  0%,
+  60%,
+  100% {
+    opacity: 0.2;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+.calm .dots i {
+  animation: none;
+}

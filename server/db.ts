@@ -114,6 +114,12 @@ const MIGRATIONS: string[] = [
      primary key (account, followed),
      check (account <> followed)
    ) strict, without rowid;`,
+  // The open tables, to come back after the server is started anew (server/index.ts): each as its room says it is
+  // (server/room.ts, `Kept`), as JSON, under its code. There while a round of it is on, and from the server's going down.
+  `create table room (
+     code text primary key,
+     kept text not null
+   ) strict, without rowid;`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

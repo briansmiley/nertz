@@ -1,7 +1,7 @@
 // The store (client/net.ts) over a fake socket: the connection, the retry, this window's session and how it ends, what
 // a reload makes of it afterwards, and the page put up anew.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLOSE_OVER } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE } from '../shared/protocol';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
 
 /** Just enough of a browser WebSocket: the test plays the server. */
@@ -529,5 +529,27 @@ describe('a page put up anew while the window was open', () => {
     expect(fetched).toHaveBeenCalledTimes(1);
     expect(page.reload).not.toHaveBeenCalled();
     expect(net.current().status).toBe('connecting');
+  });
+
+  it('is loaded at a table once the window is back there from an update the server stopped for; until then the window says that is why the line is down', async () => {
+    vi.useFakeTimers();
+    built(OLD, NEW);
+    const net = await seated();
+    last().closed(CLOSE_UPDATE);
+    expect(net.current()).toMatchObject({ status: 'updating', room: { code: 'ABCD' }, error: null });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(sockets()).toBe(2);
+    last().closed(); // (the next server is not up yet)
+    expect(net.current().status).toBe('updating');
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sockets()).toBe(3);
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(page.reload).not.toHaveBeenCalled();
+    last().deliver(at('ABCD'));
+    expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(page.reload).toHaveBeenCalledTimes(1);
   });
 });
