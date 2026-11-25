@@ -713,13 +713,12 @@ export class Room {
     if (sent.k !== 'heard') delete player.standing; // playing is sitting back down (hearing a call is not)
     // Who a call has yet to reach is the room's to say, whoever sent it.
     const intent: Intent = sent.k === 'nertz' ? { k: 'nertz', unheard: this.listening(player) } : sent;
-    // Whatever group's time has come is down, whether or not this intent is taken: its sender's window has it down already.
     const now = this.playedMs();
-    this.state = landed(this.state, now);
     const result = applyIntent(this.state, at(player), intent, now);
     if (!result.ok && intent.k === 'move' && intent.to.k === 'slot') this.sniped(player, intent.cardId, [], intent.to.i); // (a race lost on the way here)
     // A refused drop still empties the hand (see `refused`), which everyone sees and which can end the grace window.
-    const next = result.ok ? result.state : refused(this.state, at(player), intent);
+    // And a group whose time has come is down whether or not the intent is taken: its sender's window has it down already.
+    const next = result.ok ? result.state : refused(landed(this.state, now), at(player), intent);
     if (next === this.state) return this.changed(player), false; // rejected: only the sender needs to hear (its ack moved)
     const called = next.status.at === 'grace' && this.state.status.at !== 'grace';
     this.state = next;
