@@ -21,6 +21,13 @@ export interface Seen {
 export const KEYBOARD_MIN = 120;
 
 /**
+ * The window's height. A phone's keyboard does not shrink the window, only what is seen of it; but iOS shrinks
+ * `innerHeight` with what is seen (for its keyboard, and for a pinch), so the larger of that and the page's own
+ * height is taken. (The other way about, `innerHeight` is the larger while a phone's browser has put its bars away.)
+ */
+const height = (): number => Math.max(window.innerHeight, document.documentElement.clientHeight);
+
+/**
  * The part of the window a phone's keyboard leaves to be seen, or null while no keyboard is up. `H`: the window's
  * height. A phone's browser does not shrink the window for its keyboard; it shrinks what is seen, and may move that
  * down the window to show the field being typed in. A pinch shrinks what is seen too, but all of it in proportion.
@@ -37,9 +44,8 @@ export function useAboveKeyboard(on: boolean): Rect | null {
   useEffect(() => {
     const seen = window.visualViewport;
     if (!on || !seen) return;
-    // (The window's height: the larger of the two, as a pinch can shrink `innerHeight` on iOS.)
     const read = () => {
-      const next = aboveKeyboard(Math.max(window.innerHeight, document.documentElement.clientHeight), seen);
+      const next = aboveKeyboard(height(), seen);
       setArea((was) => (sameRect(was, next) ? was : next));
     };
     read();
@@ -69,11 +75,12 @@ function insets(): Insets {
   }
   const c = getComputedStyle(probe);
   const px = (v: string) => Math.round(parseFloat(v) || 0);
-  const sideways = window.innerWidth > window.innerHeight;
+  const sideways = window.innerWidth > height();
   return { l: px(c.paddingLeft), r: px(c.paddingRight), b: sideways ? 0 : px(c.paddingBottom) };
 }
 
-const read = (): Viewport => ({ W: window.innerWidth, H: window.innerHeight, pad: insets() });
+/** The window as it is now: a keyboard coming up leaves it as it was, so nothing laid out in it moves for one. */
+const read = (): Viewport => ({ W: window.innerWidth, H: height(), pad: insets() });
 const same = (a: Viewport, b: Viewport): boolean => a.W === b.W && a.H === b.H && a.pad.l === b.pad.l && a.pad.r === b.pad.r && a.pad.b === b.pad.b;
 
 /** The window as last looked at: the same object for as long as nothing of it changes. */
