@@ -34,6 +34,8 @@ export interface Prefs {
   chatOver: boolean;
   /** The time a message takes to the server and back, in a corner of the screen (client/net.ts measures it while this is on). */
   ping: boolean;
+  /** Play offline: tables of this window's own, with bots, and nothing asked of the game server (client/net.ts `NetState.offline`, which is what to go by). */
+  offline: boolean;
   /** Your backs without the white edge: the pattern runs to the edge of the card. */
   bare: boolean;
   /**
@@ -104,7 +106,7 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), mic: { level: 1, gate: 0 }, calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, offline: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
@@ -170,6 +172,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     botVoice: v.botVoice !== false,
     chatOver: v.chatOver !== false,
     ping: v.ping === true,
+    offline: v.offline === true,
     random: isLot(v.random) ? v.random : null,
     ...cleanKeys(v),
   };

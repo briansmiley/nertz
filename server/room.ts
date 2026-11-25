@@ -3,12 +3,12 @@
 // deal timer and the "1, 2, 3" start timer at the opening of a round, the
 // held-card grace timer at its end (and within it, the wait for a call to reach every window), the round's clock
 // (which a draw is timed by), and one timer per bot (see server/bot.ts); every rule about them lives in the engine.
+// Nor anything of Node's own: a window that plays offline runs this same room (client/local.ts).
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { randomUUID } from 'node:crypto';
 import { applyIntent, beforeStart, deal, expireGrace, finishDeal, inRound, isLive, landed, landsAt, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { Account, BotLevel, GameState, Intent, Pause, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
@@ -199,6 +199,8 @@ export interface RoomOptions {
   hearMs?: number;
   /** Told each round as it is scored (server/rounds.ts keeps them). */
   record?: (round: RoundRecord) => void;
+  /** Whether the aids for trying things out are on, asked each time: `testing` (the default), which goes by this process's environment. */
+  testing?: () => boolean;
 }
 
 /** How long a bot takes to change its mind when the move it had settled on is no longer there, ms (about: 0.6 to 1.4 times this). */
@@ -231,7 +233,7 @@ export class Room {
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
   private snipes: { by: number; of: number; card: string }[] = [];
   /** This sitting at the table (see `RoundRecord.game`): made when the table opens, and again when it starts over. */
-  private sitting: string = randomUUID();
+  private sitting: string = crypto.randomUUID();
   /** The last number given out to someone who began to wait for a seat (`Player.queued`), and the last `Player.id`. */
   private queue = 0;
   /** The count `sat` goes by. */
@@ -273,6 +275,7 @@ export class Room {
   private readonly schedule: (flush: () => void) => void;
   private readonly hearMs: number;
   private readonly record: RoomOptions['record'];
+  private readonly testing: () => boolean;
 
   constructor(
     readonly code: string,
@@ -283,6 +286,7 @@ export class Room {
     this.schedule = options.schedule ?? setImmediate;
     this.hearMs = options.hearMs ?? 0;
     this.record = options.record;
+    this.testing = options.testing ?? testing;
   }
 
   /** Number of live connections. */
@@ -645,7 +649,7 @@ export class Room {
     for (const p of this.players) this.draw(p); // (whoever is on a lot with nothing drawn: dealt in or not, here or away)
     this.state = this.deal(dealt.map((p) => p.seat), this.rng);
     // A set-up deal (`?deal=aces`) is for trying things out: only where `testing` is on.
-    if (setUp && testing()) this.state = setUpDeal(this.state, setUp);
+    if (setUp && this.testing()) this.state = setUpDeal(this.state, setUp);
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!
@@ -1154,7 +1158,7 @@ export class Room {
       if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
-    this.sitting = randomUUID();
+    this.sitting = crypto.randomUUID();
     this.startTold = 0;
     this.lastRound = null;
     this.state = null;
@@ -1295,7 +1299,7 @@ export class Room {
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
   private debugBotOut(by: Player): void {
-    if (!testing() || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
+    if (!this.testing() || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
     const bot = this.players.find((p) => p.bot && this.state!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -1368,7 +1372,7 @@ export class Room {
       clock: this.played === null ? null : { ms: this.playedMs(), running: this.playingSince !== null },
       paused: this.pausedBy?.by === 'player' ? { by: 'player', id: this.pausedBy.player.id } : this.pausedBy,
       lastRound: this.lastRound,
-      testing: testing(),
+      testing: this.testing(),
     };
   }
 }

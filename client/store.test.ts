@@ -96,7 +96,7 @@ describe('the connection', () => {
     net.create('Ada');
     expect(sockets()).toBe(1);
     expect(last().url).toBe('wss://nertz.example/ws');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
     expect(last().sent).toEqual([]); // nothing goes before it is open
 
     last().open();
@@ -161,7 +161,7 @@ describe('the connection', () => {
     const net = await reload();
     net.join('ABCD', 'Ada');
     last().closed(); // never opened
-    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…' });
+    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', offline: false });
     const waits: number[] = [];
     for (let i = 0; i < 7; i++) {
       const n = sockets();
@@ -232,7 +232,7 @@ describe('the connection', () => {
     old.closed(1005);
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
   });
 
   it('a socket that opens only after the window has moved on says nothing, on it or on the socket that took its place', async () => {
@@ -393,7 +393,7 @@ describe("this window's session", () => {
     vi.useFakeTimers();
     const net = await seated();
     last().closed(CLOSE_OVER, reason);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason, offline: false });
     expect(address()).toBe('');
     const before = sockets();
     vi.advanceTimersByTime(10_000);
@@ -406,7 +406,7 @@ describe("this window's session", () => {
     const net = await seated();
     last().closed(CLOSE_OVER, 'You were removed from the table by whoever deals.');
     net.join('ABCD', 'Ada');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
     last().deliver(at('ABCD'));
@@ -436,7 +436,7 @@ describe("this window's session", () => {
     net.leave();
     expect(last().sent.at(-1)).toEqual({ t: 'leave' });
     expect(last().shut).toBe(true);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
     expect(address()).toBe('');
     const before = sockets();
     await reload();
@@ -449,7 +449,7 @@ describe("this window's session", () => {
     last().closed();
     expect(net.current().status).toBe('reconnecting');
     net.leave();
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
     net.join('WXYZ', 'Ada');
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
@@ -468,6 +468,87 @@ describe("this window's session", () => {
     const before = sockets();
     await reload();
     expect(sockets()).toBe(before);
+  });
+});
+
+describe('a window that plays offline', () => {
+  /** A page whose settings say offline: its table is its own (client/local.ts), told of only later. */
+  async function offline(): Promise<{ net: typeof import('./net'); prefs: typeof import('./prefs') }> {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    prefs.setPrefs({ offline: true });
+    return { net, prefs };
+  }
+  const told = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+
+  it('is offline as its settings say while it is at no table', async () => {
+    const { net, prefs } = await offline();
+    expect(net.current()).toMatchObject({ status: 'idle', offline: true });
+    prefs.setPrefs({ offline: false });
+    expect(net.current().offline).toBe(false);
+  });
+
+  it('opens a table of its own with no socket: seated at once among bots, with nothing in the address and nothing kept for a reload', async () => {
+    const { net } = await offline();
+    net.create('Ada');
+    await told();
+    expect(sockets()).toBe(0);
+    const { status, room, error } = net.current();
+    expect({ status, error }).toEqual({ status: 'online', error: null });
+    expect(room!.players.map((p) => p.bot ?? p.name)).toEqual(['Ada', 'medium', 'medium', 'medium']);
+    expect(address()).toBe('');
+    expect(storage.has('nertz.seat')).toBe(false);
+    // What it does at the table goes to the table: another bot, and the deal.
+    net.addBot('fast');
+    net.start();
+    await told();
+    expect(net.current().room).toMatchObject({ phase: 'playing', round: 1 });
+    expect(net.current().room!.players).toHaveLength(5);
+    net.leave();
+  });
+
+  it('a table is offline or not as it was opened, whatever the settings say since; leaving it, the window is as they say', async () => {
+    const { net, prefs } = await offline();
+    net.create('Ada');
+    await told();
+    prefs.setPrefs({ offline: false });
+    expect(net.current()).toMatchObject({ status: 'online', offline: true });
+    net.leave();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
+    expect(sockets()).toBe(0);
+
+    net.create('Ada');
+    last().open();
+    last().deliver(at('ABCD'));
+    prefs.setPrefs({ offline: true });
+    expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' }, offline: false });
+    net.leave();
+    expect(net.current().offline).toBe(true);
+  });
+
+  it("leaves someone's link in the address alone, and a reload lands at home", async () => {
+    page.search = '?room=WXYZ';
+    const { net } = await offline();
+    net.create('Ada');
+    await told();
+    expect(address()).toBe('?room=WXYZ');
+    net.leave();
+    expect(address()).toBe('?room=WXYZ');
+    await reload();
+    expect(sockets()).toBe(0);
+  });
+
+  it('its line never drops: asked every few seconds for as long as the table is quiet, it answers', async () => {
+    vi.useFakeTimers();
+    const { net } = await offline();
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(net.current()).toMatchObject({ status: 'online', error: null });
+    expect(sockets()).toBe(0);
+    net.leave();
   });
 });
 

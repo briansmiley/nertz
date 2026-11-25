@@ -12,6 +12,8 @@
 // What is on screen deals it out card by card on this window's own clock
 // (`dealOut`, `dealtBy`): no snapshot sets the pace.
 import { calm, getPrefs, lookOf, watchPrefs } from './prefs';
+import { wire, type Line } from './line';
+import { local } from './local';
 import { MOTION } from './layout';
 import { useSyncExternalStore } from 'react';
 import { applyIntent, covered, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
@@ -29,7 +31,7 @@ export interface Pending {
   at: number;
 }
 
-/** Everything that belongs to ONE websocket connection. A new socket starts from `freshSync`. */
+/** Everything that belongs to ONE connection (a `Line`). A new one starts from `freshSync`. */
 export interface Sync {
   /** Highest snapshot rev seen on this connection. */
   rev: number;
@@ -219,19 +221,26 @@ export interface NetState {
   /** Predicted room, or null when not in one. */
   room: RoomView | null;
   error: string | null;
+  /**
+   * This window plays offline: its tables are its own (client/local.ts), with bots and nobody else, and nothing is
+   * asked of the game server. At no table it is what the settings say (`Prefs.offline`); at one, what they said when
+   * it was opened, until it is left.
+   */
+  offline: boolean;
 }
 
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null };
+let state: NetState = { status: 'idle', room: null, error: null, offline: getPrefs().offline };
 const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
  * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
+ * `local`: the table is this window's own (`NetState.offline`, as the session began), and so is its line.
  */
-let session: { room: string | null; name: string } | null = null;
-let socket: WebSocket | null = null;
+let session: { room: string | null; name: string; local: boolean } | null = null;
+let socket: Line | null = null;
 let sync: Sync = freshSync;
 let dealing: Dealing = freshDealing;
 let step: ReturnType<typeof setTimeout> | undefined;
@@ -305,10 +314,12 @@ function tell(): void {
   if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
+// Offline or not is the settings' to say while this window is at no table (`NetState.offline`).
+watchPrefs(() => !session && state.offline !== getPrefs().offline && set({ offline: getPrefs().offline }));
 
-/** Sends one message if the socket is open. Game intents go through `send` instead. */
+/** Sends one message if the line is open. Game intents go through `send` instead. */
 export function post(msg: ClientMsg): boolean {
-  if (socket?.readyState !== WebSocket.OPEN) return false;
+  if (!socket?.open) return false;
   socket.send(JSON.stringify(msg));
   return true;
 }
@@ -336,6 +347,7 @@ function setUpInUrl(): SetUp | undefined {
  * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
  * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone. Only
  * `room` is the session's: anything else in the address (a set-up deal) stays as it was.
+ * Not for a table of this window's own (`session.local`): it is gone with the page, and nobody else can come to it.
  */
 function keep(seat: { room: string; name: string } | null): void {
   try {
@@ -368,16 +380,16 @@ export function resume(): void {
 function stop(error: string | null): void {
   clearTimeout(retry);
   clearInterval(watch);
+  if (!session?.local) keep(null);
   session = null;
-  keep(null);
   const old = socket;
   socket = null;
   old?.close();
   sync = freshSync;
   dealing = freshDealing;
   timed(null);
-  show({ status: 'idle', error });
-  renew(); // (the table may be gone because the server was put up anew: then so is this page)
+  show({ status: 'idle', error, offline: getPrefs().offline });
+  void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
 /**
@@ -425,7 +437,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     const updated = state.status === 'updating';
     if (session && !state.room) {
       session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
-      keep({ room: session.room, name: session.name });
+      if (!session.local) keep({ room: session.room, name: session.name });
     }
     sync = onSnapshot(sync, msg);
     show({ status: 'online', error: null });
@@ -453,35 +465,35 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
 
 function connect(): void {
   if (!session) return;
-  const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
-  socket = ws;
-  heard = Date.now();
-  sync = freshSync; // seq, pending and rev all belong to the connection
-  dealing = { ...dealing, looking: false };
-  ws.onopen = () => {
-    if (socket === ws && session) {
+  const line: Line = (session.local ? local : wire)({
+    open: () => {
+      if (socket !== line || !session) return;
       post(hello(session.room, session.name, token()));
       toldDeck = null;
       tell(); // my cards' faces and backs, for everyone at the table
       if (getPrefs().ping) ping(); // (and the time to the server, at once rather than at the next look)
-    }
-  };
-  ws.onmessage = (e) => {
-    if (socket !== ws) return;
-    heard = Date.now();
-    let msg: ServerMsg;
-    try {
-      msg = JSON.parse(String(e.data)) as ServerMsg;
-    } catch {
-      return;
-    }
-    if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
-  };
-  ws.onclose = (e) => {
-    if (socket !== ws) return;
-    if (e.code === CLOSE_OVER) return stop(e.reason);
-    dropped(e.code === CLOSE_UPDATE);
-  };
+    },
+    message: (text) => {
+      if (socket !== line) return;
+      heard = Date.now();
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(text) as ServerMsg;
+      } catch {
+        return;
+      }
+      if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
+    },
+    close: (code, reason) => {
+      if (socket !== line) return;
+      if (code === CLOSE_OVER) return stop(reason);
+      dropped(code === CLOSE_UPDATE);
+    },
+  });
+  socket = line;
+  heard = Date.now();
+  sync = freshSync; // seq, pending and rev all belong to the connection
+  dealing = { ...dealing, looking: false };
 }
 
 /**
@@ -492,10 +504,7 @@ function connect(): void {
 function dropped(update = false): void {
   const old = socket;
   socket = null;
-  if (old) {
-    old.onopen = old.onmessage = old.onclose = null; // (a silent socket may say it closed much later, or never)
-    old.close();
-  }
+  old?.close();
   // Unacknowledged intents died with the connection: show the plain snapshot until we are back, its groups in flight
   // as far as this window has dealt them (one that is down here stays down), and no further.
   sync = { ...sync, pending: [] };
@@ -530,7 +539,7 @@ function probe(): void {
     attempts = 0;
     return connect();
   }
-  if (socket.readyState !== WebSocket.OPEN) return; // (still connecting: `check` sees to it)
+  if (!socket.open) return; // (still connecting: `check` sees to it)
   const ws = socket;
   const asked = Date.now();
   ping();
@@ -540,9 +549,9 @@ if (typeof window !== 'undefined') window.addEventListener('online', probe);
 
 function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting'): void {
   if (session) stop(null);
-  session = { room, name };
+  session = { room, name, local: getPrefs().offline };
   attempts = 0;
-  set({ status, error: null });
+  set({ status, error: null, offline: session.local });
   connect();
   watch = setInterval(check, PING_MS);
 }
@@ -608,7 +617,7 @@ export function setTableSettings(patch: Partial<TableSettings>): void {
  */
 export function playable(intent: Intent): boolean {
   const room = state.room;
-  if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
+  if (!socket?.open || !sync.server || !room?.game || room.phase !== 'playing') return false;
   return room.seat !== null && applyIntent(room.game, room.seat, intent).ok;
 }
 

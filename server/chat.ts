@@ -22,7 +22,7 @@ export interface Member {
  */
 function iceFromEnv(): IceServer[] | undefined {
   try {
-    const v: unknown = JSON.parse(process.env.ICE_SERVERS ?? 'null');
+    const v: unknown = JSON.parse((typeof process === 'undefined' ? null : process.env.ICE_SERVERS) ?? 'null'); // (no environment: a window playing offline, client/local.ts)
     return Array.isArray(v) && v.length ? (v as IceServer[]) : undefined;
   } catch {
     return undefined;
