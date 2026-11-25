@@ -37,6 +37,8 @@ export const completedBy = (pile: CentrePile | null | undefined): number | null 
 export const isLive = (state: GameState): boolean => state.status.at === 'play';
 /** Play has opened, whether or not it is over since: the nertz tops are turned up. */
 export const hasOpened = (state: GameState): boolean => state.status.at === 'play' || state.status.at === 'grace' || state.status.at === 'over';
+/** Before the dealer's Start: the cards are dealt (or being dealt) and none of them played, so hands still go on and off the table with who sits and stands (`withHands`). */
+export const beforeStart = (state: GameState): boolean => state.status.at === 'dealing' || state.status.at === 'ready';
 /** The round is over, however it ended: nothing can change any more. */
 export const isOver = (state: GameState): boolean => state.status.at === 'over';
 /** The seat that called Nertz, while cards in hand may still land and once the round is over by that call; null if nobody has (yet, or at all). */
@@ -445,7 +447,7 @@ function buried(hand: PlayerState, players: number): PlayerState {
  * cards and nertz pile stay as they are. Same state from the count on: from then cards lie where they are.
  */
 export function withHands(state: GameState, hands: readonly PlayerState[]): GameState {
-  if (state.status.at !== 'dealing' && state.status.at !== 'ready') return state;
+  if (!beforeStart(state)) return state;
   const players = hands.map((h) => buried(h, hands.length)).sort((a, b) => a.seat - b.seat);
   return { ...state, players, slots: Array.from({ length: SLOTS_PER_PLAYER * hands.length }, () => null) };
 }
