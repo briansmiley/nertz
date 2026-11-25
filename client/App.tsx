@@ -5,7 +5,7 @@ import { SignIn } from './SignIn';
 import { Follow, FollowingList, Profile, Theirs } from './Profile';
 import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
 import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
@@ -155,12 +155,11 @@ const PAD_PERSPECTIVE = [1400, 1400];
  * showing what it had until it is edge-on and the new side from there, away from the side it was first shown on and
  * back the other way. Reduced motion (`calm`): the new side, without the turn.
  */
-function Pad({ children, wide, side, onUp, className, ref }: { children: ReactNode; wide?: boolean; side?: string; onUp?: (side: string | undefined) => void; className?: string; ref?: Ref<HTMLElement> }) {
+function Pad({ children, wide, side, onUp, className }: { children: ReactNode; wide?: boolean; side?: string; onUp?: (side: string | undefined) => void; className?: string }) {
   const [scope, animate] = useAnimate<HTMLElement>();
   /** The side up now: behind `side` while the pad turns away from it. Told to `onUp` as it changes, before it is seen. */
   const [up, setUp] = useState(side);
   useLayoutEffect(() => onUp?.(up), [up]);
-  useImperativeHandle(ref, () => scope.current, [scope]);
   const first = useRef(side);
   /** What the side up showed last, kept on it while it turns away. */
   const shown = useRef(children);
@@ -660,11 +659,14 @@ function Lobby({ room }: { room: RoomView }) {
  * change to them in a round). Done, a press beside the sheet, or Escape puts it away.
  */
 function TableSheet({ room, onClose }: { room: RoomView; onClose: () => void }) {
-  const sheet = useRef<HTMLElement>(null);
-  useDismiss(sheet, true, onClose);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <main className="solo over lobby">
-      <Pad className="lobby" ref={sheet}>
+    <main className="solo over lobby" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <Pad className="lobby">
         <TableHead room={room} />
         <Sitters room={room} />
         <button className="go" autoFocus onClick={onClose}>
