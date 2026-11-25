@@ -11,9 +11,10 @@
 // A draw comes as one step, its group on the waste and the time it was made.
 // What is on screen deals it out card by card on this window's own clock
 // (`dealOut`, `dealtBy`): no snapshot sets the pace.
-import { getPrefs, lookOf, watchPrefs } from './prefs';
+import { calm, getPrefs, lookOf, watchPrefs } from './prefs';
+import { MOTION } from './layout';
 import { useSyncExternalStore } from 'react';
-import { applyIntent, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
+import { applyIntent, covered, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
 import { CLOSE_OVER, CLOSE_UPDATE, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
@@ -59,15 +60,14 @@ export function onSnapshot(sync: Sync, msg: { rev: number; ack: number; room: Ro
 export const roundNow = (sync: Sync, at = performance.now()): number => (sync.lead !== null ? at + sync.lead : (sync.server?.clock?.ms ?? 0));
 
 /**
- * `intent` as it is sent from what is on screen, `room`: a take of the card under your own group in flight here names
- * that draw (`callsOff`), so the server calls it off though the group is down by its clock by the time it gets there
- * (this window has it down a round trip later).
+ * `intent` as it is sent from what is on screen, `room`: a take of the card under your own group in flight here (or
+ * still gliding onto it) names that draw (`callsOff`), so the server calls it off though the group is down by its
+ * clock by the time it gets there (this window has it down a round trip later, and the glide after).
  */
 export function named(room: RoomView | null, intent: Intent): Intent {
-  const game = room?.game;
-  if ((intent.k !== 'hold' && intent.k !== 'move') || !game || room.seat === null) return intent;
-  const draw = game.players.find((p) => p.seat === room.seat)?.draw;
-  return draw && grab(game, room.seat, intent.cardId)?.from.k === 'waste' ? { ...intent, callsOff: draw.at } : intent;
+  const me = room?.game?.players.find((p) => p.seat === room.seat);
+  if ((intent.k !== 'hold' && intent.k !== 'move') || !me?.draw || covered(me)?.id !== intent.cardId) return intent;
+  return { ...intent, callsOff: me.draw.at };
 }
 
 /** We are about to send `intent`: give it the next seq and remember it until it is acknowledged. */
@@ -118,16 +118,22 @@ const unknown = (c: AnyCard): AnyCard => ({ id: c.id, owner: c.owner, hidden: tr
  * A hand as it is drawn while its group is in flight (`PlayerState.draw`), `now` by the round's clock. The group came
  * in one step, and is dealt out here: its cards counted off the stock one at a time, STOCK_CARD_MS apart from `from`
  * (when the first left, here: `dealOut`), face-down. `draw.off` is how many are off so far, and the rest lie on the
- * stock yet. Its time come and its cards all off here a step (`downAt`), the group is down: the hand as it is, with no
- * draw. Not before its faces are here, though: those of your own draw come in the server's answer to it.
+ * stock yet. Its time come and its cards all off here a step (`downAt`), the group is down: the hand as it is, its
+ * cards gliding onto the waste and turning up (`draw.down`, for as long as that takes: `glideMs`), while the card
+ * they are covering can still be taken; then with no draw. Not before its faces are here, though: those of your own
+ * draw come in the server's answer to it.
  */
 export function dealtBy(p: PlayerState, now: number, from: number): PlayerState {
   if (!p.draw) return p;
   const group = p.waste.slice(-p.draw.n);
-  if (now >= downAt(p.draw, from) && !group.some(isHidden)) return { ...p, draw: null };
+  const down = downAt(p.draw, from);
+  if (now >= down && !group.some(isHidden)) return now >= down + glideMs() ? { ...p, draw: null } : { ...p, draw: { n: p.draw.n, at: p.draw.at, down: true } };
   const off = Math.min(p.draw.n, Math.max(1, Math.floor((now - from) / STOCK_CARD_MS) + 1));
   return { ...p, stock: [...p.stock, ...group.slice(off).reverse().map(unknown)], waste: [...p.waste.slice(0, -p.draw.n), ...group.slice(0, off).map(unknown)], draw: { ...p.draw, off } };
 }
+
+/** How long a group that is down takes here to glide onto the waste and turn up (client/Table.tsx: a card's move and its turn, together). */
+export const glideMs = (): number => (calm() ? 0 : Math.max(MOTION.move, MOTION.flip) * 1000);
 
 /** When a group whose cards began to leave the stock here at `from` is down here: at its own time (`landsAt`), and not before its last card has been off a step. */
 const downAt = (draw: NonNullable<PlayerState['draw']>, from: number): number => Math.max(landsAt(draw), from + draw.n * STOCK_CARD_MS);
@@ -180,6 +186,7 @@ export function dealOut(dealing: Dealing, sync: Sync, at = performance.now()): {
     const seen = dealtBy(p, now, flight.at);
     const off = seen.draw?.off;
     if (off !== undefined) due = Math.min(due, off < p.draw.n ? flight.at + off * STOCK_CARD_MS : downAt(p.draw, flight.at));
+    if (seen.draw?.down) due = Math.min(due, downAt(p.draw, flight.at) + glideMs());
     return seen;
   });
   const wait = live && sync.lead !== null && due > now && due < Infinity ? due - now : null;

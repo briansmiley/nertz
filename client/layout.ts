@@ -441,7 +441,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // hand, as with real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just
   // above the stock, not quite square, so three separate cards are seen to be pulled. The complete group is held
   // there a beat (the last step), then lands on the waste, every card turning over as it goes, the last on top.
-  const lifted = p.draw ? (p.draw.off ?? p.draw.n) : 0;
+  const lifted = p.draw && !p.draw.down ? (p.draw.off ?? p.draw.n) : 0;
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
@@ -1331,6 +1331,9 @@ export function aloftPath(
  * takes `duration` s to land, and the last is down a beat before the server's
  * DEAL_MS is up and the face-up cards turn over.
  */
+/** How long a card takes to glide to its place (`move`) and to turn over (`flip`), in s; reduced motion has none (client/Table.tsx). */
+export const MOTION = { move: 0.15, flip: 0.16 } as const;
+
 export const DEAL = { lead: 100, work: 1300, pause: 180, stream: 50, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] } as const;
 
 /**

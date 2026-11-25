@@ -43,9 +43,11 @@ export interface PlayerState {
    * can be taken (`hold`, `move`), which calls the draw off: the group goes back on the stock as it came off, and
    * there is no draw under way. Each window deals the cards out
    * on its own clock. `off` is only ever on screen: how many of the group this window has dealt off the stock so
-   * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off.
+   * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off. `down`, on screen
+   * only too: the group is down here and gliding onto the waste, its top already playable, while the card it is
+   * covering, still partly in sight, can yet be taken.
    */
-  draw: { n: number; at: number; off?: number } | null;
+  draw: { n: number; at: number; off?: number; down?: true } | null;
   /**
    * The latest draw once its group is down (`landed`): when it was made, how many cards, and the top one. Till it is
    * called off or another draw is made. A take its window made with the group still in flight (`callsOff`) can call

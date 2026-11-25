@@ -4,10 +4,10 @@
 // dealt out as far as this window has it (net.ts `dealOut`).
 import { describe, expect, it } from 'vitest';
 import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, isLive, refused, resolveStuck, startCountdown } from '../shared/engine';
-import { START_BEAT_MS, START_MS, STOCK_CARD_MS } from '../shared/protocol';
+import { CALL_OFF_MS, START_BEAT_MS, START_MS, STOCK_CARD_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, upWork, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
-import { dealOut, freshDealing, freshSync, named, onSend, onSnapshot, type Dealing, type Sync } from './net';
+import { dealOut, freshDealing, freshSync, glideMs, named, onSend, onSnapshot, type Dealing, type Sync } from './net';
 import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
 /** Two players whose work piles are single face-up cards: A-spades, 2-spades, A-hearts and a black 5 on which nothing fits yet; on the waste, a red 4 that fits on the 5. */
@@ -163,6 +163,8 @@ describe('sound cues from rendered state', () => {
     expect(s.tick()).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.tick()).toEqual([{ k: 'stock', who: 'me' }]);
     expect(s.tick()).toEqual([]);
+    expect(s.frame.room!.game!.players[0]).toMatchObject({ draw: { down: true }, waste: { length: 3 } });
+    expect(s.tick(glideMs())).toEqual([]);
     expect(s.frame.room!.game!.players[0]).toMatchObject({ draw: null, waste: { length: 3 } });
 
     expect(s.them({ k: 'hold', cardId: s.game.players[1]!.waste.at(-1)!.id })).toEqual([{ k: 'pickup', who: 'other' }]);
@@ -197,10 +199,11 @@ describe('sound cues from rendered state', () => {
     const s = session(rigged());
     const mine = () => s.frame.room!.game!.players[0]!;
     const four = mine().waste.at(-1)!.id;
-    // Not once the group has turned up here: the card under it is out of reach, and nothing is in hand.
+    // Not once the group has turned up here and glided onto the waste: the card under it is out of reach, and nothing is in hand.
     s.me({ k: 'draw' });
     s.confirm();
     for (let i = 0; i < 3; i++) s.tick();
+    s.tick(glideMs());
     expect(mine().draw).toBeNull();
     expect(s.me({ k: 'hold', cardId: four })).toEqual([]);
     expect(mine()).toMatchObject({ holding: null, waste: { length: 4 } });
@@ -237,6 +240,52 @@ describe('sound cues from rendered state', () => {
     expect(mine()).toMatchObject({ draw: null, holding: four, waste: { length: 1 } });
     expect(mine().stock.map((c) => c.id)).toEqual(stock);
     expect(s.game.players[0]!.stock.map((c) => c.id)).toEqual(stock);
+  });
+
+  it('while the group glides onto the waste the card under it can still be taken, calling the draw off, and the server agrees; the group\'s top is taken as after any draw', () => {
+    const s = session(rigged());
+    const mine = () => s.frame.room!.game!.players[0]!;
+    const [four, stock] = [mine().waste.at(-1)!.id, mine().stock.map((c) => c.id)];
+    // The draw takes 150 ms to reach the server, and its answer comes at once: the group is down at 660, here and there.
+    s.me({ k: 'draw' });
+    s.tick(150);
+    s.confirm();
+    s.tick(660 - 150);
+    expect(mine().draw).toEqual({ n: 3, at: 150, down: true });
+    const later = s.frame.room!; // (a moment on in the glide, for the group's top below)
+    // Just before the glide is over the card under it is taken: predicted as the draw called off, which the server
+    // agrees to when the take gets there 150 ms later, well inside CALL_OFF_MS.
+    s.tick(glideMs() - 1);
+    expect(mine().draw).toMatchObject({ down: true });
+    expect(s.me({ k: 'hold', cardId: four })).toEqual([{ k: 'recycle', who: 'me' }, { k: 'pickup', who: 'me' }]);
+    s.tick(150);
+    expect(glideMs() + 150).toBeLessThan(CALL_OFF_MS / 2); // (how long the group has been down at the server when the take gets there)
+    expect(s.confirm()).toEqual([]);
+    expect(mine()).toMatchObject({ draw: null, holding: four, waste: { length: 1 } });
+    expect(s.game.players[0]).toMatchObject({ draw: null, holding: four });
+    expect(s.game.players[0]!.stock.map((c) => c.id)).toEqual(stock);
+    // In the glide, a press on the group's top takes it as it would once the group is down: no call-off.
+    const top = later.game!.players[0]!.waste.at(-1)!.id;
+    expect(named(later, { k: 'hold', cardId: top })).toEqual({ k: 'hold', cardId: top });
+    expect(applyIntent(later.game!, 0, { k: 'hold', cardId: top }).ok).toBe(true);
+  });
+
+  it('once the glide is over the card under the group is out of reach: a take of it is refused, and the group\'s top is taken as ever', () => {
+    const s = session(rigged());
+    const mine = () => s.frame.room!.game!.players[0]!;
+    const four = mine().waste.at(-1)!.id;
+    s.me({ k: 'draw' });
+    s.tick(150);
+    s.confirm();
+    s.tick(660 - 150 + glideMs());
+    expect(mine().draw).toBeNull();
+    expect(s.me({ k: 'hold', cardId: four })).toEqual([]);
+    s.confirm();
+    expect(s.game.players[0]).toMatchObject({ holding: null, waste: { length: 4 } });
+    const top = mine().waste.at(-1)!.id;
+    expect(s.me({ k: 'hold', cardId: top })).toEqual([{ k: 'pickup', who: 'me' }]);
+    expect(s.confirm()).toEqual([]);
+    expect(s.game.players[0]).toMatchObject({ holding: top, waste: { length: 4 } });
   });
 
   it('a table that is stuck has its stocks turned over to one sound, the table\'s own: not a slide for each waste that goes back', () => {

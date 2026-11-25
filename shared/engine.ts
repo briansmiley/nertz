@@ -180,6 +180,9 @@ export const feltFree = (state: GameState, at: Pt): boolean =>
 /** How many cards of `p`'s group in flight lie on its waste: all of them, but on screen only those dealt off the stock so far (`draw.off`). None with no draw under way. */
 const dealt = (p: PlayerState): number => (p.draw ? (p.draw.off ?? p.draw.n) : 0);
 
+/** The card `p`'s group in flight is being dealt onto: taking it calls the draw off. None with no draw under way. */
+export const covered = (p: PlayerState): AnyCard | undefined => (p.draw ? p.waste[p.waste.length - 1 - dealt(p)] : undefined);
+
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
  * or waste (under a group in flight onto it, the card the group is covering: taking that one calls the draw off, and
@@ -192,8 +195,9 @@ export function grab(state: GameState, seat: number, cardId: string): Grab | nul
   if (!p) return null;
   const lift = (from: Source, cards: AnyCard[]): Grab | null => (cards.some(isHidden) ? null : { from, cards: cards as Card[] });
   if (top(p.nertz)?.id === cardId) return lift({ k: 'nertz' }, p.nertz.slice(-1));
-  const waste = p.waste[p.waste.length - 1 - dealt(p)];
-  if (waste?.id === cardId) return lift({ k: 'waste' }, [waste]);
+  // (On screen, a group gliding onto the waste (`draw.down`) is down: its top can be taken as well.)
+  const waste = [p.draw ? covered(p) : undefined, !p.draw || p.draw.down ? top(p.waste) : undefined].find((c) => c?.id === cardId);
+  if (waste) return lift({ k: 'waste' }, [waste]);
   for (const [i, pile] of p.work.entries()) {
     const at = pile.cards.findIndex((c) => c.id === cardId);
     if (at >= 0) return at >= pile.down ? lift({ k: 'work', i }, pile.cards.slice(at)) : null;
