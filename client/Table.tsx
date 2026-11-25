@@ -28,7 +28,7 @@ import { useFeed } from './feed';
 import { Dots } from './Dots';
 import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet } from './net';
 import { Clock } from './Settings';
-import { Eye } from './icons';
+import { Chair } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { usePicture } from './picture';
@@ -428,7 +428,7 @@ function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
       {open && (
         <>
           <button type="button" className="standup" aria-label={`Stand ${who.name} up`} data-tip={`Stand ${who.name} up`} onClick={() => (sit(false, who.id), shut())}>
-            <Eye />
+            <Chair />
           </button>
           <button type="button" className={`unseat${sure ? ' sure' : ''}`} aria-label={`Send ${who.name} away${sure ? '?' : ''}`} data-tip={`Send ${who.name} away${sure ? '?' : ''}`} onClick={() => (sure ? (kick(who.id), shut()) : setSure(true))}>
             ×

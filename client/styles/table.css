@@ -754,6 +754,20 @@
   width: 100%;
 }
 
+/* A drawn icon beside the words, on their line and the height of a capital and a half. */
+.paper-card .go:has(> img.art) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.paper-card .go > img.art {
+  width: 1.9rem;
+  height: 1.9rem;
+  margin: -0.4rem 0;
+}
+
 .paper-card .go svg {
   width: 1.2rem;
   height: 1.2rem;

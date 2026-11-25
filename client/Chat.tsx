@@ -5,9 +5,9 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode }
 import { CHAT_MAX_LENGTH, type ChatLine, type Named } from '../shared/chat';
 import type { RoomView } from '../shared/types';
 import { backColour, nameColour } from './cards/Face';
-import { SaidWord, Slash, useHotkey } from './hotkey';
+import { SaidWord, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
-import { Speaker } from './icons';
+import { Door, Sit, Speaker } from './icons';
 import { useCorners } from './fittings';
 import { kick, sit } from './net';
 import { outOfVoice, PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
@@ -137,24 +137,9 @@ export function Chat({ room }: { room: RoomView }) {
     if (social.text && draft.trim() && say(draft)) setDraft('');
   };
 
-  const headset = (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4.6 12.5V11a7.4 7.4 0 0 1 14.8 0v1.5" />
-      <rect x="3" y="11.5" width="4.2" height="6.4" rx="1.6" />
-      <rect x="16.8" y="11.5" width="4.2" height="6.4" rx="1.6" />
-      {/* the microphone, on its arm round to the mouth */}
-      <path d="M18.9 17.9c0 2-1.5 3.1-3.6 3.1h-1.6" />
-      <rect x="10.3" y="19.7" width="3.6" height="2.6" rx="1.3" fill="currentColor" stroke="none" />
-    </svg>
-  );
-  /** A microphone; with a line through it for one that is muted. */
-  const mic = (off: boolean) => (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
-      <Slash on={off} />
-    </svg>
-  );
+  const headset = <img className="art" src="/icons/headset.png" alt="" aria-hidden="true" />;
+  /** A microphone; struck through in red for one that is muted. */
+  const mic = (off: boolean) => <img className="art" src={off ? '/icons/mic-off.png' : '/icons/mic.png'} alt="" aria-hidden="true" />;
   /** The key that mutes you, to name on the button: none on a phone. */
   const key = hotkeyName(prefs.voiceKey);
   /** The key that turns the game's sound off and on. */
@@ -189,8 +174,8 @@ export function Chat({ room }: { room: RoomView }) {
     >
       <div className="chat-bar">
         {mayText && (
-          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} style={wide(0)} aria-expanded={typing} onClick={() => toggle('chat')}>
-            Chat
+          <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} style={wide(0)} aria-expanded={typing} aria-label="Chat" data-tip="Chat" onClick={() => toggle('chat')}>
+            <img className="art" src="/icons/chat.png" alt="" aria-hidden="true" />
             {!typing && social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
           </button>
         )}
@@ -233,11 +218,8 @@ export function Chat({ room }: { room: RoomView }) {
         )}
         {/* Who is watching (no seat): an eye and how many; their names on hover, and in the lobby and on the score sheet. */}
         {watchers.length > 0 && (
-          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} style={wide(at.chatParts.length - 1)} aria-expanded={open === 'watchers'} aria-label={`Watching: ${watchers.length}. Who`} data-tip={`Watching: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
-              <circle cx="12" cy="12" r="2.8" />
-            </svg>
+          <button type="button" className={`mic eye${open === 'watchers' ? ' open' : ''}`} style={wide(at.chatParts.length - 1)} aria-expanded={open === 'watchers'} aria-label={`Spectating: ${watchers.length}. Who`} data-tip={`Spectating: ${watchers.map((p) => p.name).join(', ')}`} onClick={() => toggle('watchers')}>
+            <img className="art" src="/icons/eye.png" alt="" aria-hidden="true" />
             {watchers.length}
           </button>
         )}
@@ -245,9 +227,9 @@ export function Chat({ room }: { room: RoomView }) {
 
       {/* Who is watching: a slip like the voice one. Whoever hosts can send one of them away. */}
       {open === 'watchers' && (
-        <section className="voice-slip" aria-label="Watching">
+        <section className="voice-slip" aria-label="Spectating">
           <header>
-            <h3>Watching</h3>
+            <h3>Spectating</h3>
           </header>
           <ul>
             {watchers.map((p) => (
@@ -257,8 +239,8 @@ export function Chat({ room }: { room: RoomView }) {
                 {!p.connected && <small>away</small>}
                 {/* A seat is had by asking for one: oneself, or whoever deals for someone. And given up again, to just watch. */}
                 {!p.queued && (p.id === room.me || hosting) && (
-                  <button type="button" onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
-                    {p.id === room.me ? 'Take a seat' : 'Seat'}
+                  <button type="button" className="seat-art" aria-label={p.id === room.me ? 'Take a seat' : `Seat ${p.name}`} data-tip={p.id === room.me ? 'Take a seat' : `Seat ${p.name}`} onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
+                    <Sit />
                   </button>
                 )}
                 {p.queued && p.id === room.me && (
@@ -281,8 +263,8 @@ export function Chat({ room }: { room: RoomView }) {
         <section className="voice-slip" aria-label="Voice">
           <header>
             <h3>Voice</h3>
-            <button type="button" onClick={() => outOfVoice()}>
-              Leave
+            <button type="button" className="out" aria-label="Leave voice" data-tip="Leave voice" onClick={() => outOfVoice()}>
+              <Door />
             </button>
           </header>
           <ul>

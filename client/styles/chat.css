@@ -106,6 +106,95 @@
   stroke-linejoin: round;
 }
 
+/* The drawn icons in the bar (chat, headset, microphone, eye, the sound that is off): bare on the cloth, no pill round
+   them, like the robot on the sheet. Hovered (or open) they lift and tip. What the pill's colour said, the art now says: a
+   marigold glow round it while voice calls you in and while you are heard; muted, the microphone is struck through. */
+.chat-bar > button:has(> img.art) {
+  min-height: 0;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--chalk);
+  cursor: pointer;
+}
+
+/* (The pill's states, which outrank the rule above: no fill or ring for them either.) */
+.chat-bar button.mic.mute:has(> img.art),
+.chat-bar button.mic.mute.on:has(> img.art),
+.chat-bar button.mic.join.calling:has(> img.art),
+.chat-bar button.mic.speaking:has(> img.art) {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--chalk);
+}
+
+.chat-bar img.art {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -2px 0;
+  pointer-events: none;
+  transition: transform 0.12s ease-out, filter 0.15s;
+}
+
+.chat-bar > button:hover > img.art,
+.chat-bar > button.on > img.art,
+.chat-bar > button.open > img.art {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+.chat-bar > button:active > img.art {
+  transform: translateY(1px);
+}
+
+/* (Its number beside it, in chalk on the cloth.) */
+.chat-bar > button:has(> img.art) {
+  font: 600 14px/1 var(--ui);
+  text-shadow: 0 1px 2px rgba(4, 18, 22, 0.9);
+}
+
+.chat-bar button.mic.speaking > img.art {
+  filter: drop-shadow(0 0 3px var(--marigold)) drop-shadow(0 0 1px var(--marigold));
+}
+
+.chat-bar button.mic.join.calling {
+  animation: none;
+  color: var(--marigold);
+}
+
+.chat-bar button.mic.join.calling > img.art {
+  animation: calling-art 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes calling-art {
+  from {
+    filter: drop-shadow(0 0 0 rgba(240, 180, 40, 0.9));
+  }
+  to {
+    filter: drop-shadow(0 0 7px rgba(240, 180, 40, 0.95));
+  }
+}
+
+.calm .chat-bar button.mic.join.calling > img.art {
+  animation: none;
+  filter: drop-shadow(0 0 4px var(--marigold));
+}
+
+.chat-bar button.sound-off:has(> img.art),
+.chat.top .chat-bar > button.sound-off:has(> img.art) {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+.chat-bar button.sound-off > img.art {
+  width: 28px;
+  height: 28px;
+  margin: -2px 0;
+}
+
 /* In the bar: the headset (opens the voice slip), the microphone (mutes you) and an eye with how many are watching. */
 .chat-bar .mic {
   display: inline-flex;
@@ -346,35 +435,53 @@
   color: #b3261e;
 }
 
+/* Beside a name in voice: the microphone, bare (yours a button that mutes you; another's only while they are muted). */
 .voice-slip .mic-at {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
   margin-left: auto;
   padding: 0;
-  border-radius: 99px;
+  border: 0;
+  background: none;
   color: var(--ink-soft);
 }
 
-.voice-slip button.mic-at {
-  border: 1.5px solid var(--ink);
-  color: var(--ink);
+.voice-slip button.mic-at,
+.voice-slip button.mic-at.on {
+  background: none;
   cursor: pointer;
 }
 
-.voice-slip button.mic-at.on {
-  background: var(--marigold);
+.voice-slip .mic-at img.art {
+  width: 26px;
+  height: 26px;
+  margin: -3px 0;
+  transition: transform 0.12s ease-out;
 }
 
-.voice-slip .mic-at svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.voice-slip button.mic-at:hover img.art {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+/* Leaving voice: the door, bare. */
+.voice-slip header button.out {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.voice-slip header button.out img.art {
+  width: 30px;
+  height: 30px;
+  margin: -4px 0;
+  transition: transform 0.12s ease-out;
+}
+
+.voice-slip header button.out:hover img.art {
+  transform: translateY(-2px) rotate(-4deg);
 }
 
 /* A notice from the table among the chat's lines (who sniped whom, a round dealt or over): slanted and a little fainter than what is said. */

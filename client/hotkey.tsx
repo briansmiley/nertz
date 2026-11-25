@@ -44,8 +44,3 @@ export function SaidWord({ said }: { said: Said | null }) {
     </span>
   ) : null;
 }
-
-/** The line through an icon for "off": drawn on as it goes off, drawn back as it comes on. */
-export function Slash({ on }: { on: boolean }) {
-  return <path className={`slash${on ? ' on' : ''}`} d="M4.5 4.5l15 15" pathLength={1} strokeWidth="2.4" />;
-}
