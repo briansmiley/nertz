@@ -21,7 +21,7 @@ import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
-import { Check, Eye, Gear, LinkIcon } from './icons';
+import { Chair, Check, Gear, LinkIcon, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -312,7 +312,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   return (
     <span className="pop-at" ref={root}>
       <button type="button" className="standup" aria-label={says} data-tip={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
-        <Eye />
+        <Chair />
       </button>
       {step && (
         <div className="pop handon" role="dialog" aria-label="Transfer host role">
@@ -358,8 +358,8 @@ function Watching({ room, butYou }: { room: RoomView; butYou?: boolean }) {
           <span key={p.id} className={p.id === room.me ? 'you' : ''}>
             {p.name}
             {!p.queued && (p.id === room.me || host) && (
-              <button type="button" className="sit" onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
-                {p.id === room.me ? 'Take a seat' : 'Seat'}
+              <button type="button" className="sit seat-art" aria-label={p.id === room.me ? 'Take a seat' : `Seat ${p.name}`} data-tip={p.id === room.me ? 'Take a seat' : `Seat ${p.name}`} onClick={() => sit(true, p.id === room.me ? undefined : p.id)}>
+                <Sit />
               </button>
             )}
             {p.queued && p.id === room.me && (
@@ -375,7 +375,7 @@ function Watching({ room, butYou }: { room: RoomView; butYou?: boolean }) {
   return (
     <>
       {list('Waiting for a seat', room.players.filter((p) => p.seat === null && p.queued && !(butYou && p.id === room.me)))}
-      {list('Watching', room.players.filter((p) => p.seat === null && !p.queued && !(butYou && p.id === room.me)))}
+      {list('Spectating', room.players.filter((p) => p.seat === null && !p.queued && !(butYou && p.id === room.me)))}
     </>
   );
 }
@@ -565,7 +565,8 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
                       <span>Guest</span>
                     </span>
                     {ways && (
-                      <button type="button" className="plain" onClick={signInNow}>
+                      <button type="button" className="signin-now" onClick={signInNow}>
+                        <SignInDoor />
                         Sign in
                       </button>
                     )}
@@ -793,15 +794,21 @@ function Sitters({ room }: { room: RoomView }) {
                 <Name host={me.isHost} className="name">
                   {me.name}
                 </Name>
-                {!hasSeat(me) && <span className="badge">{me.queued ? 'Waiting' : 'Watching'}</span>}
+                {!hasSeat(me) && <span className="badge">{me.queued ? 'Waiting' : 'Spectating'}</span>}
               </span>
               <span className="note">
                 you
                 {hasSeat(me) && <StandUp room={room} who={me} />}
-                {/* Watching (you stood up, or came in to a full table): a seat is yours for the asking. */}
-                {!hasSeat(me) && !me.queued && (
+                {/* Spectating (you stood up, or came in to a full table): a seat is yours for the asking, the chair tucked in where
+                    standing up's was; at a full table, words, since a chair cannot say you will wait for one. */}
+                {!hasSeat(me) && !me.queued && freeSeats(room.seats) > 0 && (
+                  <button type="button" className="standup seat-art" aria-label="Take a seat" data-tip="Take a seat" onClick={() => sit(true)}>
+                    <Sit />
+                  </button>
+                )}
+                {!hasSeat(me) && !me.queued && freeSeats(room.seats) === 0 && (
                   <button type="button" className="sit" onClick={() => sit(true)}>
-                    {freeSeats(room.seats) > 0 ? 'Take a seat' : 'Join the queue'}
+                    Join the queue
                   </button>
                 )}
                 {me.queued && (
@@ -941,7 +948,7 @@ function Results({ room }: { room: RoomView }) {
             {rows.map((s) => {
               const p = of(s);
               /** No longer at the table: they stood up since (watching, or waiting for a seat again), or left. Their line is the round's, faint, the chip an outline: the colour is not theirs any more. */
-              const up = !p ? 'Left' : hasSeat(p) ? null : p.queued ? 'Waiting for a seat' : 'Watching';
+              const up = !p ? 'Left' : hasSeat(p) ? null : p.queued ? 'Waiting for a seat' : 'Spectating';
               return (
               <tr key={s.seat} className={`${s.id === room.me ? 'you' : ''}${up ? ' up' : ''}`}>
                 <th scope="row">

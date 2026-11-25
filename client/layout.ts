@@ -654,8 +654,8 @@ export type Shape = 'tall' | 'low' | 'wide';
 export const shapeOf = (W: number, H: number): Shape => (isTall(W, H) ? 'tall' : isLow(W, H) ? 'low' : 'wide');
 
 /** How wide each of the chat's buttons is: as a rule, and in the bar of an upright phone, where they are larger for a thumb while there is room. They stand `gap` apart, `h` high (`barH` in the bar). */
-const CHAT_W: Record<ChatButton, readonly [number, number]> = { text: [49, 57], icon: [36, 46], count: [47, 57], count2: [55, 65], mute: [33, 33], badge: [24, 24] };
-const CHAT = { gap: 6, h: 29, barH: 36 } as const;
+const CHAT_W: Record<ChatButton, readonly [number, number]> = { text: [36, 44], icon: [36, 44], count: [50, 58], count2: [58, 66], mute: [36, 36], badge: [28, 28] };
+const CHAT = { gap: 6, h: 32, barH: 36 } as const;
 /** The one button of the corner, the menu (Settings.tsx `Corner`): `size` across. */
 export const KNOB = { size: 36 } as const;
 /** The room the clock is given: in line after the menu's button or above it (large figures), or in line after the chat's buttons (small ones). */

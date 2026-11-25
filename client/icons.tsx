@@ -1,53 +1,44 @@
 // The line icons of the corner and its menu (Settings.tsx, Menu.tsx), and of the sheets that share them: 24 units
 // square, drawn in the colour of the text around them.
-import { Slash } from './hotkey';
 
-/** Sound: crossed out while it is off (the line is drawn on as it goes). */
+/** Sound: the speaker, and struck through in red while it is off. */
 export function Speaker({ off }: { off: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" fill="currentColor" stroke="none" />
-      <path d="M15.2 9.3a4 4 0 0 1 0 5.4M17.6 6.9a7.4 7.4 0 0 1 0 10.2" />
-      <Slash on={off} />
-    </svg>
-  );
+  return <img className="art" src={off ? '/icons/muted.png' : '/icons/volume.png'} alt="" aria-hidden="true" />;
 }
 
+/** The menu: three bars. */
 export function MenuIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4.5 7h15M4.5 12h15M4.5 17h15" />
-    </svg>
-  );
+  return <img className="art" src="/icons/menu.png" alt="" aria-hidden="true" />;
 }
 
+/** Settings: a gear with a spade at its heart. Drawn art (public/icons), not a line icon. */
 export function Gear() {
-  const teeth = Array.from({ length: 8 }, (_, i) => <rect key={i} x="10.6" y="2.6" width="2.8" height="4.4" rx="0.9" transform={`rotate(${i * 45} 12 12)`} fill="currentColor" stroke="none" />);
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      {teeth}
-      <circle cx="12" cy="12" r="5.1" strokeWidth="3" />
-    </svg>
-  );
+  return <img className="art" src="/icons/gear-bare.png" alt="" aria-hidden="true" />;
 }
 
 /** Leaving: out through a door. */
 export function Door() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M13 4.5h5.5v15H13" />
-      <path d="M14.5 12H4.5M8 8.5 4.5 12 8 15.5" />
-    </svg>
-  );
+  return <img className="art" src="/icons/leave.png" alt="" aria-hidden="true" />;
 }
 
+/** Signing in: in through the door, the arrow green. */
+export function SignInDoor() {
+  return <img className="art" src="/icons/signin.png" alt="" aria-hidden="true" />;
+}
+
+/** Taking a seat: the chair tucked in at the table (standing up's, the other way). */
+export function Sit() {
+  return <img className="art" src="/icons/sit.png" alt="" aria-hidden="true" />;
+}
+
+/** Standing up: the chair pushed back from the table. */
+export function Chair() {
+  return <img className="art" src="/icons/stand.png" alt="" aria-hidden="true" />;
+}
+
+/** Feedback: a little beetle with a heart on its back. */
 export function Bug() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <ellipse cx="12" cy="14" rx="4.6" ry="5.8" />
-      <path d="M9.2 8.6a2.9 2.9 0 0 1 5.6 0M9.5 5 8 3.3M14.5 5 16 3.3M12 9v10.6M7.4 12.5H3.8M7.4 16H4.3l-.9 2.6M16.6 12.5h3.6M16.6 16h3.1l.9 2.6M7.8 10.2 5 8.4M16.2 10.2 19 8.4" />
-    </svg>
-  );
+  return <img className="art" src="/icons/bug.png" alt="" aria-hidden="true" />;
 }
 
 /** How much the game is played (an admin's, Usage.tsx): bars on a line. */
@@ -59,55 +50,24 @@ export function Chart() {
   );
 }
 
+/** Pausing: two bars. */
 export function PauseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="6.5" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none" />
-      <rect x="13.9" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none" />
-    </svg>
-  );
+  return <img className="art" src="/icons/pause.png" alt="" aria-hidden="true" />;
 }
 
-/** Unpausing. */
+/** Unpausing: play. */
 export function Play() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7.5 5.2v13.6L18.5 12z" fill="currentColor" stroke="none" />
-    </svg>
-  );
+  return <img className="art" src="/icons/resume.png" alt="" aria-hidden="true" />;
 }
 
-/** Ending the round where it stands: the flag at the finish. */
+/** Ending the round where it stands: the white flag, giving up on it. */
 export function Flag() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 20.5V4" />
-      <path d="M6 4.5h11l-2.6 3.8L17 12H6" />
-    </svg>
-  );
+  return <img className="art" src="/icons/flag.png" alt="" aria-hidden="true" />;
 }
 
-/** Dealing again: two cards inside an arrow come round. Each card is filled with the paper it is drawn on, so the front one covers the back. */
+/** Dealing again: two cards inside an arrow that comes round. */
 export function Redeal() {
-  return (
-    <svg className="big" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
-      <path d="M5.3 2.4v3.9h3.9" />
-      {[-14, 14].map((turn) => (
-        <rect key={turn} x="9.3" y="7.9" width="5.4" height="7.6" rx="1" transform={`rotate(${turn} 12 15.5)`} style={{ fill: 'var(--paper)' }} />
-      ))}
-    </svg>
-  );
-}
-
-/** Watching: an eye. (Standing up from your cards: you watch the rest.) */
-export function Eye() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
-      <circle cx="12" cy="12" r="2.8" />
-    </svg>
-  );
+  return <img className="art" src="/icons/redeal.png" alt="" aria-hidden="true" />;
 }
 
 /** Copying (Lucide's copy): one sheet over another. */
@@ -130,12 +90,7 @@ export function Check() {
   );
 }
 
-/** A turning arrow: again from the start. */
+/** Resetting the table: the score pad inside an arrow that comes round. */
 export function Again() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5.5 12a6.5 6.5 0 1 0 2.2-4.9" />
-      <path d="M5 4.5v3.4h3.4" />
-    </svg>
-  );
+  return <img className="art" src="/icons/reset.png" alt="" aria-hidden="true" />;
 }

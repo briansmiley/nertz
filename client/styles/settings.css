@@ -65,6 +65,23 @@
   background: rgba(8, 28, 33, 0.9);
 }
 
+/* The menu's three bars, drawn: bare on the cloth like the chat's buttons, no disc; hovered or open they lift and tip. */
+.knob:has(> img.art) {
+  background: none;
+}
+
+.knob > img.art {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  transition: transform 0.12s ease-out;
+}
+
+.knob:hover > img.art,
+.knob.on > img.art {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
 .knob svg {
   width: 20px;
   height: 20px;
@@ -572,17 +589,6 @@ label.check {
   stroke-linejoin: round;
 }
 
-/* A line through an icon for "off" draws itself on, and back off (hotkey.tsx). */
-.slash {
-  stroke-dasharray: 1 2;
-  stroke-dashoffset: 1;
-  transition: stroke-dashoffset 0.22s ease-out;
-}
-
-.slash.on {
-  stroke-dashoffset: 0;
-}
-
 /* What a hotkey just did, in a word inside its button: the button opens out to say it, and closes again. */
 .said {
   overflow: hidden;
@@ -610,10 +616,6 @@ label.check {
     margin-left: -5px;
     opacity: 0;
   }
-}
-
-.calm .slash {
-  transition: none;
 }
 
 .calm .said {

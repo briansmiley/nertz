@@ -5,7 +5,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
-import { Again, Bug, Chart, Door, Eye, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Again, Bug, Chair, Chart, Door, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu (your settings in it), or feedback or how much the game is played, which it leads to. */
 export type Panel = 'menu' | 'feedback' | 'usage';
@@ -26,7 +26,7 @@ export function useCorner(): Panel | null {
 }
 
 /** Each action's icon, before its name. */
-export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Eye, leave: Door };
+export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Chair, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {

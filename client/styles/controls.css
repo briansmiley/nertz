@@ -35,6 +35,32 @@
   background: var(--card); /* filled: the paper's ruled lines do not run through a button that has a border */
 }
 
+/* Signing in, beside "Guest": a small yellow button that presses down like the big ones, the door beside its words. */
+.signin-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.7rem 0.55rem;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--marigold);
+  box-shadow: 0 3px 0 #b47f0c;
+  cursor: pointer;
+}
+
+.signin-now:active {
+  translate: 0 2px;
+  box-shadow: 0 1px 0 #b47f0c;
+}
+
+.signin-now > img.art {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin: -0.35rem 0 -0.35rem -0.2rem;
+}
+
 .plain:disabled {
   cursor: default;
   border-color: #c9c0a8;
@@ -142,6 +168,47 @@
   transform: translateY(1px);
 }
 
+/* The drawn icons (icons.tsx, public/icons): art, not line, so like the robot they stand bare, without the circle. */
+.icon:has(> img.art) {
+  border: 0;
+  border-radius: 6px;
+  background: none;
+}
+
+img.art {
+  display: block;
+  width: 1.3rem;
+  height: 1.3rem;
+  pointer-events: none;
+  user-select: none;
+}
+
+.icon > img.art {
+  width: 2.3rem;
+  height: 2.3rem;
+  transition: transform 0.12s ease-out;
+}
+
+.icon:hover > img.art,
+.icon.on > img.art {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+.icon:active > img.art {
+  transform: translateY(1px);
+}
+
+.standup img.art {
+  width: 22px;
+  height: 22px;
+}
+
+.seats .standup img.art,
+.top .standup img.art {
+  width: 18px;
+  height: 18px;
+}
+
 .robotplus .blank {
   fill: var(--card);
 }
@@ -200,6 +267,29 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* Taking a seat beside a name (spectating): the chair tucked in, bare. */
+.watching .sit.seat-art,
+.voice-slip li > button.seat-art:not(.mic-at) {
+  display: inline-grid;
+  place-items: center;
+  margin-left: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.seat-art img.art {
+  width: 26px;
+  height: 26px;
+  margin: -4px 0;
+  transition: transform 0.12s ease-out;
+}
+
+.seat-art:hover img.art {
+  transform: translateY(-2px) rotate(-4deg);
 }
 
 .watching .sit,

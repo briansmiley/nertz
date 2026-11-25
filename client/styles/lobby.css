@@ -17,11 +17,11 @@
 }
 
 .pad h2 .invite svg {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.4rem;
+  height: 1.4rem;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
