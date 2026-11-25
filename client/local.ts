@@ -46,7 +46,7 @@ export const local: Dial = (heard) => {
         if (msg.t === 'join') return over(`Table ${msg.room} not found.`); // (there is no table here but the one this line opens)
         if (msg.t === 'create') {
           room?.close();
-          room = new Room(randomRoomCode(), { schedule: queueMicrotask, testing: () => import.meta.env.DEV });
+          room = new Room(randomRoomCode(), { schedule: (flush) => queueMicrotask(flush), testing: () => import.meta.env.DEV });
           const refusal = room.join(conn, msg.name, msg.token, true);
           if (refusal) return over(refusal);
           // Nobody to talk to; and its company seated.

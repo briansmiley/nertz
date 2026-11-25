@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { setSeats, setTableSettings, setUnlisted } from './net';
+import { setSeats, setTableSettings, setUnlisted, useOffline } from './net';
 import { pauseKeyAction, perform, tableActions } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
 import { Bug, Gear, MenuIcon } from './icons';
@@ -156,7 +156,7 @@ const percent = (v: number) => `${Math.round(v * 100)}%`;
 const CHANNEL_NAMES: Record<Channel, [short: string, full: string]> = { mine: ['Yours', 'Your cards'], others: ['Others', "Other players' cards"], voice: ['Voice', 'Voice chat'] };
 
 /** Volume, for everything; under it a row of the channels' levels, of which the one pressed opens its own slider. */
-function Volume({ prefs }: { prefs: Prefs }) {
+function Volume({ prefs, offline }: { prefs: Prefs; offline: boolean }) {
   const [open, setOpen] = useState<Channel | null>(null);
   const slider = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -173,7 +173,7 @@ function Volume({ prefs }: { prefs: Prefs }) {
         <input type="range" min="0" max="1" step="0.05" value={levels.master} onChange={(e) => setLevel('master', Number(e.target.value))} />
       </label>
       <div className="mix">
-        {CHANNELS.map((ch) => (
+        {CHANNELS.filter((ch) => !(offline && ch === 'voice')).map((ch) => (
           <button
             key={ch}
             type="button"
@@ -344,8 +344,9 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const pausing = pauseKeyAction(room);
   useHotkey(prefs.pauseKey, room && pausing ? () => (perform(pausing, room), pausing === 'pause' ? 'Paused' : 'Resumed') : null);
 
-  /** What can be done to the table now (actions.ts). */
-  const actions = room ? tableActions(room) : [];
+  /** What can be done to the table now (actions.ts). Offline, not standing up from it: there is nobody to play on without you, or to watch. */
+  const offline = useOffline();
+  const actions = room ? tableActions(room).filter((a) => !(offline && a.id === 'stand')) : [];
   useDismiss(root, !!open, () => openCorner(null));
 
   /** Where the buttons stand (layout.ts: the table keeps clear of exactly that). */
@@ -407,6 +408,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
 /** Your settings, at the top of the corner's menu under a gear; whoever hosts finds the table's at the bottom of them. */
 function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs }) {
   const social = useSocial();
+  /** Offline: nothing of chat, of the line to the server, or of who else may come to the table. */
+  const offline = useOffline();
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
   /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). Closing the menu drops it. */
   const [keying, setKeying] = useState<Hotkey | null>(null);
@@ -431,30 +434,28 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <Gear />
         Settings
       </h3>
-      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). */}
-      <div className="sound">
-        <h3>Sound</h3>
-        <h4>Output</h4>
-        <Volume prefs={prefs} />
-        <label className="check">
-          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-          <span>Bots say "Nertz"</span>
-        </label>
-        <h4 className="input">Input</h4>
-        <MicLevels prefs={prefs} />
-      </div>
+      <Volume prefs={prefs} offline={offline} />
       <label className="check">
-        <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
-        <span>Show chat over the table</span>
+        <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+        <span>Bots say "Nertz"</span>
       </label>
-      <label className="check">
-        <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
-        <span>Show ping</span>
-      </label>
+      {!offline && (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
+            <span>Show chat over the table</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
+            <span>Show ping</span>
+          </label>
+        </>
+      )}
       <label className="check">
         <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
         <span>Reduce motion</span>
       </label>
+      {/* (Offline or not is chosen at no table, at the foot of the menu: there it stays under the pointer as the rows above it come and go.) */}
       {/* (Any time, a round or not: it changes the cards for nobody but you.) */}
       <div className="faces">
         <span id="faces-label">
@@ -486,7 +487,7 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
       {!touchOnly() && (
         <div className="hotkeys">
           <h3>Hotkeys</h3>
-          {HOTKEYS.map((k) => {
+          {HOTKEYS.filter((k) => !(offline && k === 'voiceKey')).map((k) => {
             const code = prefs[k];
             return (
               <p key={k}>
@@ -500,11 +501,11 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         </div>
       )}
       {/* Whoever hosts: whether this table has text chat and voice at all, whether it is listed, and between rounds its house rules. */}
-      {room && hosting && (
+      {room && hosting && !(offline && room.phase === 'playing') && (
         <div className="end-vote">
-          <h3>Host</h3>
+          <h3>{offline ? 'Table' : 'Host'}</h3>
           {/* Each row: the switch for the table, and at its end the same for those only watching (the glasses). */}
-          <div className="allow">
+          {!offline && <><div className="allow">
             <label className="check">
               <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
               <span>Allow text chat</span>
@@ -517,17 +518,26 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
               <span>Allow voice chat</span>
             </label>
             <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
-          </div>
+          </div></>}
           {/* (Between rounds it is with the house rules below; mid-round, when they are hidden, here on its own.) */}
-          {room.phase === 'playing' && <Private room={room} mine />}
+          {room.phase === 'playing' && !offline && <Private room={room} mine />}
           {room.phase !== 'playing' && (
             <>
-              <SeatCount room={room} mine />
+              {!offline && <SeatCount room={room} mine />}
               <div className="rules">
                 <Rules room={room} mine />
               </div>
             </>
           )}
+        </div>
+      )}
+      {/* Offline or not is chosen at no table: a table is what it was opened as (client/net.ts `NetState.offline`). */}
+      {!room && (
+        <div className="end-vote">
+          <label className="check">
+            <input type="checkbox" checked={prefs.offline} onChange={(e) => setPrefs({ offline: e.target.checked })} />
+            <span>Play offline</span>
+          </label>
         </div>
       )}
       <WholeScreen />
@@ -563,6 +573,7 @@ function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
  */
 function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
   const set = (patch: Partial<TableSettings>) => setTableSettings(patch);
+  const offline = useOffline();
   return (
     <>
       <label className="check">
@@ -571,7 +582,7 @@ function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
           Tap to play <Info>Allows tapping a card then its destination, without dragging</Info>
         </span>
       </label>
-      <Private room={room} mine={mine} />
+      {!offline && <Private room={room} mine={mine} />}
     </>
   );
 }
@@ -591,9 +602,11 @@ function Private({ room, mine }: { room: RoomView; mine: boolean }) {
 /** The seats and house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
 export function TableRules({ room }: { room: RoomView }) {
   const mine = room.players.find((p) => p.isHost)?.id === room.me;
+  /** Offline the seats are for bots alone, and are as many as you seat. */
+  const offline = useOffline();
   return (
     <>
-      <SeatCount room={room} mine={mine} />
+      {!offline && <SeatCount room={room} mine={mine} />}
       <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'}>
         <legend>Table rules</legend>
         <Rules room={room} mine={mine} />

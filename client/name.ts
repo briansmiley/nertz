@@ -3,19 +3,26 @@
 import { cleanName } from '../shared/protocol';
 
 const KEY = 'nertz.name';
+/** The name you last sat down under at all, signed in or not: who you are offline, where nobody is signed in. */
+const LAST_KEY = 'nertz.name.last';
 
-export function rememberedName(): string {
+const read = (key: string): string => {
   try {
-    return cleanName(localStorage.getItem(KEY) ?? '');
+    return cleanName(localStorage.getItem(key) ?? '');
   } catch {
     return '';
   }
-}
-
-export function rememberName(name: string): void {
+};
+const write = (key: string, name: string): void => {
   try {
-    localStorage.setItem(KEY, name);
+    localStorage.setItem(key, name);
   } catch {
     // storage unavailable: the name just is not remembered
   }
-}
+};
+
+export const lastName = (): string => read(LAST_KEY) || read(KEY);
+export const satDownAs = (name: string): void => write(LAST_KEY, name);
+
+export const rememberedName = (): string => read(KEY);
+export const rememberName = (name: string): void => write(KEY, name);

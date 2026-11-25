@@ -399,10 +399,18 @@ function stop(error: string | null): void {
  * loaded again whenever this window is at no table. At a table it is only once it is `back` there from an update the
  * server stopped for: the reload sits back down (`resume`). The same one again was only the line dropping.
  */
-let boot: string | null = null;
-let stale = false;
-function renew(back = false): void {
-  if (stale && (back || (!state.room && !session))) location.reload();
+async function renew(back = false): Promise<void> {
+  const free = (): boolean => back || (!state.room && !session);
+  if (typeof document === 'undefined' || !free() || state.offline) return;
+  const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src');
+  if (!mine) return; // not a built page (development)
+  try {
+    const page = await (await fetch('/', { cache: 'no-store' })).text();
+    const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(page)?.[1];
+    if (theirs && theirs !== mine && free()) location.reload();
+  } catch {
+    // offline: next time
+  }
 }
 function booted(id: string): void {
   boot ??= id;
@@ -644,6 +652,8 @@ export const subscribe = (l: () => void) => {
 export const current = (): NetState => state;
 
 export const useNet = (): NetState => useSyncExternalStore(subscribe, current);
+/** This window plays offline (`NetState.offline`): what is only for a table others can come to, or asks the game server anything, is not shown. */
+export const useOffline = (): boolean => useNet().offline;
 
 // ---------------------------------------------------------------- round trip
 

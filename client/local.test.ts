@@ -52,6 +52,17 @@ describe('a local line', () => {
     expect(w.heard).toEqual([]);
   });
 
+  it("asks nothing of the window's own timers that a browser would refuse: they are called bare, never as the room's", async () => {
+    const real = queueMicrotask;
+    vi.stubGlobal('queueMicrotask', function (this: unknown, fn: () => void) {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+      real(fn);
+    });
+    const w = await seated();
+    vi.unstubAllGlobals();
+    expect(w.room()).toMatchObject({ phase: 'lobby' });
+  });
+
   it('opens a table of its own: you deal, its company is seated, and it has neither chat nor voice', async () => {
     const w = await seated();
     const room = w.room()!;

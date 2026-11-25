@@ -10,7 +10,7 @@ import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH,
 import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
-import { calm, lookOf, usePrefs } from './prefs';
+import { calm, lookOf, setPrefs, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { usePicture } from './picture';
@@ -19,17 +19,18 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt, type Status } from './net';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useOffline, useRtt } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
-import { rememberedName, rememberName } from './name';
+import { lastName, rememberedName, rememberName, satDownAs } from './name';
 
 /** Sit down at table `room`, or with null ask the server to open a new one (it picks the code). A guest's name is remembered by the browser; an account's is the account's. */
 function enter(room: string | null, name: string, guest: boolean): void {
   if (guest) rememberName(name);
+  satDownAs(name);
   if (room) join(room, name);
   else create(name);
 }
@@ -120,11 +121,12 @@ export function App() {
   const net = useNet();
   const room = net.room;
   const account = useAccount();
-  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. */
-  const page = useAddressed();
+  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. Offline, no one's: there is nobody to ask. */
+  const addressed = useAddressed();
+  const page = net.offline ? null : addressed;
   useSounds(room, net.status === 'online');
-  const back = useBack(net.status);
-  const [tucked, setTucked] = useTucked(net.status);
+  // (For what the stylesheet leaves out offline: the host's mark by a name, where you are the only one who could be.)
+  useEffect(() => void document.documentElement.classList.toggle('offline', net.offline), [net.offline]);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -133,7 +135,7 @@ export function App() {
   if (!room) {
     return (
       <>
-        <Home error={net.error} busy={net.status !== 'idle'} yours={page} />
+        <Home key={net.offline ? 'offline' : 'online'} error={net.error} busy={net.status !== 'idle'} yours={page} offline={net.offline} />
         <Corner />
       </>
     );
@@ -166,18 +168,9 @@ export function App() {
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} lost={tucked ? () => setTucked(false) : undefined} />
       <Sure room={room} />
-      <Ping />
-      {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
-        // (Mid-round the card over the paused table says it: the update paused the round.)
-        <Toast say="updating" className="updating">
-          <Riffle />
-          <span>
-            Updating the game
-            <Dots />
-          </span>
-        </Toast>
-      ) : (net.status === 'reconnecting' && !tucked) || back ? (
-        <Line back={back} onTuck={() => setTucked(true)} />
+      {!net.offline && <Ping />}
+      {net.status === 'reconnecting' || net.status === 'updating' ? (
+        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : 'Connection lost. Reconnecting…'}</p>
       ) : (
         spectating && (
           <p className="banner low">
@@ -532,6 +525,15 @@ function Tables({ onPick }: { onPick: (code: string) => void }) {
   );
 }
 
+/** Offline, where the open tables would be listed: that this window is, and pressed, the way back. */
+function OfflineMark() {
+  return (
+    <button type="button" className="quiet" data-tip="Go back online" onClick={() => setPrefs({ offline: false })}>
+      Offline
+    </button>
+  );
+}
+
 /** Your picture, or where there is none (or it will not load) the first letter of your name; for no name yet (a guest's, or an account's), the figure of nobody in particular. */
 function Avatar({ image, name }: { image: string | null; name: string | null }) {
   const picture = usePicture(image);
@@ -549,10 +551,10 @@ function Avatar({ image, name }: { image: string | null; name: string | null }) 
 }
 
 /** The home page; `yours`, with the pad turned over to your page, or on it who you follow (the address is yours: `useAddressed`). */
-function Home({ error, busy, yours }: { error: string | null; busy: boolean; yours: Addressed | null }) {
-  const invited = roomInUrl();
-  /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. */
-  const [name, setName] = useState(rememberedName);
+function Home({ error, busy, yours, offline }: { error: string | null; busy: boolean; yours: Addressed | null; offline: boolean }) {
+  const invited = offline ? '' : roomInUrl();
+  /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. Offline, where nobody is signed in: the one you last sat down under. */
+  const [name, setName] = useState(offline ? lastName : rememberedName);
   const account = useAccount();
   const signedIn = signedInAs(account);
   const ways = waysIn(account);
@@ -681,7 +683,7 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
               <button type="button" className="go" disabled={!ready} onClick={() => go(null)}>
                 {busy && !typed ? 'Connecting…' : 'New Table'}
               </button>
-              <div className="way">
+              {!offline && <div className="way">
                 <label htmlFor="code">Join existing table</label>
                 <div className="pair">
                   <input
@@ -699,9 +701,9 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
                     {busy && typed ? '…' : 'Join'}
                   </button>
                 </div>
-              </div>
+              </div>}
             </div>
-            <Tables onPick={pick} />
+            {offline ? <OfflineMark /> : <Tables onPick={pick} />}
           </form>
         )}
       </Pad>
@@ -718,6 +720,7 @@ function Lobby({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
   const ready = enoughToDeal(room);
+  const offline = useOffline();
   return (
     <main className="solo">
       <Pad className="lobby">
@@ -726,7 +729,7 @@ function Lobby({ room }: { room: RoomView }) {
         <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!ready} onClick={start}>
-            {ready ? 'Deal the first round' : 'Waiting for a second player'}
+            {ready ? 'Deal the first round' : offline ? 'Add a bot to deal' : 'Waiting for a second player'}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
@@ -780,6 +783,7 @@ function TableHead({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
   const [codeCopied, copyCode] = useCopy(room.code);
   const [copied, copy] = useCopy(`${location.origin}/?room=${room.code}`);
+  const offline = useOffline();
 
   return (
     <>
@@ -787,7 +791,8 @@ function TableHead({ room }: { room: RoomView }) {
           {me?.isHost && <AddBot room={room} />}
           <Act id="leave" room={room} />
         </div>
-        <h2>
+        {/* Offline the table has no code to give anyone: where it would be, that says so. */}
+        {offline ? <h2>Table <span className="code">Offline</span></h2> : <h2>
           Table{' '}
           {/* The code itself is a button: pressed, it is copied (just the code, for saying or typing; the chain after it copies the link). */}
           <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} data-tip="Copy the code" onClick={copyCode}>
@@ -797,7 +802,7 @@ function TableHead({ room }: { room: RoomView }) {
           <button type="button" className="invite" onClick={copy} aria-label="Copy the link to this table" data-tip={copied ? 'Copied' : 'Copy the link'}>
             {copied ? <Check /> : <LinkIcon />}
           </button>
-        </h2>
+        </h2>}
     </>
   );
 }
@@ -805,6 +810,8 @@ function TableHead({ room }: { room: RoomView }) {
 /** Everyone at the table and watching: you under the head, the others' places, then who watches; and the backs being chosen. */
 function Sitters({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
+  /** Offline there is nothing to stand up for: nobody plays on without you. */
+  const offline = useOffline();
   const prefs = usePrefs();
   /** Whose backs are being chosen, if the sheet of backs is open: yours (seated or watching), or a bot's (by its seat). */
   const [picking, setPicking] = useState<'you' | number | null>(null);
@@ -880,7 +887,7 @@ function Sitters({ room }: { room: RoomView }) {
               </span>
               <span className="note">
                 you
-                {hasSeat(me) && <StandUp room={room} who={me} />}
+                {hasSeat(me) && !offline && <StandUp room={room} who={me} />}
                 {/* Spectating (you stood up, or came in to a full table): a seat is yours for the asking, the chair tucked in where
                     standing up's was; at a full table, words, since a chair cannot say you will wait for one. */}
                 {!hasSeat(me) && !me.queued && freeSeats(room.seats) > 0 && (
@@ -977,6 +984,7 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
 
 function Results({ room }: { room: RoomView }) {
   const round = room.lastRound;
+  const offline = useOffline();
   const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
@@ -1040,7 +1048,7 @@ function Results({ room }: { room: RoomView }) {
                     {me?.isHost && p?.bot && p.seat !== null ? <BotName name={p.name} seat={p.seat} /> : <Named who={p}>{s.name}</Named>}
                   </Name>
                   {p?.handle && <Follow handle={p.handle} name={p.name} small />}
-                  {p && !p.bot && p.seat !== null && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
+                  {p && !p.bot && p.seat !== null && !offline && (p.id === room.me || me?.isHost) && <StandUp room={room} who={p} />}
                   {p && me?.isHost && p.id !== room.me && <Unseat who={p} />}
                   </span>
                 </th>
@@ -1094,7 +1102,7 @@ function Results({ room }: { room: RoomView }) {
         {round?.snipes && top && <Snipes snipes={round.snipes} top={top} who={who} />}
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
-            {enoughToDeal(room) ? 'Next round' : 'Waiting for a second player'}
+            {enoughToDeal(room) ? 'Next round' : offline ? 'Add a bot to deal' : 'Waiting for a second player'}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>

@@ -1,5 +1,6 @@
 // Feedback, from the corner's menu: a slip with a text box, Send, and beside it an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
+// Offline it is kept and sent later (client/outbox.ts), and the slip says Saved.
 // On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: the words, and Send.
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
@@ -7,6 +8,8 @@ import { Back } from './Menu';
 import { thisDevice } from './device';
 import { Bug as BugIcon } from './icons';
 import { rememberedName } from './name';
+import { useOffline } from './net';
+import { post } from './outbox';
 import { touchOnly } from './prefs';
 import { useAboveKeyboard } from './viewport';
 
@@ -87,6 +90,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [state, setState] = useState<{ k: 'idle' | 'sending' | 'sent' } | { k: 'error'; message: string }>({ k: 'idle' });
+  const offline = useOffline();
   const form = useRef<HTMLFormElement>(null);
   // Sent: the slip folds away to Send, saying so, and then puts itself away. (Closed before then, it is simply gone.)
   useEffect(() => {
@@ -126,10 +130,10 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
     const me = room?.players.find((p) => p.id === room.me);
     const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.status.at ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
     try {
-      const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${await thisDevice()}`;
-      const [res] = await Promise.all([fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: room?.code, context, image }) }), wait(SENDING_MS)]);
-      const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
-      if (!res.ok || !body?.ok) return setState({ k: 'error', message: body?.message ?? 'That did not go through. Try again in a moment.' });
+      const context = `${offline ? 'offline · ' : ''}${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${await thisDevice()}`;
+      // (An offline table's code is nobody's to look up.)
+      const [posted] = await Promise.all([post({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: offline ? undefined : room?.code, context, image }), wait(SENDING_MS)]);
+      if (posted.k === 'error') return setState(posted);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); // (on a phone the keyboard goes, and the slip back to its own place, to say it)
       setState({ k: 'sent' });
     } catch {
@@ -173,7 +177,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
       )}
       {/* (Pressed while writing on a phone, it leaves the focus in the words: the keyboard stays up, and the slip where it is, until they are sent.) */}
       <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending' || state.k === 'sent'} onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
-        {state.k === 'sending' ? 'Sending…' : state.k === 'sent' ? 'Sent ✓' : kind === 'bug' ? 'Report bug' : 'Suggest'}
+        {state.k === 'sending' ? (offline ? 'Saving…' : 'Sending…') : state.k === 'sent' ? (offline ? 'Saved ✓' : 'Sent ✓') : kind === 'bug' ? 'Report bug' : 'Suggest'}
       </button>
       {/* (After Send, at its side: Tab from the words goes to Send. A screenshot can as well be dragged or pasted anywhere on the slip.) */}
       {image ? (

@@ -42,3 +42,8 @@ a.page:focus-visible {
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 0.2em;
 }
+
+/* Offline you are the only one who could host: the mark by your name says nothing. */
+.offline .host {
+  display: none;
+}
