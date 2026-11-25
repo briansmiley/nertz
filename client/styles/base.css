@@ -96,17 +96,16 @@ button {
   background: var(--ink);
   color: var(--chalk);
   font-size: 14px;
-  white-space: nowrap;
+  /* One line while the window is wide enough for it, not just while half of it is. */
+  width: max-content;
+  max-width: calc(100vw - 24px);
 }
 
 /* Along the foot of the window, where whoever is watching has no cards: the table is laid out above it (layout.ts
-   `WATCH`). One line while the window is wide enough for it, not just while half of it is. */
+   `WATCH`). */
 .banner.low {
   top: auto;
   bottom: 12px;
-  width: max-content;
-  max-width: calc(100vw - 24px);
-  white-space: normal;
   text-align: center;
 }
 

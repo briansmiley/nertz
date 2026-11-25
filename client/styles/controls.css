@@ -232,6 +232,8 @@ img.art {
   stroke-width: 1.5;
 }
 
+/* The broken robot before the connection banner's words (App.tsx). It is in no `.icon`, so the line is its own; and it
+   stands taller than the words without the banner growing for it (the margins). */
 .robotbroken {
   width: 24px;
   height: 24px;
