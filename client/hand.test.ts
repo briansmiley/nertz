@@ -317,7 +317,7 @@ describe('a finger', () => {
     const t = seatAt(game(), phone);
     const from = t.at('0:H4');
     t.down(from);
-    t.move(by(from, 22, 0)); // half the way up
+    t.move(by(from, 22, 0)); // half the way along
     const half = t.hand;
     t.move(by(from, 120, 0)); // along your own row
     const d = t.hand;
