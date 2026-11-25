@@ -692,6 +692,25 @@ function arbor(small: boolean): string {
 }
 
 /**
+ * Earth's point of origin, as it is cut into the gate in Stargate: a broad chevron with no floor, its legs the same
+ * width all the way down until their feet kick in toward each other, and a ring over its peak. In heights of the
+ * chevron, from its peak.
+ */
+function earth(small: boolean): string {
+  const lean = 0.58; // how far a leg's outer edge goes out for each step down
+  const thick = 0.14; // a leg's width, across
+  const [heel, foot] = [0.82, 0.31]; // where the feet start to kick in, and how wide a foot is at the bottom
+  const leg: [number, number][] = [[0, 0], [lean, 1], [lean - foot, 1], [lean * heel - thick, heel], [0, thick / lean]];
+  const shape = [...leg, ...leg.slice(1, -1).reverse().map(([x, y]): [number, number] => [-x, y])];
+  const [ringY, ringOut, ringIn] = [-0.125, 0.11, 0.052];
+  const k = (F.w * (small ? 0.94 : 0.86)) / (2 * lean);
+  const top = H / 2 - (k * (1 - (ringY - ringOut))) / 2 - k * (ringY - ringOut); // the whole of it centred
+  const at = ([x, y]: [number, number]): [number, number] => [W / 2 + x * k, top + y * k];
+  const ring = (r: number): string => `M${n(W / 2 - r * k)} ${n(top + ringY * k)}a${n(r * k)} ${n(r * k)} 0 1 0 ${n(2 * r * k)} 0a${n(r * k)} ${n(r * k)} 0 1 0 ${n(-2 * r * k)} 0Z`;
+  return frame(`<path d="${poly(shape.map(at))}${ring(ringOut)}${ring(ringIn)}" fill="#fff" fill-rule="evenodd" stroke="none"/>`, 1, small);
+}
+
+/**
  * Waves, as on Japanese cloth (seigaiha): rows of overlapping scales, each row half a scale along from the last, and
  * each scale three arcs one inside another. Only as much of a scale is drawn as the rows below it leave showing.
  */
@@ -1827,6 +1846,7 @@ export const BACK_ART: Record<Exclude<Back, 'plain'>, BackArt> = {
   compass: figure(compass),
   lightcone: figure(lightcone),
   arbor: figure(arbor),
+  earth: figure(earth),
   fans: pattern(fans),
   tripods: pattern(tripods),
   paisley: pattern(paisley),
