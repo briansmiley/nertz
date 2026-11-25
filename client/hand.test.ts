@@ -8,7 +8,7 @@ import { hold, move, pile, slot, table, work } from '../shared/testkit';
 import type { GameState, Intent } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
 import { reporter } from './hand';
-import { toScreen, toTable, type Rect } from './layout';
+import { drawnMini, toScreen, toTable, type Rect } from './layout';
 import { seatAt, type Seated } from './testkit';
 
 /**
@@ -315,38 +315,45 @@ describe('tap to move', () => {
 describe('a finger', () => {
   it('the card comes up as it is carried off, until its lower edge is just above the fingertip', () => {
     const t = seatAt(game(), phone);
-    const lay = t.card('0:H4');
     const from = t.at('0:H4');
     t.down(from);
-    t.move(by(from, 0, -22)); // half the way up
+    t.move(by(from, 22, 0)); // half the way along
     const half = t.hand;
-    t.move(by(from, 0, -120));
+    t.move(by(from, 120, 0)); // along your own row
     const d = t.hand;
     if (d?.phase !== 'carried' || half?.phase !== 'carried') throw new Error('not carried');
-    expect(d.at.y + d.s * CARD_H).toBeCloseTo(from.y - 120 - 10);
-    expect(d.s * CARD_W).toBeCloseTo(48); // on a phone, one size once risen, whatever the hand's
-    expect(half.at.y).toBeLessThan(lay.y - 22);
-    expect(half.at.y + half.s * CARD_H).toBeGreaterThan(from.y - 22 - 10);
+    expect(d.at.y + d.s * CARD_H).toBeCloseTo(from.y - 10);
+    expect(half.at.y).toBeLessThan(t.card('0:H4').y);
+    expect(half.at.y).toBeGreaterThan(d.at.y);
   });
 
-  it('on a phone the card in hand is one size, upright or on its side: smaller than the hand upright, bigger on its side; a mouse keeps it as it lay', () => {
-    for (const [size, grows] of [[phone, false], [{ W: 844, H: 390, touch: true }, true]] as const) {
+  it('carried over your own hand, a card keeps the size and face it lay with; over the felt, on a phone it is the touch size, bigger than the piles, and on a desktop as it lay', () => {
+    for (const [size, felt] of [[phone, 48], [{ W: 844, H: 390, touch: true }, 48], [{ ...phone, touch: false }, 48], [{}, null]] as const) {
       const t = seatAt(game(), size);
-      const lay = t.card('0:H4');
-      const from = t.at('0:H4');
-      t.down(from);
-      t.move(by(from, 0, -120));
+      const lay = t.card('0:S2');
+      t.down(t.at('0:S2'));
+      t.move(t.work(1)); // over your own work piles
       const d = t.hand;
       if (d?.phase !== 'carried') throw new Error('not carried');
-      expect(d.s * CARD_W).toBeCloseTo(48);
-      expect(d.s > lay.s).toBe(grows);
+      expect(d.s).toBeCloseTo(lay.s);
+      expect(drawnMini(d.s * CARD_W)).toBe(drawnMini(lay.s * CARD_W));
+      bring(t, t.slot(0)); // on the pile in the middle
+      const s = t.hand?.phase === 'carried' ? t.hand.s : 0;
+      expect(s * CARD_W).toBeCloseTo(felt ?? lay.s * CARD_W);
+      if (felt) expect(s).toBeGreaterThan(t.L.fs);
     }
-    const t = seatAt(game(), { ...phone, touch: false });
-    const lay = t.card('0:H4');
-    const from = t.at('0:H4');
-    t.down(from);
-    t.move(by(from, 0, -120));
-    expect(t.hand?.phase === 'carried' && t.hand.s).toBeCloseTo(lay.s);
+  });
+
+  it('an Ace carried out of your hand on a phone keeps its size over your hand, and over the felt is the size of a pile in the middle', () => {
+    for (const size of [phone, { W: 844, H: 390, touch: true }]) {
+      const t = seatAt(game(), size);
+      const lay = t.card('0:DA');
+      t.down(t.at('0:DA'));
+      t.move(t.work(0));
+      expect(t.hand?.phase === 'carried' && t.hand.s).toBeCloseTo(lay.s);
+      bring(t, room(t, '0:DA'));
+      expect(t.hand?.phase === 'carried' && t.hand.s).toBeCloseTo(t.L.fs);
+    }
   });
 
   it('the card is aimed by its own middle, not by the finger under it', () => {
