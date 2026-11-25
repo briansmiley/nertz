@@ -318,6 +318,27 @@ label.check {
   color: var(--ink-soft);
 }
 
+/* On the lobby sheet, once it is wide (the same sizes as its three columns), the rules read as one line:
+   Tap to play, Private table, Seats. They wrap if ever squeezed. The ☰ menu's Host section, a narrow slip, keeps them stacked. */
+@media (min-width: 640px), (orientation: landscape) and (max-height: 499px) {
+  fieldset.rules {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 1.4rem;
+    row-gap: 0.5rem;
+  }
+
+  fieldset.rules legend {
+    width: 100%;
+  }
+
+  /* Each (i) opens under its own rule, so it may be wider than that rule. */
+  fieldset.rules .info .tip {
+    max-width: 17rem;
+  }
+}
+
 /* How many seats: the word, then a minus, the number and a plus, bare ink. */
 .stepper {
   display: flex;
