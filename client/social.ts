@@ -6,6 +6,7 @@ import type { ChatLine, SocialSettings, VoiceMember } from '../shared/chat';
 import type { Rect } from './layout';
 import { hasSeat } from '../shared/protocol';
 import { current, onSocial, post, subscribe as onNet } from './net';
+import { chatLine } from './sound';
 import { hangUp, leaveVoice, onSignal, setIce, sync } from './voice';
 
 /** What is open under the chat bar: the line to type in, the voice slip, the slip of those watching, or nothing. */
@@ -52,6 +53,7 @@ onSocial((msg) => {
     const now = Date.now();
     const passing = msg.history ? [] : [...state.passing.filter((p) => now - p.at < PASSING_MS), ...lines.map((line) => ({ line, at: now }))].slice(-PASSING_MOST);
     set({ lines: msg.history ? lines : [...state.lines, ...lines], unread: state.open === 'chat' ? state.unread : [...state.unread, ...news], passing, held });
+    if (news.length) chatLine(); // (not for your own lines, the table's notices, or the history sent as you sit down)
   } else if (msg.t === 'social') {
     setIce(msg.ice);
     set({ text: msg.text, voice: msg.voice, watchText: msg.watchText, watchVoice: msg.watchVoice, inVoice: msg.inVoice });

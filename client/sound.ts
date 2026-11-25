@@ -460,6 +460,12 @@ export function opened(): void {
   [880, 1174.66, 1760].forEach((hz, i) => tone(hz, { gain: 0.13, dur: 0.5, delay: i * 0.01, partials: CHIME }));
 }
 
+/** Someone else said something in the chat: a soft, low two-note blip, under the game's sounds, on your own channel. */
+export function chatLine(): void {
+  tone(659.25, { gain: 0.07, dur: 0.12, partials: BELL });
+  tone(987.77, { gain: 0.06, dur: 0.18, delay: 0.07, partials: BELL });
+}
+
 /** One second of the grace countdown. */
 export function tick(): void {
   tone(1174.66, { gain: 0.1, dur: 0.07, partials: TICK });
