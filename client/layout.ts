@@ -157,17 +157,16 @@ export interface Layout {
   /** Scale of cards in the middle. */
   fs: number;
   /**
-   * A narrow upright screen (a phone held upright), laid out its own way: a bar across the top for the buttons
-   * (`bar` high), everyone else in rows under it, the felt, and your own hand in two rows at the bottom.
+   * Which way the window is laid out (`shapeOf`). `tall`: a narrow upright screen (a phone held upright), laid out its
+   * own way: a bar across the top for the buttons (`bar` high), everyone else in rows under it, the felt, and your own
+   * hand in two rows at the bottom. `low`: a phone on its side (see LOW): everyone else in a column at each side, the
+   * felt as high as the room above your hand. Either is a phone (not `wide`): at the end of a round its table is
+   * cleared for the sorted piles (`cleared`).
    */
-  tall: boolean;
+  shape: Shape;
   bar: number;
-  /** A phone on its side (see LOW): everyone else in a column at each side, the felt as high as the room above your hand. */
-  low: boolean;
   /** Those at the sides stand in columns of upright hands, not each where their chair is round the table: a phone on its side, or a U (see `seating`). */
   cols: boolean;
-  /** A phone, upright or on its side. At the end of a round its table is cleared for the sorted piles. */
-  phone: boolean;
   /**
    * The end of a round on a phone, once the middle's cards have been washed on the felt: the table is cleared. The
    * hands and the felt are not shown, and the sorted piles have the whole window (Finale.tsx).
@@ -260,7 +259,7 @@ export function countdownTop(L: Layout, W: number): number {
   const x = W - COUNTDOWN.right - COUNTDOWN.w;
   const hands = L.opponents.map((o) => ({ ...o.box, y: o.box.y - TAG_H, h: o.box.h + TAG_H })); // with the name above it
   const clear = (y: number) => !hands.some((r) => r.x + r.w > x && r.y < y + COUNTDOWN.h && y < r.y + r.h);
-  const from = L.tall ? L.bar + 4 : 12; // upright, the corner belongs to the buttons in the bar
+  const from = L.shape === 'tall' ? L.bar + 4 : 12; // upright, the corner belongs to the buttons in the bar
   return [from, ...hands.flatMap((r) => [r.y, r.y + r.h + 6]).filter((y) => y > from)].sort((a, b) => a - b).find(clear) ?? from;
 }
 
@@ -908,8 +907,9 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const view = Math.max(0, ring.indexOf(mine!));
   // Opponents in seat order starting after you: clockwise round the table, from your left.
   const others = mine ? [...ring.slice(view + 1), ...ring.slice(0, view)] : ring;
-  const tall = isTall(W, H);
-  const low = isLow(W, H);
+  const shape = shapeOf(W, H);
+  const tall = shape === 'tall';
+  const low = shape === 'low';
   const edge = tall ? TALL.edge : 16;
 
   // Your hand: bottom, as large as the window allows. (Upright: in two rows, see TALL.)
@@ -1186,9 +1186,8 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   }
 
   // Piles are at least 0.14 of a card apart in every direction (shared/table.ts), so a margin of 0.05 keeps drop areas from touching.
-  const phone = tall || low;
-  const cleared = phone && sorting(stage);
-  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, tall, bar: tall ? TALL.bar : 0, low, cols, phone, cleared, keep, at, clock, name: by?.name ?? null, stuck: by?.stuck ?? null, vote: by?.vote ?? null, pills: by?.pills ?? false };
+  const cleared = shape !== 'wide' && sorting(stage);
+  return { cards, me, opponents, felt, slots, slotHit: slots.map((r) => r && grow(r, fw * 0.05)), tray, trayHit, out, middle, window: { w: W, h: H }, fs, shape, bar: tall ? TALL.bar : 0, cols, cleared, keep, at, clock, name: by?.name ?? null, stuck: by?.stuck ?? null, vote: by?.vote ?? null, pills: by?.pills ?? false };
 }
 
 /** Is any point of `r` on the felt as drawn (its corners are round)? */

@@ -15,7 +15,7 @@ import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -461,8 +461,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   // Whatever decks are at the table, as you see them, are fetched before their cards are turned up.
   const decks = room.players.map((p) => seenLook(prefs, p.look).deck);
   useEffect(() => decks.forEach((d) => warm(d)), [decks.join()]);
-  /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). */
-  const clears = isTall(W, H) || isLow(W, H);
+  /** A phone, upright or on its side: the table is cleared before the end of a round is sorted (`Layout.cleared`). By the height the layout goes by. */
+  const clears = shapeOf(W, H - pad.b) !== 'wide';
   const [stage, skip] = useStage(results, room.round, game.tray.length, game.players.length, clears);
   // A click meant for a card must not throw the end of the round away: only Escape skips it, and only on your own screen.
   const playingOut = ending(stage);
@@ -937,7 +937,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   });
   const finale = onCanvas(stage, 'slot');
   /** A phone, upright or on its side: the table is cleared for the end of a round (`Layout.cleared`). */
-  const phone = L.phone;
+  const phone = L.shape !== 'wide';
   /** An Ace is in hand. */
   const placing = held?.k === 'card' && held.ace;
 
@@ -954,7 +954,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   return (
     <>
     <div
-      className={`table${L.tall ? ' tall' : L.low ? ' short' : ''}${L.cleared ? ' cleared' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
+      className={`table${L.shape === 'tall' ? ' tall' : L.shape === 'low' ? ' short' : ''}${L.cleared ? ' cleared' : ''}${held ? ' dragging' : ''}${frozen ? ' frozen' : ''}${paused ? ' paused' : ''}`}
       aria-hidden={paused || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -996,7 +996,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
                 </Name>
               )}
               <span className="pts">{points(total(o.seat))}</span>
-              {p?.bot && !((L.tall || L.cols) && o.box.w < 150) && <em className="bot">bot</em>}
+              {p?.bot && !((L.shape === 'tall' || L.cols) && o.box.w < 150) && <em className="bot">bot</em>}
               {p?.left ? <em className="flag">{p.connected ? 'watching' : 'left'}</em> : p?.connected === false || p?.standing ? <em className="flag">away</em> : !st ? <em className="flag">next round</em> : st.stuck && !frozen ? <em className="flag hot">stuck</em> : null}
             </div>
             {[o.nertz, ...o.workAt, o.stockPad, o.waste].map((r, i) => (
@@ -1192,7 +1192,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         <button
           type="button"
           className={`skip${phone ? ' aside' : ''}`}
-          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.tall ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
           onClick={skip}
         >
           {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>

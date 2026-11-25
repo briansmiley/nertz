@@ -147,7 +147,7 @@ describe('table layout', () => {
         for (const you of [0, n - 1]) {
           const at = `${n} players, seat ${you}, ${W}x${H}`;
           const L = computeLayout(W, H, game, you);
-          expect([L.tall, L.low, L.cols], at).toEqual([false, false, true]);
+          expect([L.shape, L.cols], at).toEqual(['wide', true]);
           // Everyone else in seat order, clockwise from your left: up the left side, across the top, down the right side.
           expect(L.opponents.map((o) => o.seat), at).toEqual(seats(n - 1).map((k) => (you + 1 + k) % n));
           const [lefts, tops, rights] = [L.opponents.slice(0, left), L.opponents.slice(left, left + top), L.opponents.slice(left + top)];
@@ -198,11 +198,11 @@ describe('table layout', () => {
     for (const n of [4, 7, 10]) {
       const game = inPlay(seats(n), lcg(n));
       const side = computeLayout(844, 390, game, 0);
-      expect([side.tall, side.low, side.cols], `${n} players`).toEqual([false, true, true]);
+      expect([side.shape, side.cols], `${n} players`).toEqual(['low', true]);
       // Nobody above the felt: everyone beside it, upright.
       for (const o of side.opponents) expect(o.turn === 0 && (o.box.x + o.box.w <= side.middle.x || o.box.x >= side.middle.x + side.middle.w), `${n} players`).toBe(true);
       const upright = computeLayout(390, 844, game, 0);
-      expect([upright.tall, upright.low, upright.cols], `${n} players`).toEqual([true, false, false]);
+      expect([upright.shape, upright.cols], `${n} players`).toEqual(['tall', false]);
       for (const o of upright.opponents) expect(o.box.y + o.box.h, `${n} players`).toBeLessThanOrEqual(upright.middle.y);
     }
   });
@@ -377,7 +377,7 @@ describe('table layout', () => {
         expect(L.middle.y + L.middle.h, at).toBeLessThanOrEqual(line);
         // (In rows above the felt, nobody is near the line. In columns, the right-hand one stops above it; the left-hand
         // one comes down beside it as it does beside a hand, as far as the menu's button.)
-        const over = L.tall ? [] : L.low ? L.opponents.filter((o) => o.box.x > W / 2) : L.opponents;
+        const over = L.shape === 'tall' ? [] : L.shape === 'low' ? L.opponents.filter((o) => o.box.x > W / 2) : L.opponents;
         for (const o of over) {
           expect(o.box.y + o.box.h, at).toBeLessThanOrEqual(line + 0.01);
           const count = countBox(o.count, W, H);
@@ -755,7 +755,7 @@ describe('table layout', () => {
           const blocks = plan.piles.map((p) => blockParts(p));
           for (const [i, parts] of blocks.entries()) {
             const at = `${where}, pile of seat ${plan.piles[i]!.seat}`;
-            for (const r of parts) expect(r.x >= notch - 0.01 && r.y >= (L.tall ? L.bar : 0) - 0.01 && r.x + r.w <= W - notch + 0.01 && r.y + r.h <= H, `${at}: off the window`).toBe(true);
+            for (const r of parts) expect(r.x >= notch - 0.01 && r.y >= (L.shape === 'tall' ? L.bar : 0) - 0.01 && r.x + r.w <= W - notch + 0.01 && r.y + r.h <= H, `${at}: off the window`).toBe(true);
             for (const other of blocks.slice(i + 1)) for (const a of parts) for (const b of other) expect(overlap(a, b), `${at}: over another`).toBe(false);
             // The wash, spread out, is clear of them all.
             const [ox, oy] = [plan.heap.x + plan.heap.w / 2, plan.heap.y + plan.heap.h / 2];
@@ -1216,7 +1216,7 @@ describe('a phone held upright', () => {
       for (let n = 2; n <= 6; n++) {
         const L = computeLayout(W, H, inPlay(seats(n), lcg(n)), 0);
         const at = `${W}x${H}, ${n} players`;
-        expect(L.tall, at).toBe(true);
+        expect(L.shape, at).toBe('tall');
         const me = L.me!;
         // Your hand: two rows, the work piles over the nertz pile and the stock, all of it on the screen.
         expect(me.workAt.every((r) => r.y < me.nertz.y && r.x >= 0 && r.x + r.w <= W), at).toBe(true);
