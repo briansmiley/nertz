@@ -58,7 +58,12 @@
 }
 
 .passing li {
+  width: fit-content;
+  max-width: 100%;
   margin-bottom: 3px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: rgba(14, 44, 51, 0.82); /* a soft wash of felt-dark, so a line reads over a card or another player */
   overflow-wrap: anywhere;
   animation: passing 9s linear both;
 }
@@ -295,11 +300,12 @@
   position: absolute;
   top: -4px;
   right: -4px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--marigold);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--red);
   box-shadow: 0 0 0 2px var(--felt-dark);
+  transform: rotate(45deg); /* a diamond on the bubble's corner */
 }
 
 .chat header {
