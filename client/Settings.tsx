@@ -7,7 +7,7 @@
 //   says so, and turns it back on. The score sheet's gear opens the same menu.
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
-// - `TableRules`: the house rules on the lobby sheet, for everyone to read.
+// - `TableRules`: the seats and house rules on the lobby sheet, for everyone to read.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
@@ -424,9 +424,12 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           {/* (Between rounds it is with the house rules below; mid-round, when they are hidden, here on its own.) */}
           {room.phase === 'playing' && <Private room={room} mine />}
           {room.phase !== 'playing' && (
-            <div className="rules">
-              <Rules room={room} mine />
-            </div>
+            <>
+              <SeatCount room={room} mine />
+              <div className="rules">
+                <Rules room={room} mine />
+              </div>
+            </>
           )}
         </div>
       )}
@@ -435,11 +438,14 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
   );
 }
 
-/** How many may sit at the table: a number between a minus and a plus. Each tap is one seat more or fewer; the server keeps it within its bounds. */
+/**
+ * How many may sit at the table: a number between a minus and a plus. Each tap is one seat more or fewer; the server keeps it within its bounds.
+ * Not a house rule, so it sits above them. Set by whoever hosts (`mine`); greyed for everyone else, as the rules are.
+ */
 function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
   const n = room.seats.of;
   return (
-    <div className="stepper">
+    <div className={`stepper${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set this.'}>
       <span id="seats-label">Seats</span>
       <span role="group" aria-labelledby="seats-label">
         <button type="button" aria-label="Fewer seats" disabled={!mine || n <= fewestSeats(room.seats)} onClick={() => setSeats(-1)}>
@@ -455,7 +461,7 @@ function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
 }
 
 /**
- * The table's house rules: one row per option of `TableSettings` that the host is offered, and the number of seats.
+ * The table's house rules: one row per option of `TableSettings` that the host is offered, and whether the table is private.
  * Set by whoever hosts (`mine`), between rounds; read by everyone else.
  */
 function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
@@ -469,7 +475,6 @@ function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
         </span>
       </label>
       <Private room={room} mine={mine} />
-      <SeatCount room={room} mine={mine} />
     </>
   );
 }
@@ -486,13 +491,16 @@ function Private({ room, mine }: { room: RoomView; mine: boolean }) {
   );
 }
 
-/** The house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
+/** The seats and house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
 export function TableRules({ room }: { room: RoomView }) {
   const mine = room.players.find((p) => p.isHost)?.id === room.me;
   return (
-    <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'}>
-      <legend>Table rules</legend>
-      <Rules room={room} mine={mine} />
-    </fieldset>
+    <>
+      <SeatCount room={room} mine={mine} />
+      <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'}>
+        <legend>Table rules</legend>
+        <Rules room={room} mine={mine} />
+      </fieldset>
+    </>
   );
 }
