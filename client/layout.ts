@@ -662,8 +662,8 @@ export const KNOB = { size: 36 } as const;
 const CLOCK = { above: { w: 58, h: 22 }, beside: { w: 44, h: 16 } } as const;
 /** "I'm stuck" and the vote: as small pills (`h` high, `gap` apart, each as wide as its longest wording; under `min` the wording is cut short; never lower than `low`) or, where there is room under your stock, full buttons. */
 export const PILL = { stuck: 124, vote: 112, h: 32, gap: 6, min: 84, low: 24, full: { h: 39, gap: 8, min: 150, drop: 16 } } as const;
-/** Your own line: one line (`h` high, no narrower than `min`), or under your nertz pile in full, two lines of it (`full`): your name, and the table. */
-const NAME = { h: 20, min: 48, max: 150, full: { h: 56, least: 44, w: 170, min: 120, drop: 14 } } as const;
+/** Your own line, `h` high: as wide as what it says (no narrower than `min`), or in full under your nertz pile (`full`: `w` wide, no narrower than its `min`). */
+const NAME = { h: 20, min: 48, max: 150, full: { w: 170, min: 120, drop: 14 } } as const;
 
 export interface Corners {
   shape: Shape;
@@ -720,7 +720,7 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
   return { shape, chat, chatParts: parts(0), knobs, feedback, clocks: fit.clock ? [after, above, beside] : [] };
 }
 
-/** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
+/** Your own line at the table: where, in full (under your nertz pile) or as wide as what it says, and which end of its place it is written from. */
 export interface NameAt extends Rect {
   full: boolean;
   align: 'start' | 'centre' | 'end';
@@ -757,7 +757,7 @@ const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x <
  *   row level with the menu's button. Too wide for the room right of your stock, that row moves left, as far as the
  *   button (or the clock in line after it); narrower than that, its pills shrink.
  * - Your line stands under your nertz pile in full while there is the height for it and the width beside the button
- *   (and the clock above it). Otherwise it is one line, as wide as what it says: tucked under the pile and its count
+ *   (and the clock above it). Otherwise it is as wide as what it says: tucked under the pile and its count
  *   while that is clear of everything and short of your work piles; failing that, level with the button: ending under
  *   the end of the nertz pile, or short of the count on the pile or a pill where one of them is in its row; where that
  *   would put it on the button, right after the button (or the clock in line after it), and only then cut short, by
@@ -847,16 +847,15 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
 
   const name = ((): NameAt | null => {
     const F = NAME.full;
-    // (In full it reaches down past the menu's button, and the clock above that, which may be the wider of the two.)
+    // (In full it may stand beside the menu's button, or the clock above that, which may be the wider of the two.)
     const wall = Math.max(rowR, clock && clock.y < at.knobs.y ? clock.x + clock.w : 0);
     const wide = Math.min(F.w, nertzR - (wall + 4));
     if (roomy && wide >= F.min) {
-      // As low under the pile as it has always stood, while it fits; in a lower window nearer to it, and its lines closer.
+      // As low under the pile as it has always stood, while it fits; in a lower window nearer to it.
       // (Below the count on the pile, which reaches down past the card's corner.)
       const below = (0.5 + COUNT_OUT) * countD(ow) + 4;
-      const y = base + Math.max(below, base + F.drop + F.h <= H - 2 ? F.drop : 8);
-      const high = Math.min(F.h, H - 4 - y);
-      if (high >= F.least) return { x: nertzR - wide, y, w: wide, h: high, full: true, align: 'end' };
+      const y = base + Math.max(below, base + F.drop + NAME.h <= H - 4 ? F.drop : 8);
+      if (y + NAME.h <= H - 4) return { x: nertzR - wide, y, w: wide, h: NAME.h, full: true, align: 'end' };
     }
     const y = at.knobs.y + (at.knobs.h - NAME.h) / 2;
     const w = clamp(fit.name, NAME.min, NAME.max);

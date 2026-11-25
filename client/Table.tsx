@@ -916,16 +916,13 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const vote = ballot(room);
   /** You have stood up from your cards for now (actions.ts `standing`): as good as away, until you sit back down. */
   const up = !!standing(room);
-  /** Your own line, where the layout has room for it: in full under your nertz pile, or as one line. (Cut short, your name gives way, never your total.) */
+  /** Your own line, where the layout has room for it. (Cut short, your name gives way, never your total.) */
   const mineLine = L.name && (
-    <div className={`mine ${L.name.full ? 'full' : 'line'} ${L.name.align}`} style={{ left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h }}>
+    <div className={`mine ${L.name.align}`} style={{ left: L.name.x, top: L.name.y, width: L.name.w, height: L.name.h }}>
       <span className="who">
         <PictureBy picture={info(you)?.picture} seat={you} />
         <span className="name">{name(you)}</span>
         <b>{points(total(you))}</b>
-      </span>
-      <span className="where">
-        Round {room.round} at table {room.code}
       </span>
     </div>
   );
