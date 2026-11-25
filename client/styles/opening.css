@@ -230,6 +230,21 @@
 }
 
 /* On a phone the middle is small: the ready button and the names under it shrink to stay on the felt. */
+/* Someone away: not waited on, so a plug pulled out, dimmed, in place of the dots. */
+.opening .readies .unplugged {
+  width: 1.1em;
+  height: 1.1em;
+  fill: none;
+  stroke: var(--chalk-dim);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.opening .readies li.away {
+  color: var(--chalk-dim);
+}
+
 @media (max-width: 560px) {
   .opening .kickoff.readyup {
     padding: 9px 26px 9px;
@@ -248,7 +263,7 @@
 
   .opening .readies {
     gap: 3px 12px;
-    max-width: 94vw;
+    max-width: calc(94vw - 24px); /* (inside the wash, which pads it 12px a side) */
     margin-top: 10px;
   }
 
@@ -293,37 +308,41 @@
   font-size: clamp(26px, 4.4vw, 46px);
 }
 
-/* Who the asked-for Start waits on, over the button. */
+/* How many the asked-for Start waits on, and Cancel, on one line over the button. Out of the flow (the stack is
+   centred without it), so the button and the names stay put when it comes and goes. */
 .opening .waitfor {
-  max-width: min(620px, 92vw);
-  margin: 0 0 12px;
-  font: 700 clamp(20px, 2.6vw, 30px) / 1.15 var(--ui);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  font: 700 clamp(18px, 2.4vw, 26px) / 1.15 var(--ui);
+  white-space: nowrap;
   color: var(--chalk);
   text-shadow: 0 1px 3px rgba(4, 18, 22, 0.9);
 }
 
-/* Under Start anyway, the dealer takes the ask back: quiet chalk, not a second slab. */
+/* The dealer takes the ask back: quiet chalk, not a second slab; tall enough for a thumb. */
 .opening .unask {
   pointer-events: auto;
-  margin: 16px 0 -4px;
-  padding: 5px 16px 6px;
+  min-height: 34px;
+  padding: 7px 16px 8px;
   border: 0;
   border-radius: 99px;
   font: 600 15px/1.2 var(--ui);
   color: var(--chalk-dim);
-  background: rgba(8, 28, 33, 0.45);
+  text-shadow: none;
+  background: rgba(8, 28, 33, 0.72);
   cursor: pointer;
   transition: color 120ms, background-color 120ms;
 }
 
 .opening .unask:hover {
   color: var(--chalk);
-  background: rgba(8, 28, 33, 0.7);
-}
-
-.opening .unask:focus-visible {
-  outline: 2px solid var(--chalk);
-  outline-offset: 2px;
+  background: rgba(8, 28, 33, 0.9);
 }
 
 @keyframes waitedon {
@@ -339,13 +358,18 @@
   animation: none;
 }
 
-/* The names under Start, and the tally. Whoever deals presses them for the table's sheet: a faint ring of chalk on hover. */
+/* The names under Start, and the tally, on a soft dark wash hugging them (the passing chat lines' wash), so they read
+   over the cards. Whoever deals presses them for the table's sheet: a faint ring of chalk on hover. */
 .opening .roster {
   display: grid;
   justify-items: center;
   margin-top: 14px;
   padding: 4px 16px 9px;
   border-radius: 14px;
+}
+
+.opening .roster:has(.readies) {
+  background: rgba(8, 28, 33, 0.72);
 }
 
 .opening .roster .readies {
@@ -359,11 +383,50 @@
 }
 
 .opening .roster.dealer[role='button']:hover {
-  background: rgba(241, 234, 216, 0.06);
   box-shadow: inset 0 0 0 1.5px var(--chalk-dim);
 }
 
-.opening .roster.dealer[role='button']:focus-visible {
+.opening .roster.dealer[role='button']:focus-visible,
+.opening .unask:focus-visible {
   outline: 2px solid var(--chalk);
   outline-offset: 2px;
+}
+
+/* (Last, over the rules above at the same weight.) On a phone held upright, the wash is narrower at its sides. */
+@media (max-width: 560px) {
+  .opening .roster {
+    padding: 4px 12px 8px;
+  }
+}
+
+/* A phone on its side: the felt is low (245px at 844x390). The stack sits a little under its middle, so Start anyway
+   and the line over it clear the felt's top edge, and Start anyway and the names are smaller, so the tally stays off
+   your hand with a crowded table. */
+@media (orientation: landscape) and (max-height: 499px) {
+  .opening:has(.roster) {
+    translate: -50% calc(-50% + 14px);
+  }
+
+  .opening .kickoff.warned {
+    padding: 12px 40px 11px;
+    font-size: 30px;
+  }
+
+  .opening .roster {
+    margin-top: 10px;
+  }
+
+  .opening .readies {
+    gap: 3px 16px;
+    max-width: 480px; /* the wash inside the felt, clear of the hands at its sides */
+  }
+
+  .opening .readies li {
+    font-size: 14px;
+  }
+
+  .opening .tally {
+    margin-top: 5px;
+    font-size: 15px;
+  }
 }

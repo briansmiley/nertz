@@ -90,6 +90,18 @@ export function Check() {
   );
 }
 
+/** Away from the table (Lucide's unplug): a plug pulled out of its socket. */
+export function Unplugged() {
+  return (
+    <svg className="unplugged" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m19 5 3-3M2 22l3-3" />
+      <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" />
+      <path d="M7.5 13.5 10 11M10.5 16.5 13 14" />
+      <path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z" />
+    </svg>
+  );
+}
+
 /** Resetting the table: the score pad inside an arrow that comes round. */
 export function Again() {
   return <img className="art" src="/icons/reset.png" alt="" aria-hidden="true" />;

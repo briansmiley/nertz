@@ -92,7 +92,11 @@ What you see around a round:
   moment on every screen, so that everyone can look at their layout. The nertz piles stay face-down. With "reduce
   motion" switched on the cards simply fade in where they belong; the wait and the turn are the same.
 - **The start.** The table now waits, for as long as it takes, for the dealer. The dealer has a big **Start** button in
-  the middle of the felt (Space or Enter does the same); everyone else has a **Ready?** button there, and under it the names of those waiting, lit as each says ready. Being ready starts nothing: the dealer still says when. Pressing
+  the middle of the felt (Space or Enter does the same); everyone else has a **Ready?** button there, and under it the names of those waiting, lit as each says ready. Being ready starts nothing: the dealer still says when. With
+  someone not ready, the dealer's first press only asks ("Waiting for 2 players", the button now **Start anyway**): a
+  second press starts, and so does the last of them saying ready; the dealer's **Cancel**, or anyone taking a ready back,
+  ends it, and otherwise it stands. Someone away is not waited on: their name shows a pulled plug, and the count under
+  the names leaves them out. Pressing
   it counts "1", "2", "3" in the middle of every screen, about 0.7 seconds each, and on "NERTZ!" every nertz pile's top
   card turns over and play is open. Nothing can be touched before the word: no card, no stock, no patch of felt, and
   nobody's card is shown moving. With "reduce motion" the numbers do not bounce.
