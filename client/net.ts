@@ -152,8 +152,15 @@ const listeners = new Set<() => void>();
 let session: { room: string | null; name: string } | null = null;
 let socket: WebSocket | null = null;
 let sync: Sync = freshSync;
-/** By seat, the group this window is dealing out: its first card, and when the draw was made as first seen here. (Your own draw's time changes when the server answers it; its cards do not start over.) */
+/**
+ * By seat, the group this window is dealing out: its first card, and when its cards began to leave the stock here, by
+ * the round's clock as it now reads. That is when the draw was made as first seen (your own draw's time changes when
+ * the server answers it; its cards do not start over), put forward with the clock whenever a quicker snapshot puts
+ * that forward (`led`): so the cards leave a step apart by this window's own clock, whatever the round's is found to be.
+ */
 const flights = new Map<number, { card: string; at: number }>();
+/** `Sync.lead` when the room was last put on screen. */
+let led: number | null = null;
 let step: ReturnType<typeof setTimeout> | undefined;
 /** What the round's clock read when the groups in flight were last dealt on: they stay there once the round is not live (a group in flight at a call stays as it lies). */
 let dealtAt: number | null = null;
@@ -178,6 +185,8 @@ function set(next: Partial<NetState>): void {
  */
 function show(next: Partial<NetState> = {}): void {
   clearTimeout(step);
+  const gained = sync.lead !== null && led !== null ? sync.lead - led : 0;
+  led = sync.lead;
   const room = predict(sync);
   const game = room?.game;
   if (!room || !game) {
@@ -191,7 +200,7 @@ function show(next: Partial<NetState> = {}): void {
     if (!p.draw) return flights.delete(p.seat), p;
     const card = p.waste[p.waste.length - p.draw.n]!.id;
     const had = flights.get(p.seat);
-    const flight = had?.card === card ? had : { card, at: p.draw.at };
+    const flight = had?.card !== card ? { card, at: p.draw.at } : isLive(game) ? { card, at: had.at + gained } : had;
     flights.set(p.seat, flight);
     const seen = dealtBy(p, now, flight.at);
     if (seen.draw) due = Math.min(due, seen.draw.n < p.draw.n ? flight.at + seen.draw.n * STOCK_CARD_MS : landsAt(p.draw));
