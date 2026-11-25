@@ -368,6 +368,18 @@
   animation: none;
 }
 
+/* A line that came while the chat was closed: a red dot on its left (the red of the diamond), until the chat is closed again. */
+.passing li.new::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 6px 0 -2px;
+  border-radius: 50%;
+  background: var(--red);
+  vertical-align: 0.15em;
+}
+
 /* The voice slip: who is in it, join; once in, mute yourself, leave. Its heading with Join or Leave at the right; a
    microphone beside a name (your own is a button). */
 .voice-slip {

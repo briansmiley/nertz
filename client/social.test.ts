@@ -138,6 +138,31 @@ describe('the notice that a round is over', () => {
     t.setUnrevealed(3);
     t.hear([over(3)]);
     t.setUnrevealed(null);
-    expect(t.state().unread).toBe(0);
+    expect(t.state().unread).toEqual([]);
+  });
+});
+
+describe('the lines unread', () => {
+  it('are those others said while the chat was closed, kept marked while it is open and let go when it is closed again', async () => {
+    const t = await atTable();
+    const a = said('one');
+    const mine = line({ k: 'said', by: { who: 0, name: 'Ada' }, text: 'mine' });
+    const b = said('two');
+    t.hear([a, mine]);
+    t.setOpen('voice');
+    t.hear([b, over(1)]);
+    expect(t.state().unread).toEqual([a.id, b.id]);
+    // Open: still the same two (they are marked among the lines); what comes now is seen as it comes.
+    t.setOpen('chat');
+    t.hear([said('three')]);
+    expect(t.state().unread).toEqual([a.id, b.id]);
+    t.setOpen(null);
+    expect(t.state().unread).toEqual([]);
+    // (Opening the chat again from the voice slip is no closing of it.)
+    const c = said('four');
+    t.hear([c]);
+    t.setOpen('chat');
+    t.setOpen('chat');
+    expect(t.state().unread).toEqual([c.id]);
   });
 });
