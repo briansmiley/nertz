@@ -46,6 +46,12 @@ export interface PlayerState {
    * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off.
    */
   draw: { n: number; at: number; off?: number } | null;
+  /**
+   * The latest draw once its group is down (`landed`): when it was made, how many cards, and the top one. Till it is
+   * called off or another draw is made. A take its window made with the group still in flight (`callsOff`) can call
+   * it off yet, for a moment, if the group lies untouched on the waste (the engine's `callable`).
+   */
+  drew?: { n: number; at: number; top: string };
   stuck: boolean;
   /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
@@ -137,7 +143,7 @@ export type Intent =
    * what lies there now (a card they thought had left came back), the move is
    * refused rather than carrying cards that were never picked up.
    */
-  | { k: 'move'; cardId: string; count: number; to: PileRef }
+  | { k: 'move'; cardId: string; count: number; to: PileRef; callsOff?: number }
   /**
    * A group of three off the stock, all at once (`PlayerState.draw`). Refused
    * while a group is in flight.
@@ -156,8 +162,12 @@ export type Intent =
   | { k: 'heard' }
   /** Move the completed pile in `slot` to the tray. Only for the player who placed its King, and the only thing they may do until it is done. */
   | { k: 'clear'; slot: number }
-  /** A drag started on `cardId`. */
-  | { k: 'hold'; cardId: string }
+  /**
+   * A drag started on `cardId`. On it and on a `move`, `callsOff`: the card is the one under the sender's own group,
+   * in flight on its screen, and this is that draw's `at`. Taking it calls the draw off, even if the group is down by
+   * the server's clock by the time it gets there (the engine's `callable`).
+   */
+  | { k: 'hold'; cardId: string; callsOff?: number }
   /** The drag ended without a move. (A move ends the hold by itself, whether it is accepted or refused.) */
   | { k: 'release' };
 

@@ -350,6 +350,12 @@ export const DEAL_MS = 3000;
  * holds everyone to that time by the round's clock (`PlayerState.draw`); each window deals the cards out on its own.
  */
 export const STOCK_CARD_MS = 170;
+/**
+ * How long after its group is down by the server's clock a draw can still be called off by a take its owner's window
+ * made with the group in flight on screen (`Intent` `callsOff`): that window has it down a round trip later. Past it,
+ * the take is too stale to rewind a draw long looked at.
+ */
+export const CALL_OFF_MS = 1000;
 /** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */
 export const START_BEAT_MS = 700;
 export const START_BEATS = 3;
@@ -412,6 +418,10 @@ function parseDrag(v: Record<string, unknown>): DragAt | null {
   return isId(v.id) && isCoord(v.w, 2) && v.w >= 0 && h && p ? { id: v.id, w: round3(v.w), h, p } : null;
 }
 
+/** A take's `callsOff`, if it is a time on the round's clock; dropped otherwise. */
+const callsOff = (raw: Record<string, unknown>): { callsOff?: number } =>
+  typeof raw.callsOff === 'number' && Number.isFinite(raw.callsOff) ? { callsOff: raw.callsOff } : {};
+
 /** Returns a clean copy of a well-formed intent, or null. Never throws. */
 export function parseIntent(raw: unknown): Intent | null {
   if (!isObj(raw)) return null;
@@ -419,7 +429,8 @@ export function parseIntent(raw: unknown): Intent | null {
     case 'move': {
       const to = parsePileRef(raw.to);
       const count = raw.count;
-      return isId(raw.cardId) && Number.isInteger(count) && to && isIndex((count as number) - 1, MAX_RUN) ? { k: 'move', cardId: raw.cardId, count: count as number, to } : null;
+      if (!isId(raw.cardId) || !Number.isInteger(count) || !to || !isIndex((count as number) - 1, MAX_RUN)) return null;
+      return { k: 'move', cardId: raw.cardId, count: count as number, to, ...callsOff(raw) };
     }
     case 'draw':
       return { k: 'draw' };
@@ -437,7 +448,7 @@ export function parseIntent(raw: unknown): Intent | null {
     case 'clear':
       return isIndex(raw.slot, MAX_SLOTS) ? { k: 'clear', slot: raw.slot } : null;
     case 'hold':
-      return isId(raw.cardId) ? { k: 'hold', cardId: raw.cardId } : null;
+      return isId(raw.cardId) ? { k: 'hold', cardId: raw.cardId, ...callsOff(raw) } : null;
     case 'release':
       return { k: 'release' };
     default:

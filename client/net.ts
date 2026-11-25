@@ -58,6 +58,18 @@ export function onSnapshot(sync: Sync, msg: { rev: number; ack: number; room: Ro
 /** What the round's clock reads (`RoomView.clock`) as this window reckons it, `at` by its own clock. */
 export const roundNow = (sync: Sync, at = performance.now()): number => (sync.lead !== null ? at + sync.lead : (sync.server?.clock?.ms ?? 0));
 
+/**
+ * `intent` as it is sent from what is on screen, `room`: a take of the card under your own group in flight here names
+ * that draw (`callsOff`), so the server calls it off though the group is down by its clock by the time it gets there
+ * (this window has it down a round trip later).
+ */
+export function named(room: RoomView | null, intent: Intent): Intent {
+  const game = room?.game;
+  if ((intent.k !== 'hold' && intent.k !== 'move') || !game || room.seat === null) return intent;
+  const draw = game.players.find((p) => p.seat === room.seat)?.draw;
+  return draw && grab(game, room.seat, intent.cardId)?.from.k === 'waste' ? { ...intent, callsOff: draw.at } : intent;
+}
+
 /** We are about to send `intent`: give it the next seq and remember it until it is acknowledged. */
 export function onSend(sync: Sync, intent: Intent, at = roundNow(sync)): Sync {
   const seq = sync.seq + 1;
@@ -581,7 +593,8 @@ export function playable(intent: Intent): boolean {
  * when its ack comes back. Returns false (and sends nothing) if it is not
  * `playable`.
  */
-export function send(intent: Intent): boolean {
+export function send(taken: Intent): boolean {
+  const intent = named(state.room, taken);
   if (!playable(intent)) return false;
   sync = onSend(sync, intent);
   post({ t: 'intent', seq: sync.seq, intent });

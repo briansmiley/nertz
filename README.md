@@ -194,8 +194,11 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   go back on the stock, unseen and in the order they came off, and that card is in your hand. Once the group has
   turned up the chance is gone. When the stock is empty, a click turns the whole waste back over into the stock.
 - **The pace is the server's.** A draw is one intent; the server puts its group on the waste in one step, and until
-  the group's time is up it refuses another draw and a play of its top card, so a doctored client gains nothing. Each
-  window deals the cards out at that pace on its own clock.
+  the group's time is up it refuses another draw and a play of its top card. Each window deals the cards out at that
+  pace on its own clock. Your window has your group down a round trip after the server does, so a take of the card
+  under it says which draw it calls off, and the server takes it for up to a second after the group is down there, if
+  nothing has come of the draw since (no card played off it, no other draw, no Nertz call). The windows are trusted to
+  say so honestly.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player who plays the round is stuck (not anyone
   who has got up from their cards: see table management), the server (which knows every card) checks whether any hand
   still played, here or away, can ever get anywhere (`canProgress`): put a card in the middle, or take one off its nertz
@@ -591,8 +594,12 @@ was made on the round's clock (`RoomView.clock`, which a pause stops). The group
 no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, how
 a draw ends unless it is called off, and only while the round is live: a group in flight at a call stays as it lies).
 Until then another draw is refused, and `grab` refuses the group's cards and gives the card under them: a `hold` or
-`move` of that one calls the draw off (the group goes back on the stock, and `draw` is null). The faces of the group
-go out in that one snapshot. Each
+`move` of that one calls the draw off (the group goes back on the stock, and `draw` is null). A window has its own group
+down a round trip later, so a take it makes while the group is in flight there names the draw (`callsOff`: its `at`).
+A group the server has down is kept as `drew`, and such a take still calls it off up to `CALL_OFF_MS` (1 s) after,
+while the round is live and the group lies untouched on top of the waste (any draw clears `drew`): the engine's
+`callable`, the one place that says whether a draw can still be called off, which the window's prediction asks too.
+The faces of the group go out in that one snapshot. Each
 window deals it out itself (`client/net.ts`: `show`, `dealtBy`): it reckons the round's clock from the snapshot that
 reached it quickest, shows the cards leaving the stock one step apart from when it first had the draw, however late
 that snapshot came (only a window that was not there when the draw was made, back from a reload or a reconnect, goes by

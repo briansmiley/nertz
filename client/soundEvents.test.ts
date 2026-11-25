@@ -7,7 +7,7 @@ import { applyIntent, deal as dealRound, expireGrace, finishDeal, inGrace, isLiv
 import { START_BEAT_MS, START_MS, STOCK_CARD_MS } from '../shared/protocol';
 import { felt, inPlay, lcg, move, rig, roomOf, slot, toPlay, upWork, withPile, work, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent, RoomView } from '../shared/types';
-import { dealOut, freshDealing, freshSync, onSend, onSnapshot, type Dealing, type Sync } from './net';
+import { dealOut, freshDealing, freshSync, named, onSend, onSnapshot, type Dealing, type Sync } from './net';
 import { graceTicking, soundCues, startBeats, type Cue, type Frame } from './soundEvents';
 
 /** Two players whose work piles are single face-up cards: A-spades, 2-spades, A-hearts and a black 5 on which nothing fits yet; on the waste, a red 4 that fits on the 5. */
@@ -51,7 +51,8 @@ function session(start: GameState) {
       return frame;
     },
     /** I do something: it is predicted and rendered at once, and is on its way to the server. */
-    me(intent: Intent): Cue[] {
+    me(taken: Intent): Cue[] {
+      const intent = named(frame.room, taken); // (as net.ts `send` does)
       sync = onSend(sync, intent, now);
       queue.push({ seq: sync.seq, intent });
       return render();
@@ -216,6 +217,25 @@ describe('sound cues from rendered state', () => {
     expect(mine().stock.map((c) => c.id)).toEqual(stock);
     // The server says the same: nothing changes on screen.
     expect(s.confirm()).toEqual([]);
+    expect(s.game.players[0]!.stock.map((c) => c.id)).toEqual(stock);
+  });
+
+  it('a draw called off in the last stretch on screen stays called off, though the group is down by the server\'s clock when the take gets there', () => {
+    const s = session(rigged());
+    const mine = () => s.frame.room!.game!.players[0]!;
+    const [four, stock] = [mine().waste.at(-1)!.id, mine().stock.map((c) => c.id)];
+    // The draw takes 150 ms to reach the server: its group is down there, and here, at 150 + 510.
+    s.me({ k: 'draw' });
+    s.tick(150);
+    s.confirm();
+    s.tick(600 - 150);
+    expect(mine().draw).toMatchObject({ n: 3, at: 150 });
+    // At 600 the card under the group is taken; the take reaches the server at 750, after its group is down there.
+    expect(s.me({ k: 'hold', cardId: four })).toEqual([{ k: 'recycle', who: 'me' }, { k: 'pickup', who: 'me' }]);
+    expect(s.tick(150)).toEqual([]);
+    expect(s.confirm()).toEqual([]);
+    expect(mine()).toMatchObject({ draw: null, holding: four, waste: { length: 1 } });
+    expect(mine().stock.map((c) => c.id)).toEqual(stock);
     expect(s.game.players[0]!.stock.map((c) => c.id)).toEqual(stock);
   });
 
