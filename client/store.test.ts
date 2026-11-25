@@ -529,7 +529,7 @@ describe('a page put up anew while the window was open', () => {
   });
 
   it('does not cut short a table the window sat down at while the page was being asked for', async () => {
-    let answer!: (src: string) => void;
+    let answer!: (build: string) => void;
     built(OLD, new Promise<string>((ok) => (answer = ok)));
     const net = await reload();
     front();
