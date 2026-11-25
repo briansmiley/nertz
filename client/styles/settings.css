@@ -361,6 +361,36 @@ label.check {
   color: var(--ink-soft);
 }
 
+/* On the lobby sheet the two rules read as one line, Tap to play then Private table; on the narrowest phones the
+   second wraps under the first. The ☰ menu's Host section, a narrow slip, keeps them stacked. */
+fieldset.rules {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 1.4rem;
+  row-gap: 0.5rem;
+}
+
+fieldset.rules legend {
+  width: 100%;
+}
+
+/* On a narrow sheet each (i) opens under the whole line, as wide as the sheet; once the sheet is wide, under its own rule. */
+fieldset.rules .check {
+  position: static;
+}
+
+@media (min-width: 640px), (orientation: landscape) and (max-height: 499px) {
+  fieldset.rules .check {
+    position: relative;
+  }
+
+  fieldset.rules .info .tip {
+    max-width: 17rem;
+  }
+}
+
 /* How many seats: the word, then a minus, the number and a plus, bare ink. */
 .stepper {
   display: flex;
@@ -489,7 +519,8 @@ label.check {
 }
 
 /* The rules, for whoever does not deal: there to read, greyed, and a word on hover as to why. */
-.rules.locked {
+.rules.locked,
+.stepper.locked {
   opacity: 0.55;
   cursor: help;
 }

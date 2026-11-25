@@ -517,6 +517,17 @@ button.code.copy small {
     bottom: auto;
   }
 
+  /* Seats, then the rules on the same line, so the deal button stays above the fold. */
+  .pad.lobby > .stepper {
+    grid-column: 1;
+    align-self: end;
+  }
+
+  .pad.lobby > fieldset.rules {
+    grid-column: 2 / -1;
+    align-self: end;
+  }
+
   .over > .pad.lobby {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
