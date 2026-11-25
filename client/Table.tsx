@@ -15,7 +15,7 @@ import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, MOTION, onCanvas, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -38,8 +38,8 @@ import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound
 import { clamp } from '../shared/numbers';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
-const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
-const FLIP = () => ({ duration: calm() ? 0 : 0.16, ease: 'easeInOut' }) as const;
+const MOVE = () => ({ duration: calm() ? 0 : MOTION.move, ease: 'easeOut' }) as const;
+const FLIP = () => ({ duration: calm() ? 0 : MOTION.flip, ease: 'easeInOut' }) as const;
 /** Turning the middle face-down at the end of a round is slower: it is a moment, not a move. */
 const TURN = () => ({ duration: calm() ? 0 : 0.42, ease: 'easeInOut' }) as const;
 /**

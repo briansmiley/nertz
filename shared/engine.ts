@@ -3,7 +3,7 @@
 // same reducer on its redacted view to predict its own moves.
 //
 // Pile convention: the TOP of every pile is the LAST array element.
-import { MAX_PLAYERS, parseIntent, SLOTS_PER_PLAYER, STOCK_CARD_MS, WORK_PILES, type SetUp } from './protocol';
+import { CALL_OFF_MS, MAX_PLAYERS, parseIntent, SLOTS_PER_PLAYER, STOCK_CARD_MS, WORK_PILES, type SetUp } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
 import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
@@ -177,9 +177,16 @@ const piled = (slots: GameState['slots']): Pt[] => slots.flatMap((pile) => (pile
 export const feltFree = (state: GameState, at: Pt): boolean =>
   state.slots.includes(null) && roomAt(at, piled(state.slots), state.players.length);
 
+/** How many cards of `p`'s group in flight lie on its waste: all of them, but on screen only those dealt off the stock so far (`draw.off`). None with no draw under way. */
+const dealt = (p: PlayerState): number => (p.draw ? (p.draw.off ?? p.draw.n) : 0);
+
+/** The card `p`'s group in flight is being dealt onto: taking it calls the draw off. None with no draw under way. */
+export const covered = (p: PlayerState): AnyCard | undefined => (p.draw ? p.waste[p.waste.length - 1 - dealt(p)] : undefined);
+
 /**
  * What `seat` would pick up by grabbing `cardId`: the top of their nertz pile
- * or waste (not while a group is in flight onto it), or a face-up card in one of their work piles together with
+ * or waste (under a group in flight onto it, the card the group is covering: taking that one calls the draw off, and
+ * no card of the group can be taken), or a face-up card in one of their work piles together with
  * everything on top of it. Null if the card is not theirs to move, is
  * face-down, or its face is not known in this (redacted) state.
  */
@@ -188,7 +195,9 @@ export function grab(state: GameState, seat: number, cardId: string): Grab | nul
   if (!p) return null;
   const lift = (from: Source, cards: AnyCard[]): Grab | null => (cards.some(isHidden) ? null : { from, cards: cards as Card[] });
   if (top(p.nertz)?.id === cardId) return lift({ k: 'nertz' }, p.nertz.slice(-1));
-  if (top(p.waste)?.id === cardId) return p.draw ? null : lift({ k: 'waste' }, p.waste.slice(-1));
+  // (On screen, a group gliding onto the waste (`draw.down`) is down: its top can be taken as well.)
+  const waste = [p.draw ? covered(p) : undefined, !p.draw || p.draw.down ? top(p.waste) : undefined].find((c) => c?.id === cardId);
+  if (waste) return lift({ k: 'waste' }, [waste]);
   for (const [i, pile] of p.work.entries()) {
     const at = pile.cards.findIndex((c) => c.id === cardId);
     if (at >= 0) return at >= pile.down ? lift({ k: 'work', i }, pile.cards.slice(at)) : null;
@@ -278,6 +287,7 @@ const putOn = (pile: WorkPile, cards: readonly Card[]): WorkPile => ({ ...pile, 
  * next state or the reason for refusing. `now`: the round's clock. Never mutates `state`.
  */
 function play(state: GameState, index: number, intent: Intent, now: number): GameState | string {
+  if (intent.k === 'hold' || intent.k === 'move') state = calledOff(state, index, intent, now);
   const old = state.players[index]!;
   const seat = old.seat;
   const me: PlayerState = {
@@ -292,6 +302,9 @@ function play(state: GameState, index: number, intent: Intent, now: number): Gam
   switch (intent.k) {
     case 'draw': {
       if (me.draw) return 'A draw is under way';
+      delete me.drew; // (a draw down can be called off no more)
+      // The waste's top is buried by the group, or turned over with the rest: held, it is in hand no longer.
+      if (me.holding === top(me.waste)?.id) me.holding = null;
       if (me.stock.length > 0) {
         // The whole group in one step, in the order dealt: the stock's top card first, the last on top.
         const group = me.stock.splice(-DRAW_COUNT).reverse();
@@ -366,23 +379,51 @@ function play(state: GameState, index: number, intent: Intent, now: number): Gam
       break;
     }
   }
-  next = { ...next, players: state.players.map((p, i) => (i === index ? me : p)) };
-  // Dealing a card onto the waste buries the card being held; a hold never outlives the card being pickable.
-  if (me.holding !== null && !grab(next, seat, me.holding)) me.holding = null;
-  return next;
+  return { ...next, players: state.players.map((p, i) => (i === index ? me : p)) };
+}
+
+/**
+ * How many cards of `p`'s latest group a take naming `named` (`callsOff`) would put back on the stock, calling its
+ * draw off, `now` by the round's clock; null if it calls nothing off. While the group is in flight, those of it on
+ * the waste, whatever the take names. Once it is down (`PlayerState.drew`), only if the take names that draw, the
+ * round is live (no call since), the group lies untouched on top of the waste, and it has been down no longer than
+ * CALL_OFF_MS: the sender's window had it in flight, a round trip behind. The one place that says whether a draw can
+ * still be called off.
+ */
+function callable(state: GameState, p: PlayerState, named: number | undefined, now: number): number | null {
+  if (p.draw) return dealt(p);
+  const d = p.drew;
+  return d && d.at === named && isLive(state) && now <= landsAt(d) + CALL_OFF_MS && top(p.waste)?.id === d.top ? d.n : null;
+}
+
+/**
+ * A take of the card under `index`'s latest group, if the draw can still be called off (`callable`): the state with
+ * that draw undone, its group back on the stock as it came off and no draw under way, in which the take is then
+ * judged. Undone, the card is the waste's top, as it was before the draw. Otherwise `state`.
+ */
+function calledOff(state: GameState, index: number, take: Extract<Intent, { k: 'hold' | 'move' }>, now: number): GameState {
+  const p = state.players[index]!;
+  const n = callable(state, p, take.callsOff, now);
+  if (n === null) return state;
+  const undone: PlayerState = { ...p, stock: [...p.stock, ...p.waste.slice(p.waste.length - n).reverse()], waste: p.waste.slice(0, p.waste.length - n), draw: null };
+  delete undone.drew;
+  const next = { ...state, players: state.players.map((q, i) => (i === index ? undone : q)) };
+  return grab(next, p.seat, take.cardId)?.from.k === 'waste' ? next : state;
 }
 
 /** When a group in flight is down, on the round's clock: a step for each of its cards, the last of them the turning up. */
 export const landsAt = (draw: NonNullable<PlayerState['draw']>): number => draw.at + draw.n * STOCK_CARD_MS;
 
 /**
- * The one way a draw ends: every group in flight whose time has come by `now` (the round's clock) is down, and its
- * top card can be played. Only while the round is live: a group in flight at a call stays as it is. The SAME state
- * object if there is none.
+ * How a draw ends, unless it is called off first (`calledOff`): every group in flight whose time has come by `now` (the
+ * round's clock) is down, and its top card can be played. It is kept as `drew` a moment longer, to be called off yet by
+ * a take made while it was in flight on its window. Only while the round is live: a group in flight at a call stays as
+ * it is. The SAME state object if there is none.
  */
 export function landed(state: GameState, now: number): GameState {
-  const down = (p: PlayerState): boolean => !!p.draw && now >= landsAt(p.draw);
-  return isLive(state) && state.players.some(down) ? { ...state, players: state.players.map((p) => (down(p) ? { ...p, draw: null } : p)) } : state;
+  const down = (p: PlayerState): p is PlayerState & { draw: NonNullable<PlayerState['draw']> } => !!p.draw && now >= landsAt(p.draw);
+  const land = (p: PlayerState): PlayerState => (down(p) ? { ...p, draw: null, drew: { n: p.draw.n, at: p.draw.at, top: top(p.waste)!.id } } : p);
+  return isLive(state) && state.players.some(down) ? { ...state, players: state.players.map(land) } : state;
 }
 
 /** The round is over, in the one way every round ends: whatever is in anyone's hand goes back, and nothing changes after. */
@@ -506,7 +547,9 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  *
  * `now` is the round's clock (ms played), which only the draw goes by: a draw says when it was made, and a group in
  * flight whose time has come by then is down first (`landed`), so until it has, another draw and its top card are
- * refused. Left out, no time passes: a group stays in flight until `landed` says otherwise.
+ * refused, and the card it is covering can still be taken, which calls the draw off (as can a take naming it, a moment
+ * after: `callable`). Left out, no time passes: a
+ * group stays in flight until `landed` says otherwise.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
  * (`mustClear`) may only `clear` it; every other intent is refused until it has.
@@ -833,7 +876,9 @@ export function checkInvariants(state: GameState): string | null {
       }
     }
     if (p.draw && (!Number.isInteger(p.draw.n) || p.draw.n < 1 || p.draw.n > DRAW_COUNT || p.draw.n > p.waste.length || !Number.isFinite(p.draw.at))) return `${at}: bad group in flight`;
-    if (p.holding !== null && !grab(state, p.seat, p.holding)) return `${at}: holding a card they cannot pick up`;
+    const held = p.holding === null ? null : grab(state, p.seat, p.holding);
+    if (p.holding !== null && !held) return `${at}: holding a card they cannot pick up`;
+    if (p.draw && held?.from.k === 'waste') return `${at}: holding the card a draw is covering`;
   }
   if (state.slots.length !== SLOTS_PER_PLAYER * state.players.length) return 'wrong number of centre slots';
   for (const [i, pile] of state.slots.entries()) {

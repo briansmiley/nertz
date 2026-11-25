@@ -44,7 +44,7 @@ import {
   type Rng,
 } from './engine';
 import { allCards, card as c, cards as cs, downs, faceUps, felt, hold, inPlay, FUZZ_MS, legalMoves, MIXES, move, pile, randomIntent, roomOf, seats, seeded, slot, stepDraws, deals, table, toPlay, untilReached, work, type Hand } from './testkit';
-import { SET_UPS, STOCK_CARD_MS } from './protocol';
+import { CALL_OFF_MS, SET_UPS, STOCK_CARD_MS } from './protocol';
 import type { AnyCard, Card, GameState, Intent, PileRef, PlayerState, PlayerView, Suit } from './types';
 
 // ---------------------------------------------------------------- helpers
@@ -758,11 +758,10 @@ describe('dealing off the stock and recycling', () => {
     }
   });
 
-  it('keeps the waste out of play while a group is in flight; the other piles play on and the group is down at its time', () => {
+  it('keeps a group out of play while it is in flight, and all under the card it is covering; the other piles play on and the group is down at its time', () => {
     const g = table([{ stock: 'S4 S3 S2 SA', waste: 'D2 H4', nertz: 'C9 H6', work: ['S7', 'C7', 'D8', []] }]);
-    expect(legalDrops(g, 0, '0:H4')).toEqual([work(3)]);
     const mid = run(g, [0, FLIP]);
-    for (const id of ['0:S3', '0:H4', '0:D2']) {
+    for (const id of ['0:S3', '0:S2', '0:SA', '0:D2']) {
       expect(grab(mid, 0, id)).toBeNull();
       expect(legalDrops(mid, 0, id)).toEqual([]);
       rejected(applyIntent(mid, 0, hold(id)));
@@ -775,6 +774,88 @@ describe('dealing off the stock and recycling', () => {
     const done = landed(played, 3 * STOCK_CARD_MS);
     expect([me(done).draw, ids(me(done).waste)]).toEqual([null, ['0:D2', '0:H4', '0:SA', '0:S2', '0:S3']]);
     expect(ok(applyIntent(done, 0, move('0:S3', work(3)))).players[0]!.waste).toHaveLength(4);
+  });
+
+  it('taking the card a group in flight is covering calls the draw off: the group is back on the stock as it came off, and the card is in hand, or played', () => {
+    const g = table([{ stock: 'S4 S3 S2 SA', waste: 'D2 H4', nertz: 'C9 H6', work: ['S7', 'C7', 'D8', []] }, {}]);
+    const mid = ok(applyIntent(g, 0, FLIP, 1000));
+    const last = landsAt(me(mid).draw!) - 1;
+    expect(grab(mid, 0, '0:H4')).toEqual({ from: { k: 'waste' }, cards: [c('H4')] });
+    expect(legalDrops(mid, 0, '0:H4')).toEqual([work(3)]);
+    // Taken up, to the last moment: the hand is as it was before the draw, with the card in it.
+    const held = ok(applyIntent(mid, 0, hold('0:H4'), last));
+    expect(held).toEqual({ ...g, players: [{ ...me(g), holding: '0:H4' }, g.players[1]] });
+    // Played outright: the same, and the card lies where it was put. The next draw brings the same group.
+    const played = ok(applyIntent(mid, 0, move('0:H4', work(3)), last));
+    expect([me(played).draw, ids(me(played).stock), ids(me(played).waste), ids(me(played).work[3]!.cards)]).toEqual([null, ids(me(g).stock), ['0:D2'], ['0:H4']]);
+    expect(ids(me(run(played, [0, FLIP])).waste)).toEqual(ids(me(mid).waste).filter((id) => id !== '0:H4'));
+    // A move of it that is refused calls nothing off.
+    rejected(applyIntent(mid, 0, move('0:H4', work(0)), last));
+    // Nobody is shown anything by it: the group is face-down on the stock again, for its owner too.
+    for (const after of [held, played]) {
+      expect(checkInvariants(after)).toBeNull();
+      for (const seat of [0, 1]) expect(viewFor(after, seat).players[0]!.stock.every(isHidden)).toBe(true);
+    }
+  });
+
+  it('a draw can be called off only until its group is down: from then the card under it is out of reach', () => {
+    const g = table([{ stock: 'S4 S3 S2 SA', waste: 'D2 H4', work: ['S7', 'C7', 'D8', []] }]);
+    const mid = ok(applyIntent(g, 0, FLIP, 1000));
+    const due = landsAt(me(mid).draw!);
+    rejected(applyIntent(mid, 0, hold('0:H4'), due));
+    rejected(applyIntent(mid, 0, move('0:H4', work(3)), due));
+    expect(grab(landed(mid, due), 0, '0:H4')).toBeNull();
+    // A group of one, the stock's last card, is called off the same way.
+    const short = ok(applyIntent(table([{ stock: 'SA', waste: 'H4', work: ['S9'], rest: 0 }]), 0, FLIP, 1000));
+    expect(me(short).draw).toEqual({ n: 1, at: 1000 });
+    expect(ok(applyIntent(short, 0, hold('0:H4'), 1000 + STOCK_CARD_MS - 1)).players[0]).toMatchObject({ draw: null, holding: '0:H4', stock: [c('SA')], waste: [c('H4')] });
+    rejected(applyIntent(short, 0, hold('0:H4'), 1000 + STOCK_CARD_MS));
+  });
+
+  it('a take that names its draw, made while the group was in flight on its window, calls the draw off though the group is down by the time it arrives', () => {
+    const g = table([{ stock: 'H9 C3 D5 S4 S3 S2 SA', waste: 'D2 H4', nertz: 'C9 H6', work: ['S7', 'C7', 'D8', []] }, {}]);
+    const mid = ok(applyIntent(g, 0, FLIP, 1000));
+    const down = landsAt(me(mid).draw!);
+    const takes = (id: string, at = 1000): Intent => ({ k: 'hold', cardId: id, callsOff: at });
+    // Down by the server's clock, up to CALL_OFF_MS after: exactly as if it had come in time, the hand as it was before the draw with the card in it.
+    for (const t of [down, down + CALL_OFF_MS]) {
+      const held = ok(applyIntent(mid, 0, takes('0:H4'), t));
+      expect(held).toEqual({ ...g, players: [{ ...me(g), holding: '0:H4' }, g.players[1]] });
+      expect(checkInvariants(held)).toBeNull();
+    }
+    const played = ok(applyIntent(landed(mid, down), 0, { k: 'move', cardId: '0:H4', count: 1, to: work(3), callsOff: 1000 }, down + 100));
+    expect([me(played).draw, ids(me(played).stock), ids(me(played).waste), ids(me(played).work[3]!.cards)]).toEqual([null, ids(me(g).stock), ['0:D2'], ['0:H4']]);
+    expect(checkInvariants(played)).toBeNull();
+    // Not past CALL_OFF_MS, nor without the draw named.
+    rejected(applyIntent(mid, 0, takes('0:H4'), down + CALL_OFF_MS + 1));
+    rejected(applyIntent(mid, 0, hold('0:H4'), down));
+    // Not once a card of the group has been played, nor after another draw.
+    rejected(applyIntent(ok(applyIntent(mid, 0, move('0:S3', work(3)), down)), 0, takes('0:H4'), down + 1));
+    const again = ok(applyIntent(mid, 0, FLIP, down));
+    rejected(applyIntent(again, 0, takes('0:H4'), down + 1));
+    const twice = landsAt(me(again).draw!);
+    rejected(applyIntent(again, 0, takes('0:H4'), twice));
+    // A stale take, naming the older draw, calls off neither; naming the latest it calls that one off.
+    rejected(applyIntent(again, 0, takes('0:S3'), twice));
+    expect(me(ok(applyIntent(again, 0, takes('0:S3', down), twice)))).toMatchObject({ draw: null, holding: '0:S3', waste: { length: 5 } });
+    // Not once Nertz has been called since, even by a seat the call has yet to reach.
+    const called = ok(applyIntent(landed(mid, down), 1, { k: 'nertz', unheard: [0] }, down));
+    rejected(applyIntent(called, 0, takes('0:H4'), down + 1));
+  });
+
+  it('a draw down can no longer be called off once the waste has been turned over, even if the same cards lie there again', () => {
+    const g = table([{ stock: 'SA', waste: 'H4', work: ['S9'], rest: 0 }]);
+    const one = ok(applyIntent(g, 0, FLIP, 1000));
+    const down = landsAt(me(one).draw!);
+    const takes = (at: number): Intent => ({ k: 'hold', cardId: '0:H4', callsOff: at });
+    expect(me(ok(applyIntent(one, 0, takes(1000), down)))).toMatchObject({ draw: null, holding: '0:H4', stock: [c('SA')], waste: [c('H4')] });
+    const over = ok(applyIntent(one, 0, FLIP, down));
+    expect(me(over).waste).toEqual([]);
+    rejected(applyIntent(over, 0, takes(1000), down + 1));
+    // Drawn again: the same two cards lie on the waste, as a new group.
+    const back = landed(ok(applyIntent(over, 0, FLIP, down)), down + 2 * STOCK_CARD_MS);
+    expect(ids(me(back).waste)).toEqual(['0:H4', '0:SA']);
+    rejected(applyIntent(back, 0, takes(1000), down + 2 * STOCK_CARD_MS));
   });
 
   it('recycles the waste into the stock in the original order: one action, on an empty stock only', () => {
@@ -802,6 +883,9 @@ describe('dealing off the stock and recycling', () => {
     for (const bad of [4, 0, -1, 1.5, NaN]) expect(checkInvariants(withDraw(flips(s, 0, 6), { n: bad, at: 0 }))).toMatch(/group in flight/);
     expect(checkInvariants(withDraw(mid, { n: 3, at: NaN }))).toMatch(/group in flight/);
     expect(checkInvariants(withDraw(s, { n: 1, at: 0 }))).toMatch(/group in flight/); // more than lie on the waste
+    // The card a group is covering is never in hand with the draw still under way: taking it calls the draw off.
+    const covering = run(flips(s, 0, 3), [0, FLIP]);
+    expect(checkInvariants({ ...covering, players: covering.players.map((p, i) => (i === 0 ? { ...p, holding: '0:S3' } : p)) })).toMatch(/a draw is covering/);
     const fresh = dealRound([0, 1], seeded(5));
     expect(checkInvariants(fresh)).toBeNull();
     const early = { ...fresh, players: fresh.players.map((p, i) => (i === 0 ? { ...p, waste: p.stock.slice(-1), stock: p.stock.slice(0, -1), draw: { n: 1, at: 0 } } : p)) };
@@ -1144,6 +1228,9 @@ describe('a group in flight, the stuck rotation and the Nertz call', () => {
     rejected(applyIntent(mid, 0, hold(mid.players[0]!.waste.at(-1)!.id)));
     const idle = ok(applyIntent(mid, 1, NERTZ));
     expect([inGrace(idle), isOver(idle)]).toEqual([[], true]);
+    // Until the call has reached its window, the card under the group can be taken as it could a moment ago: the draw is called off, and that card is in hand at the call.
+    const taken = ok(applyIntent(ok(applyIntent(mid, 1, { k: 'nertz', unheard: [0] })), 0, hold('0:HA')));
+    expect([inGrace(taken), taken.players[0]!.draw, checkInvariants(taken)]).toEqual([[0], null, null]);
     const holding = run(mid, [0, hold('0:D2')], [1, NERTZ]);
     expect(inGrace(holding)).toEqual([0]);
     rejected(applyIntent(holding, 0, FLIP)); // in grace only the held card may be played
@@ -1157,6 +1244,9 @@ describe('a group in flight, the stuck rotation and the Nertz call', () => {
     const held = ok(applyIntent(g, 0, hold('0:HA')));
     const dealt = run(held, [0, FLIP]);
     expect([dealt.players[0]!.holding, dealt.players[0]!.draw?.n]).toEqual([null, 3]);
+    // Nor is it in hand once the waste is turned over.
+    const turned = run(table([{ waste: 'S2 HA', work: ['S9'], rest: 0 }]), [0, hold('0:HA')], [0, FLIP]);
+    expect([turned.players[0]!.holding, turned.players[0]!.waste, checkInvariants(turned)]).toEqual([null, [], null]);
     expect(run(ok(applyIntent(g, 0, hold('0:S9'))), [0, FLIP]).players[0]!.holding).toBe('0:S9');
   });
 });

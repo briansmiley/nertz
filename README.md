@@ -50,6 +50,7 @@ Controls:
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
 | Click the stock, or press Space | draw a group of three: they come off one at a time, a sixth of a second apart, and turn up together |
+| Take the card on your waste while a group is being dealt onto it | call the draw off: the group goes back on the stock, and the card is in your hand |
 | **I'm stuck** | vote to reshuffle (see rules) |
 | **NERTZ!** (appears in your nertz pile's place once it is empty) | end the round |
 | The menu (☰) bottom left | **Mute**; during a round what can be done to the table: **Pause** (or P; then **Resume game**: anyone in the round, or whoever deals), **End round** (the vote, with its tally), **Stand up** (from Start, for now; before it, to watch: see table management), **Restart round** (whoever deals: the round is dealt over from the start, nothing of it scored) and **Leave table**, the last two asking again before they do it; **Settings** (volume, and under it your cards, other players' cards and voice chat each on their own; reduce motion); and **Feedback** (a bug or an idea: a few words and, if you like, a screenshot, picked with the picture beside Send or dropped or pasted onto the slip; Tab from the words goes to Send) |
@@ -187,12 +188,17 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Stock**: one click on the stock (or Space) is a draw: a group of three, and dealing takes time, as it does with
   real cards: they come off one at a time, `STOCK_CARD_MS` (170 ms) apart, face-down, and the group turns face-up onto
   the waste one step after the third (or after the last card, if the stock runs out first). A draw takes half a
-  second, and the next can start once its group is up, however fast you click. While a group is in flight the waste
-  is out of play (its top is covered, and nobody is shown those cards, their owner included); the nertz pile and the
-  work piles play on. When the stock is empty, a click turns the whole waste back over into the stock.
+  second, and the next can start once its group is up, however fast you click. While a group is in flight nobody is
+  shown its cards, their owner included, and none of them can be played; the nertz pile and the work piles play on.
+  The card the group is being dealt onto can still be taken, and taking it calls the draw off: the cards dealt so far
+  go back on the stock, unseen and in the order they came off, and that card is in your hand. Once the group has
+  landed on the waste the chance is gone. When the stock is empty, a click turns the whole waste back over into the stock.
 - **The pace is the server's.** A draw is one intent; the server puts its group on the waste in one step, and until
-  the group's time is up it refuses another draw and a play of its top card, so a doctored client gains nothing. Each
-  window deals the cards out at that pace on its own clock.
+  the group's time is up it refuses another draw and a play of its top card. Each window deals the cards out at that
+  pace on its own clock. Your window has your group down a round trip after the server does, so a take of the card
+  under it says which draw it calls off, and the server takes it for up to a second after the group is down there, if
+  nothing has come of the draw since (no card played off it, no other draw, no Nertz call). The windows are trusted to
+  say so honestly.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player who plays the round is stuck (not anyone
   who has got up from their cards: see table management), the server (which knows every card) checks whether any hand
   still played, here or away, can ever get anywhere (`canProgress`): put a card in the middle, or take one off its nertz
@@ -585,9 +591,16 @@ client can play the end-of-round sequence and draw the score sheet from it, even
 left) on the waste and records the group in flight: `PlayerState.draw` is `{ n, at }`, how many cards and when the draw
 was made on the round's clock (`RoomView.clock`, which a pause stops). The group counts as dealt one card every
 `STOCK_CARD_MS` and turned up one step after the last, so it is down at `at + n * STOCK_CARD_MS` (`landsAt`). There is
-no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, the
-one place a draw ends, and only while the round is live: a group in flight at a call stays as it lies). Until then
-another draw is refused and `grab` refuses the waste top. The faces of the group go out in that one snapshot. Each
+no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, how
+a draw ends unless it is called off, and only while the round is live: a group in flight at a call stays as it lies).
+Until then another draw is refused, and `grab` refuses the group's cards and gives the card under them: a `hold` or
+`move` of that one calls the draw off (the group goes back on the stock, and `draw` is null). A window has its own group
+down a round trip later, so a take it makes while the group is in flight there, or gliding onto the waste after
+(`draw.down`, for as long as the glide takes: `glideMs`), names the draw (`callsOff`: its `at`).
+A group the server has down is kept as `drew`, and such a take still calls it off up to `CALL_OFF_MS` (1 s) after,
+while the round is live and the group lies untouched on top of the waste (any draw clears `drew`): the engine's
+`callable`, the one place that says whether a draw can still be called off, which the window's prediction asks too.
+The faces of the group go out in that one snapshot. Each
 window deals it out itself (`client/net.ts`: `show`, `dealtBy`): it reckons the round's clock from the snapshot that
 reached it quickest, shows the cards leaving the stock one step apart from when it first had the draw, however late
 that snapshot came (only a window that was not there when the draw was made, back from a reload or a reconnect, goes by
