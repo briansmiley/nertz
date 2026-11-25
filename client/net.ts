@@ -315,7 +315,11 @@ function tell(): void {
 }
 watchPrefs(tell);
 // Offline or not is the settings' to say while this window is at no table (`NetState.offline`).
-watchPrefs(() => !session && state.offline !== getPrefs().offline && set({ offline: getPrefs().offline }));
+watchPrefs(() => {
+  if (session || state.offline === getPrefs().offline) return;
+  set({ offline: getPrefs().offline });
+  void renew(); // (back online: the page may have been put up anew meanwhile)
+});
 
 /** Sends one message if the line is open. Game intents go through `send` instead. */
 export function post(msg: ClientMsg): boolean {
