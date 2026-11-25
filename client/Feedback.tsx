@@ -81,8 +81,8 @@ async function shrink(file: Blob): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-/** The slip, as the corner's menu opens it (Settings.tsx `Corner`). `back`: to the menu; `close`: put it away. */
-export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; back: () => void; close: () => void }) {
+/** The slip, as the corner opens it (Settings.tsx `Corner`): from the menu (`back`: to it), or from its own button. `close`: put it away. */
+export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; back?: () => void; close: () => void }) {
   const [kind, setKind] = useState<'bug' | 'idea'>('bug');
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
@@ -141,7 +141,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
     // (Keys typed here are not the game's: Space deals, M mutes.)
     <form ref={form} className={`slip feedback${pad ? ' writing' : ''}${state.k === 'sent' ? ' sent' : ''}`} style={pad ? ({ left: pad.x, top: pad.y, width: pad.w, '--under': `${Math.max(0, document.documentElement.clientHeight - pad.y - pad.h)}px` } as CSSProperties) : undefined} aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
       <header className="slip-head">
-        <Back onClick={back} />
+        {back && <Back onClick={back} />}
         <h3>Feedback</h3>
       </header>
       <div className="kinds" role="radiogroup" aria-label="What kind">

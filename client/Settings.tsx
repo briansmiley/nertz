@@ -2,8 +2,9 @@
 // - `Corner`: on every screen, bottom left, one button (☰) and the menu it opens
 //   (Menu.tsx): your settings at the top (`YourSettings`: sound, motion, keys),
 //   and under them sound on or off (also a key of your choosing, M at first),
-//   what can be done to the table during a round (actions.ts), and the way to
-//   feedback. While the sound is off, a small badge in the chat bar (Chat.tsx)
+//   what can be done to the table during a round (actions.ts), and on a phone
+//   the way to feedback (elsewhere it has a button of its own, bottom right).
+//   While the sound is off, a small badge in the chat bar (Chat.tsx)
 //   says so, and turns it back on. The score sheet's gear opens the same menu.
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
@@ -16,7 +17,7 @@ import type { RoomView } from '../shared/types';
 import { setSeats, setTableSettings } from './net';
 import { pauseKeyAction, perform, tableActions } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
-import { Gear, MenuIcon } from './icons';
+import { Bug, Gear, MenuIcon } from './icons';
 import { YourBacks } from './BackPicker';
 import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
@@ -280,32 +281,56 @@ export function Corner({ room }: { room?: RoomView | null }) {
   const actions = room ? tableActions(room) : [];
   useDismiss(root, !!open, () => openCorner(null));
 
-  /** Where the button stands (layout.ts: the table keeps clear of exactly that). */
+  /** Where the buttons stand (layout.ts: the table keeps clear of exactly that). */
   const at = useCorners(room);
+  /** Feedback has a button of its own, bottom right; where there is no room for one (a phone), the menu leads to it. */
+  const own = at.feedback;
+  const feedback = open === 'feedback' && <FeedbackSlip room={room} back={own ? undefined : () => openCorner('menu')} close={() => openCorner(null)} />;
   return (
-    <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} ref={root} style={{ left: at.knobs.x, top: at.knobs.y }}>
-      <button
-        type="button"
-        className={`knob${open ? ' on' : ''}`}
-        aria-expanded={!!open}
-        aria-controls="menu"
-        aria-label="Menu"
-        data-tip="Menu"
-        onClick={(e) => {
-          openCorner(open ? null : 'menu');
-          e.currentTarget.blur(); // keep Space for drawing
-        }}
-      >
-        <MenuIcon />
-        <SaidWord said={said} />
-      </button>
-      {open === 'menu' && (
-        <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={() => openCorner('feedback')} onUsage={admin ? () => openCorner('usage') : undefined} onDone={() => openCorner(null)}>
-          <YourSettings room={room} prefs={prefs} />
-        </Menu>
+    // (One root for both: a press on either is inside, and leaves the other's slip to it.)
+    <div className="corners" ref={root}>
+      <div className={`corner${at.shape === 'tall' ? ' top' : ''}`} style={{ left: at.knobs.x, top: at.knobs.y }}>
+        <button
+          type="button"
+          className={`knob${open ? ' on' : ''}`}
+          aria-expanded={!!open}
+          aria-controls="menu"
+          aria-label="Menu"
+          data-tip="Menu"
+          onClick={(e) => {
+            openCorner(open ? null : 'menu');
+            e.currentTarget.blur(); // keep Space for drawing
+          }}
+        >
+          <MenuIcon />
+          <SaidWord said={said} />
+        </button>
+        {open === 'menu' && (
+          <Menu room={room} actions={actions} muted={prefs.muted} onMute={() => setPrefs({ muted: !prefs.muted })} onFeedback={own ? undefined : () => openCorner('feedback')} onUsage={admin ? () => openCorner('usage') : undefined} onDone={() => openCorner(null)}>
+            <YourSettings room={room} prefs={prefs} />
+          </Menu>
+        )}
+        {!own && feedback}
+        {open === 'usage' && admin && <UsageSlip back={() => openCorner('menu')} />}
+      </div>
+      {own && (
+        <div className="corner right" style={{ left: own.x, top: own.y }}>
+          <button
+            type="button"
+            className={`icon${open === 'feedback' ? ' on' : ''}`}
+            aria-expanded={open === 'feedback'}
+            aria-label="Feedback"
+            data-tip="Feedback"
+            onClick={(e) => {
+              openCorner(open === 'feedback' ? null : 'feedback');
+              e.currentTarget.blur(); // keep Space for drawing
+            }}
+          >
+            <Bug />
+          </button>
+          {feedback}
+        </div>
       )}
-      {open === 'feedback' && <FeedbackSlip room={room} back={() => openCorner('menu')} close={() => openCorner(null)} />}
-      {open === 'usage' && admin && <UsageSlip back={() => openCorner('menu')} />}
     </div>
   );
 }

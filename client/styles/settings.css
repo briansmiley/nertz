@@ -11,6 +11,17 @@
   align-items: center;
 }
 
+/* (The menu's corner and feedback's are one thing to a press: a box of its own for neither.) */
+.corners {
+  display: contents;
+}
+
+/* Feedback's own button, bottom right: its slip opens up from it, to its left. */
+.corner.right .slip {
+  left: auto;
+  right: 0;
+}
+
 /* The round's clock: after them or above them, or in small figures after the chat's buttons, wherever the table has a free place for it. */
 .clock {
   position: fixed;
@@ -555,6 +566,10 @@ label.check {
   display: flex;
   align-items: center;
   gap: 0.2rem;
+}
+
+/* (The back arrow stands out in the margin, so that the head's words line up with the slip's.) */
+.slip-head:has(> .back) {
   margin-left: -0.5rem;
 }
 
