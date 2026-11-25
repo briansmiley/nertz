@@ -124,3 +124,14 @@ button {
   background: var(--chalk);
   color: var(--ink);
 }
+
+/* A slip is open (client/dismiss.ts): the page under it is shut to the pointer, so a press beside the slip touches
+   nothing under it and only puts the slip away. The live slip is open to it again (what is in it takes the pointer as
+   it always does, by its own rules), and so is what is drawn over everything (dismiss.ts `OVER`). */
+html[data-slipped] body *:not([data-live], [data-live] *, .picker, .picker *, .asked, .asked *) {
+  pointer-events: none !important;
+}
+
+html[data-slipped] :is([data-live], .picker, .asked) {
+  pointer-events: auto;
+}
