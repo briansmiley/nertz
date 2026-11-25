@@ -630,7 +630,7 @@ fill it for about a minute at a time.
 A small **Chat** button sits in the top-left corner of the lobby, the table and the score sheet. It opens a panel with
 text chat, voice controls and the host's two switches; **Hide** folds it back to the button, which shows a red diamond when there
 is something unread; opened, the lines that were unread each have a red dot on their left until the chat is closed
-again. A line from someone else comes with a soft two-note blip (on your own channel, so Mute silences it). The lines shown under the button (over the table while it is closed, under the line to type in while open) are
+again. A line from someone else comes with a soft, low two-note boop (on your own channel, so Mute silences it). The lines shown under the button (over the table while it is closed, under the line to type in while open) are
 the newest that fit above the felt. During a round the open panel is only as wide as the room beside your hand and the felt, and while you
 hold a card it fades and lets the pointer through. Keys typed in the panel are never game hotkeys.
 

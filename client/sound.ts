@@ -163,7 +163,7 @@ function admit(o: Shot, delay: number, length: number): { t: number; g: number; 
 const NOTHING: Stop = () => {};
 
 type HitShot = Shot & { rate?: number; dull?: number; thin?: number; attack?: number };
-type ToneShot = Shot & { dur?: number; partials?: readonly (readonly [number, number])[] };
+type ToneShot = Shot & { dur?: number; partials?: readonly (readonly [number, number])[]; attack?: number };
 
 /**
  * Plays a recording. `rate` is playback speed (pitch); `dull` low-passes it; `thin` high-passes it (the body of the
@@ -174,7 +174,7 @@ function hit(name: string, o: HitShot = {}): Stop {
   return later(o.delay, (delay) => startHit(name, o, delay));
 }
 
-/** A soft bell-like tone: a few sine partials under one fast-attack, exponential-decay envelope. */
+/** A soft bell-like tone: a few sine partials under one fast-attack (`attack`, seconds), exponential-decay envelope. */
 function tone(freq: number, o: ToneShot = {}): void {
   later(o.delay, (delay) => startTone(freq, o, delay));
 }
@@ -235,7 +235,7 @@ function startTone(freq: number, o: ToneShot, delay: number): Stop {
   const { t, g } = a;
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t);
-  env.gain.linearRampToValueAtTime(g, t + 0.006);
+  env.gain.linearRampToValueAtTime(g, t + (o.attack ?? 0.006));
   env.gain.exponentialRampToValueAtTime(0.0005, t + dur);
   env.gain.linearRampToValueAtTime(0, t + dur + 0.02);
   env.connect(buses[o.who ?? 'me']);
@@ -284,6 +284,7 @@ function startGlide(from: number, to: number, o: ToneShot, delay: number): Stop 
 const BELL = [[1, 1], [2, 0.3], [3, 0.1], [4.2, 0.04]] as const;
 const CHIME = [[1, 1], [2, 0.45], [3, 0.22], [4, 0.1], [5.4, 0.05]] as const;
 const TICK = [[1, 1], [2.4, 0.35]] as const;
+const ROUND = [[1, 1], [2, 0.06]] as const;
 /** A dull, low voice: little but the note itself. */
 const DULL = [[1, 1], [2, 0.12]] as const;
 
@@ -460,10 +461,10 @@ export function opened(): void {
   [880, 1174.66, 1760].forEach((hz, i) => tone(hz, { gain: 0.13, dur: 0.5, delay: i * 0.01, partials: CHIME }));
 }
 
-/** Someone else said something in the chat: a soft, low two-note blip, under the game's sounds, on your own channel. */
+/** Someone else said something in the chat: a low, round two-note boop (all but pure tones, eased in), under the game's sounds, on your own channel. */
 export function chatLine(): void {
-  tone(659.25, { gain: 0.07, dur: 0.12, partials: BELL });
-  tone(987.77, { gain: 0.06, dur: 0.18, delay: 0.07, partials: BELL });
+  tone(392, { gain: 0.1, dur: 0.4, attack: 0.025, partials: ROUND });
+  tone(523.25, { gain: 0.09, dur: 0.5, delay: 0.1, attack: 0.025, partials: ROUND });
 }
 
 /** One second of the grace countdown. */
