@@ -41,7 +41,7 @@ describe('Room.summary', () => {
 });
 
 describe('a private table', () => {
-  it('is the host\'s to make, at any time, by a message of its own; everyone is told, and it stays private over a restart', () => {
+  it('is the host\'s to make, at any time, by a message of its own; everyone is told, and it stays private over a restart, as one kept before there were any stays public', () => {
     expect(parseClientMsg({ t: 'unlisted', on: true })).toEqual({ t: 'unlisted', on: true });
     expect(parseClientMsg({ t: 'unlisted', on: false })).toEqual({ t: 'unlisted', on: false });
     for (const on of ['true', 1, 0, null, undefined]) expect(parseClientMsg({ t: 'unlisted', on }), String(on)).toBeNull();
@@ -52,6 +52,11 @@ describe('a private table', () => {
     expect(guest.room.unlisted).toBe(false); // (public, to begin with)
     room.handle(guest, { t: 'unlisted', on: true }); // not theirs
     expect(room.unlisted).toBe(false);
+    const old = wire(room.kept()); // public, it is kept as every table was before there were private ones: with nothing said of it
+    expect(old).not.toHaveProperty('unlisted');
+    const still = Room.restored(old, { schedule: () => {} })!;
+    expect(still.unlisted).toBe(false);
+    still.close();
     room.handle(host, { t: 'start' }); // a round on: still the host's to change
     room.handle(host, { t: 'unlisted', on: true });
     room.flush();

@@ -141,13 +141,13 @@ const BOT_CONN: Conn = { send: () => {}, close: () => {} };
 const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
 /** Which `Kept` this server writes and reads. Whatever changes what is in one (a field of the room, of a player, of the engine's `GameState`) puts it up by one: a table kept by a server from before is then not brought back. */
-export const KEPT = 3;
+export const KEPT = 2;
 /**
  * The shape of a `Kept` of each version: its fingerprint, as server/room.test.ts takes it (every path in one, and the
  * kind of value there). That test fails when a table's shape is not the one written here for `KEPT`: then put `KEPT`
  * up by one and add the new shape under it. Never change one already here.
  */
-export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'b805fcd09620' };
+export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44' };
 
 /** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
 interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {
@@ -168,7 +168,8 @@ export interface Kept {
   lastRound: RoundResult | null;
   settings: TableSettings;
   capacity: number;
-  unlisted: boolean;
+  /** Only on a private table. One kept before there were any has none and comes back public, so `KEPT` stands. */
+  unlisted?: boolean;
   social: KeptSocial;
   snipes: { by: number; of: number; card: string }[];
   sitting: string;
@@ -501,7 +502,7 @@ export class Room {
       lastRound: this.lastRound,
       settings: this.settings,
       capacity: this.capacity,
-      unlisted: this.unlisted,
+      ...(this.unlisted ? { unlisted: true } : {}),
       snipes: this.snipes,
       sitting: this.sitting,
       queue: this.queue,
@@ -530,7 +531,7 @@ export class Room {
     room.lastRound = kept.lastRound;
     room.settings = kept.settings;
     room.capacity = kept.capacity;
-    room.unlisted = kept.unlisted;
+    room.unlisted = kept.unlisted ?? false;
     room.social.restore(kept.social);
     room.snipes = kept.snipes;
     room.sitting = kept.sitting;
