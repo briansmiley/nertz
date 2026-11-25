@@ -588,9 +588,11 @@ client can play the end-of-round sequence and draw the score sheet from it, even
 left) on the waste and records the group in flight: `PlayerState.draw` is `{ n, at }`, how many cards and when the draw
 was made on the round's clock (`RoomView.clock`, which a pause stops). The group counts as dealt one card every
 `STOCK_CARD_MS` and turned up one step after the last, so it is down at `at + n * STOCK_CARD_MS` (`landsAt`). There is
-no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, the
-one place a draw ends, and only while the round is live: a group in flight at a call stays as it lies). Until then
-another draw is refused and `grab` refuses the waste top. The faces of the group go out in that one snapshot. Each
+no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, how
+a draw ends unless it is called off, and only while the round is live: a group in flight at a call stays as it lies).
+Until then another draw is refused, and `grab` refuses the group's cards and gives the card under them: a `hold` or
+`move` of that one calls the draw off (the group goes back on the stock, and `draw` is null). The faces of the group
+go out in that one snapshot. Each
 window deals it out itself (`client/net.ts`: `show`, `dealtBy`): it reckons the round's clock from the snapshot that
 reached it quickest, shows the cards leaving the stock one step apart from when it first had the draw, however late
 that snapshot came (only a window that was not there when the draw was made, back from a reload or a reconnect, goes by
