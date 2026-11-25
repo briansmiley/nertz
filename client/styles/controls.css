@@ -232,6 +232,44 @@ img.art {
   stroke-width: 1.5;
 }
 
+.robotbroken {
+  width: 24px;
+  height: 24px;
+  margin: -4px 6px -4px -4px;
+  vertical-align: middle;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.robotbroken .blank {
+  fill: var(--card);
+  stroke: var(--ink);
+}
+
+.robotbroken .sk {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.robotbroken .bulb {
+  fill: var(--marigold);
+  stroke: none;
+}
+
+.robotbroken .spark {
+  stroke: var(--marigold);
+  stroke-width: 1.3;
+}
+
+.robotbroken .ear {
+  fill: var(--red);
+  stroke: var(--ink);
+  stroke-width: 0.8;
+}
+
 /* The slip an icon button opens, just above it. */
 .pop-at {
   position: relative;

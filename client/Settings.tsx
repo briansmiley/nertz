@@ -8,7 +8,7 @@
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
 // - `TableRules`: the house rules on the lobby sheet, for everyone to read.
-// Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`, `RobotBroken`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
@@ -102,6 +102,25 @@ export function RobotPlus() {
         <path d="M8 17h4" />
       </g>
       <path className="plus" d="M21.1 10.8v5M18.6 13.3h5" />
+    </svg>
+  );
+}
+
+/** The connection lost: a robot's head, cracked, an X and an O for eyes, one antenna bent and sparking. Chalk antennae, for the ink banner. */
+export function RobotBroken() {
+  return (
+    <svg className="robotbroken" viewBox="0 0 24 24" aria-hidden="true">
+      <g transform="rotate(-10 12 14)">
+        <path className="ant" d="M8 8.5V5.8" />
+        <circle className="bulb" cx="8" cy="4.5" r="1.3" />
+        <path className="ant" d="M15 8.5l.6-1.6 1.6-.4 1-1.8" />
+        <path className="spark" d="M19.6 3.4l.8-.9M20.4 5.3h1.1M18.6 2.6l-.1-1.1" />
+        <rect className="ear" x="2.3" y="11.6" width="2" height="4.4" rx="1" />
+        <path className="blank" d="M6.7 8.5h4.3l.9 1.5 1-1.5h3.6a2.4 2.4 0 0 1 2.4 2.4v4.2l-1.6.9 1.6 1v1.1a2.4 2.4 0 0 1-2.4 2.4H6.7a2.4 2.4 0 0 1-2.4-2.4v-6.7a2.4 2.4 0 0 1 2.4-2.4z" />
+        <path className="sk" d="M7.4 11.9l2 2M9.4 11.9l-2 2" />
+        <circle className="sk" cx="14.3" cy="12.9" r="1.1" />
+        <path className="sk" d="M9.3 17.3h.01M11.3 17.3h.01" />
+      </g>
     </svg>
   );
 }

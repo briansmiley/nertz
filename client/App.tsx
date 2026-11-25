@@ -20,7 +20,7 @@ import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
-import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
+import { Corner, Pop, Robot, RobotBroken, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
@@ -96,7 +96,7 @@ export function App() {
       <Sure room={room} />
       <Ping />
       {net.status === 'reconnecting' || net.status === 'updating' ? (
-        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : 'Connection lost. Reconnecting…'}</p>
+        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : <><RobotBroken />Connection lost. Reconnecting…</>}</p>
       ) : (
         spectating && (
           <p className="banner low">
