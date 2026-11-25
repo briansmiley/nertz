@@ -4,8 +4,9 @@
 // taken when it is installed, and of the fonts the page asks Google for. The build writes `BUILD` and `FILES` in
 // (vite.config.ts); this file is not run from the dev server.
 //
-// - The page itself is asked of the network first, so a window online always has the newest: only with no network, or
-//   none that answers in a few seconds, is it the copy kept here.
+// - The page itself is the network's, always, so a window online has the newest however slow its line: the copy kept
+//   here only when the network gives no answer at all, or the server none of its own (a 5xx: it is down, or a proxy
+//   stands there with nothing behind it). Never for being slow: after a deploy the copy kept is the old build.
 // - A file of the app is the copy kept here (those of one build never change), else the network's.
 // - Anything else of the server's (who is signed in, records, pictures, the tables, feedback, the game's socket) is
 //   never touched: it is the network's to answer or not.
@@ -15,8 +16,6 @@ const FILES = __FILES__;
 const CACHE = `nertz-${BUILD}`;
 const FONTS = 'nertz-fonts';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
-/** How long the network has to answer for the page before the copy kept here is shown instead. */
-const PAGE_MS = 3000;
 
 /** The fonts the page asks for: its stylesheet at Google, and every file that names. As many as can be had; none is needed to play. */
 async function keepFonts(page) {
@@ -53,18 +52,16 @@ self.addEventListener('activate', (e) =>
 
 const kept = async (path) => (await caches.open(CACHE)).match(path, { ignoreSearch: true });
 
-/** The page: the network's, if it answers in time; else the one kept here. */
+/** The page: the network's; with no answer from it, or none of the server's own (a 5xx), the one kept here. */
 async function page(request) {
-  const fresh = fetch(request);
-  const late = new Promise((done) => setTimeout(done, PAGE_MS));
+  let answer;
   try {
-    const first = await Promise.race([fresh, late]);
-    if (first) return first;
+    answer = await fetch(request);
+    if (answer.status < 500) return answer;
   } catch {
     // no network
   }
-  fresh.catch(() => {});
-  return (await kept('/')) ?? fresh;
+  return (await kept('/')) ?? answer ?? Response.error();
 }
 
 /** A font: the one kept, else the network's (kept from then on). */
