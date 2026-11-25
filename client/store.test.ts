@@ -540,15 +540,65 @@ describe('a window that plays offline', () => {
     expect(sockets()).toBe(0);
   });
 
-  it('its line never drops: asked every few seconds for as long as the table is quiet, it answers', async () => {
+  it('its line never drops: however long the window was frozen in the background, and whatever it is told of the network, the table is there', async () => {
     vi.useFakeTimers();
+    const listeners = new Map<string, () => void>();
+    const listen = (type: string, fn: () => void) => void listeners.set(type, fn);
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen });
     const { net } = await offline();
     net.create('Ada');
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(5 * 60_000);
-    expect(net.current()).toMatchObject({ status: 'online', error: null });
+    const code = net.current().room!.code;
+    vi.setSystemTime(Date.now() + 60 * 60_000); // (frozen: the clock went on, and no timer ran)
+    await vi.advanceTimersByTimeAsync(60_000);
+    listeners.get('online')!();
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(net.current()).toMatchObject({ status: 'online', error: null, room: { code } });
     expect(sockets()).toBe(0);
     net.leave();
+  });
+
+  it('a round at its table is paused when the window is left (another tab, the screen off), and waits to be resumed; a table others are at is not', async () => {
+    vi.useFakeTimers();
+    const listeners = new Map<string, () => void>();
+    const listen = (type: string, fn: () => void) => void listeners.set(type, fn);
+    const doc = { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen };
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', doc);
+    const { net, prefs } = await offline();
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    net.start();
+    await vi.advanceTimersByTimeAsync(5000);
+    net.go();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(net.current().room).toMatchObject({ phase: 'playing', paused: null, game: { status: { at: 'play' } } });
+    doc.visibilityState = 'hidden';
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(0);
+    const me = net.current().room!.me;
+    expect(net.current().room!.paused).toEqual({ by: 'player', id: me });
+    const stood = JSON.stringify(net.current().room!.game);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    doc.visibilityState = 'visible';
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(JSON.stringify(net.current().room!.game)).toBe(stood); // (no bot played a card meanwhile)
+    net.pause(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current().room!.paused).toBeNull();
+    net.leave();
+
+    prefs.setPrefs({ offline: false });
+    net.create('Ada');
+    last().open();
+    last().deliver(at('ABCD'));
+    const before = last().sent.length;
+    doc.visibilityState = 'hidden';
+    listeners.get('visibilitychange')!();
+    expect(last().sent.slice(before)).toEqual([]);
   });
 });
 

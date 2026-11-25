@@ -412,27 +412,14 @@ async function renew(back = false): Promise<void> {
     // offline: next time
   }
 }
-function booted(id: string): void {
-  boot ??= id;
-  stale ||= id !== boot;
-  renew();
-}
-/** A window at no table holds no socket: it opens one only to hear the server's boot, and closes it on the answer. */
-function peek(): void {
-  if (session || typeof document === 'undefined') return;
-  const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
-  ws.onmessage = (e) => {
-    ws.close();
-    try {
-      const msg = JSON.parse(String(e.data)) as ServerMsg;
-      if (msg.t === 'welcome') booted(msg.boot);
-    } catch {
-      // not the server's: next time
-    }
-  };
-}
-// Back in front: at a table, is the line still up (`probe`)? At none, is this still the server this page was served by?
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && (probe(), peek()));
+// Back in front: at a table, is the line still up (`probe`)? At none, is this still the page the server serves?
+// Gone from in front (another tab, the screen off): the round at a table of this window's own is paused. There is
+// nobody else it is played on for, and the bots would play on.
+if (typeof document !== 'undefined')
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') (probe(), void renew());
+    else if (session?.local) pause(true);
+  });
 
 const social = (msg: SocialServerMsg): void => {
   for (const fn of socialListeners) fn(msg);
@@ -531,6 +518,7 @@ function dropped(update = false): void {
  */
 function check(): void {
   if (!session || !socket) return; // (no socket: a reconnect is on its way)
+  if (session.local) return; // (a table of this window's own has no line to die: quiet for however long, a window frozen in the background, it is there)
   const quiet = Date.now() - heard;
   if (quiet > SILENT_MS) return dropped();
   if (quiet >= PING_MS || getPrefs().ping) ping();
@@ -541,7 +529,7 @@ function check(): void {
  * has `PROBE_MS` to answer a ping; with none, a reconnect waiting out its backoff goes now.
  */
 function probe(): void {
-  if (!session) return;
+  if (!session || session.local) return;
   if (!socket) {
     clearTimeout(retry);
     attempts = 0;
