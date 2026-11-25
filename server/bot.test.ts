@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, dealOn, DRAW_COUNT, inGrace, isLive, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
+import { applyIntent, calledBy, checkInvariants, CLEAR_FIRST, DRAW_COUNT, inGrace, isLive, landed, resolveStuck, SUITS, viewFor, type Rng } from '../shared/engine';
 import { DEAL_MS, MAX_PLAYERS, parseClientMsg, PLAIN_LOOK, START_MS, STOCK_CARD_MS } from '../shared/protocol';
 import { card, FUZZ_MS, inPlay, pile, seeded, slot, stepDraws, table as wholeTable, untilReached, work, type Hand } from '../shared/testkit';
 import type { GameState, Intent, Suit } from '../shared/types';
@@ -132,7 +132,7 @@ describe('chooseIntent', () => {
       const choice = look(state, memory)!;
       const result = applyIntent(state, 0, choice.intent);
       if (!result.ok) throw new Error(result.reason);
-      state = dealOn(dealOn(dealOn(result.state, 0), 0), 0); // (the server deals the group out before the bot looks again)
+      state = landed(result.state, Infinity); // (the group is down before the bot looks again)
       memory = choice.memory;
       intents.push(choice.intent.k);
     };
@@ -170,11 +170,10 @@ describe('chooseIntent', () => {
     const centre: Centre[] = [{ owner: 1, suit: 'H', upTo: 3 }];
     const waste = table({ nertz: ['S9'], work: DEAD, waste: ['C2', 'H4'] }, centre);
     expect(look(waste)?.intent).toEqual(move('H4', slot(0)));
-    const flight = [draw(waste)];
-    while (flight.at(-1)!.players[0]!.dealt > 0) flight.push(dealOn(flight.at(-1)!, 0));
-    expect(flight.map((g) => g.players[0]!.dealt)).toEqual([1, 2, 3, 0]);
-    for (const mid of flight.slice(0, -1)) for (const observance of [1, 0]) expect(look(mid, freshMemory(), observance)).toBeNull();
-    expect(look(flight.at(-1)!)).not.toBeNull();
+    const flying = draw(waste);
+    expect(flying.players[0]).toMatchObject({ draw: { n: 3 }, waste: { length: 5 } });
+    for (const observance of [1, 0]) expect(look(flying, freshMemory(), observance)).toBeNull();
+    expect(look(landed(flying, Infinity))).not.toBeNull();
     // A draw counts as one (but not while the bot is flagged stuck).
     const nothing = table({ nertz: ['H6'], work: DEAD });
     expect(look(nothing, { draws: 7, last: null })).toEqual({ intent: { k: 'draw' }, memory: { draws: 8, last: null } });
@@ -231,7 +230,7 @@ describe('chooseIntent', () => {
       const memory = new Map(seats.map((s) => [s, freshMemory()]));
       const sinceFlip = new Map(seats.map((s) => [s, 0]));
       for (let step = 0; step < 6000 && isLive(state); step++) {
-        state = stepDraws(state, rng); // (the server's steps of the groups in flight)
+        state = stepDraws(state, rng); // (the round's clock: the groups in flight come down)
         const seat = seats[Math.floor(rng() * seats.length)]!;
         const before = memory.get(seat)!;
         const choice = chooseIntent(viewFor(state, seat), seat, before, rng, observance);
@@ -486,7 +485,7 @@ describe('Room with bots', () => {
     room.close();
   });
 
-  it("a bot decides at its level's pace (half to one and a half times the mean), and its draw is dealt by the server at the one step for everyone", () => {
+  it("a bot decides at its level's pace (half to one and a half times the mean), and after a draw waits out its group's time, as everyone must", () => {
     vi.useFakeTimers();
     for (const level of ['slow', 'medium', 'fast'] as const) {
       const { room, host } = hosted(3);
@@ -510,11 +509,11 @@ describe('Room with bots', () => {
         }
         const gap = Date.now() - last;
         last = Date.now();
-        if (was.dealt > 0) {
-          // Its group in flight: the server's step, and nothing of the bot's own meanwhile (a card more, or the group up).
-          expect(gap).toBe(STOCK_CARD_MS);
-          expect([bot().dealt, was.stock.length - bot().stock.length]).toEqual(was.dealt === DRAW_COUNT || was.stock.length === 0 ? [0, 0] : [was.dealt + 1, 1]);
-          if (bot().dealt === 0) groups++;
+        if (was.draw) {
+          // Its group in flight: a step for each card, and nothing of the bot's own meanwhile. Then the group is down, and it looks.
+          expect(gap).toBe(was.draw.n * STOCK_CARD_MS);
+          expect(bot()).toEqual({ ...was, draw: null });
+          groups++;
           gaps.step.push(gap);
         } else {
           expect(gap).toBeGreaterThanOrEqual(delay * 0.5);
@@ -524,7 +523,7 @@ describe('Room with bots', () => {
       }
       const mean = (xs: number[]) => xs.reduce((n, x) => n + x, 0) / xs.length;
       expect(gaps.look.length).toBeGreaterThan(8);
-      expect(groups).toBeGreaterThan(5); // one draw each, dealt out by the server
+      expect(groups).toBeGreaterThan(5); // one draw each, its time waited out
       expect(flights).toBeGreaterThan(3); // it did carry cards over
       expect(mean(gaps.look)).toBeGreaterThan(delay * 0.7);
       expect(mean(gaps.look)).toBeLessThan(delay * 1.3);

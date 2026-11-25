@@ -2,7 +2,7 @@
 // whole table built by hand, the intents, and a room as one window sees it. For tests only: imported by *.test.ts files
 // and server/testkit.ts.
 import { expect } from 'vitest';
-import { applyIntent, canDrop, checkInvariants, completedBy, deal, dealOn, DRAW_COUNT, finishDeal, grab, isComplete, isHidden, legalDrops, mustClear, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
+import { applyIntent, canDrop, checkInvariants, completedBy, deal, DRAW_COUNT, finishDeal, grab, isComplete, isHidden, landed, legalDrops, mustClear, openPlay, startCountdown, SUITS, viewFor, type Rng } from './engine';
 import { PLAIN_LOOK } from './protocol';
 import { DEFAULT_SETTINGS } from './settings';
 import { MAX_PLAYERS } from './protocol';
@@ -67,7 +67,7 @@ export function rig(g: GameState, hand: { work: [Face, Face, Face, Face]; waste?
       const work = hand.work.map((f): WorkPile => ({ cards: [take(f)], down: 0 }));
       const waste = (hand.waste ?? []).map(take);
       const nertz = hand.emptyNertz?.includes(p.seat) ? [] : cards.splice(0, 13);
-      return { ...p, work, nertz, stock: cards, waste, dealt: 0, holding: null };
+      return { ...p, work, nertz, stock: cards, waste, draw: null, holding: null };
     }),
   };
 }
@@ -180,7 +180,7 @@ export function table(hands: readonly Hand[], { slots = [], tray = [], ...extra 
       const w = p.work[under]!;
       p.work[under] = { cards: [...left, ...w.cards], down: w.down + left.length };
     }
-    return { seat, ...p, dealt: 0, stuck: h.stuck ?? false, holding: null };
+    return { seat, ...p, draw: null, stuck: h.stuck ?? false, holding: null };
   });
   const state: GameState = { players, status: { at: 'play' }, slots: laid, tray: tray.map((t) => [...t]), reshuffles: 0, ...extra };
   expect(checkInvariants(state)).toBeNull();
@@ -200,25 +200,21 @@ export const workTop = (g: GameState, seat: number, i: number) => g.players.find
 // ---------------------------------------------------------------- intents
 
 /** `count` is the number of cards lifted: 1 unless a run is being moved. */
-/** The server's timeline in random play: each group in flight takes its next step (`dealOn`), or not yet, by chance. */
-export const stepDraws = (state: GameState, rng: Rng): GameState => state.players.reduce((s, p) => (rng() < 0.5 ? dealOn(s, p.seat) : s), state);
+/** The round's clock in random play: the groups in flight are down (`landed`), or not yet, by chance. */
+export const stepDraws = (state: GameState, rng: Rng): GameState => (state.players.some((p) => p.draw) && rng() < 0.5 ? landed(state, Infinity) : state);
 /**
- * `n` cards off `seat`'s stock as the server deals them: a draw starts a group and the server's steps (`dealOn`) deal
- * the rest; a group all dealt is turned up at once (its last step). On an empty stock (no group in flight) a draw turns
- * the waste over, which counts as one. Throws if a draw is refused.
+ * `n` cards off `seat`'s stock, by whole draws: each puts its group on the waste in one step, and the group is down
+ * (`landed`) before the next. On an empty stock a draw turns the waste over, which counts as one. Throws if a draw is
+ * refused, or if `n` ends in the middle of a group.
  */
 export function deals(state: GameState, seat: number, n = DRAW_COUNT): GameState {
   let s = state;
-  for (let i = 0; i < n; i++) {
-    const me = s.players.find((p) => p.seat === seat)!;
-    if (me.dealt > 0) s = dealOn(s, seat);
-    else {
-      const r = applyIntent(s, seat, { k: 'draw' });
-      if (!r.ok) throw new Error(`draw refused: ${r.reason}`);
-      s = r.state;
-    }
-    const now = s.players.find((p) => p.seat === seat)!;
-    if (now.dealt === DRAW_COUNT || (now.dealt > 0 && now.stock.length === 0)) s = dealOn(s, seat);
+  for (let left = n; left > 0; ) {
+    const r = applyIntent(s, seat, { k: 'draw' });
+    if (!r.ok) throw new Error(`draw refused: ${r.reason}`);
+    left -= r.state.players.find((p) => p.seat === seat)!.draw?.n ?? 1;
+    if (left < 0) throw new Error(`${n} cards end in the middle of a group`);
+    s = landed(r.state, Infinity);
   }
   return s;
 }

@@ -19,9 +19,9 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 /**
  * Which cards of a snapshot sent to `you` show a face that the rules say it may not see yet. Judged from the snapshot
  * alone, by where each card lies: written out here on purpose, not borrowed from `viewFor`. While cards can move the
- * player may see its own cards that its next move could turn over: the rest of the group under way off its stock (or
- * the next three), what is dealt of it, the card under its nertz top, and the top face-down card of each work pile.
- * Nobody else may, and never deeper into a nertz pile.
+ * player may see its own cards that its next move could turn over: the card under its nertz top, and the top
+ * face-down card of each work pile. Nobody else may, and never deeper into a nertz pile. A stock never shows a face;
+ * a waste does once play has opened, a group in flight onto it included (a draw is one snapshot, faces and all).
  */
 function leaks(g: GameState, you: number | null): string[] {
   const out: string[] = [];
@@ -30,10 +30,10 @@ function leaks(g: GameState, you: number | null): string[] {
   for (const p of g.players) {
     const at = `${g.status.at} seat ${p.seat}${p.seat === you ? ' (yours)' : ''}`;
     const next = (g.status.at === 'play' || g.status.at === 'grace') && p.seat === you;
-    p.stock.forEach((c, i) => faceUp(c) && !(next && i >= p.stock.length - (3 - p.dealt)) && out.push(`${at}: stock card ${i} with a face`));
+    p.stock.forEach((c, i) => faceUp(c) && out.push(`${at}: stock card ${i} with a face`));
     p.nertz.forEach((c, i) => faceUp(c) && (i < p.nertz.length - 1 || shut) && !(next && i === p.nertz.length - 2) && out.push(`${at}: nertz card ${i} with a face`));
     p.work.forEach((w, k) => w.cards.forEach((c, i) => faceUp(c) && (i < w.down || g.status.at === 'dealing') && !(next && i === w.down - 1) && out.push(`${at}: work ${k} card ${i} with a face`)));
-    p.waste.forEach((c, i) => faceUp(c) && (shut || (i >= p.waste.length - p.dealt && !next)) && out.push(`${at}: waste card ${i} with a face`));
+    p.waste.forEach((c, i) => faceUp(c) && shut && out.push(`${at}: waste card ${i} with a face`));
   }
   return out;
 }
@@ -190,7 +190,7 @@ describe('a hostile client over real sockets', () => {
     await converged(room, [back, b, c]);
   });
 
-  it('the stock gives one group per draw whatever the messages say, and nobody is shown a card of a group in flight', async () => {
+  it('the stock gives one group per draw whatever the messages say, and everyone is sent it whole, never card by card', async () => {
     const { room, players } = await playing(2);
     const [a, b] = players as [Client, Client];
     const stock = me(room.game!, a.seat).stock.length;
@@ -205,17 +205,16 @@ describe('a hostile client over real sockets', () => {
     let last = 0;
     for (let i = 0; i < 20; i++) last = a.intent({ k: 'draw' });
     await vi.waitFor(() => expect(a.last.ack).toBe(last));
-    // One group, dealt by the server on its own time.
-    await vi.waitFor(() => expect(me(room.game!, a.seat).dealt).toBe(0));
+    // One group, on the waste in one step: the draws on top of it were refused while it is in flight.
     expect(me(room.game!, a.seat)).toMatchObject({ stock: { length: stock - 3 }, waste: { length: 3 } });
     expect(me(room.game!, b.seat).stock).toHaveLength(stock); // and nobody else's stock was touched
     await converged(room, players);
     const group = me(room.game!, a.seat).waste.map((c) => c.id);
     for (const p of players) {
-      // While it was in flight nobody was sent a face of it, its owner included; now everyone sees it.
+      // No snapshot ever had part of it: the group came whole, and everyone sees it.
       for (const { room: r } of p.states) {
         const h = r.game && me(r.game, a.seat);
-        if (h && h.dealt > 0) expect(h.waste.slice(-h.dealt).every(isHidden)).toBe(true);
+        if (h) expect([0, 3]).toContain(h.waste.length);
       }
       expect(me(p.game, a.seat).waste.some(isHidden)).toBe(false);
       expect(me(p.game, a.seat).waste.map((c) => c.id)).toEqual(group);
