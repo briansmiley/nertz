@@ -5,6 +5,7 @@
 // person's window would use. Pure: room.ts sends the frames on a timer.
 import type { DragAt } from './protocol';
 import type { GameState, Intent, PileRef } from './types';
+import { round3 } from './numbers';
 
 /**
  * Gaps in an opponent's hand, in card widths: between work piles (`gap`), and
@@ -48,7 +49,6 @@ function target(state: GameState, to: PileRef): { x: number; y: number } | null 
 }
 
 const ease = (t: number) => t * t * (3 - 2 * t);
-const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /**
  * The reports for a bot moving a card, one per FLIGHT_STEP_MS, the last over
@@ -71,10 +71,10 @@ export function flightFrames(state: GameState, seat: number, intent: Intent): Dr
   for (let k = 1; k <= n; k++) {
     const e = ease(k / n);
     if (there) {
-      frames.push({ id: intent.cardId, w: r3(e < OUT ? e / OUT : 1 + (e - OUT) / (1 - OUT)), h: [0, r3(0.5 * e)], p: [r3(there.x), r3(there.y)] });
+      frames.push({ id: intent.cardId, w: round3(e < OUT ? e / OUT : 1 + (e - OUT) / (1 - OUT)), h: [0, round3(0.5 * e)], p: [round3(there.x), round3(there.y)] });
     } else {
       const to = intent.to.k === 'work' ? rowX('work', intent.to.i) : from;
-      frames.push({ id: intent.cardId, w: 0, h: [r3((to - from) * e), r3(0.35 * Math.sin(Math.PI * e))], p: [0, 50] });
+      frames.push({ id: intent.cardId, w: 0, h: [round3((to - from) * e), round3(0.35 * Math.sin(Math.PI * e))], p: [0, 50] });
     }
   }
   return frames;

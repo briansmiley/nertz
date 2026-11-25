@@ -127,22 +127,24 @@ export function hello(room: string | null, name: string, token: string): ClientM
 
 // ---------------------------------------------------------------- store
 
-/** `updating`: reconnecting, and the line went down because the server stopped to be put up anew (it said so: `CLOSE_UPDATE`). */
-export type Status = 'idle' | 'connecting' | 'online' | 'reconnecting' | 'updating';
+/**
+ * `rejoining`: connecting, to sit back down at the table it was at, after a reload (`resume`), until it is seated or
+ * gives up. `updating`: reconnecting, and the line went down because the server stopped to be put up anew (it said so:
+ * `CLOSE_UPDATE`).
+ */
+export type Status = 'idle' | 'connecting' | 'rejoining' | 'online' | 'reconnecting' | 'updating';
 
 export interface NetState {
   status: Status;
   /** Predicted room, or null when not in one. */
   room: RoomView | null;
   error: string | null;
-  /** Sitting back down at the table it was at, after a reload: until it is seated, or gives up (`resume`). */
-  rejoining: boolean;
 }
 
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null, rejoining: false };
+let state: NetState = { status: 'idle', room: null, error: null };
 const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
@@ -273,10 +275,10 @@ export function roomInUrl(): string {
 }
 
 /**
- * Whether this window has the aids for trying things out: in development, and wherever the server says it has its own on
- * (`RoomView.testing`: locally and on previews). Start then asks for the set-up the address names; Shift+D and Shift+N work.
+ * Whether this window has the aids for trying things out: wherever the server says it has its own on (`RoomView.testing`:
+ * locally and on previews). Start then asks for the set-up the address names; Shift+D and Shift+N work.
  */
-export const testing = (room: RoomView | null): boolean => import.meta.env.DEV || !!room?.testing;
+export const testing = (room: RoomView | null): boolean => !!room?.testing;
 
 /** The set-up deal the address names (`?deal=aces`), which Start asks for where `testing` is on. */
 function setUpInUrl(): SetUp | undefined {
@@ -287,7 +289,8 @@ function setUpInUrl(): SetUp | undefined {
 
 /**
  * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
- * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone.
+ * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone. Only
+ * `room` is the session's: anything else in the address (a set-up deal) stays as it was.
  */
 function keep(seat: { room: string; name: string } | null): void {
   try {
@@ -297,9 +300,10 @@ function keep(seat: { room: string; name: string } | null): void {
     // storage unavailable: a reload just lands at home
   }
   if (typeof history === 'undefined') return;
-  const setUp = setUpInUrl(); // (kept in the address, so that it holds across a reload)
-  const query = [seat && `room=${seat.room}`, setUp && `deal=${setUp}`].filter(Boolean).join('&');
-  history.replaceState(null, '', query ? `/?${query}` : '/');
+  const query = new URLSearchParams(location.search);
+  if (seat) query.set('room', seat.room);
+  else query.delete('room');
+  history.replaceState(null, '', query.size ? `/?${query}` : '/');
 }
 
 /** On page load: if this window was at the table in the address, it sits back down. */
@@ -311,7 +315,7 @@ export function resume(): void {
     return; // storage unavailable (or not ours): home
   }
   const room = roomInUrl();
-  if (room && seat?.room === room && typeof seat.name === 'string') (join(room, seat.name), set({ rejoining: true }));
+  if (room && seat?.room === room && typeof seat.name === 'string') open(room, seat.name, 'rejoining');
 }
 
 /** The one way out of a session: leaving, sent away, replaced, refused. */
@@ -326,7 +330,7 @@ function stop(error: string | null): void {
   sync = freshSync;
   looking = false;
   timed(null);
-  show({ status: 'idle', error, rejoining: false });
+  show({ status: 'idle', error });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
@@ -366,7 +370,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
       keep({ room: session.room, name: session.name });
     }
     sync = onSnapshot(sync, msg);
-    show({ status: 'online', error: null, rejoining: false });
+    show({ status: 'online', error: null });
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
@@ -475,11 +479,11 @@ function probe(): void {
 }
 if (typeof window !== 'undefined') window.addEventListener('online', probe);
 
-function open(room: string | null, name: string): void {
+function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting'): void {
   if (session) stop(null);
   session = { room, name };
   attempts = 0;
-  set({ status: 'connecting', error: null });
+  set({ status, error: null });
   connect();
   watch = setInterval(check, PING_MS);
 }

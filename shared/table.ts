@@ -16,6 +16,7 @@
 //  - two piles CLASH if their cards, with a small gap between, would overlap;
 //  - a pile is ON THE TABLE if its whole card lies on the felt.
 // A pile lies wherever its Ace was put down, as long as it keeps to those rules.
+import { round3 } from './numbers';
 
 export interface Pt {
   x: number;
@@ -102,7 +103,6 @@ function noise(i: number, salt: number): number {
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return (((t ^ (t >>> 14)) >>> 0) / 2147483648) - 1;
 }
-const round3 = (v: number): number => Math.round(v * 1000) / 1000 || 0;
 
 /** The tilt of a pile started at `p`: a degree or two, the same for everyone. */
 export const tiltAt = (p: Pt): number => round3(noise(Math.round(p.x * 1000), Math.round(p.y * 1000)) * 2.5);

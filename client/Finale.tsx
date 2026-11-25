@@ -11,6 +11,7 @@ import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
 import { drawnMini, LOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
+import { clamp } from '../shared/numbers';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 3250 };
@@ -183,7 +184,6 @@ export function pileReach(pile: Rect): Rect {
   return { x: pile.x - lean * LEAN_X - ex, y: pile.y - lean - ey, w: pile.w + lean * LEAN_X + 2 * ex, h: pile.h + lean + 2 * ey };
 }
 
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 /** A gentle start and a gentle stop, and never fast in between (a sine's half turn): a card slid by a hand, not flung. */
 const glideEase = (t: number) => (1 - Math.cos(Math.PI * t)) / 2;
@@ -671,7 +671,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
   for (const mv of plan.movers) {
     const pile = plan.piles[mv.pile]!;
     if (!onCanvas(stage, mv.tray ? 'tray' : 'slot')) continue; // still a pile in the tray, or on its way out of it: drawn by the table
-    const q = glideEase(clamp01((t - setsOut(plan.sortAt, order[mv.pile] ?? mv.pile, mv.k, mv.of)) / LAND_MS));
+    const q = glideEase(clamp((t - setsOut(plan.sortAt, order[mv.pile] ?? mv.pile, mv.k, mv.of)) / LAND_MS, 0, 1));
     // A sorted pile leans up and to the left a little with every card, so its thickness shows.
     const { x: px, y: py } = restAt(pile, mv.k, mv.of);
     if (q >= 1) {
@@ -680,7 +680,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
       continue;
     }
     // In the wash: out from its pile to a spot on the felt, where it lies.
-    const spread = glideEase(clamp01((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS));
+    const spread = glideEase(clamp((t - (mv.tray ? trayFrom : 0) - mv.delay * SPREAD_STAGGER_MS) / SPREAD_MS, 0, 1));
     const a = mv.angle;
     const r = mv.radius;
     let x = lerp(mv.x + w / 2, plan.cx + Math.cos(a) * r * rx, spread);
@@ -688,7 +688,7 @@ export function frameAt(plan: Plan, stage: Stage, t: number, trayFrom: number, o
     let rot = lerp(mv.rot0, mv.spin * 0.5, spread);
     let size = 1;
     if (plan.gather) {
-      const g = glideEase(clamp01((t - plan.gather.at - mv.delay * (GATHER_MS * 0.3)) / (GATHER_MS * 0.7)));
+      const g = glideEase(clamp((t - plan.gather.at - mv.delay * (GATHER_MS * 0.3)) / (GATHER_MS * 0.7), 0, 1));
       x = lerp(x, plan.gather.cx + Math.cos(a) * r * plan.gather.rx, g);
       y = lerp(y, plan.gather.cy + Math.sin(a) * r * plan.gather.ry, g);
       size = lerp(1, plan.scale, g);

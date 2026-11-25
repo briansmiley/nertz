@@ -106,8 +106,6 @@ export function RobotPlus() {
   );
 }
 
-/** An eye: standing up from the table to watch. */
-
 /**
  * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away. (`bare`: the icon
  * is the button itself, with no circle around it, in a plain square that is its hitbox.)
