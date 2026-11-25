@@ -924,9 +924,6 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         <span className="name">{name(you)}</span>
         <b>{points(total(you))}</b>
       </span>
-      <span className="where">
-        Round {room.round} at table {room.code}
-      </span>
     </div>
   );
   const pill = L.pills ? ' pill' : '';

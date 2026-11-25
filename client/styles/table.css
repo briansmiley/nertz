@@ -367,7 +367,7 @@
 }
 
 /* Your own line, in the place the layout keeps for it (client/layout.ts, `furnish`): under the nertz pile in full
-   (how many are left in it, your name and total, the round and the table), or one line (your name and total). It is
+   (your name and total), or tucked in beside things where there is less room. It is
    written from the end of its place that the layout says, and never past it: where it must be cut short, your name
    gives way and your total stays whole. */
 .mine {
@@ -415,17 +415,6 @@
   text-overflow: ellipsis;
 }
 
-/* In full: two lines, your name and the table under it. */
-.mine.full {
-  grid-template-rows: auto auto;
-  align-content: start;
-  gap: 4px;
-}
-
-.mine.line .where {
-  display: none;
-}
-
 .mine .who .face {
   margin-right: 6px;
 }
@@ -439,10 +428,6 @@
   flex: none;
   margin-left: 0.4em; /* (a space, and 4px) */
   color: var(--marigold);
-}
-
-.mine .where {
-  font-size: 12.5px;
 }
 
 /* "I'm stuck", and the vote to end the round: each in the place the layout keeps for it (client/layout.ts,
