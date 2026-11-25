@@ -386,8 +386,23 @@
     padding-bottom: 1rem;
   }
 
+  /* The name and the fan stand over the middle of the pad, which fills the width here. */
+  .hero {
+    text-align: center;
+  }
+
+  .hero h1 {
+    transform-origin: 50% 100%;
+  }
+
   .spread {
     zoom: 0.6;
+    justify-content: center;
+    margin-left: 0;
+  }
+
+  .spread .mini:last-child {
+    margin-right: 0; /* (the overlap trailing the last card would pull the fan off the middle) */
   }
 }
 
