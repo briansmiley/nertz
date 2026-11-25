@@ -291,6 +291,30 @@
   text-shadow: 0 1px 3px rgba(4, 18, 22, 0.9);
 }
 
+/* Under Start anyway, the dealer takes the ask back: quiet chalk, not a second slab. */
+.opening .unask {
+  pointer-events: auto;
+  margin: 16px 0 -4px;
+  padding: 5px 16px 6px;
+  border: 0;
+  border-radius: 99px;
+  font: 600 15px/1.2 var(--ui);
+  color: var(--chalk-dim);
+  background: rgba(8, 28, 33, 0.45);
+  cursor: pointer;
+  transition: color 120ms, background-color 120ms;
+}
+
+.opening .unask:hover {
+  color: var(--chalk);
+  background: rgba(8, 28, 33, 0.7);
+}
+
+.opening .unask:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: 2px;
+}
+
 @keyframes waitedon {
   25% {
     translate: -4px 0;

@@ -7,6 +7,7 @@ import { hasSay, plays } from '../shared/engine';
 import { MIN_PLAYERS, START_BEAT_MS, START_BEATS, START_MS } from '../shared/protocol';
 import type { PlayerView, RoomView } from '../shared/types';
 import { backColour } from './cards/Face';
+import { Dots } from './Dots';
 import { go, ready } from './net';
 
 /** How long the word stays up once play is open. It lets every click through. */
@@ -92,7 +93,7 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
 
   // Start goes at once when everyone is ready. If not, the first press only asks, naming who is not (`warned`), and
   // the next one goes ahead: never a block. So does the last of them saying ready; anyone taking a ready back ends
-  // it. It lapses a while after the press.
+  // it, and so does the dealer's Cancel. It lapses a while after the press.
   const [ask, setAsk] = useState<Ask | null>(null);
   const warned = ask !== null;
   useEffect(() => {
@@ -131,10 +132,21 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
       <>
         {mine && !enough ? null : mine ? (
           <>
-            {warned && <p className="waitfor">Waiting for {late.map((p) => p.name).join(', ')}</p>}
+            {warned && (
+              <p className="waitfor">
+                Waiting for {late.map((p) => p.name).join(', ')}
+                <Dots />
+              </p>
+            )}
             <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
               {warned ? 'Start anyway' : 'Start'}
             </button>
+            {/* Takes the ask back: nothing goes when the rest say ready, and the button is plain Start again. */}
+            {warned && (
+              <button type="button" className="unask" onClick={() => setAsk(null)}>
+                Cancel
+              </button>
+            )}
           </>
         ) : me ? (
           <button type="button" className={`kickoff readyup${me.ready ? ' on' : ''}`} aria-pressed={!!me.ready} onClick={(e) => (ready(!me.ready), e.currentTarget.blur())}>
