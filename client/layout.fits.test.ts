@@ -52,6 +52,7 @@ function things(L: Layout, W: number, H: number, vote: boolean): Record<string, 
   return {
     chat: [L.at.chat],
     knobs: [L.at.knobs],
+    feedback: L.at.feedback ? [L.at.feedback] : [],
     clock: L.clock ? [L.clock] : [],
     name: L.name ? [L.name] : [],
     count: [countBox(me.count, W, H, L.keep)],
@@ -221,6 +222,24 @@ describe('what stands round the cards', () => {
             }
           }
         }
+      }
+    }
+  });
+
+  it("has feedback's own button bottom right, level with the menu's and under the tray, but on a phone, where it is in the menu (SMI-265)", () => {
+    for (const [W, H] of WINDOWS) {
+      for (const keep of insetsOf(W, H)) {
+        const L = computeLayout(W, H, longPiles(4, 8), 0, 'live', null, keep, [], { chat: CHATS.out, clock: true, vote: true, name: nameWidth('Brian', '120') });
+        const f = L.at.feedback;
+        const where = `${W}x${H}${keep.l || keep.b ? ', notched' : ''}`;
+        if (L.shape !== 'wide') {
+          expect(f, where).toBeNull();
+          continue;
+        }
+        expect(f, where).not.toBeNull();
+        expect(f!.y, where).toBe(L.at.knobs.y);
+        expect(f!.x + f!.w, where).toBe(W - Math.max(12, keep.r));
+        expect(L.tray.y + L.tray.h, where).toBeLessThanOrEqual(f!.y);
       }
     }
   });

@@ -672,6 +672,8 @@ export interface Corners {
   chatParts: number[];
   /** The menu's button: bottom left, or at the right of the bar across the top of an upright phone. */
   knobs: Rect;
+  /** The way to feedback, on its own: bottom right, as large as the menu's button. Null on a phone, where it is in the menu. */
+  feedback: Rect | null;
   /** The places the round's clock may stand, the best first: the table takes the first with nothing else there that leaves your line and the pills whole (`Layout.clock`). `small`: in small figures. */
   clocks: ClockAt[];
 }
@@ -686,8 +688,8 @@ export interface ClockAt extends Rect {
  * Upright, both are in the bar across the top, the chat's buttons from the left and the menu's from the right. When
  * the bar is too narrow for the chat's as they are there (larger, for a thumb), they are no larger than elsewhere, and
  * narrower still they are squeezed; the clock stands between them, by the menu's. Otherwise the chat is top left and the menu's button
- * bottom left; the clock would stand in line after that, or else above it (where your hand or your line is in the way
- * after it), or else after the chat's buttons.
+ * bottom left, and feedback's bottom right; the clock would stand in line after the menu's, or else above it (where
+ * your hand or your line is in the way after it), or else after the chat's buttons.
  */
 export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit: Fittings = NO_FITTINGS): Corners {
   const H = fullH - keep.b;
@@ -707,14 +709,15 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
     const knobs: Rect = { x: W - r - KNOB.size, y: 7, w: KNOB.size, h: KNOB.size };
     // The clock in the bar, just left of the menu's button, where it is clear of the chat's buttons.
     const bar: ClockAt = { x: knobs.x - 10 - CLOCK.above.w, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
-    return { shape, chat, chatParts, knobs, clocks: fit.clock && chat.x + chat.w + 8 <= bar.x ? [bar] : [] };
+    return { shape, chat, chatParts, knobs, feedback: null, clocks: fit.clock && chat.x + chat.w + 8 <= bar.x ? [bar] : [] };
   }
   const chat: Rect = { x: Math.max(10, keep.l), y: 10, w: across(parts(0)), h: CHAT.h };
   const knobs: Rect = { x: Math.max(12, keep.l), y: H - 10 - KNOB.size, w: KNOB.size, h: KNOB.size };
+  const feedback: Rect | null = shape === 'wide' ? { x: W - Math.max(12, keep.r) - KNOB.size, y: knobs.y, w: KNOB.size, h: KNOB.size } : null;
   const after = { x: knobs.x + knobs.w + 10, y: knobs.y + (KNOB.size - CLOCK.above.h) / 2, ...CLOCK.above, small: false };
   const above = { x: knobs.x, y: knobs.y - 8 - CLOCK.above.h, ...CLOCK.above, small: false };
   const beside = { x: chat.x + chat.w + 8, y: chat.y + (chat.h - CLOCK.beside.h) / 2, ...CLOCK.beside, small: true };
-  return { shape, chat, chatParts: parts(0), knobs, clocks: fit.clock ? [after, above, beside] : [] };
+  return { shape, chat, chatParts: parts(0), knobs, feedback, clocks: fit.clock ? [after, above, beside] : [] };
 }
 
 /** Your own line at the table: where, in full (two lines under your nertz pile) or as one line, and which end of its place it is written from. */
@@ -801,7 +804,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
   const knobsR = at.knobs.x + at.knobs.w;
   // The end of what stands from the left in the row of the menu's button: the button, and the clock where it is in line after it.
   const rowR = clock && clock.y < at.knobs.y + at.knobs.h && clock.y + clock.h > at.knobs.y ? clock.x + clock.w : knobsR;
-  const right = Math.min(trayX, W - keep.r) - 8; // nothing of this goes further right
+  const right = Math.min(trayX, at.feedback?.x ?? W, W - keep.r) - 8; // nothing of this goes further right
   const boxR = h.x + 7 * ow + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const padBase = base + stockDrop(ow); // the bottom of the stock's lowest card
   /** "I'm stuck" and the vote: the first arrangement that fits. */
@@ -1093,8 +1096,10 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const gapT = ow * TALL.gap;
   const trayIn = tall ? clamp(W - (handX + 4 * ow + 3 * gapT) - 8, tw * 0.3, tw * TRAY_IN) : clamp(W - (handX + OWN_UNITS * ow) - 18, tw * 0.3, tw * TRAY_IN);
   const trayTop = mine ? ownTop : H - 12 - fh * 2.6;
-  // (Upright: beside the work piles, and no lower: the stock and the waste are under it.)
-  const tray: Rect = { x: W - trayIn, y: trayTop, w: 2 * trayIn, h: (tall && mine ? rowY - 8 : H - 10) - trayTop };
+  const at = corners(W, fullH, keep, fit);
+  // (Upright: beside the work piles, and no lower: the stock and the waste are under it. Otherwise down to the
+  // bottom, or to the way to feedback where that stands under it.)
+  const tray: Rect = { x: W - trayIn, y: trayTop, w: 2 * trayIn, h: (tall && mine ? rowY - 8 : at.feedback ? at.feedback.y - 8 : H - 10) - trayTop };
   const trayH = tray.h;
   // Dropping a finished pile is not a precision job: anywhere from a little short of the tray to past the edge of the screen.
   const trayHit: Rect = { x: tray.x - fw * 0.9, y: tray.y - fh * 0.4, w: fw * 0.9 + tray.w + W, h: tray.h + fh * 0.4 + H };
@@ -1132,7 +1137,6 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     return onCanvas(stage, 'tray') ? 0 : Math.max(0, ownTop - 6 - Math.max(cy + u, ...over));
   });
   // What stands by it is placed first, and the work piles fan down as far as that leaves them room.
-  const at = corners(W, fullH, keep, fit);
   // The clock stands in the first of its places where nothing of the table is (the felt, someone's hand and name, your
   // own cards), and that leaves your line and the pills as whole as they are without it: it gives way, not they.
   const taken = [...opponents.map((o) => ({ x: o.box.x, y: o.box.y - TAG_H, w: o.box.w, h: o.box.h + TAG_H })), ...(mine ? [{ x: handX, y: ownTop - 6, w: OWN_UNITS * ow, h: H - ownTop + 6 }] : [])];

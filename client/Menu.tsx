@@ -1,7 +1,8 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: your settings at the top, under their
-// own head, and across the bottom what there is to do, a round button each (its name a tooltip): sound on or off, the table's actions (which are
-// open to you, and what each does, is actions.ts), the way to feedback, which opens in the same place, and for an admin
-// how much the game is played (Usage.tsx), likewise.
+// own head, and across the bottom what there is to do, a button each (its name a tooltip), in two lines: the table's
+// actions (which are there, open or coming, and what each does, is actions.ts), and under them sound on or off, for an
+// admin how much the game is played (Usage.tsx), which opens in the same place, where feedback has no button of its own
+// the way to it, likewise, and at the far end leaving the table.
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
@@ -44,44 +45,55 @@ export function Back({ onClick }: { onClick: () => void }) {
  * it); anything else puts it away (`onDone`) or opens feedback (`onFeedback`), or for an admin how much the game is
  * played (`onUsage`, none for anyone else). One that cannot be undone puts it away and asks (`Sure`).
  */
-export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone, children }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; onFeedback: () => void; onUsage?: () => void; onDone: () => void; children: ReactNode }) {
+export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone, children }: { room: RoomView | null | undefined; actions: TableAction[]; muted: boolean; onMute: () => void; onFeedback?: () => void; onUsage?: () => void; onDone: () => void; children: ReactNode }) {
+  const act = (a: TableAction) => {
+    const Icon = ICONS[a.id];
+    return (
+      <button
+        key={a.id}
+        type="button"
+        className={a.on ? 'icon on' : 'icon'}
+        aria-pressed={a.on}
+        aria-disabled={a.coming}
+        aria-label={a.tally ? `${a.label} ${a.tally}` : a.label}
+        data-tip={a.label}
+        onClick={(e) => {
+          e.currentTarget.blur(); // keep Space for the cards
+          if (a.coming) return; // (not yet: it stays, and so does the menu; its name is still its tip)
+          if (room) press(a.id, room);
+          if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
+        }}
+      >
+        <Icon />
+        {a.tally && <small>{a.tally}</small>}
+      </button>
+    );
+  };
+  const table = room ? actions.filter((a) => a.id !== 'leave') : [];
+  const leave = room && actions.find((a) => a.id === 'leave');
   return (
     <section className="slip menu" id="menu" aria-label="Menu">
       {children}
       <div className="acts">
-        <button type="button" className="icon" aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} data-tip={muted ? 'Unmute' : 'Mute'} onClick={(e) => (e.currentTarget.blur(), onMute())}>
-          <Speaker off={muted} />
-        </button>
-        {room &&
-          actions.map((a) => {
-            const Icon = ICONS[a.id];
-            return (
-              <button
-                key={a.id}
-                type="button"
-                className={a.on ? 'icon on' : 'icon'}
-                aria-pressed={a.on}
-                aria-label={a.tally ? `${a.label} ${a.tally}` : a.label}
-                data-tip={a.label}
-                onClick={(e) => {
-                  e.currentTarget.blur(); // keep Space for the cards
-                  press(a.id, room);
-                  if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
-                }}
-              >
-                <Icon />
-                {a.tally && <small>{a.tally}</small>}
-              </button>
-            );
-          })}
-        {onUsage && (
-          <button type="button" className="icon" aria-label="Played" data-tip="Played" onClick={onUsage}>
-            <Chart />
+        {table.length > 0 && <div className="line">{table.map(act)}</div>}
+        <div className="line">
+          <button type="button" className="icon" aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} data-tip={muted ? 'Unmute' : 'Mute'} onClick={(e) => (e.currentTarget.blur(), onMute())}>
+            <Speaker off={muted} />
           </button>
-        )}
-        <button type="button" className="icon" aria-label="Feedback" data-tip="Feedback" onClick={onFeedback}>
-          <Bug />
-        </button>
+          {onUsage && (
+            <button type="button" className="icon" aria-label="Played" data-tip="Played" onClick={onUsage}>
+              <Chart />
+            </button>
+          )}
+          <span className="end">
+            {onFeedback && (
+              <button type="button" className="icon" aria-label="Feedback" data-tip="Feedback" onClick={onFeedback}>
+                <Bug />
+              </button>
+            )}
+            {leave && act(leave)}
+          </span>
+        </div>
       </div>
     </section>
   );

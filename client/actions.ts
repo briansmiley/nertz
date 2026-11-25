@@ -74,16 +74,34 @@ export interface TableAction {
   on?: boolean;
   /** It cannot be undone, so it is asked first (`Sure`). */
   sure?: boolean;
+  /** Not yet open: it opens once the round is live. Shown, faded, and pressing it does nothing. */
+  coming?: boolean;
 }
 
-/** The actions open to you now, in the order the menu lists them. Leaving is always one. */
+/** The action, if it is open to you now (there, and not just coming). */
+export const openAction = (room: RoomView, id: ActionId): TableAction | undefined => tableActions(room).find((t) => t.id === id && !t.coming);
+
+/**
+ * Pause and the vote are coming to you: from the deal until the round is live, while you are dealt in and have a say
+ * (the same say `ballot` asks of you once it is live).
+ */
+function roundComing(room: RoomView): boolean {
+  const g = room.game;
+  return room.phase === 'playing' && !!g && !hasOpened(g) && room.seat !== null && inRound(g, room.seat) && seatedPeople(room.players).includes(room.seat);
+}
+
+/**
+ * The table's actions as the menu lists them, in its order. Each is open to you now, or coming (in the list, not yet to be
+ * pressed: Pause and End round before Start), or not there. Leaving is always one, and open.
+ */
 export function tableActions(room: RoomView): TableAction[] {
   const vote = ballot(room);
   const up = standing(room);
+  const coming = roundComing(room);
   return [
-    canPause(room) && { id: 'pause' as const, label: 'Pause' },
+    canPause(room) ? { id: 'pause' as const, label: 'Pause' } : coming && { id: 'pause' as const, label: 'Pause', coming: true },
     canResume(room) && { id: 'resume' as const, label: 'Resume game' },
-    vote && { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine },
+    vote ? { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine } : coming && { id: 'vote' as const, label: 'End round', coming: true },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: true },
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
@@ -94,8 +112,8 @@ export function tableActions(room: RoomView): TableAction[] {
 
 /** What the pause key presses now: Pause or Resume game, whichever the menu has open to you; neither, nothing. */
 export function pauseKeyAction(room: RoomView | null | undefined): 'pause' | 'resume' | null {
-  for (const a of room ? tableActions(room) : []) if (a.id === 'pause' || a.id === 'resume') return a.id;
-  return null;
+  if (!room) return null;
+  return openAction(room, 'pause') ? 'pause' : openAction(room, 'resume') ? 'resume' : null;
 }
 
 /** Does it. (Each is refused by the server too, by its own rule, if the table has changed since.) */
@@ -127,9 +145,9 @@ function ask(id: ActionId | null): void {
   for (const l of askers) l();
 }
 
-/** Pressed: done at once, or asked first if it cannot be undone. Not open to you now: nothing. */
+/** Pressed: done at once, or asked first if it cannot be undone. Not open to you now (coming, or not there): nothing. */
 export function press(id: ActionId, room: RoomView): void {
-  const a = tableActions(room).find((t) => t.id === id);
+  const a = openAction(room, id);
   if (!a) return;
   if (a.sure) ask(id);
   else perform(id, room);
@@ -139,7 +157,7 @@ export function press(id: ActionId, room: RoomView): void {
 export function answer(yes: boolean, room: RoomView): void {
   const id = asked;
   ask(null);
-  if (yes && id && tableActions(room).some((t) => t.id === id)) perform(id, room);
+  if (yes && id && openAction(room, id)) perform(id, room);
 }
 
 /** The action being asked about, while it is still open to you (once the table has moved on from it, the question goes too). */
@@ -148,5 +166,5 @@ export function useAsked(room: RoomView): TableAction | null {
     (l) => (askers.add(l), () => askers.delete(l)),
     () => asked,
   );
-  return (id && tableActions(room).find((t) => t.id === id)) || null;
+  return (id && openAction(room, id)) || null;
 }
