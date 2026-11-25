@@ -303,7 +303,7 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
  */
 function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const mine = who.id === room.me;
-  const says = mine ? 'Stand up: watch without playing' : `Stand ${who.name} up: they watch without playing`;
+  const says = mine ? 'Stand up (spectate)' : `Stand ${who.name} up (spectate)`;
   const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];
   const [step, setStep] = useState<'ask' | 'pick' | null>(null);
   const root = useRef<HTMLSpanElement>(null);
