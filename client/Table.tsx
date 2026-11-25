@@ -764,7 +764,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const tapToMove = room.settings.tapToMove;
   const scene: Scene = { game, you, L, byId, live: stage === 'live', playingOut, frozen, tapToMove, waiting: must.slot, plays: playable };
 
-  /** A click on the stock, or Space: one draw (or the waste turned back over). The server deals its group, on its own time. */
+  /** A click on the stock, or Space: one draw (or the waste turned back over). Its group comes in one step and is dealt out here, on the round's clock (net.ts). */
   const dealGroup = useCallback(() => send({ k: 'draw' }), []);
   useEffect(() => {
     if (frozen) return;

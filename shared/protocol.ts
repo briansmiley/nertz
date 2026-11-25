@@ -329,9 +329,10 @@ export const HEAR_MS = 1000;
 /** How long the deal at the start of a round takes. Nobody can play, or see a face, until it is over. */
 export const DEAL_MS = 3000;
 /**
- * Dealing from the stock takes time, as it does with real cards: one draw deals a group of three, and the server
- * takes the cards off the stock one at a time, this far apart, and turns the group up this long after the third. So
- * a draw takes half a second, and the next can start once its group is up.
+ * Dealing from the stock takes time, as it does with real cards: one draw deals a group of three, and its cards
+ * come off the stock one at a time, this far apart, the group turning up this long after the third. So a draw takes
+ * half a second, and the next can start once its group is up. The server puts the group on the waste in one step and
+ * holds everyone to that time by the round's clock (`PlayerState.draw`); each window deals the cards out on its own.
  */
 export const STOCK_CARD_MS = 170;
 /** The dealer's "1, 2, 3, NERTZ!": one beat per number, and play opens on the word. */

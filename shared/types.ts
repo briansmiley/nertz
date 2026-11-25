@@ -33,16 +33,16 @@ export interface PlayerState {
   work: WorkPile[];
   /** Face-down. */
   stock: AnyCard[];
-  /** Face-up, except the top `dealt` cards; only the top is playable, and only when `dealt` is 0. */
+  /** Face-up; only the top is playable, and not while a group is in flight onto it (`draw`). */
   waste: AnyCard[];
   /**
-   * The group in flight: how many cards of a `draw` lie face-down on top of the
-   * waste, held over the stock (0: no draw under way). The server deals them
-   * one at a time, STOCK_CARD_MS apart (`dealOn`), and one step after the
-   * third (or the last card of the stock) the group turns up together and this
-   * is 0 again.
+   * The group in flight, or null: no draw under way. A `draw` puts its `n` cards on top of the waste in one step and
+   * says when it was made (`at`, on the round's clock: `RoomView.clock`). They count as dealt one at a time,
+   * STOCK_CARD_MS apart, and turned up together one step after the last: so the draw is over, and its top card can be
+   * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Each window deals the cards out
+   * on its own clock.
    */
-  dealt: number;
+  draw: { n: number; at: number } | null;
   stuck: boolean;
   /** Has voted to end the round where it stands (see `RoundEnd`). */
   ending?: boolean;
@@ -136,8 +136,8 @@ export type Intent =
    */
   | { k: 'move'; cardId: string; count: number; to: PileRef }
   /**
-   * A group of three off the stock: the first card at once, the rest on the
-   * server's steps (`PlayerState.dealt`). Refused while a group is in flight.
+   * A group of three off the stock, all at once (`PlayerState.draw`). Refused
+   * while a group is in flight.
    * On an empty stock: turn the waste back over into the stock.
    */
   | { k: 'draw' }
