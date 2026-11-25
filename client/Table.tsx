@@ -657,6 +657,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const mine = hands.find((p) => p.seat === you);
   /** Nertz has been called: the round is in grace, or over by the call. */
   const called = calledBy(game) !== null;
+  /** The round ended by everyone voting to end it. */
+  const agreed = game.status.at === 'over' && game.status.end.by === 'vote';
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
   const out = wentOut(game);
   // Aid for trying things out (`testing`): Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
@@ -1138,10 +1140,10 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       {/* (Not while the pile is in hand, on its way: that is what the notice asks for.) */}
       <Opening room={room} at={{ x: L.felt.cx, y: L.felt.cy }} onSeats={seatsOpen ? undefined : () => setSeating(true)} />
 
-      {/* And for everyone, across the middle of the table: who it was. It comes, stands a moment, and is gone before the piles are washed. */}
-      {called && stage !== 'sheet' && (
+      {/* And for everyone, across the middle of the table: who it was, or that the round was ended by agreement. It comes, stands a moment, and is gone before the piles are washed. */}
+      {(called || agreed) && stage !== 'sheet' && (
         <div key={`got${room.round}`} className="gotnertz" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, fontSize: clamp(L.middle.w * 0.075, 22, 76) }}>
-          <span>{andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!</span>
+          <span>{agreed ? 'Round ended by agreement' : `${andList(out.map((seat) => (seat === you ? 'You' : name(seat))))} got Nertz!`}</span>
         </div>
       )}
       {/* Snipes you were in (who by, or whom) and the reshuffle of a table that was stuck: across the middle, each there and gone in a second or so; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
