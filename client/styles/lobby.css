@@ -191,7 +191,7 @@
 
 @media (min-width: 640px) {
   /* (The lobby's sheet is wider for the three columns.) */
-  .pad:has(> .seats) {
+  .pad.lobby {
     width: min(100%, 38rem);
   }
 }
@@ -337,7 +337,7 @@ button.code.copy small {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 2px solid #fffdf6;
+  border: 2px solid var(--card);
   border-radius: 99px;
   box-shadow: 0 0 0 1.5px var(--ink);
   cursor: pointer;
@@ -397,7 +397,7 @@ button.code.copy small {
 }
 
 /* The lobby's main button keeps one height, whether it can deal yet or is waiting for a second player. */
-.pad:has(> .seats) > .go {
+.pad.lobby > .go {
   line-height: 1.38rem;
 }
 
@@ -471,8 +471,8 @@ button.code.copy small {
 
 /* A phone on its side: the head in one band, so the seats have the height. The table's code, you beside it, then the
    tools; on the sheet over the felt, Done after them (it would be under the fold at the foot). */
-@media (orientation: landscape) and (max-height: 500px) {
-  .pad:has(> .seats) {
+@media (orientation: landscape) and (max-height: 499px) {
+  .pad.lobby {
     width: min(100%, 48rem);
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -481,41 +481,41 @@ button.code.copy small {
     padding-bottom: 1.1rem;
   }
 
-  .pad:has(> .seats) > * {
+  .pad.lobby > * {
     grid-column: 1 / -1;
   }
 
-  .pad:has(> .seats) > h2 {
+  .pad.lobby > h2 {
     grid-area: 1 / 1;
     font-size: 1.4rem;
   }
 
-  .pad:has(> .seats) > .top:not(.tools) {
+  .pad.lobby > .top:not(.tools) {
     grid-area: 1 / 2;
     margin: 0;
   }
 
-  .pad:has(> .seats) > .tools.top {
+  .pad.lobby > .tools.top {
     position: static;
     grid-area: 1 / 3;
   }
 
   /* (At the top of the screen, a slip opened from your own row goes under it too, as the tools' do.) */
-  .pad:has(> .seats) > .top .pop {
+  .pad.lobby > .top .pop {
     top: calc(100% + 8px);
     bottom: auto;
   }
 
-  .over > .pad:has(> .seats) {
+  .over > .pad.lobby {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
 
-  .over > .pad:has(> .seats) > .go {
+  .over > .pad.lobby > .go {
     grid-area: 1 / 4;
     padding: 0.45rem 1.2rem 0.55rem;
   }
 
-  .solo.over:has(> .pad > .seats) {
+  .solo.over.lobby {
     padding: 0.6rem;
   }
 }

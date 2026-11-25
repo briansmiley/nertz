@@ -46,7 +46,7 @@
   border-radius: 8px;
   font: 600 0.85rem/1.2 var(--ui);
   color: var(--ink);
-  background: #fffdf6;
+  background: var(--card);
   cursor: pointer;
 }
 
@@ -72,7 +72,7 @@
   border-radius: 8px;
   font: 500 0.95rem/1.35 var(--ui);
   color: var(--ink);
-  background: #fffdf6;
+  background: var(--card);
   resize: vertical;
 }
 
@@ -192,7 +192,7 @@
 }
 
 /* (On its side what the keyboard leaves is a strip: the words get all of it they can.) */
-@media (orientation: landscape) and (max-height: 500px) {
+@media (orientation: landscape) and (max-height: 499px) {
   .slip.feedback.writing {
     padding-top: max(0.3rem, env(safe-area-inset-top));
     padding-bottom: calc(0.3rem + var(--under, 0px));

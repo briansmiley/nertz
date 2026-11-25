@@ -91,7 +91,7 @@ describe('the connection', () => {
     net.create('Ada');
     expect(sockets()).toBe(1);
     expect(last().url).toBe('wss://nertz.example/ws');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, rejoining: false });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
     expect(last().sent).toEqual([]); // nothing goes before it is open
 
     last().open();
@@ -156,7 +156,7 @@ describe('the connection', () => {
     const net = await reload();
     net.join('ABCD', 'Ada');
     last().closed(); // never opened
-    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', rejoining: false });
+    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…' });
     const waits: number[] = [];
     for (let i = 0; i < 7; i++) {
       const n = sockets();
@@ -227,7 +227,7 @@ describe('the connection', () => {
     old.closed(1005);
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, rejoining: false });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
   });
 
   it('a socket that opens only after the window has moved on says nothing, on it or on the socket that took its place', async () => {
@@ -366,11 +366,19 @@ describe("this window's session", () => {
     const before = sockets();
     const net = await reload();
     expect(sockets()).toBe(before + 1);
-    expect(net.current()).toMatchObject({ status: 'connecting', rejoining: true });
+    expect(net.current()).toMatchObject({ status: 'rejoining' });
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
     last().deliver(at('ABCD'));
-    expect(net.current()).toMatchObject({ status: 'online', rejoining: false });
+    expect(net.current()).toMatchObject({ status: 'online' });
+  });
+
+  it('names the table in the address beside whatever else is there (a set-up deal), and takes only the table out when it goes', async () => {
+    page.search = '?deal=aces';
+    const net = await seated();
+    expect(address()).toBe('?deal=aces&room=ABCD');
+    net.leave();
+    expect(address()).toBe('?deal=aces');
   });
 
   it.each([
@@ -380,7 +388,7 @@ describe("this window's session", () => {
     vi.useFakeTimers();
     const net = await seated();
     last().closed(CLOSE_OVER, reason);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason, rejoining: false });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason });
     expect(address()).toBe('');
     const before = sockets();
     vi.advanceTimersByTime(10_000);
@@ -393,7 +401,7 @@ describe("this window's session", () => {
     const net = await seated();
     last().closed(CLOSE_OVER, 'You were removed from the table by whoever deals.');
     net.join('ABCD', 'Ada');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, rejoining: false });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
     last().deliver(at('ABCD'));
@@ -423,7 +431,7 @@ describe("this window's session", () => {
     net.leave();
     expect(last().sent.at(-1)).toEqual({ t: 'leave' });
     expect(last().shut).toBe(true);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, rejoining: false });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
     expect(address()).toBe('');
     const before = sockets();
     await reload();
@@ -436,7 +444,7 @@ describe("this window's session", () => {
     last().closed();
     expect(net.current().status).toBe('reconnecting');
     net.leave();
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, rejoining: false });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
     net.join('WXYZ', 'Ada');
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);

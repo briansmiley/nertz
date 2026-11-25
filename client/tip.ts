@@ -16,6 +16,7 @@
  *
  * An element with an empty `data-tip` has nothing to say, and keeps a tip of something around it from showing.
  */
+import { clamp } from '../shared/numbers';
 
 export type Box = { left: number; top: number; width: number; height: number };
 type Size = { width: number; height: number };
@@ -44,7 +45,6 @@ export function place(anchor: Box, tip: Size, view: Box, up = false): { x: numbe
   const fitsBelow = below + tip.height <= bottom - MARGIN;
   const fitsOver = over >= view.top + MARGIN;
   const above = up ? fitsOver || !fitsBelow : !fitsBelow && (fitsOver || anchor.top - view.top > bottom - anchor.top - anchor.height);
-  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
   return {
     x: clamp(anchor.left + anchor.width / 2 - tip.width / 2, view.left + MARGIN, view.left + view.width - MARGIN - tip.width),
     y: clamp(above ? over : below, view.top + MARGIN, bottom - MARGIN - tip.height),

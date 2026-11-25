@@ -158,7 +158,7 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
                     {p.ready ? (
                       <b className="tick">✓</b>
                     ) : (
-                      <span className="dots" aria-hidden="true">
+                      <span className="waiting-dots" aria-hidden="true">
                         <i />
                         <i />
                         <i />

@@ -9,7 +9,7 @@
 // reports until the snapshot that ends the hold lets it land or go home.
 import { animate, motion, useMotionValue, useMotionValueEvent, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reburiedSince, reshuffledSince, wentOut } from '../shared/engine';
+import { beforeStart, calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reburiedSince, reshuffledSince, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
 import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
@@ -31,9 +31,11 @@ import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
+import { usePicture } from './picture';
 import { Name } from './Host';
 import { calm, lookOf, seenLook, usePrefs } from './prefs';
 import { beaten, hush, sniped as snipeSound, stage as stageSound } from './sound';
+import { clamp } from '../shared/numbers';
 
 // Durations are asked for at the moment of use: reduced motion (`calm`, see prefs.ts) can be switched while playing.
 const MOVE = () => ({ duration: calm() ? 0 : 0.15, ease: 'easeOut' }) as const;
@@ -90,7 +92,6 @@ const REAL_AFTER = { card: 600, ace: 150, fade: 800 } as const;
 const GLIDE_MS = 80;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
-const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 /** "A", "A and B", "A, B and C". */
 const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
@@ -400,18 +401,18 @@ const TAG_SIDE_W = 210;
 const box0 = (r: Rect): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h });
 const box = (r: Rect & { rot?: number }): CSSProperties => ({ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(r.w, r.h) * 0.08, rotate: r.rot ? `${r.rot}deg` : undefined });
 
+/** Beside a name: the picture they put up, ringed in their colour; or, for none (or one that will not load), their colour's chip. */
+function PictureBy({ picture, seat }: { picture: string | undefined; seat: number }) {
+  const shown = usePicture(picture);
+  if (shown.src) return <img className="face" src={shown.src} alt="" style={{ borderColor: backColour(seat) }} onError={shown.onError} />;
+  return <i className="chip" style={{ background: backColour(seat) }} />;
+}
+
 /**
  * For whoever deals, someone else's name at the table, in the middle of a round too: pressed, the eye and the × beside
  * it, as on the score sheet. The eye stands them up (their cards lie there for the round, and they watch); the × sends
  * them away.
  */
-/** Beside a name: the picture they put up, ringed in their colour; or, for none (or one that will not load), their colour's chip. */
-function PictureBy({ picture, seat }: { picture: string | undefined; seat: number }) {
-  const [broken, setBroken] = useState<string | null>(null);
-  if (picture && broken !== picture) return <img className="face" src={picture} alt="" style={{ borderColor: backColour(seat) }} onError={() => setBroken(picture)} />;
-  return <i className="chip" style={{ background: backColour(seat) }} />;
-}
-
 function Hosting({ who, children }: { who: PlayerView; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   /** The × asks twice: mid-round, sending someone away cannot be taken back. */
@@ -447,7 +448,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const game = room.game!;
   const [seating, setSeating] = useState(false);
   const unseat = useCallback(() => setSeating(false), []);
-  const unplayed = game.status.at === 'dealing' || game.status.at === 'ready';
+  const unplayed = beforeStart(game);
   const dealer = room.players.find((p) => p.id === room.me)?.isHost === true;
   const seatsOpen = seating && unplayed && dealer;
   useEffect(() => {
@@ -697,11 +698,11 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     return () => clearTimeout(t);
   }, [replay, replaying]);
   const dealing = game.status.at === 'dealing' || replaying;
-  /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over). (A card already in hand may still land during grace.) */
+  /** The round is paused (the card over the table says by whom), and the table is not on its score sheet. */
   const paused = !!room.paused && !results;
   /** The line to the table is up: until it is, the card over a paused table offers nothing (an update: the table is on its way back). */
   const online = useNet().status === 'online';
-  /** The key that unpauses, named on the card over a paused table (none on a phone). */
+  /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over), or it is paused. (A card already in hand may still land during grace.) */
   const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
   useEffect(() => {

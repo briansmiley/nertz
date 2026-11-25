@@ -8,6 +8,7 @@ import { deleteAccount, follow, rehandle, rename, repicture, setPrivate, signOut
 import { showPage } from './address';
 import { Dropdown } from './Dropdown';
 import { PictureCrop } from './PictureCrop';
+import { usePicture } from './picture';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
 const written = (n: number, places = 0): string => {
@@ -145,7 +146,6 @@ function recordOf(stats: Stats): Figure[] {
   ];
 }
 
-/** You against someone, as one figure: the rounds you finished ahead of them, and behind (none at all: a dash). */
 /** Yours against theirs, yours in green and theirs in red; a dash when you have played no rounds together. */
 const pair = (v: Versus, yours: number, theirs: number): React.ReactNode =>
   v.rounds ? (
@@ -155,6 +155,7 @@ const pair = (v: Versus, yours: number, theirs: number): React.ReactNode =>
   ) : (
     '–'
   );
+/** You against someone, as one figure: the rounds you finished ahead of them, and behind (none at all: a dash). */
 const winLoss = (v: Versus): React.ReactNode => pair(v, v.ahead, v.behind);
 
 /** Yours against someone, as figures: the rounds you both played, how often each of you finished ahead, your points against theirs over them, and your snipes on them against theirs on you. */
@@ -219,18 +220,27 @@ export function Theirs({ handle, head }: { handle: string; head?: React.ReactNod
 }
 
 /**
+ * A switch turned at once, and back if the server did not take it: `is` is what the server says now, and `ask` asks it
+ * to turn. While it is asked, the switch shows what was asked for; once answered, what the server says again.
+ */
+function useSwitch(is: boolean, ask: (on: boolean) => Promise<unknown>): [on: boolean, turn: () => void] {
+  const [asked, setAsked] = useState<boolean | null>(null);
+  const on = asked ?? is;
+  const turn = (): void => {
+    setAsked(!on);
+    void ask(!on).then(() => setAsked(null));
+  };
+  return [on, turn];
+}
+
+/**
  * Whoever's page `handle` is, followed or unfollowed: turned at once, and back if the server did not take it. Written
  * out on their page; at a table (`small`), a figure beside their name. Nothing until who you follow is known.
  */
 export function Follow({ handle, name, small }: { handle: string; name: string; small?: boolean }) {
   const following = useFollowing();
-  const [asked, setAsked] = useState<boolean | null>(null);
+  const [on, turn] = useSwitch(!!following?.some((f) => f.handle === handle), (on) => follow(handle, on));
   if (!following) return null;
-  const on = asked ?? following.some((f) => f.handle === handle);
-  const turn = (): void => {
-    setAsked(!on);
-    void follow(handle, !on).then(() => setAsked(null));
-  };
   if (!small)
     return (
       <button type="button" className="follow" onClick={turn}>
@@ -311,10 +321,10 @@ export function FollowingList({ head }: { head?: React.ReactNode }) {
 
 /** Their picture: the one they put up, else their initial (never Google's: only they see that one). */
 function TheirPicture({ picture, name }: { picture: string | null; name: string | null }) {
-  const [broken, setBroken] = useState<string | null>(null);
+  const shown = usePicture(picture);
   return (
     <span className="theirpicture" aria-hidden="true">
-      {picture && broken !== picture ? <img src={picture} alt="" onError={() => setBroken(picture)} /> : <i>{name ? [...name][0]!.toUpperCase() : ''}</i>}
+      {shown.src ? <img src={shown.src} alt="" onError={shown.onError} /> : <i>{name ? [...name][0]!.toUpperCase() : ''}</i>}
     </span>
   );
 }
@@ -434,10 +444,9 @@ function YourHandle({ account }: { account: Account }) {
  */
 function YourPicture({ account }: { account: Account }) {
   const [busy, setBusy] = useState(false);
-  const [broken, setBroken] = useState<string | null>(null);
   /** A picture chosen, being fitted to the circle before it is put up. */
   const [fitting, setFitting] = useState<File | null>(null);
-  const shown = account.picture ?? account.image;
+  const shown = usePicture(account.picture ?? account.image);
   const put = async (file: Blob | null, crop?: Crop): Promise<void> => {
     setBusy(true);
     await repicture(file, crop);
@@ -447,7 +456,7 @@ function YourPicture({ account }: { account: Account }) {
     <span className={`yourpicture${busy ? ' busy' : ''}`}>
       <label data-tip={account.picture ? 'Change picture' : 'Put up a picture'}>
         <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} aria-label="Your picture" onChange={(e) => (setFitting(e.target.files?.[0] ?? null), (e.target.value = ''))} />
-        {shown && broken !== shown ? <img src={shown} alt="" referrerPolicy="no-referrer" onError={() => setBroken(shown)} /> : <i aria-hidden="true">{account.name ? [...account.name][0]!.toUpperCase() : ''}</i>}
+        {shown.src ? <img src={shown.src} alt="" referrerPolicy="no-referrer" onError={shown.onError} /> : <i aria-hidden="true">{account.name ? [...account.name][0]!.toUpperCase() : ''}</i>}
         <span className="edit" aria-hidden="true">
           <svg viewBox="0 0 24 24">
             <path d="M4 20h4L19 9l-4-4L4 16z" />
@@ -469,12 +478,7 @@ function YourPicture({ account }: { account: Account }) {
 
 /** Whether your page is yours alone: a switch, turned at once, and back if the server did not take it. */
 function Private({ account }: { account: Account }) {
-  const [asked, setAsked] = useState<boolean | null>(null);
-  const on = asked ?? account.private;
-  const turn = (): void => {
-    setAsked(!on);
-    void setPrivate(!on).then(() => setAsked(null));
-  };
+  const [on, turn] = useSwitch(account.private, setPrivate);
   return (
     <button type="button" role="switch" aria-checked={on} className="private" data-tip="Only you see your page" onClick={turn}>
       <span className="lever" aria-hidden="true" />

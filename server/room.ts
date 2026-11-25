@@ -9,7 +9,7 @@
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
 import { randomUUID } from 'node:crypto';
-import { applyIntent, deal, expireGrace, finishDeal, inRound, isLive, landed, landsAt, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
+import { applyIntent, beforeStart, deal, expireGrace, finishDeal, inRound, isLive, landed, landsAt, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { Account, BotLevel, GameState, Intent, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
 import { botAt, chooseIntent, freshMemory, type BotMemory } from './bot';
@@ -21,16 +21,16 @@ import { guard } from './guard';
 import type { RoundRecord } from './rounds';
 
 /**
- * Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is and
- * whether it is theirs alone, and the picture they put up. As it was when they joined, or since changed (`reaccount`).
- */
-/**
  * Whether the aids for trying things out are on: set-up deals (`?deal=`) and a bot going out on demand (Shift+N). On in
  * local development (any NODE_ENV but production) and wherever `TESTING=1` is set (previews); off on staging and
  * production. Read each time, so that a test can set it. Every window is told, in `RoomView.testing`.
  */
 export const testing = (env: NodeJS.ProcessEnv = process.env): boolean => env.TESTING === '1' || env.NODE_ENV !== 'production';
 
+/**
+ * Who someone at a table is signed in as, as far as a room cares: who (never sent to anyone), where their page is and
+ * whether it is theirs alone, and the picture they put up. As it was when they joined, or since changed (`reaccount`).
+ */
 export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture' | 'private'>;
 /** Only what a room keeps, of whatever it is handed. */
 const kept = ({ id, handle, picture, private: hidden }: SignedAs): SignedAs => ({ id, handle, picture, private: hidden });
@@ -136,7 +136,13 @@ const BOT_CONN: Conn = { send: () => {}, close: () => {} };
 const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
 /** Which `Kept` this server writes and reads. Whatever changes what is in one (a field of the room, of a player, of the engine's `GameState`) puts it up by one: a table kept by a server from before is then not brought back. */
-const KEPT = 2;
+export const KEPT = 2;
+/**
+ * The shape of a `Kept` of each version: its fingerprint, as server/room.test.ts takes it (every path in one, and the
+ * kind of value there). That test fails when a table's shape is not the one written here for `KEPT`: then put `KEPT`
+ * up by one and add the new shape under it. Never change one already here.
+ */
+export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44' };
 
 /** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
 interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {
@@ -495,7 +501,7 @@ export class Room {
       social: this.social.kept(),
       players: this.players.map(({ conn, ack, dirty, drags, bot, ...p }) => ({ ...p, ...(bot ? { bot: bot.level } : {}) })),
       host: this.host?.id ?? null,
-      played: this.played === null ? null : this.played + (this.playingSince === null ? 0 : Date.now() - this.playingSince),
+      played: this.played === null ? null : this.playedMs(),
     };
   }
 
@@ -924,8 +930,7 @@ export class Room {
 
   /** Are the cards on the table dealt, and none of them played: the deal, and the wait for the dealer's Start? */
   private get unplayed(): boolean {
-    const stage = this.state?.status.at;
-    return this.phase === 'playing' && (stage === 'dealing' || stage === 'ready');
+    return this.phase === 'playing' && !!this.state && beforeStart(this.state);
   }
 
   /** Is there room for one more without a seat? If not, someone without one whose window is long gone gives up their place (never the host). */
@@ -1297,7 +1302,7 @@ export class Room {
     const game = this.state && viewFor(this.state, at(you));
     const dealer = this.dealer;
     const hand = (p: Player) => (this.inRound(p) ? game?.players.find((g) => g.seat === p.seat) : undefined);
-    const dealt = game?.status.at === 'dealing' || game?.status.at === 'ready';
+    const dealt = !!game && beforeStart(game);
     return {
       code: this.code,
       phase: this.phase,

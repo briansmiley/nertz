@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +9,7 @@ import { CLOSE_OVER, CLOSE_UPDATE, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, ST
 import { downs, faceUps, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
-import { Room, testing, type Conn } from './room';
+import { KEPT, KEPT_SHAPES, Room, testing, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, rows, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
@@ -2627,6 +2627,34 @@ describe('a table kept over a restart of the server', () => {
     expect(hand(back.game!, 0).draw).toBeNull(); // a's group is down: its time came once the clock ran again
     expect(hand(back.game!, 2)).not.toEqual(hand(was, 2)); // and the bot plays on
     back.close();
+  });
+
+  it('keeps a table in the shape its version says: a change to what is kept, without `KEPT` put up for it, fails here', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'chat', text: 'hello' });
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    sendIntent(room, b, 0, { k: 'end', on: true }); // a round over, for `lastRound`
+    startRound(room, a);
+    sendIntent(room, a, 1, { k: 'draw' }); // a group in flight
+    sendIntent(room, b, 1, hold(workTop(room.game!, 1, 0))); // a card in hand
+    vi.advanceTimersByTime(1000);
+    /** Every path in `v` and the kind of value at it: an array's items as one, and a key that is a number as any number. */
+    const paths = (v: unknown, at: string, into: Set<string>): Set<string> => {
+      into.add(`${at}:${v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v}`);
+      if (Array.isArray(v)) for (const item of v) paths(item, `${at}[]`, into);
+      else if (v && typeof v === 'object') for (const [k, item] of Object.entries(v)) paths(item, `${at}.${/^\d+$/.test(k) ? '#' : k}`, into);
+      return into;
+    };
+    const shape = createHash('sha256')
+      .update([...paths(wire(room.kept()), '', new Set())].sort().join('\n'))
+      .digest('hex')
+      .slice(0, 12);
+    expect(shape, `what a table keeps has changed: put KEPT up to ${KEPT + 1} and add ${KEPT + 1}: '${shape}' to KEPT_SHAPES (server/room.ts)`).toBe(KEPT_SHAPES[KEPT]);
+    room.close();
   });
 
   it("kept while its cards were being dealt, the round comes back waiting for the dealer's Start; a table kept by a server that kept them otherwise does not come back", () => {

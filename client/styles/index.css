@@ -2,10 +2,12 @@
    specificity meet, the later file wins. Where it matters now (so keep these in this order):
      controls before home, settings, feedback   .go:disabled under .pair .go, .whole .go, .writing .go
      cards before table                         .card.dealt's animation under .card.nod and .card.nudge
-     pad before lobby                           .pad.wide under .pad:has(> .seats)
+     pad before lobby                           .pad.wide under .pad.lobby
      backs before gallery                       .picker .stack, .picker .heading under .showroom's, at equal weight
      settings before feedback                   .corner.top .slip under .slip.feedback.writing
-     settings before menu                       .corner.top .slip under .slip.menu */
+     settings before menu                       .corner.top .slip under .slip.menu
+   A phone on its side is `(orientation: landscape) and (max-height: 499px)`, written so in every file: the layout's
+   `isLow` (client/layout.ts), under 500 high. A media query cannot read a variable, so change them all together. */
 @import './base.css';
 @import './controls.css';
 @import './cards.css';
