@@ -4,7 +4,7 @@ import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABL
 import { inPlay, lcg, seats, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
-import { aloftAt, computeLayout, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, dropTarget, fanOut, inside, isTall, keepOut, landingAt, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, dropTarget, fanOut, inside, isTall, keepOut, landingAt, MINI_BELOW, MINI_SLACK, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 
 /** `game` with a full middle: every Ace in it started as a pile, each wherever there is room, the middle first. */
@@ -944,14 +944,28 @@ describe("another player's card in the air", () => {
     // On mine: their hand where I see them sit.
     const hand = mine.opponents.find((o) => o.seat === k)!;
     const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
+    const at = (t: number) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+    const off = (t: number) => offFelt(toTable(theirs.felt, at(t).x, at(t).y), n);
+    // How much of that line is off the felt.
+    let [edge, on] = [0, 1];
+    for (let i = 0; i < 30; i++) {
+      const mid = (edge + on) / 2;
+      if (off(mid) > 0) edge = mid;
+      else on = mid;
+    }
+    const far = Math.hypot(to.x - from.x, to.y - from.y);
     const report = (t: number) => {
-      const c = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+      const c = at(t);
       const p = toTable(theirs.felt, c.x, c.y);
-      return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const };
+      // As the holder's window works it out (hand.ts): the share of the way from where it was taken to the felt's edge;
+      // and with a pile to go to, on from there: how far it has come over the felt against how far it is short of the pile.
+      const [over, left] = [(t - edge) * far, (1 - t) * far - theirs.fs * CARD_W * 0.35];
+      const w = off(t) > 0 ? 1 - off(t) / off(0) : !pile ? 1 : left <= 0 ? 2 : 1 + over / (over + left);
+      return { h: [(c.x - from.x) / own.nertz.w, (from.y - c.y) / own.nertz.w] as const, p: [p.x, p.y] as const, w };
     };
     const end = toScreen(mine.felt, P);
-    const path = seats(41).map((i) => aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(i / 40), w: pile ? i / 40 : 0 }, pile ? end : undefined, 0));
-    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, home, hand.nertz.w, hand, { ...report(1), w: 0 }, undefined, i / 20));
+    const path = seats(41).map((i) => aloftAt(mine.felt, n, home, hand.nertz.w, hand, report(i / 40), pile ? end : undefined, 0));
+    if (!pile) for (let i = 1; i <= 20; i++) path.push(aloftAt(mine.felt, n, home, hand.nertz.w, hand, report(1), undefined, i / 20));
     return { path, home, end, felt: mine.felt };
   }
   /** How much longer the path is than the straight line, and how far it ever backs away from where it ends (px). */
@@ -995,8 +1009,24 @@ describe("another player's card in the air", () => {
         }
       }
     }
-    // (Measured over all of these: at worst 1.31 times the straight line, and 21px back, on the way out of the hand.)
+    // (Measured over all of these: at worst 1.22 times the straight line, and 6px back.)
     expect(worst.ratio).toBeGreaterThan(1); // (it is a path, not a jump)
+  });
+
+  it("a card its owner has brought to the felt's edge is drawn at the felt's edge, from every seat, on phones too", () => {
+    for (const [W, H] of [[1280, 720], [1440, 900], [390, 780], [780, 390]] as const) {
+      for (let n = 2; n <= 6; n++) {
+        const game = inPlay(seats(n), lcg(n));
+        const mine = computeLayout(W, H, game, 0);
+        for (const hand of mine.opponents) {
+          const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
+          for (const along of [0, 2]) {
+            const c = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [along, 3], p: [0, 0], w: 1 }, undefined, 0);
+            expect(offFelt(toTable(mine.felt, c.x, c.y), n) * mine.felt.u, `${n} at ${W}x${H}, seat ${hand.seat}`).toBeCloseTo(0, 3);
+          }
+        }
+      }
+    }
   });
 
   it('a card going from pile to pile within a hand is drawn in that hand as this window draws it, mirrored for a hand across the table', () => {
@@ -1012,7 +1042,7 @@ describe("another player's card in the air", () => {
         const to = { x: own.work[2]!.x + own.work[2]!.w / 2, y: from.y };
         const p = toTable(theirs.felt, to.x, to.y);
         const home = { x: hand.nertz.x + hand.nertz.w / 2, y: hand.nertz.y + hand.nertz.h / 2 };
-        const drawn = aloftAt(mine.felt, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
+        const drawn = aloftAt(mine.felt, n, home, hand.nertz.w, hand, { h: [(to.x - from.x) / own.nertz.w, 0], p: [p.x, p.y], w: 0 }, undefined, 0);
         // It is over that hand's third work pile here, whichever way round (or turned) the hand is drawn.
         const pile = { x: hand.workAt[2]!.x + hand.workAt[2]!.w / 2, y: hand.workAt[2]!.y + hand.workAt[2]!.h / 2 };
         expect(Math.hypot(drawn.x - pile.x, drawn.y - pile.y)).toBeLessThan(hand.nertz.w * 0.35);
@@ -1029,10 +1059,19 @@ describe('the deal', () => {
   it('has every card down, with a beat to spare, before the server turns the faces over', () => {
     const waits = Array.from({ length: LEAVING }, (_, i) => dealWait(i, DEAL_MS)!);
     expect(waits.every((w, i) => w !== null && (i === 0 || w > waits[i - 1]!))).toBe(true); // one after another
-    expect(DEAL.step).toBeLessThan(DEAL.duration * 1000); // overlapping: the next has left before this one lands
+    expect(DEAL.work / 10).toBeLessThan(DEAL.duration * 1000); // overlapping: the next has left before this one lands
     const landed = waits[LEAVING - 1]! + DEAL.duration * 1000;
     expect(landed).toBeLessThanOrEqual(DEAL_MS - 200);
     expect(landed).toBeGreaterThan(DEAL_MS / 2); // and it fills the time: this is a deal, not a flash
+  });
+
+  it('takes as long over a short deal as a full one: the work piles are spread over the same time, the nertz pile follows as before', () => {
+    const at = (i: number, work: number) => dealWait(i, DEAL_MS, work)!;
+    expect(at(10, 10)).toBe(100 + 1300 + 180); // a full table: first nertz card, as it always was
+    expect(at(4, 4)).toBe(at(10, 10)); // four work cards: the nertz pile starts at the same moment
+    expect(at(3, 4) - at(0, 4)).toBeCloseTo(1300 * (3 / 4)); // evenly spread
+    expect(at(13, 4) - at(4, 4)).toBe(at(19, 10) - at(10, 10)); // the nertz ribbon is the same
+    expect(at(9, 10)).toBe(100 + 9 * 130); // full table unchanged
   });
 
   it('in a window that arrives late, leaves the cards already dealt in place and deals the rest on the same schedule', () => {
@@ -1160,5 +1199,27 @@ describe('a phone held upright', () => {
         expect(L.cards.filter((c) => c.pile !== 'tray').every((c) => c.x >= -1 && c.x + c.s * 90 <= W + 1), at).toBe(true);
       }
     }
+  });
+});
+
+describe('drawnMini', () => {
+  it('at rest, is just whether the card is drawn narrower than MINI_BELOW', () => {
+    expect(drawnMini(MINI_BELOW - 0.1)).toBe(true);
+    expect(drawnMini(MINI_BELOW)).toBe(false);
+  });
+
+  it('on its way, changes only once the card is MINI_SLACK past the line', () => {
+    // Shrinking from its full drawing: still full just under the line, large print once well under.
+    expect(drawnMini(MINI_BELOW - 1, false)).toBe(false);
+    expect(drawnMini(MINI_BELOW - MINI_SLACK - 0.1, false)).toBe(true);
+    // Growing from large print: still large print just over the line, full once well over.
+    expect(drawnMini(MINI_BELOW + 1, true)).toBe(true);
+    expect(drawnMini(MINI_BELOW + MINI_SLACK, true)).toBe(false);
+  });
+
+  it('a card that wobbles around the line keeps one drawing', () => {
+    let mini = false;
+    for (const w of [53, 51, 50, 52, 54, 51, 50]) mini = drawnMini(w, mini);
+    expect(mini).toBe(false);
   });
 });

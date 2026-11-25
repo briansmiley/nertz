@@ -287,6 +287,8 @@ export interface RoomView {
   /** The round is paused (by this player, an `id`; or by nobody at the table, null: the server stopped for an update): every card is hidden, no move is taken and the bots wait. Null otherwise. */
   paused: { by: number | null } | null;
   lastRound: RoundResult | null;
+  /** The server has its aids for trying things out on (locally, and on previews): set-up deals (`?deal=`), Shift+N. */
+  testing: boolean;
 }
 
 /**

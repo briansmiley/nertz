@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { deal } from '../shared/engine';
 import { backPool, DEAL_MS, isBack, parseClientMsg, PLAIN_LOOK, START_MS, type Back, type Backs, type Look } from '../shared/protocol';
-import { lehmer, rig } from '../shared/testkit';
+import { faceUps, lehmer, rig } from '../shared/testkit';
 import type { PlayerView } from '../shared/types';
 import type { Room } from './room';
 import { FakeConn, roomWith as seated, send } from './testkit';
@@ -196,7 +196,9 @@ describe('sitting down after the deal', () => {
     const dealtTo = room.game;
     expect(room.join(new FakeConn(), 'Late', 'tok-late', true)).toBeNull();
     expect(seats()).toEqual([0, 1, 2]); // they are dealt into the round
-    expect(room.game!.players.slice(0, 2)).toEqual(dealtTo!.players); // as it was dealt: nobody else's cards change
+    // Nobody else's face-up cards or nertz pile change: only what is buried under them, now that three are dealt in.
+    expect(room.game!.players.slice(0, 2).map(faceUps)).toEqual(dealtTo!.players.map(faceUps));
+    expect(room.game!.players.map((p) => p.work.map((w) => w.down))).toEqual([[0, 0, 1, 2], [0, 0, 1, 2], [0, 0, 1, 2]]);
     expect(room.round).toBe(1);
     vi.advanceTimersByTime(DEAL_MS); // the cards are down: the table waits for Start
     expect(room.join(new FakeConn(), 'Later', 'tok-later', true)).toBeNull();

@@ -31,6 +31,14 @@ On your own? In the lobby press **Add bot** and deal: one person and one bot mak
 player because identity lives in `sessionStorage`. Reloading a window keeps its seat and hand. Use a new window or tab for a
 second player, not "Duplicate tab": a duplicate copies the identity, takes over the seat, and the original tab is told so.
 
+Trying things out, locally and on [previews](#previews) (wherever the server has `TESTING=1`, or any `NODE_ENV` but
+`production`; never on staging or production):
+
+- `?deal=aces`, `?deal=two-piles` or `?deal=out` in the address: the dealer's Start deals every hand that set-up (Aces
+  and 2s up; an A♠ to put down with a 2♠ that two A♠ piles would take; a nertz pile of just two Aces). It stays in the
+  address when the table's code is added.
+- **Shift+D** replays the deal in this window; **Shift+N**, for whoever deals, has a bot go out now.
+
 Controls:
 
 | Do this | To |
@@ -150,8 +158,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Small tables** bury fewer cards: with two players in the round no work pile has a face-down card (4 cards in the
   work piles, 35 in the stock); with three they have 0, 0, 1 and 2 (7 and 32); from four up the standard 0, 1, 2 and 3.
   The nertz pile is 13 either way. This is the rule, not an option (`faceDown` in `shared/settings.ts`). It goes by how
-  many the round was dealt to: sitting down or standing up before Start changes nobody's cards, so until the round is
-  dealt again it stays as it was dealt.
+  many hands are on the table: whenever someone sits down, stands up, leaves or is sent away before Start, every hand is
+  buried as deep as the hands now there call for. Each work pile keeps its face-up card; the face-down cards under it
+  come off the bottom of that hand's stock or go back there (nobody has seen either), and the nertz pile stays as it is.
 - **Work piles** build down in alternating colours. Any run from a face-up card to the top of its pile can move to another
   of your work piles. When the face-up cards leave a pile, the next face-down card turns over. A pile with nothing left takes
   any card or run.
@@ -224,7 +233,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   pressing **Sit back down** (in the menu, or where "I'm stuck" was) or by playing a card, and if you have not by the
   time the round is over you are watching from then on. (Until the dealer has said Start nothing has been played: whoever sits down or
   comes back by then is dealt in, and **Stand up** gives your seat up to watch, your cards coming off the table. Neither
-  changes anyone else's cards. A hand is its seat's for the round: sit back down and you have the same seat (while
+  changes anyone else's face-up cards, only how deep they are buried (see Small tables). A hand is its seat's for the round: sit back down and you have the same seat (while
   nobody else has taken it) and the same cards, and whoever takes a seat someone left has the cards dealt there. Only **Restart round** shuffles again.)
   The score sheet says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
@@ -314,19 +323,24 @@ their screen; in your window it has to come from wherever they sit.
 - `p`: the card's centre in table space: the same point of the felt on every screen.
 - `h`: how far the card is from its pile, in widths of its owner's cards: along the row, and towards the middle.
   Right near the hand, wherever and however large a window draws that hand.
-- `w`: how far the card has come of the way to a pile in the middle that would take it, from 0 when it has just left
-  its own pile (or has no such pile to go to: an Ace) to 1 when it is over that pile.
+- `w`: how far along its way the card is, one number: 0 where it was taken, 1 at the edge of the felt (measured by
+  the pointer: a finger carries the card risen above it from the start), 2 over a pile in the middle that would take
+  it (the rest of the way measured by the card itself: under a finger it is over the felt, and on its pile, before the
+  finger is). A card with no such pile to go to (an Ace) stops at 1. Bots' made-up reports say it the same way.
 
 A receiving window (`aloftAt` in `client/layout.ts`) starts the card at `h` in its own picture of that hand: so a
-card going from pile to pile within a hand is seen doing just that. A card that leaves the hand for the felt is
-lifted a little way out of the hand towards the middle. From there a card with a pile to go to is drawn `w` of the
-way along the straight line to that pile, so it arrives as its owner does; and a card with none (an Ace on its way
-to bare felt) comes over to where it really is, `p`, when it has lingered over the felt for a quarter of a second
-or so (or, if it is put down without lingering, flies there from the hand when it lands). It grows from hand size to
-pile size on the way. So from every seat a card is seen to travel a nearly straight line from its owner's hand to
-its place (checked for every seat of 2 to 6 players: at most 1.3 times the straight line, never doubling back), and
+card going from pile to pile within a hand is seen doing just that. From there it is drawn `w` along one path. Up to
+1 that is the way from that hand, as your window draws it, straight towards the nearest point of the felt's edge (and
+one pulled back away from the felt goes as far the other way). Its sideways movement along the row counts for less
+the nearer the felt it is, and none at the edge: which way is sideways on its owner's screen says nothing about where
+on the felt it is going from yours. From 1 to 2 it is the straight line from the felt's edge to the pile it is going
+to, so it reaches the felt, and its pile, as its owner does. After 0.6 s over the felt (0.15 s
+for an Ace, which has no pile to go by) it moves over to where it really is, `p`, taking 0.8 s, and stays with it
+while it is over the felt; put down sooner, it flies to its place when it lands. It grows from hand size to pile
+size on the way. So from every seat a card is seen to travel a nearly straight line from its owner's hand to
+its place (checked for every seat of 2 to 6 players: at most 1.22 times the straight line, never doubling back), and
 a card that is held still over the felt is drawn exactly where it is. Between reports the card closes on its place
-smoothly (about two thirds of the way every 70 ms), so 18 reports a second, or fewer if some are late or lost, look
+smoothly (about two thirds of the way every 80 ms), so 18 reports a second, or fewer if some are late or lost, look
 like one movement. When the snapshot says the hold is over, the card is released from wherever it has got to and
 the ordinary animation takes it to its pile, or home if the move was refused. A player who disconnects mid-drag
 loses the hold on the server, so the card goes home on everyone's screen. A run moves as one. Carrying a finished
@@ -346,7 +360,7 @@ Whoever deals can seat bots, so that one person has something to play against. I
 rounds, and after the deal while the table waits for Start (whoever deals presses the names under the Start button for the
 lobby's sheet, over the table, and Done puts it away), pick **slow**, **medium** or **fast** and press **Add bot**; **Remove Bot Ada** sends one away. Before Start a
 bot sits down and gets up as a person does: it is dealt its seat's hand, and taken off, that hand is put aside; nobody
-else's cards change. A bot takes a seat
+else's face-up cards change. A bot takes a seat
 with its own back colour and a name ("Bot Ada", "Bot Bix", ...), is marked "bot" in the lobby list and beside its name on
 the table, and counts as a connected player everywhere: for the two-player minimum, for the six seats, for the "everyone is
 stuck" vote and for scoring. A bot never deals, cannot be added or removed once Start is pressed, and does not keep a table alive:
@@ -724,6 +738,8 @@ is a few kilobytes and a busy table is a few messages a second.
 - What does not work there: **Google sign-in** (Google only sends people back to redirect addresses registered in advance,
   and one cannot be registered per preview; sign in by emailed code instead, which needs `RESEND_API_KEY`), and
   **feedback**, which is sent nowhere: a preview has no `FEEDBACK_WEBHOOK`, `LINEAR_*` or `ANTHROPIC_API_KEY`.
+- What works there and nowhere else deployed: the aids for [trying things out](#run-the-two-window-demo) (`?deal=`, Shift+D,
+  Shift+N). The workflow sets `TESTING=1` with the app's other secrets; staging and production never have it.
 - Setup, once:
   1. `fly tokens create org -o personal -n "nertz previews"`: a token for the whole org, since app tokens cannot make
      apps. (It can also deploy or destroy `nertz` and `nertz-staging`; the workflow only ever names `nertz-pr-<number>`.)
@@ -789,11 +805,11 @@ would still need one of the options above, and serving both from one origin is s
 - **The middle is not turned to your chair.** Every pile is at the same place of the felt for everyone, so a pile
   that is right in front of you is at the far side from the player drawn opposite you, although on their own screen
   it is right in front of them too. It is what makes "is there room here" the same question on every screen.
-- **Another player's Ace is not drawn where it is until it lingers.** A card with a pile to go to is seen travelling
-  there. An Ace may be going anywhere on the felt, and where it is on its owner's screen on the way (coming up from
-  the bottom of theirs) says little about that; so it is drawn lifted out of their hand, and comes over to its true
-  place when they hold it still over the felt for a moment, or flies there when it lands. A card moved quickly is
-  mostly seen as that last flight.
+- **Another player's card is not drawn where it is at first.** Where it is on its owner's screen on the way (coming up
+  from the bottom of theirs) says little about where it is going from your seat; so it is drawn coming from their
+  hand towards its pile (an Ace: towards the felt), and only after a moment over the felt (0.6 s; an Ace 0.15 s)
+  does it move over to where it really is. A card held there longer can be seen to turn as it does, since for a
+  player across the table their left is your right but the felt is the same way round for both of you.
 - **The felt has one shape per table size** (2.8 times as wide as high up to three players, 2.2 times from four
   on), the same for every window: a window much taller or wider than 16:9 leaves some of its room unused, and a
   window narrower than 1280 px leaves the felt little between the side hands.

@@ -10,7 +10,7 @@ import { PLAIN_LOOK, shownBack, type Back, type Look } from '../shared/protocol'
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
-import { LOW, MINI_BELOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
+import { drawnMini, LOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
 
 /** How long each step of the end-of-round sequence takes (ms). */
 export const TIMING = { flip: 1000, spread: 1500, out: 1100, wash: 1400, sortEach: 1700, hold: 3250 };
@@ -781,7 +781,7 @@ export function Finale({ L, game, scores, name, stage, looks }: Props) {
       sprites = new Map(
         plan.piles.map((p) => {
           const [back, bare] = backFor(looks, p.seat);
-          const art = backArt(back, bare, plan.w < MINI_BELOW);
+          const art = backArt(back, bare, drawnMini(plan.w));
           const img = art && pictureOf(art.src, () => setArrived((a) => a + 1));
           return [p.seat, backSprite(backColour(p.seat), plan.w, plan.h, k * Math.max(1, plan.scale), art && img ? { img, zoom: art.zoom, edge: art.edge } : undefined, bare)];
         }),

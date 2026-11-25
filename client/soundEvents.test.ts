@@ -273,6 +273,21 @@ describe('sound cues from rendered state', () => {
     expect(soundCues({ room: sheet, online: true }, { room: { ...sheet, players: [] }, online: true })).toEqual([]);
   });
 
+  it('before play, cards reburied between your hand\'s stock and work piles are one whisper cue with their count; other hands\' are silent', () => {
+    const ready = finishDeal(dealRound([0, 1], lcg(7)));
+    const [two, one] = [ready.players[0]!.stock.slice(0, 2), ready.players[1]!.work[0]!.cards.slice(0, 1)];
+    const reburied: GameState = {
+      ...ready,
+      players: ready.players.map((p) =>
+        p.seat === 0
+          ? { ...p, stock: p.stock.slice(2), work: p.work.map((w, i) => (i === 0 ? { ...w, cards: [...w.cards, ...two] } : w)) }
+          : { ...p, work: p.work.map((w, i) => (i === 0 ? { ...w, cards: w.cards.slice(1) } : w)), stock: [...p.stock, ...one] },
+      ),
+    };
+    const cues = soundCues({ room: roomOf(ready, 0), online: true }, { room: roomOf(reburied, 0), online: true });
+    expect(cues).toEqual([{ k: 'rebury', n: 2 }]);
+  });
+
   it('the opening: silence while the table waits, a tick per number when the dealer starts, one bright hit as play opens', () => {
     const dealt = dealRound([0, 1], lcg(7));
     const stages = { dealing: dealt, ready: finishDeal(dealt), countdown: startCountdown(finishDeal(dealt)), play: toPlay(dealt) };

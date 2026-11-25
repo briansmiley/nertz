@@ -316,6 +316,11 @@ function whisper(o: Shot = {}): Stop {
   return hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, ...o });
 }
 
+/** A hand reburied before play: a whisper for each card that changed places, a little apart. */
+export function rebury(n: number): void {
+  for (let i = 0; i < n; i++) whisper({ delay: (i * rand(60, 90)) / 1000 });
+}
+
 /** One card counted off the stock. */
 export function stockCard(who: Who = 'me'): void {
   whisper({ who });
@@ -498,6 +503,8 @@ function play(cue: Cue): void {
       return dealBurst(cue.work);
     case 'pickup':
       return pickup(cue.who);
+    case 'rebury':
+      return rebury(cue.n);
     case 'work':
       return workDrop(cue.who);
     case 'stock':

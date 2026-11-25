@@ -13,11 +13,12 @@ import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
+import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { press, tableActions, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
-import { Corner, Pop, Robot, TableRules } from './Settings';
+import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Check, Eye, Gear, LinkIcon } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
@@ -210,24 +211,18 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
   );
 }
 
-/** For whoever deals, between rounds and before their Start: a robot button that opens a slip for seating a bot. */
+/** For whoever deals, between rounds and before their Start: a robot's head and a plus, bare, a button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
   const full = freeSeats(room.seats) === 0;
   return (
-    <Pop icon={<Robot />} label="Add a bot">
+    <Pop icon={<RobotPlus />} label="Add a bot" bare>
       <h3>Add a bot</h3>
       {full ? (
         <p className="hint">The table is full.</p>
       ) : (
         <div className="bots">
-          <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} aria-label="Bot speed">
-            {BOT_LEVELS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
+          <Dropdown value={level} options={BOT_LEVELS} choose={setLevel} label="Bot speed" />
           <button type="button" className="plain" onClick={() => addBot(level)}>
             Add
           </button>
@@ -756,7 +751,7 @@ function Sitters({ room }: { room: RoomView }) {
         {/* A bot: the robot, and how quick it is. */}
         {p.bot && (
           <span className="botnote" data-tip={`${p.bot} bot`} aria-label={`${p.bot} bot`}>
-            <Robot plain />
+            <Robot />
             {p.bot === 'medium' ? 'med' : p.bot}
           </span>
         )}

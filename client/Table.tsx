@@ -7,15 +7,15 @@
 // each dragging client reports where its card is (`drag` messages, about 18 a
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
-import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
+import { animate, motion, useMotionValue, useMotionValueEvent, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
-import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reshuffledSince, wentOut } from '../shared/engine';
+import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reburiedSince, reshuffledSince, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
-import { offFelt, TABLE } from '../shared/table';
-import type { PlayerView, RoomView, Suit } from '../shared/types';
+import { offFelt, TABLE, type Pt } from '../shared/table';
+import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -25,7 +25,7 @@ import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setUnrevealed } from './social';
 import { useFeed } from './feed';
-import { kick, onDrag, onSnipe, pause, playable, post, sit, useNet } from './net';
+import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet } from './net';
 import { Clock } from './Settings';
 import { Eye } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -50,20 +50,43 @@ const FINISH = () => (calm() ? { duration: 0 } : ({ type: 'spring', stiffness: 5
 const turnedTo = (face: Showing): number => (face === 'up' ? 0 : face === 'unseen' && !calm() ? EDGE : 180);
 /** How a card turns from showing `was` to showing `face`: the one place that is decided. */
 const turnOf = (was: Showing, face: Showing, slow: boolean) => (slow ? TURN() : face === 'unseen' ? UNSEEN() : was === 'unseen' && face === 'up' ? FINISH() : FLIP());
+/**
+ * A card reburied before play (`reburiedSince`) does not cross between the stock and a work pile. It goes from where it
+ * lay (`Ghost`) and comes into its new place, each at the level it lies at, so never over the face-up cards: at a work
+ * pile sliding `slide` card heights out from behind the pile or in from there, fading as it goes; at the stock, only
+ * fading. With reduced motion it only fades.
+ */
+const REBURY = { slide: 0.2, out: 0.14, in: 0.2 } as const;
+const REBURY_OUT = () => ({ duration: REBURY.out, ease: 'easeIn' }) as const;
+const REBURY_IN = () => ({ duration: REBURY.in, ease: 'easeOut' }) as const;
+/** How long someone else's card takes to cross `far` px of the table. */
+const crossing = (far: number) => ({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' }) as const;
 /** How long the mouse has to rest on one of your work piles before it fans out in full: sweeping across them does nothing. */
 const PEEK_MS = 380;
+/**
+ * Which way a reburied card slides at the place `c` (`REBURY`): at a work pile, out from behind it, along the way it
+ * fans and away from its face-up cards (from its top card to `c`); at the stock not at all.
+ */
+function behind(c: Placed, game: GameState, byId: ReadonlyMap<string, Placed>): Pt {
+  const top = c.pile === 'work' ? byId.get(game.players.find((p) => p.seat === c.card.owner)?.work[c.at]?.cards.at(-1)?.id ?? '') : undefined;
+  if (!top || calm()) return { x: 0, y: 0 };
+  const d = REBURY.slide * CARD_H * c.s;
+  const len = Math.hypot(c.x - top.x, c.y - top.y);
+  return len < 0.5 ? { x: 0, y: -d } : { x: ((c.x - top.x) / len) * d, y: ((c.y - top.y) / len) * d };
+}
+
 /** Someone else's card in the air: see-through, so it never hides a pile it passes over. */
 const ALOFT = 0.58;
 /** Your own card while it is over the felt: the pile underneath shows through. */
 const OVER_FELT = 0.74;
 /**
- * Someone else's card that has no pile to go to (an Ace above all) is drawn where it really is once it has been
- * over the felt, going slowly, for about this long (ms); "slowly" is under SLOW table units a millisecond.
+ * Someone else's card over the felt is first drawn on its way from their hand, as this window seats them, to the pile
+ * it is going to; after this long over the felt (ms; sooner for an Ace, which has no pile to go by) it moves over to
+ * where it really is, taking `fade` ms, and stays there while it is over the felt.
  */
-const DWELL_MS = 240;
-const SLOW = 0.002;
+const REAL_AFTER = { card: 600, ace: 150, fade: 800 } as const;
 /** How quickly another player's card closes on the last place it was reported at (ms to cover about two thirds of the way). */
-const GLIDE_MS = 70;
+const GLIDE_MS = 80;
 /** A report older than this is not where the card is any more: it stays put until a fresh one comes. */
 const STALE_MS = 600;
 const clamp =(v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -111,7 +134,6 @@ interface CardProps {
   /** Whose the place it lies in is: one of your own piles, someone else's, or the table's. */
   whose: Whose;
   face: Showing;
-  mini: boolean;
   /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
   deck: Deck;
   night: boolean;
@@ -125,6 +147,8 @@ interface CardProps {
   handles: Handles;
   /** Whether and when it is dealt is read once, when the card first appears: later snapshots, reconnects and re-renders never deal it again. */
   deal: Dealt | undefined;
+  /** Reburied into the place it now lies in (`REBURY`): where it comes in from, off that place, and how far its hand has moved to another place round the table meanwhile (px). */
+  rebury: { off: Pt; far: number } | undefined;
 }
 
 /** A card's props for how it looks, each a value of its own: a snapshot brings new looks, and a card is drawn again only if its own has changed. */
@@ -145,7 +169,14 @@ const CardView = memo(function CardView(p: CardProps) {
   const pile = useRef(p.pile);
   const flight = useRef(0);
   const faceWas = useRef(p.face);
+  /**
+   * Drawn in large print: by the size it is drawn at right now (`s`), not the size the layout gives it or whose hand it
+   * is in (`drawnMini`). React hears of it only when that changes, not on every frame.
+   */
+  const [mini, setMini] = useState(() => drawnMini(p.s * CARD_W));
+  useMotionValueEvent(s, 'change', (v) => setMini((was) => drawnMini(v * CARD_W, was)));
   const el = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
   /** When this card leaves the deck (performance clock), if it is in one. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0).current;
 
@@ -172,6 +203,7 @@ const CardView = memo(function CardView(p: CardProps) {
     setTimeout(() => {
       if (flight.current !== n) return;
       be(IN_PILE);
+      setMini(drawnMini(s.get() * CARD_W)); // at rest, just what its size says
       o.set(1); // landed: solid again, whatever it was in the air
       el.current?.removeAttribute('data-passing');
     }, move.duration * 1000 + 30);
@@ -186,13 +218,15 @@ const CardView = memo(function CardView(p: CardProps) {
     const g = goal.current;
     const far = Math.hypot(x.get() - g.x, y.get() - g.y);
     if (own || p.slow || calm() || far < 4) fly();
-    else fly({ duration: Math.min(0.45, 0.16 + far / 2400), ease: 'easeInOut' } as { duration: number }, far > 2.5 * CARD_W * g.s, true);
+    else fly(crossing(far), far > 2.5 * CARD_W * g.s, true);
   }, [fly, x, y, p.slow]);
 
   useEffect(() => {
     const was = goal.current;
     const by = mover(whose.current, p.whose);
     const from = pile.current;
+    const arrived = first.current;
+    first.current = false;
     goal.current = { x: p.x, y: p.y, s: p.s, z: p.z, rot: p.rot };
     whose.current = p.whose;
     pile.current = p.pile;
@@ -200,6 +234,23 @@ const CardView = memo(function CardView(p: CardProps) {
     if (doing.current.k === 'deck') {
       // If the window was resized it stays with the deck, and is dealt to its new place in its turn.
       if (p.deal) [x, y, s].forEach((v, i) => v.set([p.deal!.x, p.deal!.y, p.s][i]!));
+      setMini(drawnMini(s.get() * CARD_W));
+      return;
+    }
+    if (p.rebury && (arrived || from !== p.pile)) {
+      // Reburied: into its new place from just behind it, lying in it all the while (it left the old one as a `Ghost`).
+      // If its hand is moving to another place round the table, once the hand is there.
+      const { off, far } = p.rebury;
+      const wait = far < 4 ? 0 : by === 'yours' || calm() ? MOVE().duration : crossing(far).duration;
+      flight.current++;
+      be(IN_PILE);
+      x.set(p.x + off.x);
+      y.set(p.y + off.y);
+      s.set(p.s);
+      r.set(p.rot);
+      o.set(0);
+      el.current?.removeAttribute('data-passing');
+      for (const [v, to] of [[x, p.x], [y, p.y], [o, 1]] as const) animate(v, to, { ...REBURY_IN(), delay: wait });
       return;
     }
     if (was.x === p.x && was.y === p.y && was.s === p.s && was.rot === p.rot) return be(doing.current); // (the level it lies at may be another)
@@ -245,8 +296,28 @@ const CardView = memo(function CardView(p: CardProps) {
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: turnedTo(p.face) }} transition={turnOf(faceWas.current, p.face, p.slow)}>
-        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} night={p.night} /> : null}</div>
-        <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini)} />
+        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={mini} deck={p.deck} night={p.night} /> : null}</div>
+        <div {...backOf(backColour(p.owner), p.back, p.bare, mini)} />
+      </motion.div>
+    </motion.div>
+  );
+});
+
+/** Where a reburied card left from (`REBURY`): its back, fading as it slides `off` out from behind its place. Gone when it has. */
+const Ghost = memo(function Ghost({ c, off, look, gone }: { c: Placed; off: Pt; look: Look; gone: () => void }) {
+  const mini = drawnMini(c.s * CARD_W);
+  return (
+    <motion.div
+      className="card ghost"
+      style={{ scale: c.s, zIndex: c.z }}
+      initial={{ x: c.x, y: c.y, opacity: 1 }}
+      animate={{ x: c.x + off.x, y: c.y + off.y, opacity: 0 }}
+      transition={REBURY_OUT()}
+      onAnimationComplete={gone}
+    >
+      <motion.div className="flip" style={{ rotate: c.rot, rotateY: 180 }}>
+        <div className="front" />
+        <div {...backOf(backColour(c.card.owner), shownBack(look.backs), look.bare, mini)} />
       </motion.div>
     </motion.div>
   );
@@ -309,8 +380,9 @@ interface Flight {
   x: number;
   y: number;
   s: number;
-  /** How long it has been over the felt going slowly, as a share of DWELL_MS: at 1 it is drawn where it really is. */
-  dwell: number;
+  /** How long it has been over the felt, ms: after a while (`REAL_AFTER`) it is drawn where it really is. */
+  over: number;
+  ace: boolean;
 }
 
 /** What is said across the middle of the felt while a round is played: a snipe you were in, or the table's stocks turned over because everyone was stuck. */
@@ -429,6 +501,35 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const fit = useFittings(room);
   const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, pad, sitting, fit, hands), [W, H, game, you, stage, peek, pad, sitting, fit, hands]);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
+  // The table as it was drawn before this game came (the last layout of the game before it), for the cards reburied since (`REBURY`).
+  const drawnAs = useRef({ game, byId, before: null as { game: GameState; byId: ReadonlyMap<string, Placed> } | null });
+  if (drawnAs.current.game !== game) drawnAs.current = { game, byId, before: { game: drawnAs.current.game, byId: drawnAs.current.byId } };
+  else drawnAs.current.byId = byId;
+  const before = drawnAs.current.before;
+  const reburied = useMemo(() => (before ? reburiedSince(before.game, game) : new Map<string, number>()), [game]);
+  /** Where the cards reburied since lay, each going from there as a `Ghost`. (Not in the deal: a card still in the deck went from nowhere anyone sees.) */
+  const [ghosts, setGhosts] = useState<{ key: string; c: Placed; off: Pt }[]>([]);
+  const ghostN = useRef(0);
+  useEffect(() => {
+    if (!before || reburied.size === 0 || before.game.status.at === 'dealing') return;
+    const gone = [...reburied.keys()].flatMap((id) => {
+      const c = before.byId.get(id);
+      if (!c) return [];
+      // At the level of the bottom of the pile it left, not its own: the face-ups close up over it as it goes, and a
+      // card that lay high in the pile (the second of two face-downs) would otherwise go over the one that comes down.
+      const pile = before.game.players.flatMap((q) => q.work).find((w) => w.cards.some((x) => x.id === id))?.cards ?? [];
+      const z = Math.min(c.z, ...pile.map((x) => before.byId.get(x.id)?.z ?? c.z));
+      return [{ key: `${id}:${++ghostN.current}`, c: { ...c, z }, off: behind(c, before.game, before.byId) }];
+    });
+    if (gone.length) setGhosts((g) => [...g, ...gone]);
+  }, [reburied]);
+  /** How far the hand at `seat` has moved round the table since `before` (px): by its nertz pile, which nothing reburies. */
+  const handMoved = (seat: number): number => {
+    const id = game.players.find((p) => p.seat === seat)?.nertz.at(-1)?.id ?? '';
+    const [a, b] = [before?.byId.get(id), byId.get(id)];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+  const ghostGone = useCallback((key: string) => setGhosts((g) => g.filter((x) => x.key !== key)), []);
   const handles = useRef<Handles>(new Map()).current;
   /** What the pointer has hold of: hand.ts decides, `act` below carries it out. */
   const grasp = useRef<Grasp>(EMPTY);
@@ -468,17 +569,17 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   }, [game, you]);
   const now = useRef({ game, L, byId, you, stage });
   now.current = { game, L, byId, you, stage };
-  /** The last report from each seat, when it came, and how fast the card was then going (table units a millisecond). */
-  const reports = useRef(new Map<number, DragAt & { at: number; v: number }>()).current;
+  /** The last report from each seat, and when it came. */
+  const reports = useRef(new Map<number, DragAt & { at: number }>()).current;
   const flights = useRef(new Map<number, Flight>()).current;
   const loop = useRef({ frame: 0, last: 0 }).current;
   /**
    * One animation frame of everybody else's held cards. A card is drawn on its
    * way from its owner's hand, as this window seats them, to its place on the
-   * felt (`aloftAt` in layout.ts). A card with a pile to go to says how far it
-   * has come (`w` of its report), and is drawn that far along the line to the
-   * pile. One with none (an Ace on its way to bare felt) comes over to where
-   * it really is while it lingers over the felt. Either way it closes on its
+   * felt (`aloftAt` in layout.ts): as far along the path out to the felt's
+   * edge and on to its pile as its report says (`w`). One with no pile (an Ace
+   * on its way to bare felt) stops at the edge, and any card comes over to
+   * where it really is while it lingers over the felt. Either way it closes on its
    * place smoothly, so 18 reports a second (or fewer, if some are lost) look
    * like one movement. When the hold ends the card is released from wherever
    * it has got to and the ordinary animation takes it to its pile or home.
@@ -504,20 +605,24 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       let f = flights.get(p.seat);
       if (!f) {
         if (time - at.at > STALE_MS) continue;
-        f = { id: p.holding, ids: grab(game, p.seat, p.holding)?.cards.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, dwell: 0 };
+        const got = grab(game, p.seat, p.holding)?.cards;
+        f = { id: p.holding, ids: got?.map((c) => c.id) ?? [p.holding], x: home.x, y: home.y, s: home.s, over: 0, ace: got?.length === 1 && got[0]!.rank === 1 };
         flights.set(p.seat, f);
       }
       const hw = home.s * CARD_W;
       const table = { x: at.p[0], y: at.p[1] };
-      // Lingering: a report that has had no successor for a while means the card is being held still.
-      const speed = time - at.at > 150 ? 0 : at.v;
-      f.dwell = clamp(f.dwell + (offFelt(table, game.players.length) <= 0 ? clamp(1 - speed / SLOW, 0, 1) : -2) * (dt / DWELL_MS), 0, 1);
-      const linger = calm() ? 1 : f.dwell * f.dwell * (3 - 2 * f.dwell);
-      const s = home.s + (L.fs - home.s) * Math.max(at.w, linger);
+      const onFelt = offFelt(table, game.players.length) <= 0;
+      // Off the felt it runs down rather than starting again: a card held on the felt's edge does not jump back to its line.
+      // It counts no further than the fade's end, so taken back off the felt it is on its line again at once (a third of the fade).
+      const after = f.ace ? REAL_AFTER.ace : REAL_AFTER.card;
+      f.over = onFelt ? Math.min(f.over + dt, after + REAL_AFTER.fade) : Math.max(0, f.over - 3 * dt);
+      const t = clamp((f.over - after) / REAL_AFTER.fade, 0, 1);
+      const linger = calm() ? 1 : t * t * (3 - 2 * t);
+      const s = home.s + (L.fs - home.s) * Math.max(at.w / 2, linger);
       const seat = L.opponents.find((o) => o.seat === p.seat);
       // The pile it is going to: of those in the middle that would take it, the nearest to where it is.
       let pile: { x: number; y: number } | undefined;
-      if (at.w > 0 && f.ids.length === 1) {
+      if (at.w > 1 && f.ids.length === 1) {
         const there = toScreen(L.felt, table);
         const off = (q: { x: number; y: number }) => Math.hypot(q.x - there.x, q.y - there.y);
         L.slots.forEach((r, i) => {
@@ -526,7 +631,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
           if (!pile || off(q) < off(pile)) pile = q;
         });
       }
-      const c = aloftAt(L.felt, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, pile ? linger : Math.max(at.w, linger));
+      const c = aloftAt(L.felt, game.players.length, { x: home.x + hw / 2, y: home.y + (home.s * CARD_H) / 2 }, hw, seat, at, pile, linger);
       f.x += (c.x - (s * CARD_W) / 2 - f.x) * k;
       f.y += (c.y - (s * CARD_H) / 2 - f.y) * k;
       f.s += (s - f.s) * k;
@@ -550,10 +655,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   };
   useEffect(() => {
     const stop = onDrag((m) => {
-      const now = performance.now();
-      const was = reports.get(m.seat);
-      const v = was?.id === m.id ? Math.hypot(m.p[0] - was.p[0], m.p[1] - was.p[1]) / Math.max(1, now - was.at) : Infinity;
-      reports.set(m.seat, { ...m, at: now, v });
+      reports.set(m.seat, { ...m, at: performance.now() });
       watch();
     });
     return () => {
@@ -571,14 +673,15 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const called = calledBy(game) !== null;
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
   const out = wentOut(game);
-  // Development aid: Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
+  // Aid for trying things out (`testing`): Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
   const [replay, setReplay] = useState(0);
   const [replaying, setReplaying] = useState(false);
+  const aids = testing(room);
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!aids) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || !e.shiftKey || (e.target as Element).closest?.('input,textarea')) return;
-      // Shift+N: a bot goes out now (to see and hear it without playing a round through; the server refuses it in production).
+      // Shift+N: a bot goes out now (to see and hear it without playing a round through; the server refuses it where `testing` is off).
       if (e.code === 'KeyN') return void post({ t: 'debugBotOut' });
       if (e.code !== 'KeyD') return;
       setReplay((n) => n + 1);
@@ -586,7 +689,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [aids]);
   useEffect(() => {
     if (!replaying) return;
     const t = setTimeout(() => setReplaying(false), DEAL_MS);
@@ -1016,6 +1119,9 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       {placing && L.slots.map((slot, i) => slot && <div key={i} className="keepout" style={box(keepOut(L, slot, game.players.length))} />)}
       <div ref={preview} className="landing" hidden />
 
+      {ghosts.map((g) => (
+        <Ghost key={g.key} c={g.c} off={g.off} look={dress(g.c.card.owner)} gone={() => ghostGone(g.key)} />
+      ))}
       {L.cards.map((c) => {
         const known = isHidden(c.card) ? null : c.card;
         return (
@@ -1032,14 +1138,13 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
             rot={c.rot}
             whose={whoseOf(c)}
             face={replaying ? 'down' : c.face}
-            // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
-            mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
             {...drawn(dress(c.card.owner))}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             pile={`${c.pile} ${c.at}`}
             cls={cardClass(c)}
             handles={handles}
             deal={deck.get(c.card.id)}
+            rebury={reburied.has(c.card.id) ? { off: behind(c, game, byId), far: handMoved(c.card.owner) } : undefined}
           />
         );
       })}

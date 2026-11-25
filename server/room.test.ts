@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
+import { calledBy, checkInvariants, deal, endVote, finishDeal, inGrace, isHidden, mustClear, seatedPeople, setUpDeal, startCountdown, viewFor, yetToHear, type Rng } from '../shared/engine';
 import { PLAIN_LOOK, STOCK_CARD_MS } from '../shared/protocol';
 import { CLOSE_OVER, CLOSE_UPDATE, DEAL_MS, GRACE_MS, HEAR_MS, START_BEAT_MS, START_MS, isRoomCode, MAX_MESSAGE_BYTES, MAX_PLAYERS, MAX_WATCHERS, type ServerMsg } from '../shared/protocol';
-import { downs, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
+import { downs, faceUps, felt, FUZZ_MS, hold, MIXES, move, nertzOf, randomIntent, rig, run, seeded, slot, toPlay, untilReached, upWork, wire, workTop } from '../shared/testkit';
 import type { Card, GameState, Intent } from '../shared/types';
 import { CLOSE_FLOOD, startServer, type NertzServer } from './index';
-import { Room, type Conn } from './room';
+import { Room, testing, type Conn } from './room';
 import { Client, FakeConn, opening, roomWith, rows, send, startOver, startRound, type StateMsg } from './testkit';
 
 // ---------------------------------------------------------------- helpers
@@ -45,6 +45,35 @@ describe('Room', () => {
     expect(view.game).toEqual(wire(viewFor(room.game!, 1)));
     expect(checkInvariants(room.game!)).toBeNull();
     expect(JSON.stringify(b.states) + JSON.stringify(conns[0]!.states)).not.toMatch(/tok-/);
+  });
+
+  it('deals the set-up Start asks for (`?deal=`) where testing is on (locally, or TESTING=1), never in production otherwise', () => {
+    vi.useFakeTimers();
+    const tops = (room: Room) => room.game!.players.map((p) => p.work.map((w) => w.cards.at(-1) as Card).map((c) => `${c.suit}${c.rank}`));
+    const dev = roomWith(2);
+    expect(send(dev.room, dev.conns[0]!, { t: 'start', deal: 'aces' })).toBe(true);
+    expect(tops(dev.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+    expect(checkInvariants(dev.room.game!)).toBeNull();
+    const plain = roomWith(2);
+    send(plain.room, plain.conns[0]!, { t: 'start', deal: 'no-such-set-up' });
+    const dealt = tops(plain.room);
+    expect([testing({ NODE_ENV: 'production' }), testing({ NODE_ENV: 'production', TESTING: '1' }), testing({ NODE_ENV: 'development' }), testing({})]).toEqual([false, true, true, true]);
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const prod = roomWith(2);
+      send(prod.room, prod.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(prod.room)).toEqual(dealt); // the same random deal as with no set-up at all
+      prod.room.flush();
+      expect(prod.conns[0]!.last.room.testing).toBe(false);
+      vi.stubEnv('TESTING', '1'); // a preview
+      const preview = roomWith(2);
+      send(preview.room, preview.conns[0]!, { t: 'start', deal: 'aces' });
+      expect(tops(preview.room)).toEqual([['S1', 'S2', 'H1', 'H2'], ['S1', 'S2', 'H1', 'H2']]);
+      preview.room.flush();
+      expect(preview.conns[0]!.last.room.testing).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('counts a snipe: beaten to a pile by the very card one was about to play there, once, and says so with the scores', () => {
@@ -346,9 +375,10 @@ describe('Room', () => {
     room.handle(a, { t: 'start' });
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
     const dealt = room.game!.players;
-    sitDown(room, c); // the cards are dealt, nothing is played: theirs are dealt beside them
+    sitDown(room, c); // the cards are dealt, nothing is played: theirs are dealt beside them, and everyone's buried as three are
     expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
-    expect(room.game!.players.slice(0, 2)).toEqual(dealt);
+    expect(room.game!.players.slice(0, 2).map(faceUps)).toEqual(dealt.map(faceUps));
+    expect(room.game!.players.map(downs)).toEqual([[0, 0, 1, 2], [0, 0, 1, 2], [0, 0, 1, 2]]);
     expect(room.game!.status.at).toBe('dealing');
     standUp(room, c); // up from cards that are dealt but not played: they come off the table, and C watches at once
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
@@ -374,11 +404,13 @@ describe('Room', () => {
     const theirs = room.game!.players;
     room.join(d, 'D', 'tok-dddd', true);
     expect(room.game!.players.map((p) => p.seat)).toEqual([1, 2, 3]);
+    expect(room.game!.players.slice(0, 2).map(faceUps)).toEqual(theirs.map(faceUps));
+    const three = room.game!.players;
     room.join(b, 'P1', 'tok-0001');
-    expect(room.game!.players.slice(0, 2)).toEqual(theirs);
+    expect(room.game!.players).toEqual(three);
   });
 
-  it("before Start, sitting down and standing up change nobody else's cards, and whoever sits back down has the hand they got up from: a hand is its seat's for the round", () => {
+  it("before Start, sitting down and standing up change nobody else's face-up cards, only how deep they are buried, and whoever sits back down has the hand they got up from: a hand is its seat's for the round", () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
@@ -387,13 +419,14 @@ describe('Room', () => {
     room.handle(c, { t: 'seat', seat: 5 }); // (a seat of their own choosing: not the lowest that is free)
     room.handle(a, { t: 'start' });
     const dealt = hands();
-    const others = JSON.stringify(room.game!.players.slice(0, 2));
+    const others = room.game!.players.slice(0, 2).map(faceUps);
     // During the deal, and again while the table waits for Start.
     for (const wait of [0, DEAL_MS]) {
       vi.advanceTimersByTime(wait);
       standUp(room, c);
       expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'P2:w']);
-      expect(hands()).toBe(others);
+      expect(room.game!.players.map(faceUps)).toEqual(others);
+      expect(room.game!.players.map(downs)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]); // (two hands: nothing face-down)
       expect(room.game!.slots).toHaveLength(8);
       expect(checkInvariants(room.game!)).toBeNull();
       sitDown(room, c);
@@ -410,12 +443,12 @@ describe('Room', () => {
     sitDown(room, c);
     expect(them()).not.toHaveProperty('ready'); // (ready for the hand they got up from: they say so again)
 
-    // Someone new sits down: dealt in beside the others, buried as deep as the round was dealt (to three).
+    // Someone new sits down: dealt in beside the others, and every hand buried as four are.
     const d = new FakeConn();
     room.join(d, 'D', 'tok-dddd');
     expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', 'D@2', 'P2@5']);
-    expect(JSON.stringify(room.game!.players.filter((p) => p.seat !== 2))).toBe(dealt);
-    expect(downs(room.game!.players[2]!)).toEqual([0, 0, 1, 2]);
+    expect(room.game!.players.filter((p) => p.seat !== 2).map(faceUps)).toEqual(JSON.parse(dealt).map(faceUps));
+    expect(room.game!.players.map(downs)).toEqual(Array.from({ length: 4 }, () => [0, 1, 2, 3]));
     expect(room.game!.slots).toHaveLength(16);
     expect(room.game!.status.at).toBe('ready');
     expect(checkInvariants(room.game!)).toBeNull();
@@ -453,7 +486,33 @@ describe('Room', () => {
     expect(room.game!.status.at).toBe('play');
   });
 
-  it("before Start, whoever deals may seat a bot and take one off, the way a person sits down and gets up: nobody else's cards change; not once Start is pressed", () => {
+  it('before Start, whoever leaves or is sent away takes their hand off the table, and the others are buried as deep as the hands left call for', () => {
+    vi.useFakeTimers();
+    const { room, conns } = roomWith(4);
+    const [a, , , d] = conns as [FakeConn, FakeConn, FakeConn, FakeConn];
+    room.handle(a, { t: 'start' });
+    vi.advanceTimersByTime(DEAL_MS);
+    const dealt = room.game!.players;
+    expect(dealt.map(downs)).toEqual(Array.from({ length: 4 }, () => [0, 1, 2, 3]));
+    room.handle(d, { t: 'leave' }); // four to three
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
+    expect(room.game!.players.map(downs)).toEqual(Array.from({ length: 3 }, () => [0, 0, 1, 2]));
+    expect(room.game!.players.map(faceUps)).toEqual(dealt.slice(0, 3).map(faceUps));
+    for (const [i, p] of room.game!.players.entries()) {
+      // The three no longer face-down are back at the bottom of the stock (the end drawn last), the rest as it was.
+      expect(p.stock).toHaveLength(32);
+      expect(p.stock.slice(3)).toEqual(dealt[i]!.stock);
+    }
+    expect(checkInvariants(room.game!)).toBeNull();
+    room.handle(a, { t: 'kick', id: 2 }); // three to two
+    expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1]);
+    expect(room.game!.players.map(downs)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0]]);
+    expect(room.game!.players.map((p) => p.stock.length)).toEqual([35, 35]);
+    expect(room.game!.players.map(faceUps)).toEqual(dealt.slice(0, 2).map(faceUps));
+    expect(checkInvariants(room.game!)).toBeNull();
+  });
+
+  it("before Start, whoever deals may seat a bot and take one off, the way a person sits down and gets up: nobody else's face-up cards change; not once Start is pressed", () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
@@ -468,9 +527,9 @@ describe('Room', () => {
       expect(bots()).toEqual([]);
       room.handle(a, { t: 'addBot', level: 'slow' });
       expect(whereAll(room, a)).toEqual(['P0@0', 'P1@1', `${bots()[0]!.name}@2`]);
-      expect(JSON.stringify(room.game!.players.slice(0, 2))).toBe(dealt);
+      expect(room.game!.players.slice(0, 2).map(faceUps)).toEqual(JSON.parse(dealt).map(faceUps));
       expect(room.game!.players.map((p) => p.seat)).toEqual([0, 1, 2]);
-      expect(downs(room.game!.players[2]!)).toEqual(downs(room.game!.players[0]!)); // (buried as deep as the round was dealt: to two)
+      expect(room.game!.players.map(downs)).toEqual([[0, 0, 1, 2], [0, 0, 1, 2], [0, 0, 1, 2]]); // (everyone buried as three are)
       expect(bots()[0]).toMatchObject({ ready: true }); // (a bot never holds up Start)
       expect(room.game!.slots).toHaveLength(12);
       expect(checkInvariants(room.game!)).toBeNull();
@@ -2058,6 +2117,19 @@ describe('server over real sockets', () => {
     expect((await get('/ws')).status).toBe(200); // plain GET on the socket path is just an app route
   });
 
+  it('lets the browser keep what is asked for by its issue (built assets, back pictures), and nothing else', async () => {
+    const get = (path: string) => fetch(`http://127.0.0.1:${server.port}${path}`);
+    for (const dir of ['assets', 'cards/backs', 'cards/classic']) mkdirSync(join(dist, dir), { recursive: true });
+    writeFileSync(join(dist, 'assets/index-abc123.js'), '');
+    writeFileSync(join(dist, 'cards/backs/tartan.png'), '');
+    writeFileSync(join(dist, 'cards/classic/AS.svg'), '');
+    const keep = 'public, max-age=31536000, immutable';
+    expect((await get('/assets/index-abc123.js')).headers.get('cache-control')).toBe(keep);
+    expect((await get('/cards/backs/tartan.png?v=2')).headers.get('cache-control')).toBe(keep);
+    expect((await get('/cards/classic/AS.svg')).headers.get('cache-control')).toBe('no-cache'); // faces carry no issue
+    expect((await get('/')).headers.get('cache-control')).toBe('no-cache');
+  });
+
   it('create makes a table with a server-chosen code; joining a code that does not exist is an error, not a new table', async () => {
     let lost = await open('ZZZZ', 'Lost', randomUUID(), false);
     await vi.waitFor(() => expect(lost.closeCode).toBe(CLOSE_OVER));
@@ -2173,7 +2245,9 @@ describe('server over real sockets', () => {
   });
 
   it('(b) a swarm of four bots firing as fast as they can never breaks the table', async () => {
-    const { room, players } = await table(4);
+    // (Dealt with an Ace on top in every hand, so there is always a card for the middle: a plain deal now and then gave
+    // the swarm none it could play there, and the check that play reached the middle failed with nothing wrong.)
+    const { room, players } = await table(4, (seats, rng) => setUpDeal(deal(seats, rng), 'aces'));
     const rnd = seeded(2024);
     const PER_BOT = 1500;
     const BURST = 4;

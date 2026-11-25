@@ -8,7 +8,7 @@
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
 //   and voice, and between rounds the house rules.
 // - `TableRules`: the house rules on the lobby sheet, for everyone to read.
-// Also the small icon buttons the sheets share (`Pop`, `Robot`; the rest are in icons.tsx).
+// Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
@@ -63,17 +63,45 @@ function Info({ children }: { children: ReactNode }) {
   );
 }
 
-/** A robot's head; with a plus beside it (to add one) unless `plain`. */
-export function Robot({ plain }: { plain?: boolean } = {}) {
+/** A robot's head. */
+export function Robot() {
   return (
-    <svg viewBox={plain ? '0 2 15.5 17.5' : '0 0 24 24'} aria-hidden="true">
+    <svg viewBox="0 2 15.5 17.5" aria-hidden="true">
       <rect x="2" y="8" width="11.5" height="10" rx="2.5" />
       <path d="M7.75 8V5" />
       <circle cx="7.75" cy="4.2" r="1.1" fill="currentColor" stroke="none" />
       <circle cx="5.7" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
       <circle cx="9.8" cy="12.6" r="1.2" fill="currentColor" stroke="none" />
-      {/* the plus, clear of the head */}
-      {!plain && <path d="M19.8 10v5M17.3 12.5h5" />}
+    </svg>
+  );
+}
+
+/**
+ * Add a bot: a robot's head, big (marigold antenna tips, a club and a spade for eyes, a red ear), and a plus beside it.
+ * Drawn bare (no round button around it), so it is its own button (`Pop`'s `bare`).
+ */
+export function RobotPlus() {
+  return (
+    <svg className="robotplus" viewBox="0 0 24 24" aria-hidden="true">
+      {/* (The head low in the square, level with the plus beside it, the antennae with the room above; tipped, as a card is.) */}
+      <g transform="translate(0 2.2) rotate(-10 10 14.25)">
+        <path d="M7 8.5V5.6M13 8.5V5.6" />
+        <circle className="bulb" cx="7" cy="4.3" r="1.3" />
+        <circle className="bulb" cx="13" cy="4.3" r="1.3" />
+        <rect className="ear" x="1.3" y="11.6" width="2" height="4.4" rx="1" />
+        <rect className="blank" x="3.3" y="8.5" width="13.4" height="11.5" rx="2.4" />
+        <g className="eyes">
+          <g transform="translate(7.5 12.9) scale(1.75)">
+            <circle cy="-0.75" r="0.6" />
+            <circle cx="-0.68" cy="0.28" r="0.6" />
+            <circle cx="0.68" cy="0.28" r="0.6" />
+            <path d="M-0.4 1.45 0 0.2 0.4 1.45Z" />
+          </g>
+          <path transform="translate(12.5 12.9) scale(1.75)" d="M0-1.35C.8-.45 1.3 0 1.3.58A.65.65 0 0 1 .18.95L.4 1.45H-.4L-.18.95A.65.65 0 0 1-1.3.58C-1.3 0-.8-.45 0-1.35Z" />
+        </g>
+        <path d="M8 17h4" />
+      </g>
+      <path className="plus" d="M21.1 14v5M18.6 16.5h5" />
     </svg>
   );
 }
@@ -81,15 +109,16 @@ export function Robot({ plain }: { plain?: boolean } = {}) {
 /** An eye: standing up from the table to watch. */
 
 /**
- * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away.
+ * A round icon button that opens a small slip above it. A press anywhere else or Escape puts it away. (`bare`: the icon
+ * is the button itself, with no circle around it, in a plain square that is its hitbox.)
  */
-export function Pop({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+export function Pop({ icon, label, bare, children }: { icon: ReactNode; label: string; bare?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   useDismiss(root, open, () => setOpen(false));
   return (
     <span className="pop-at" ref={root}>
-      <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} data-tip={label} onClick={() => setOpen(!open)}>
+      <button type="button" className={`icon${bare ? ' bare' : ''}${open ? ' on' : ''}`} aria-expanded={open} aria-label={label} data-tip={label} onClick={() => setOpen(!open)}>
         {icon}
       </button>
       {open && (

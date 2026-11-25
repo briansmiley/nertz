@@ -96,7 +96,7 @@ describe('card-position reports (drag)', () => {
     expect(parseClientMsg({ ...good, seat: 4, extra: true })).toEqual(good); // the seat is the server's to stamp
     expect(parseClientMsg(JSON.stringify({ ...good, w: 0.123456, h: [1.23456, -2.00049], p: [0.33333, -0.66666] }))).toEqual({ t: 'drag', id: 'c1', w: 0.123, h: [1.235, -2], p: [0.333, -0.667] });
     expect(parseClientMsg({ ...good, w: 0, h: [60, -60], p: [8, -8] })).not.toBeNull();
-    expect(parseClientMsg({ ...good, w: 1 })).not.toBeNull();
+    expect(parseClientMsg({ ...good, w: 2 })).not.toBeNull(); // (1 is the felt's edge, 2 its pile in the middle)
   });
 
   it('refuses anything else: missing or wrong-typed fields, numbers out of range or not finite', () => {
@@ -105,7 +105,7 @@ describe('card-position reports (drag)', () => {
       { ...good, id: 7 },
       { ...good, id: 'x'.repeat(65) },
       { ...good, w: -0.01 },
-      { ...good, w: 1.01 },
+      { ...good, w: 2.01 },
       { ...good, w: '1' },
       { ...good, w: NaN },
       { ...good, h: [0] },
