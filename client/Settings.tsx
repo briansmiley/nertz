@@ -253,20 +253,20 @@ export function MicLevels({ prefs }: { prefs: Prefs }) {
 /** Under the gate's slider while you are in voice: how loud you are now, on the slider's scale, green where it is sent. */
 function Heard({ gate }: { gate: number }) {
   const on = useVoice().status === 'on';
-  const [level, setLevel] = useState<number | null>(null);
+  const [loud, setLoud] = useState<number | null>(null);
   useEffect(() => {
-    if (!on) return setLevel(null);
+    if (!on) return setLoud(null);
     // (Falling back slowly, as a level meter does: the gate itself holds open a moment after a word.)
     const timer = setInterval(() => {
       const now = micInput();
-      setLevel((was) => (now === null ? null : Math.max(now, (was ?? 0) * 0.85)));
+      setLoud((was) => (now === null ? null : Math.max(now, (was ?? 0) * 0.85)));
     }, 50);
     return () => clearInterval(timer);
   }, [on]);
-  if (level === null) return null;
+  if (loud === null) return null;
   return (
-    <span className={`heard${level >= gate ? ' over' : ''}`} role="meter" aria-label="Your microphone now" aria-valuemin={0} aria-valuemax={1} aria-valuenow={level}>
-      <i style={{ width: `${level * 100}%` }} />
+    <span className={`heard${loud >= gate ? ' over' : ''}`} role="meter" aria-label="Your microphone now" aria-valuemin={0} aria-valuemax={1} aria-valuenow={loud}>
+      <i style={{ width: `${loud * 100}%` }} />
     </span>
   );
 }

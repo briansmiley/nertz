@@ -93,7 +93,7 @@ export async function joinVoice(): Promise<void> {
   if (state.status !== 'off') return;
   set({ status: 'asking', error: null });
   const ask = ++asks;
-  // Made inside the click, so the browser lets it (and the audio elements later) play. It only tells who is speaking: voice goes on without one.
+  // Made inside the click, so the browser lets it (and the audio elements later) play. It tells who is speaking and carries your microphone's level and gate (`Send`): voice goes on without one.
   let made: AudioContext | null = null;
   try {
     made = new AudioContext();
