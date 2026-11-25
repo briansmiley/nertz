@@ -267,22 +267,48 @@ describe('a room hands its rounds over', () => {
     expect(kept[2]!.game).not.toBe(kept[0]!.game);
   });
 
-  it('one seat to an account: a second window of it watches until the first stands up', () => {
+  it('an account is one player: signed in from another window or device, it takes its seat and the old window closes', () => {
     const kept: RoundRecord[] = [];
     const { room } = roomWith(0, { record: (r) => kept.push(r) });
-    const [a, again, b] = [new FakeConn(), new FakeConn(), new FakeConn()];
-    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
-    room.join(again, 'Ada', 'tok-001a', true, signedAs('ada'));
+    const [phone, b] = [new FakeConn(), new FakeConn()];
+    room.join(phone, 'Ada', 'tok-000a', true, signedAs('ada'));
     room.join(b, 'Bob', 'tok-000b', true, signedAs('bob'));
+    startRound(room, phone);
     room.flush();
-    expect(again.states.at(-1)!.room.seat).toBeNull();
-    startRound(room, a);
-    room.handle(a, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
+    const seat = phone.last.room.seat;
+    // The phone goes away mid-round; the computer, a token of its own, opens the table signed in as Ada.
+    room.disconnect(phone);
+    const computer = new FakeConn();
+    room.join(computer, 'Ada', 'tok-001a', false, signedAs('ada'));
+    room.flush();
+    expect(computer.last.room.seat).toBe(seat);
+    expect(computer.last.room.players).toHaveLength(2);
+    // And back on the phone, in a new tab: the seat moves again, and the computer's window is closed.
+    const tab = new FakeConn();
+    room.join(tab, 'Ada', 'tok-002a', false, signedAs('ada'));
+    room.flush();
+    expect(computer.closed).toBe(true);
+    expect(tab.last.room.seat).toBe(seat);
+    room.handle(tab, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
     room.handle(b, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
     expect(kept[0]!.hands.map((h) => h.account)).toEqual(['ada', 'bob']);
-    room.handle(a, { t: 'sit', on: false });
+  });
+
+  it('a window that was only watching, then signs in as someone seated, becomes them: there is one of them', () => {
+    const { room } = roomWith(0);
+    const [a, b] = [new FakeConn(), new FakeConn()];
+    room.join(a, 'Ada', 'tok-000a', true, signedAs('ada'));
+    room.join(b, 'Bob', 'tok-000b', true);
+    startRound(room, a);
+    const watching = new FakeConn();
+    room.join(watching, 'Ada', 'tok-001a'); // not signed in yet: someone new, watching
     room.flush();
-    expect(again.states.at(-1)!.room.seat).not.toBeNull();
+    expect(watching.last.room.players).toHaveLength(3);
+    const signedIn = new FakeConn();
+    room.join(signedIn, 'Ada', 'tok-001a', false, signedAs('ada'));
+    room.flush();
+    expect(signedIn.last.room.seat).toBe(0);
+    expect(signedIn.last.room.players).toHaveLength(2);
   });
 
   it('a hand whose player left before the round was over is still theirs, and says they left', () => {

@@ -298,21 +298,32 @@ export class Room {
   join(conn: Conn, name: string, token: string, sit = false, signed: SignedAs | null = null): string | null {
     const account = signed && kept(signed);
     if (this.conns.has(conn)) this.drop(conn, false);
-    // Who someone is goes by their token alone. (A name proves nothing: anyone can type one.)
+    // Who someone is goes by their account, signed in, wherever they sign in from (another tab, another device); and
+    // otherwise by their token alone. (A name proves nothing: anyone can type one. An account is its cookie's.)
     // Whoever left is gone for good: back, they are someone new. (Only someone away comes back to their seat.)
-    let player = this.players.find((p) => p.token === token && !gone(p));
+    let player = (account && this.players.find((p) => p.account?.id === account.id && !gone(p))) || this.players.find((p) => p.token === token && !gone(p));
     const fresh = !player;
     if (!player) {
       if (!this.room()) return 'That room is full.';
       player = { id: this.ids++, token, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: null, ack: -1, dirty: false };
       this.players.push(player);
     } else if (player.conn) {
-      // Same token from a second socket (duplicated tab, or a reconnect racing the old socket's close): newest wins.
+      // A second socket as them (another tab or device, or a reconnect racing the old socket's close): newest wins.
       const old = player.conn;
       this.conns.delete(old);
-      old.close('This seat was opened in another tab.');
+      old.close(player.token === token ? 'This seat was opened in another tab.' : 'This seat was opened somewhere else.');
       this.letGo(player); // whatever the old socket was dragging is not in this one's hand
     }
+    // Whoever this window was before it was signed in as them, only watching, was them all along: there is one of them.
+    const was = this.players.find((p) => p !== player && p.token === token && !gone(p) && !seated(p) && !p.bot);
+    if (was) {
+      if (was.conn) {
+        this.conns.delete(was.conn);
+        was.conn.close('This seat was opened somewhere else.');
+      }
+      this.remove(was);
+    }
+    player.token = token; // this window is them now: its reconnects find them
     // (Come back signed in as someone already seated at the table, in another window, they are nobody here: one hand to an account.)
     const as = seated(player) && this.seatedAs(account, player) ? null : account;
     Object.assign(player, { name, account: as, conn, ack: -1 });
