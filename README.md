@@ -623,8 +623,8 @@ hold a card it fades and lets the pointer through. Keys typed in the panel are n
   server stamps the sender and an id, keeps the last 200 lines per table in memory and allows each player 5 messages per
   5 seconds (the excess is dropped). Chat is not part of the game snapshot: lines arrive as their own message
   (`{ t: 'chat' }`), and the kept history is sent once to every connection that sits down, reconnects included.
-- **Voice chat.** Opt-in: the microphone is asked for only when you press **Join voice**. Then: **Mute**, **Leave voice**,
-  a list of who is in voice and who is muted, and a ring around whoever is making sound. It is a WebRTC mesh, audio only:
+- **Voice chat.** Opt-in: the headset opens a slip of who is in voice, and the microphone is asked for only when you
+  press **Join** on it. Then: **Mute**, **Leave** (in Join's place; the slip stays open), a list of who is in voice and who is muted, and a ring around whoever is making sound. It is a WebRTC mesh, audio only:
   every pair of players in voice has one direct peer connection (15 for a full table of 6). Offers, answers and ICE
   candidates go through the game's websocket (`{ t: 'signal', to: seat }`); the server forwards them only between two
   players of the same table who have both joined voice, stamps the sender's seat, and never looks inside. The player in

@@ -51,7 +51,7 @@ onSocial((msg) => {
     set({ text: msg.text, voice: msg.voice, watchText: msg.watchText, watchVoice: msg.watchVoice, inVoice: msg.inVoice });
     sync(msg.inVoice);
   } else if (msg.t === 'outOfVoice') {
-    outOfVoice(false); // the host's switches keep us out: the microphone is released at once
+    outOfVoice(); // the host's switches keep us out: the microphone is released at once
   } else {
     void onSignal(msg.from, msg.data);
   }
@@ -62,7 +62,7 @@ let wasOnline = false;
 onNet(() => {
   const net = current();
   if (!net.room) {
-    outOfVoice(false);
+    outOfVoice();
     if (state !== fresh) set(fresh);
   } else {
     if (wasOnline && net.status !== 'online') {
@@ -75,10 +75,10 @@ onNet(() => {
   wasOnline = net.status === 'online';
 });
 
-/** Out of voice (see `leaveVoice`), and its slip put away with it. */
-export function outOfVoice(tell = true): void {
+/** Kept out of voice, or out of the table (see `leaveVoice`): its slip put away with it. Leave in the slip keeps it open. */
+export function outOfVoice(): void {
   if (state.open === 'voice') set({ open: null });
-  leaveVoice(tell);
+  leaveVoice(false);
 }
 
 /**
