@@ -2,7 +2,7 @@
 // own head, and across the bottom what there is to do, a round button each (its name a tooltip): sound on or off, the table's actions (which are
 // open to you, and what each does, is actions.ts), the way to feedback, which opens in the same place, and for an admin
 // how much the game is played (Usage.tsx), likewise.
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
 import { Again, Bug, Chair, Chart, Door, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
@@ -90,6 +90,9 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
 /** The question an action that cannot be undone asks (actions.ts `press`), over everything; Esc or a press beside it is no. */
 export function Sure({ room }: { room: RoomView }) {
   const a = useAsked(room);
+  // A press beside the card is no once it is let go, not when it starts: closed at the press, the slip would be gone
+  // before the click that follows, and that click would land on whatever lies under it (another button on the sheet).
+  const beside = useRef(false);
   useEffect(() => {
     if (!a) return;
     const onKey = (e: KeyboardEvent) => {
@@ -101,7 +104,11 @@ export function Sure({ room }: { room: RoomView }) {
   if (!a?.sure) return null;
   const Icon = ICONS[a.id];
   return (
-    <div className="asked" onPointerDown={(e) => e.target === e.currentTarget && answer(false, room)}>
+    <div
+      className="asked"
+      onPointerDown={(e) => (beside.current = e.target === e.currentTarget)}
+      onClick={(e) => e.target === e.currentTarget && beside.current && answer(false, room)}
+    >
       <div className="paper-card" role="alertdialog" aria-label={`${a.label}: are you sure?`}>
         <h2>Are you sure?</h2>
         <button type="button" className="go" onClick={() => answer(true, room)}>
