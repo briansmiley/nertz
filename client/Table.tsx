@@ -7,7 +7,7 @@
 // each dragging client reports where its card is (`drag` messages, about 18 a
 // second), and `tick` below glides the very same card element after those
 // reports until the snapshot that ends the hold lets it land or go home.
-import { animate, motion, useMotionValue, type MotionValue } from 'motion/react';
+import { animate, motion, useMotionValue, useMotionValueEvent, type MotionValue } from 'motion/react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { calledBy, canDrop, completedBy, DEAL_MS, GRACE_MS, grab, hasSay, inGrace, isHidden, isLive, reburiedSince, reshuffledSince, wentOut } from '../shared/engine';
 import { PLAIN_LOOK, shownBack, type Back, type Deck, type DragAt, type Look } from '../shared/protocol';
@@ -15,7 +15,7 @@ import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, keepOut, MINI_BELOW, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, isLow, isTall, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, onCanvas, TAG_H, toScreen, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -134,7 +134,6 @@ interface CardProps {
   /** Whose the place it lies in is: one of your own piles, someone else's, or the table's. */
   whose: Whose;
   face: Showing;
-  mini: boolean;
   /** The faces of the deck this card came from, and whether they are dark: its owner's choice (`Look`). */
   deck: Deck;
   night: boolean;
@@ -170,6 +169,12 @@ const CardView = memo(function CardView(p: CardProps) {
   const pile = useRef(p.pile);
   const flight = useRef(0);
   const faceWas = useRef(p.face);
+  /**
+   * Drawn in large print: by the size it is drawn at right now (`s`), not the size the layout gives it or whose hand it
+   * is in (`drawnMini`). React hears of it only when that changes, not on every frame.
+   */
+  const [mini, setMini] = useState(() => drawnMini(p.s * CARD_W));
+  useMotionValueEvent(s, 'change', (v) => setMini((was) => drawnMini(v * CARD_W, was)));
   const el = useRef<HTMLDivElement>(null);
   const first = useRef(true);
   /** When this card leaves the deck (performance clock), if it is in one. */
@@ -198,6 +203,7 @@ const CardView = memo(function CardView(p: CardProps) {
     setTimeout(() => {
       if (flight.current !== n) return;
       be(IN_PILE);
+      setMini(drawnMini(s.get() * CARD_W)); // at rest, just what its size says
       o.set(1); // landed: solid again, whatever it was in the air
       el.current?.removeAttribute('data-passing');
     }, move.duration * 1000 + 30);
@@ -228,6 +234,7 @@ const CardView = memo(function CardView(p: CardProps) {
     if (doing.current.k === 'deck') {
       // If the window was resized it stays with the deck, and is dealt to its new place in its turn.
       if (p.deal) [x, y, s].forEach((v, i) => v.set([p.deal!.x, p.deal!.y, p.s][i]!));
+      setMini(drawnMini(s.get() * CARD_W));
       return;
     }
     if (p.rebury && (arrived || from !== p.pile)) {
@@ -289,8 +296,8 @@ const CardView = memo(function CardView(p: CardProps) {
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
       <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: turnedTo(p.face) }} transition={turnOf(faceWas.current, p.face, p.slow)}>
-        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={p.mini} deck={p.deck} night={p.night} /> : null}</div>
-        <div {...backOf(backColour(p.owner), p.back, p.bare, p.mini)} />
+        <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={mini} deck={p.deck} night={p.night} /> : null}</div>
+        <div {...backOf(backColour(p.owner), p.back, p.bare, mini)} />
       </motion.div>
     </motion.div>
   );
@@ -1129,8 +1136,6 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
             rot={c.rot}
             whose={whoseOf(c)}
             face={replaying ? 'down' : c.face}
-            // (A card somebody is carrying is shown at the size of the cards in the middle, wherever it came from: so in its full drawing, not the small one of the hand it left.)
-            mini={c.s * CARD_W < MINI_BELOW && !aloft.has(c.card.id)}
             {...drawn(dress(c.card.owner))}
             slow={results && (c.pile === 'slot' || c.pile === 'tray')}
             pile={`${c.pile} ${c.at}`}
