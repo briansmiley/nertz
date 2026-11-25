@@ -115,6 +115,12 @@
   gap: 0.5rem;
 }
 
+/* (A tool that opens a slip sits in the slip's anchor: a grid, so the anchor is exactly as tall as its button. As a line
+   of text it would be taller, with the button at its top: above the centre line of the round buttons in the top corner.) */
+.tools > .pop-at {
+  display: grid;
+}
+
 /* A bot's remove button, a quiet × after its name. */
 .unseat {
   margin-left: 0.4rem;
