@@ -438,11 +438,11 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // Every third card shows an edge, and so does the top one. A card's height in the stack depends only on how many
   // cards lie under it, so taking cards off the top never moves the ones that stay: the stack just gets lower.
   //
-  // A group in flight (the server deals its cards one at a time) is counted off the stock into the hand, as with
-  // real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just above the
-  // stock, not quite square, so three separate cards are seen to be pulled. The complete group is held there a beat
-  // (the server's last step), then lands on the waste, every card turning over as it goes, the last on top.
-  const lifted = p.dealt;
+  // A group in flight (this window deals its cards one at a time: net.ts `dealtBy`) is counted off the stock into the
+  // hand, as with real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just
+  // above the stock, not quite square, so three separate cards are seen to be pulled. The complete group is held
+  // there a beat (the last step), then lands on the waste, every card turning over as it goes, the last on top.
+  const lifted = p.draw?.n ?? 0;
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
@@ -900,7 +900,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // hand with no cards in it.
   const empty = sitting.filter((seat) => !hands.some((p) => p.seat === seat));
   const ring: PlayerState[] = empty.length
-    ? [...hands, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], dealt: 0, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
+    ? [...hands, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], draw: null, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
     : hands;
   const mine = ring.find((p) => p.seat === you);
   const open: Open = { work: game.status.at !== 'dealing', nertz: hasOpened(game) };
