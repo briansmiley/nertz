@@ -99,7 +99,7 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
   );
 }
 
-/** The question an action that cannot be undone asks (actions.ts `press`), over everything; Esc or a press beside it is no. */
+/** The question an action that cannot be undone asks (actions.ts `press`), over everything; Esc or a tap beside it is no. */
 export function Sure({ room }: { room: RoomView }) {
   const a = useAsked(room);
   useEffect(() => {
@@ -113,7 +113,7 @@ export function Sure({ room }: { room: RoomView }) {
   if (!a?.sure) return null;
   const Icon = ICONS[a.id];
   return (
-    <div className="asked" onPointerDown={(e) => e.target === e.currentTarget && answer(false, room)}>
+    <div className="asked" onClick={(e) => e.target === e.currentTarget && answer(false, room)}>
       <div className="paper-card" role="alertdialog" aria-label={`${a.label}: are you sure?`}>
         <h2>Are you sure?</h2>
         <button type="button" className="go" onClick={() => answer(true, room)}>
