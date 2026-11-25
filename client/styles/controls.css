@@ -111,6 +111,60 @@
   stroke-linejoin: round;
 }
 
+/* An icon that is its own button (the robot's head and plus, to add a bot): no circle, just it, in a plain square of
+   the row's height that is its hitbox. Hovered it lifts and tips like a card picked up; while its slip is open it stays so. */
+.icon.bare {
+  border: 0;
+  border-radius: 6px;
+  background: none;
+}
+
+.icon.bare svg {
+  width: 2.7rem;
+  height: 2.7rem;
+  margin: -0.15rem;
+  overflow: visible;
+  stroke-width: 1.05;
+  transition: transform 0.12s ease-out;
+}
+
+.icon.bare:hover svg,
+.icon.bare.on svg {
+  transform: translateY(-2px) rotate(-4deg);
+}
+
+/* (The ear and the plus reach a little past the square: the ring goes round them too.) */
+.icon.bare:focus-visible {
+  outline-offset: 5px;
+}
+
+.icon.bare:active svg {
+  transform: translateY(1px);
+}
+
+.robotplus .blank {
+  fill: #fffdf6;
+}
+
+.robotplus .bulb {
+  fill: var(--marigold);
+  stroke-width: 0.8;
+}
+
+.robotplus .ear {
+  fill: var(--red);
+  stroke-width: 0.8;
+}
+
+.robotplus .eyes {
+  fill: currentColor;
+  stroke: none;
+}
+
+.robotplus .plus {
+  stroke-width: 1.5;
+}
+
 /* The slip an icon button opens, just above it. */
 .pop-at {
   position: relative;
