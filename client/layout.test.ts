@@ -5,7 +5,7 @@ import { CARD_RATIO, cardSize, feltHw, offFelt, openPlace, pileGap, roomAt, TABL
 import { inPlay, lcg, pile, seats, table, upWork, withPile } from '../shared/testkit';
 import type { AnyCard, Card, CentrePile, GameState } from '../shared/types';
 import { blockParts, frameAt, LABEL, planFinale, restAt, stampAt, TILT, TIMING, trayAt } from './Finale';
-import { aloftAt, aloftPath, computeLayout, pileFor, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, dropTarget, fanOut, inside, isTall, keepOut, landingAt, MINI_BELOW, MINI_SLACK, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
+import { aloftAt, aloftPath, chatLines, computeLayout, corners, NO_FITTINGS, pileFor, countBox, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, dropTarget, fanOut, inside, isTall, keepOut, landingAt, MINI_BELOW, MINI_SLACK, onCanvas, seatDir, seating, TAG_H, toScreen, toTable, WATCH, type Layout, type Rect, type Stage } from './layout';
 import { CARD_H, CARD_W } from './cards/Face';
 import { dealtBy } from './net';
 
@@ -1258,5 +1258,26 @@ describe('drawnMini', () => {
     let mini = false;
     for (const w of [53, 51, 50, 52, 54, 51, 50]) mini = drawnMini(w, mini);
     expect(mini).toBe(false);
+  });
+});
+
+describe('the lines under the chat', () => {
+  // An iPhone 15 held upright in Safari (393 x 659 seen), two at the table, the chat's text and voice buttons.
+  const at = corners(393, 659, undefined, { ...NO_FITTINGS, chat: ['text', 'icon'] });
+  const board = computeLayout(393, 659, inPlay(seats(2), lcg(2)), 0).middle;
+
+  it('stop short of the felt: five over the table, four under the line to type in', () => {
+    expect(chatLines(at, 393, board, false, Infinity)).toBe(5);
+    expect(chatLines(at, 393, board, true, 8)).toBe(4);
+  });
+
+  it('are as many as they may be with no felt shown, or the felt far below; and never none', () => {
+    expect(chatLines(at, 393, null, true, 8)).toBe(8);
+    expect(chatLines(at, 393, { ...board, y: 2000 }, false, 5)).toBe(5);
+    expect(chatLines(at, 393, { ...board, y: 60 }, true, 8)).toBe(1);
+  });
+
+  it('may run on past the top of a felt that is not under them', () => {
+    expect(chatLines(at, 393, { ...board, x: 393 * 0.78 + 20 }, false, 5)).toBe(5);
   });
 });

@@ -720,6 +720,26 @@ export function corners(W: number, fullH: number, keep: Insets = NO_INSETS, fit:
   return { shape, chat, chatParts: parts(0), knobs, feedback, clocks: fit.clock ? [after, above, beside] : [] };
 }
 
+/**
+ * The lines under the chat's buttons as chat.css sets them: `drop` below the buttons (and once more below the line to
+ * type in, `input` high), each line `line` high and `gap` from the next, as wide as `wide` of the window at most `most`;
+ * and `clear` kept above the felt.
+ */
+export const UNDER = { drop: 8, input: 35.5, line: 23.5, gap: 3, wide: 0.78, most: 340, clear: 4 } as const;
+
+/**
+ * How many lines (of one row each) stand under the chat's buttons before they would run onto the felt (`board`):
+ * fewer while you type, the line to type in being above them. At least one; with no felt shown, or none under them,
+ * no fewer than `most`. The newest are the ones shown.
+ */
+export function chatLines(at: Corners, W: number, board: Rect | null, typing: boolean, most: number): number {
+  const x = at.chat.x + 2;
+  if (!board || board.x >= x + Math.min(UNDER.most, W * UNDER.wide) || board.x + board.w <= x) return most;
+  const top = at.chat.y + at.chat.h + 2 * UNDER.drop + (typing ? UNDER.input : 0);
+  const fit = Math.floor((board.y - UNDER.clear - top + UNDER.gap) / (UNDER.line + UNDER.gap));
+  return Math.max(1, Math.min(most, fit));
+}
+
 /** Your own line at the table: where, in full (under your nertz pile) or as wide as what it says, and which end of its place it is written from. */
 export interface NameAt extends Rect {
   full: boolean;
