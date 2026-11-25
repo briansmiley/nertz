@@ -375,12 +375,12 @@ export const landsAt = (draw: NonNullable<PlayerState['draw']>): number => draw.
 
 /**
  * The one way a draw ends: every group in flight whose time has come by `now` (the round's clock) is down, and its
- * top card can be played. Whatever the round's status: the cards are on the waste already. The SAME state object if
- * there is none.
+ * top card can be played. Only while the round is live: a group in flight at a call stays as it is. The SAME state
+ * object if there is none.
  */
 export function landed(state: GameState, now: number): GameState {
   const down = (p: PlayerState): boolean => !!p.draw && now >= landsAt(p.draw);
-  return state.players.some(down) ? { ...state, players: state.players.map((p) => (down(p) ? { ...p, draw: null } : p)) } : state;
+  return isLive(state) && state.players.some(down) ? { ...state, players: state.players.map((p) => (down(p) ? { ...p, draw: null } : p)) } : state;
 }
 
 /** The round is over, in the one way every round ends: whatever is in anyone's hand goes back, and nothing changes after. */

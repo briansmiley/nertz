@@ -13,7 +13,7 @@
 // (`show`, `dealtBy`): no snapshot sets the pace.
 import { getPrefs, lookOf, watchPrefs } from './prefs';
 import { useSyncExternalStore } from 'react';
-import { applyIntent, grab, isHidden, landsAt, refused, yetToHear } from '../shared/engine';
+import { applyIntent, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
 import { CLOSE_OVER, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
@@ -152,6 +152,8 @@ let sync: Sync = freshSync;
 /** By seat, the group this window is dealing out: its first card, and when the draw was made as first seen here. (Your own draw's time changes when the server answers it; its cards do not start over.) */
 const flights = new Map<number, { card: string; at: number }>();
 let step: ReturnType<typeof setTimeout> | undefined;
+/** What the round's clock read when the groups in flight were last dealt on: they stay there once the round is not live (a group in flight at a call stays as it lies). */
+let dealtAt: number | null = null;
 let attempts = 0;
 let retry: ReturnType<typeof setTimeout> | undefined;
 /** When this window's socket last heard anything from the server (or was opened): see `SILENT_MS`. */
@@ -177,9 +179,10 @@ function show(next: Partial<NetState> = {}): void {
   const game = room?.game;
   if (!room || !game) {
     flights.clear();
+    dealtAt = null;
     return set({ ...next, room });
   }
-  const now = roundNow(sync);
+  const now = (dealtAt = isLive(game) || dealtAt === null ? roundNow(sync) : dealtAt);
   let due = Infinity;
   const players = game.players.map((p) => {
     if (!p.draw) return flights.delete(p.seat), p;
@@ -191,7 +194,7 @@ function show(next: Partial<NetState> = {}): void {
     if (seen.draw) due = Math.min(due, seen.draw.n < p.draw.n ? flight.at + seen.draw.n * STOCK_CARD_MS : landsAt(p.draw));
     return seen;
   });
-  if (sync.lead !== null && due > now && due < Infinity) step = setTimeout(show, due - now);
+  if (isLive(game) && sync.lead !== null && due > now && due < Infinity) step = setTimeout(show, due - now);
   set({ ...next, room: players.every((p, i) => p === game.players[i]) ? room : { ...room, game: { ...game, players } } });
 }
 

@@ -190,8 +190,9 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   second, and the next can start once its group is up, however fast you click. While a group is in flight the waste
   is out of play (its top is covered, and nobody is shown those cards, their owner included); the nertz pile and the
   work piles play on. When the stock is empty, a click turns the whole waste back over into the stock.
-- **The pace is the server's.** A draw is one intent; the server deals its group on its own timer, and refuses a
-  draw while one is in flight, so a doctored client gains nothing.
+- **The pace is the server's.** A draw is one intent; the server puts its group on the waste in one step, and until
+  the group's time is up it refuses another draw and a play of its top card, so a doctored client gains nothing. Each
+  window deals the cards out at that pace on its own clock.
 - **Stuck**: each player can toggle "I'm stuck". When every connected player who plays the round is stuck (not anyone
   who has got up from their cards: see table management), the server (which knows every card) checks whether any hand
   still played, here or away, can ever get anywhere (`canProgress`): put a card in the middle, or take one off its nertz
@@ -213,7 +214,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   If the card has nowhere to go, or loses its last spot to another player's grace move, the drag is cancelled. Letting go
   anywhere is that one move: if the spot was taken a moment earlier, the card goes back and that player is done. The round
   is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A group in flight at the call
-  is not such a card: the server deals no more of it, and it stays as it lies, face-down.
+  is not such a card: its time stops there, and it stays as it lies, face-down.
   "The moment of the call" is when it reaches your screen, not the server: a card you take up while the call is on its
   way to you (or whose taking up is on its way to the server as the call is made) was in your hand at the call. So the
   round waits for each player's window to say it has the call, a round trip, at most 1 second (`HEAR_MS`); a window that
@@ -489,7 +490,7 @@ never move a card that was not picked up.
 
 **Opaque ids and redacted views.** Card ids are random strings generated per round and say nothing about suit or rank. Each
 player is sent a full snapshot in which face-down cards (all stocks, everything under the top of each nertz pile, the
-face-down cards at the bottom of each work pile and the cards of a group in flight onto a waste, the owner's included) are reduced to `{ id, owner, hidden: true }`. The id stays the same when a card is revealed, so a card animates continuously from
+face-down cards at the bottom of each work pile) are reduced to `{ id, owner, hidden: true }`. The id stays the same when a card is revealed, so a card animates continuously from
 back to face, and nobody can read hidden cards off the wire.
 
 **Snapshots, seq and ack.** Every client message that plays a card carries a sequence number. Every server message is a
@@ -580,16 +581,19 @@ predicted King nothing else is even sent; `client/clearFirst.tsx` only turns suc
 `lastRound` (how it ended, and per player the name, the cards played, the nertz cards left and the running total), so the
 client can play the end-of-round sequence and draw the score sheet from it, even if a player has left since.
 
-**One intent per draw; the server deals the group.** `{ k: 'draw' }` takes the top stock card face-down onto the waste
-and starts a group in flight: `PlayerState.dealt` (1 to 3) counts its cards on top of the waste. From then on the server
-takes each step of it (`dealOn`, one place for the transition, shared with the draw's own first card), `STOCK_CARD_MS`
-apart: the next card, until three are off (or the stock is out), then one more step turns the group up and `dealt` is
-0 again. The steps are the room's timers (`draws`), called off with the round's timer and by a pause, and they run
-only while the round is live: a group in flight at a call stays as it lies. A draw while one is in flight is refused.
-`viewFor` redacts the top `dealt` waste cards for everyone, and `grab` refuses the waste while it is above 0. The
-group is part of the state, so a reload or reconnect mid-draw is sent it as it lies and the steps go on. A client
-predicts only the first card of its own draw; the rest, and the faces, come with the snapshots of the server's steps.
-On an empty stock the same intent turns the waste over, which can only happen with `dealt` at 0.
+**One intent per draw, one step, one snapshot.** `{ k: 'draw' }` puts the whole group (three cards, or what the stock has
+left) on the waste and records the group in flight: `PlayerState.draw` is `{ n, at }`, how many cards and when the draw
+was made on the round's clock (`RoomView.clock`, which a pause stops). The group counts as dealt one card every
+`STOCK_CARD_MS` and turned up one step after the last, so it is down at `at + n * STOCK_CARD_MS` (`landsAt`). There is
+no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, the
+one place a draw ends, and only while the round is live: a group in flight at a call stays as it lies). Until then
+another draw is refused and `grab` refuses the waste top. The faces of the group go out in that one snapshot. Each
+window deals it out itself (`client/net.ts`: `show`, `dealtBy`): it reckons the round's clock from the snapshot that
+reached it quickest, shows the cards leaving the stock one step apart from when it first had the draw (a window that
+has it late finds the cards already due off the stock), face-down, and turns the group up at its time, which for your
+own draw is the server's: it lands when the server would take a play from it. A bot waits for its group to be down
+before it looks again. On an empty stock the same intent turns the waste over, which can only happen with no group in
+flight.
 
 **Tables.** `{ t: 'create', name, token }` opens a table and the server picks the code, which comes back in the first
 snapshot. `{ t: 'join', room, name, token }` sits down at an existing table; a code that does not exist is answered with an
