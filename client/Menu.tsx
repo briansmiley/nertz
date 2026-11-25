@@ -61,6 +61,7 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
                 type="button"
                 className={a.on ? 'icon on' : 'icon'}
                 aria-pressed={a.on}
+                disabled={a.coming}
                 aria-label={a.tally ? `${a.label} ${a.tally}` : a.label}
                 data-tip={a.label}
                 onClick={(e) => {

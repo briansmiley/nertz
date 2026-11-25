@@ -198,6 +198,16 @@ img.art {
   transform: translateY(1px);
 }
 
+/* One that is not open yet (actions.ts: coming): there, faded, and still. */
+.icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon:disabled > img.art {
+  transform: none;
+}
+
 .standup img.art {
   width: 22px;
   height: 22px;

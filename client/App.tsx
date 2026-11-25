@@ -18,7 +18,7 @@ import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
-import { press, tableActions, type ActionId } from './actions';
+import { openAction, press, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, SignInDoor, Sit } from './icons';
@@ -382,7 +382,7 @@ function Watching({ room, butYou }: { room: RoomView; butYou?: boolean }) {
 
 /** One of the table's actions (actions.ts) as an icon among the sheet's tools, while it is open to you. */
 function Act({ id, room }: { id: ActionId; room: RoomView }) {
-  const a = tableActions(room).find((t) => t.id === id);
+  const a = openAction(room, id);
   if (!a) return null;
   const Icon = ICONS[id];
   return (
