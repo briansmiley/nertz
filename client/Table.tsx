@@ -23,7 +23,7 @@ import { decide, drawnAt, EMPTY, reporter, sight, type Gesture, type Grasp, type
 import { inHand, levelOf, mover, moving, whoseOf, IN_PILE, type Doing, type Whose } from './level';
 import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
-import { setUnrevealed } from './social';
+import { setBoard, setUnrevealed } from './social';
 import { useFeed } from './feed';
 import { Dots } from './Dots';
 import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet } from './net';
@@ -502,6 +502,10 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   // by the layout too, and the cards round it: nothing here is measured off the page or put down by hand.
   const fit = useFittings(room);
   const L = useMemo(() => computeLayout(W, H, game, you, stage, peek, pad, sitting, fit, hands), [W, H, game, you, stage, peek, pad, sitting, fit, hands]);
+  // The lines under the chat stop short of the felt (none once a phone's table is cleared for the sorted piles).
+  const board = L.cleared ? null : L.middle;
+  useLayoutEffect(() => setBoard(board), [board]);
+  useEffect(() => () => setBoard(null), []);
   const byId = useMemo(() => new Map(L.cards.map((c) => [c.card.id, c])), [L]);
   // The table as it was drawn before this game came (the last layout of the game before it), for the cards reburied since (`REBURY`).
   const drawnAs = useRef({ game, byId, before: null as { game: GameState; byId: ReadonlyMap<string, Placed> } | null });

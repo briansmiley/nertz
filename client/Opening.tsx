@@ -138,7 +138,7 @@ export function Opening({ room, at, onSeats }: { room: RoomView; at: { x: number
                 <Dots />
               </p>
             )}
-            <button type="button" className={`kickoff${warned ? ' warned' : ''}`} onClick={press}>
+            <button type="button" className={`kickoff${warned ? ' warned' : late.length === 0 ? ' all' : ''}`} onClick={press}>
               {warned ? 'Start anyway' : 'Start'}
             </button>
             {/* Takes the ask back: nothing goes when the rest say ready, and the button is plain Start again. */}

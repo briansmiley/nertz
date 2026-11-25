@@ -9,11 +9,13 @@ import { SaidWord, useHotkey } from './hotkey';
 import { hotkeyName, setPrefs, usePrefs } from './prefs';
 import { Sit, Speaker } from './icons';
 import { useCorners } from './fittings';
+import { chatLines } from './layout';
 import { kick, sit } from './net';
 import { PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
+import { useWindow } from './viewport';
 import { joinVoice, leaveVoice, toggleMuted, useVoice } from './voice';
 
-/** How many of the last lines stand under the line you type in. */
+/** How many of the last lines stand under the line you type in, at most: fewer where the felt is near (layout.ts, `chatLines`). */
 const SHOWN = 8;
 
 /** The colour a name is written in: that of the seat its player has now. Someone watching (or gone) has no seat and no colour: the colour of the words. */
@@ -71,10 +73,10 @@ function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
 }
 
 /** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while, and never in the way of the pointer. */
-function Passing({ lines, colour }: { lines: SocialState['passing']; colour: Colour }) {
+function Passing({ lines, colour, most }: { lines: SocialState['passing']; colour: Colour; most: number }) {
   const [, tick] = useState(0);
   const now = Date.now();
-  const shown = lines.filter((p) => now - p.at < PASSING_MS);
+  const shown = lines.filter((p) => now - p.at < PASSING_MS).slice(-most);
   const next = shown[0] ? shown[0].at + PASSING_MS - now : null;
   useEffect(() => {
     if (next === null) return;
@@ -119,6 +121,7 @@ export function Chat({ room }: { room: RoomView }) {
   const typing = open === 'chat' && mayText;
   /** Where the buttons stand, and how wide each is, left to right (layout.ts: the table keeps clear of exactly that). */
   const at = useCorners(room);
+  const { W } = useWindow();
   const wide = (i: number) => ({ minWidth: at.chatParts[i] });
   const voiceAt = mayText ? 1 : 0;
   const voiceSlip = open === 'voice' && mayVoice;
@@ -177,7 +180,7 @@ export function Chat({ room }: { room: RoomView }) {
         {mayText && (
           <button type="button" className={`chat-toggle${typing ? ' on' : ''}`} style={wide(0)} aria-expanded={typing} aria-label="Chat" data-tip="Chat" onClick={() => toggle('chat')}>
             <img className="art" src="/icons/chat.png" alt="" aria-hidden="true" />
-            {!typing && social.unread > 0 && <i className="dot" aria-label={`${social.unread} unread`} />}
+            {!typing && social.unread.length > 0 && <i className="dot" aria-label={`${social.unread.length} unread`} />}
           </button>
         )}
         {/* The headset opens the voice slip. Out of voice it beckons while anyone is in it: yellow, with how many. */}
@@ -304,15 +307,15 @@ export function Chat({ room }: { room: RoomView }) {
           {typing ? (
             social.lines.length > 0 && (
               <ol className="passing still" aria-live="polite">
-                {social.lines.slice(-SHOWN).map((l) => (
-                  <li key={l.id}>
+                {social.lines.slice(-chatLines(at, W, social.board, true, SHOWN)).map((l) => (
+                  <li key={l.id} className={social.unread.includes(l.id) ? 'new' : undefined}>
                     <Line line={l} colour={colour} />
                   </li>
                 ))}
               </ol>
             )
           ) : (
-            prefs.chatOver && <Passing lines={social.passing} colour={colour} />
+            prefs.chatOver && <Passing lines={social.passing} colour={colour} most={chatLines(at, W, social.board, false, Infinity)} />
           )}
         </div>
       )}
