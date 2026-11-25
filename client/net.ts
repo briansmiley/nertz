@@ -101,12 +101,14 @@ export interface NetState {
   /** Predicted room, or null when not in one. */
   room: RoomView | null;
   error: string | null;
+  /** Sitting back down at the table it was at, after a reload: until it is seated, or gives up (`resume`). */
+  rejoining: boolean;
 }
 
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null };
+let state: NetState = { status: 'idle', room: null, error: null, rejoining: false };
 const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
@@ -226,7 +228,7 @@ export function resume(): void {
     return; // storage unavailable (or not ours): home
   }
   const room = roomInUrl();
-  if (room && seat?.room === room && typeof seat.name === 'string') join(room, seat.name);
+  if (room && seat?.room === room && typeof seat.name === 'string') (join(room, seat.name), set({ rejoining: true }));
 }
 
 /** The one way out of a session: leaving, sent away, replaced, refused. */
@@ -240,7 +242,7 @@ function stop(error: string | null): void {
   old?.close();
   sync = freshSync;
   timed(null);
-  set({ status: 'idle', room: null, error });
+  set({ status: 'idle', room: null, error, rejoining: false });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
@@ -277,7 +279,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
       keep({ room: session.room, name: session.name });
     }
     sync = onSnapshot(sync, msg);
-    set({ status: 'online', room: predict(sync), error: null });
+    set({ status: 'online', room: predict(sync), error: null, rejoining: false });
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
