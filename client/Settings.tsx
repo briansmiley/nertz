@@ -421,12 +421,8 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
             </label>
             <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
           </div>
-          <label className="check">
-            <input type="checkbox" checked={room.unlisted} onChange={(e) => setUnlisted(e.target.checked)} />
-            <span>
-              Private table <Info>Left off the open tables list. Anyone with the code can still join.</Info>
-            </span>
-          </label>
+          {/* (Between rounds it is with the house rules below; mid-round, when they are hidden, here on its own.) */}
+          {room.phase === 'playing' && <Private room={room} mine />}
           {room.phase !== 'playing' && (
             <div className="rules">
               <Rules room={room} mine />
@@ -472,8 +468,21 @@ function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
           Tap to play <Info>Allows tapping a card then its destination, without dragging</Info>
         </span>
       </label>
+      <Private room={room} mine={mine} />
       <SeatCount room={room} mine={mine} />
     </>
+  );
+}
+
+/** Whether the table is left off the open tables list. Unlike the house rules it can be switched mid-round too. */
+function Private({ room, mine }: { room: RoomView; mine: boolean }) {
+  return (
+    <label className="check">
+      <input type="checkbox" checked={room.unlisted} disabled={!mine} onChange={(e) => setUnlisted(e.target.checked)} />
+      <span>
+        Private table <Info>Left off the open tables list. Anyone with the code can still join.</Info>
+      </span>
+    </label>
   );
 }
 
