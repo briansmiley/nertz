@@ -256,7 +256,11 @@ function Heard({ gate }: { gate: number }) {
   const [level, setLevel] = useState<number | null>(null);
   useEffect(() => {
     if (!on) return setLevel(null);
-    const timer = setInterval(() => setLevel(micInput()), 50);
+    // (Falling back slowly, as a level meter does: the gate itself holds open a moment after a word.)
+    const timer = setInterval(() => {
+      const now = micInput();
+      setLevel((was) => (now === null ? null : Math.max(now, (was ?? 0) * 0.85)));
+    }, 50);
     return () => clearInterval(timer);
   }, [on]);
   if (level === null) return null;

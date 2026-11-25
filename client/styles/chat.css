@@ -580,6 +580,23 @@
   font-size: 12px;
 }
 
+/* Your microphone at the foot of the slip: the settings' row (settings.css, `.mix`), not the chat's round buttons. */
+.voice-slip .mix button {
+  padding: 0.35rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.voice-slip .mix button.on {
+  border-bottom-color: var(--red);
+  background: none;
+  color: var(--ink);
+}
+
 /* A notice from the table among the chat's lines (who sniped whom, a round dealt or over): slanted and a little fainter than what is said. */
 .passing .notice {
   font-style: italic;
