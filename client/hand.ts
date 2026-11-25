@@ -16,9 +16,9 @@ const DRAG_SLOP = 6; // px of travel before a press becomes a carry
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
 const TOUCH_RISE_PX = 44;
 const TOUCH_CLEAR_PX = 10;
-/** On a phone a card under a finger is drawn this wide (px) once it has risen, whatever its size in the hand: big enough to see past the fingertip, small enough to see where it is going. */
+/** On a phone a card carried over the felt is drawn this wide (px): bigger than the piles there, easier to aim with a finger. */
 const TOUCH_CARD_PX = 48;
-/** An Ace on its way to start a pile shrinks to the size of a pile in the middle over the last few px before the felt. */
+/** A card carried out of your hand comes to its size over the felt (`feltScale`) over the last few px before it. */
 const SHRINK_PX = 14;
 /** A card taken up by a tap stands this much of its height above where it lay. */
 const STAND = 0.16;
@@ -135,24 +135,29 @@ export const drawnAt = (d: InHand, i: number): Pt => {
   return { x: d.at.x + (d.base[i]!.x - leadBase(d).x) * k, y: d.at.y + (d.base[i]!.y - leadBase(d).y) * k };
 };
 
+/**
+ * The scale what is in hand is drawn at over the felt. An Ace, which may start a pile wherever there is room: the
+ * size of a pile in the middle, exactly what would lie there. Any other card on a phone: TOUCH_CARD_PX. Otherwise as
+ * it lay.
+ */
+const feltScale = (held: Held, home: number, L: Layout): number =>
+  held.k === 'card' && held.ace ? L.fs : held.k === 'card' && L.phone ? TOUCH_CARD_PX / CARD_W : home;
+
 /** The hand with the pointer at `p`: the card goes with it. */
 function carry(d: Pressed | Carried, p: Pt, { L, game }: Scene): Carried {
   const { home } = d;
+  const b = leadBase(d);
   // Under a finger the card comes up as it is carried off, until its lower edge is just above the fingertip: you
-  // see the whole of it and what it is over. (Not a pile on its way to the tray: that is not a precision job.) On a
-  // phone it comes to one size as it rises, TOUCH_CARD_PX, whatever size the hand's cards are in that orientation.
+  // see the whole of it and what it is over. (Not a pile on its way to the tray: that is not a precision job.)
   const grip = d.sy - d.base[0]!.y; // how far down the grabbed card it was taken
   const up = d.touch && d.held.k === 'card' ? clamp(Math.hypot(p.x - d.sx, p.y - d.sy) / TOUCH_RISE_PX, 0, 1) : 0;
-  const top = L.phone ? TOUCH_CARD_PX / CARD_W / home : 1; // its scale once risen, against the hand's
-  const rise = up * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX / top - grip);
-  const lifted = 1 + (top - 1) * up;
-  // An Ace that may start a pile comes down to the size of a pile in the middle as it reaches the felt, about the
-  // point it is held by: what you carry over the felt is exactly what would lie there.
-  const ace = d.held.k === 'card' && d.held.ace;
-  const near = ace ? clamp(1 - (offFelt(toTable(L.felt, p.x, p.y - rise * lifted - (d.touch ? (home * lifted * CARD_H) / 2 : 0)), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1) : 0;
-  const k = lifted + (L.fs / home - lifted) * near;
-  const b = leadBase(d);
-  return { ...gripOf(d), phase: 'carried', pointer: d.pointer, px: p.x, py: p.y, at: { x: p.x - (d.sx - b.x) * k, y: p.y - rise * k - (d.sy - b.y) * k }, s: home * k };
+  const at = { x: p.x - (d.sx - b.x), y: p.y - up * Math.max(0, home * CARD_H + TOUCH_CLEAR_PX - grip) - (d.sy - b.y) };
+  // It is drawn as it lay while it is over your hand, and comes to its size over the felt as it reaches it. It changes
+  // size about the point it is aimed by (the pointer, or under a finger its own middle), which stays where it is.
+  const aim = d.touch ? { x: at.x + (home * CARD_W) / 2, y: at.y + (home * CARD_H) / 2 } : p;
+  const near = clamp(1 - (offFelt(toTable(L.felt, aim.x, aim.y), game.players.length) * L.felt.u) / SHRINK_PX, 0, 1);
+  const k = 1 + (feltScale(d.held, home, L) / home - 1) * near;
+  return { ...gripOf(d), phase: 'carried', pointer: d.pointer, px: p.x, py: p.y, at: { x: aim.x + (at.x - aim.x) * k, y: aim.y + (at.y - aim.y) * k }, s: home * k };
 }
 
 /** Somewhere the card in hand may be put down. `hit` is where it has to be let go. */
