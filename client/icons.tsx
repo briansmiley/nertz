@@ -40,7 +40,7 @@ export function Chair() {
   return <img className="art" src="/icons/stand.png" alt="" aria-hidden="true" />;
 }
 
-/** The connection lost: the robot cracked, an X and an O for eyes, its bent antenna's bulb red and sparking. */
+/** The connection lost: the robot cracked, a spade and an X for eyes, a zigzag mouth, snapped antenna, bulb red. */
 export function RobotBroken() {
   return (
     <span className="robot-net">
@@ -49,7 +49,7 @@ export function RobotBroken() {
   );
 }
 
-/** The connection back: the robot mended, hearts for eyes and a grin, the antenna straight and its bulb green, pulsing. */
+/** The connection back: the robot mended and upright, a heart and a dot for eyes, the antenna straight, bulb green. */
 export function RobotFixed() {
   return (
     <span className="robot-net fixed">
