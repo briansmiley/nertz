@@ -1217,10 +1217,18 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     {paused && (
       <div className="paper-card" role="dialog" aria-label="Paused">
         <h2>Paused</h2>
-        <p>{room.paused!.by === null ? 'An update paused the round.' : room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
+        {room.paused!.by === null ? (
+          // (Paused by the server going down for an update: while it is away, that it will be back; once it is, that play can go on.)
+          <>
+            <p>The server paused to update the game.</p>
+            <p>{online ? 'Update complete. Ready to resume.' : 'It’ll be back in a moment.'}</p>
+          </>
+        ) : (
+          <p>{room.paused!.by === room.me ? 'You paused the round.' : `${room.players.find((p) => p.id === room.paused!.by)?.name ?? 'Someone'} paused the round.`}</p>
+        )}
         {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
-            Unpause {pauseKey && <small>{pauseKey}</small>}
+            Resume game {pauseKey && <small>{pauseKey}</small>}
           </button>
         )}
       </div>
