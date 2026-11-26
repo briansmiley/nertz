@@ -10,7 +10,7 @@ import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH,
 import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
-import { calm, lookOf, setPrefs, usePrefs } from './prefs';
+import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
 import { useDismiss } from './dismiss';
 import { usePicture } from './picture';
@@ -19,7 +19,7 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, portable, reachOf, sit, start, takeOffline, useNet, useReach, useRtt, type Reach, type Status } from './net';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, playOffline, portable, reachOf, sit, start, unreachable, useNet, useReach, useRtt, type Reach, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
@@ -112,11 +112,11 @@ function Line({ back, onTuck, offer }: { back: boolean; onTuck: () => void; offe
   );
 }
 
-/** With the line down at a table nobody else is at but bots: play it on here, with no line (client/net.ts `takeOffline`). Nothing, at any other table. */
+/** With the line down at a table nobody else is at but bots: play it on here, with no line (client/net.ts `playOffline`). Nothing, at any other table. */
 function PlayOffline({ room }: { room: RoomView }) {
   if (!portable(room, useReach())) return null;
   return (
-    <button type="button" className="offer" onClick={takeOffline}>
+    <button type="button" className="offer" onClick={playOffline}>
       Play offline
     </button>
   );
@@ -152,7 +152,7 @@ export function App() {
   if (!room) {
     return (
       <>
-        <Home key={net.offline ? 'offline' : 'online'} error={net.error} busy={net.status !== 'idle'} yours={page} reach={reach} />
+        <Home key={net.offline ? 'offline' : 'online'} error={net.error} busy={net.status !== 'idle'} cut={unreachable(net)} yours={page} reach={reach} />
         <Corner />
       </>
     );
@@ -513,8 +513,7 @@ const TABLES_MS = 5000;
 const roundOf = (t: TableSummary): string => (t.playing ? `round ${t.round}` : t.round > 0 ? `after round ${t.round}` : 'not started');
 
 /** The tables someone is at just now (server/index.ts `/tables`), how many beside the word; pressed, the list; a line of it, that table. */
-/** `aside`: what stands at the other end of its line (the pad's foot). */
-function Tables({ onPick, aside }: { onPick: (code: string) => void; aside: ReactNode }) {
+function Tables({ onPick }: { onPick: (code: string) => void }) {
   const [open, setOpen] = useState(false);
   const [known, setKnown] = useState<OpenTables | null>(null);
   useEffect(() => {
@@ -538,12 +537,9 @@ function Tables({ onPick, aside }: { onPick: (code: string) => void; aside: Reac
   }, [open]); // (asked for at once when the list is opened, too)
   return (
     <div className="tables">
-      <div className="foot">
-        <button type="button" className="quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
-          Tables{known && ` (${known.open})`}
-        </button>
-        {aside}
-      </div>
+      <button type="button" className="quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Tables{known && ` (${known.open})`}
+      </button>
       {open &&
         known &&
         (known.tables.length ? (
@@ -568,24 +564,6 @@ function Tables({ onPick, aside }: { onPick: (code: string) => void; aside: Reac
   );
 }
 
-/**
- * At the foot of the home page's pad, in both: Online or Offline, the one you are in underlined, the other pressed to
- * change to it (client/net.ts `NetState.offline`). Offline, your tables are your own, with bots.
- */
-function Mode({ offline }: { offline: boolean }) {
-  const way = (to: boolean, name: string) => (
-    <button type="button" role="radio" aria-checked={offline === to} className={offline === to ? 'on' : ''} onClick={() => setPrefs({ offline: to })}>
-      {name}
-    </button>
-  );
-  return (
-    <span className="mode" role="radiogroup" aria-label="Online or offline">
-      {way(false, 'Online')}
-      {way(true, 'Offline')}
-    </span>
-  );
-}
-
 /** Your picture, or where there is none (or it will not load) the first letter of your name; for no name yet (a guest's, or an account's), the figure of nobody in particular. */
 function Avatar({ image, name }: { image: string | null; name: string | null }) {
   const picture = usePicture(image);
@@ -603,11 +581,11 @@ function Avatar({ image, name }: { image: string | null; name: string | null }) 
 }
 
 /** The home page; `yours`, with the pad turned over to your page, or on it who you follow (the address is yours: `useAddressed`). */
-function Home({ error, busy, yours, reach }: { error: string | null; busy: boolean; yours: Addressed | null; reach: Reach }) {
+/** `cut`: the server cannot be reached for the table asked for (client/net.ts `unreachable`), which `error` says. */
+function Home({ error, busy, cut, yours, reach }: { error: string | null; busy: boolean; cut: boolean; yours: Addressed | null; reach: Reach }) {
   const invited = reach.others ? roomInUrl() : '';
   /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. With no server to say who is signed in: the one you last sat down under. */
   const [name, setName] = useState(reach.server ? rememberedName : lastName);
-  const mode = <Mode offline={!reach.others} />;
   const account = useAccount();
   const signedIn = signedInAs(account);
   const ways = waysIn(account);
@@ -730,6 +708,12 @@ function Home({ error, busy, yours, reach }: { error: string | null; busy: boole
             {error && (
               <p className="error" role="alert">
                 {error}
+                {/* The server cannot be reached for the table asked for: one of your own can be had now. */}
+                {cut && (
+                  <button type="button" className="quiet" onClick={playOffline}>
+                    Play offline
+                  </button>
+                )}
               </p>
             )}
             <div className="ways">
@@ -756,7 +740,7 @@ function Home({ error, busy, yours, reach }: { error: string | null; busy: boole
                 </div>
               </div>}
             </div>
-            {reach.others ? <Tables onPick={pick} aside={mode} /> : <div className="foot">{mode}</div>}
+            {reach.others && <Tables onPick={pick} />}
           </form>
         )}
       </Pad>
