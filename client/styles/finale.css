@@ -291,7 +291,7 @@
 }
 
 /* Skipping to the scores: fast-forward, play's drawn triangle twice (icons.tsx), bare on the cloth like the corner's
-   buttons. While the round plays out the two step forward one after the other, slowly. */
+   buttons. */
 .skip {
   position: absolute;
   z-index: 20001;
@@ -312,37 +312,15 @@
 
 .ff {
   display: flex;
-  transition: transform 0.12s ease-out;
-}
-
-.skip:hover > .ff {
-  transform: translateY(-2px) rotate(-4deg);
-}
-
-.skip:active > .ff {
-  transform: translateY(1px);
 }
 
 .ff > img.art {
   width: 26px;
   height: 26px;
-  animation: ff 1.8s ease-in-out infinite;
 }
 
 .ff > img.art + img.art {
   margin-left: -12px;
-  animation-delay: 0.22s;
-}
-
-@keyframes ff {
-  0%,
-  45%,
-  100% {
-    translate: 0;
-  }
-  20% {
-    translate: 3px;
-  }
 }
 
 @media (pointer: coarse) {
@@ -365,8 +343,7 @@
 }
 
 /* Reduced motion. A class rather than a media query: the player's own setting (prefs.ts) overrules the system's either way. */
-.calm .restamp span,
-.calm .ff > img.art {
+.calm .restamp span {
   animation: none;
 }
 

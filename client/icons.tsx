@@ -94,7 +94,7 @@ export function Play() {
   return <img className="art" src="/icons/resume.png" alt="" aria-hidden="true" />;
 }
 
-/** Skipping to the scores: play's triangle twice, stepping forward one after the other while the round plays out. */
+/** Skipping to the scores: play's triangle twice. */
 export function FastForward() {
   return (
     <span className="ff" aria-hidden="true">
