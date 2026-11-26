@@ -463,9 +463,9 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
 **Your settings** (from the menu, bottom left on every screen, and the gear on the score sheet, which opens the same
 slip): sound on or off, the levels, reduce motion, card faces. Whoever hosts has the table's own settings at the bottom of theirs:
 text and voice chat, and between rounds the table rules. Nobody else sees them there.
-They stand under **Sound**, as **Output** (what you hear) and **Input** (your microphone). Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
-bot's spoken "Nertz", the reshuffle), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
-opens that one's slider. Mute is for the game's sounds: it leaves voice chat as it is.
+They stand under **Sound**, as **Output** (what you hear) and **Input** (your microphone; offline there is none, and no Output heading either). In one row **Volume**, for everything, then
+**Yours** (your cards and the table's own sounds: the count, the call of Nertz, a bot's spoken "Nertz", the reshuffle), **Others** (other players' cards) and **Voice** (voice chat) each show their level; the one slider under them is
+for whichever is pressed, Volume at first. Mute is for the game's sounds: it leaves voice chat as it is.
 Under them your microphone, as voice chat sends it: **Mic** (its level, up to 200%) and **Gate** (a noise gate: anything
 quieter is not sent; off at first). Each opens its slider the same way, and while you are in voice the gate's has how loud
 you are now under it, green where it would be sent. Mic at 0 is muting yourself in voice: while you are muted it shows 0

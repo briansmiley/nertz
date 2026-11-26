@@ -196,34 +196,7 @@ label.check {
   color: var(--ink-soft);
 }
 
-.level {
-  display: grid;
-  gap: 0.2rem;
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.level span {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.level output {
-  font: 700 1.05rem/1 var(--num);
-}
-
-.level input {
-  width: 100%;
-  margin: 0;
-  accent-color: var(--red);
-}
-
-.level:has(input:disabled) {
-  color: #9a9482;
-}
-
-/* Volume, and under it the level of each channel: the one pressed opens its slider below them. */
+/* Volume and each channel's level in a row, and under them the slider for the one pressed. */
 .volume {
   display: grid;
   gap: 0.35rem;
@@ -233,10 +206,10 @@ label.check {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 0.25rem 0.5rem;
+  gap: 0.25rem 0.4rem;
 }
 
-/* Two of them (no voice chat to have a level): side by side from the left, not one at each end. */
+/* Three of them (no voice chat to have a level): side by side from the left, not spread to the ends. */
 .mix.few {
   justify-content: flex-start;
   column-gap: 1.4rem;
@@ -343,6 +316,33 @@ label.check {
 
 .heard.over i {
   background: rgb(28, 148, 104);
+}
+
+/* The switches: as many to a line as fit, each as wide as its words. */
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1.4rem;
+}
+
+/* Your cards: whose faces (the word over the choices), and at the end of the line your back, its name wrapping if long. */
+.deck {
+  position: relative; /* where the faces' (i) opens: under the whole line */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.deck .mybacks {
+  min-width: 0;
+}
+
+.deck .faces {
+  flex: none;
+  position: static;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 /* A part of your settings slip set off by a rule above it (what whoever hosts allows at the table). */

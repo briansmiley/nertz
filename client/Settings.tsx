@@ -27,7 +27,7 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Mic, type Prefs } from './prefs';
+import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Faces, type Hotkey, type Levels, type Mic, type Prefs } from './prefs';
 import { micInput, micShown, setMicLevel, useVoice } from './voice';
 import { setSocial, useSocial } from './social';
 
@@ -152,57 +152,29 @@ function Specs({ on, disabled, what, onChange }: { on: boolean; disabled: boolea
 
 const percent = (v: number) => `${Math.round(v * 100)}%`;
 
-/** Each channel as the row under Volume names it, and in full. */
-const CHANNEL_NAMES: Record<Channel, [short: string, full: string]> = { mine: ['Yours', 'Your cards'], others: ['Others', "Other players' cards"], voice: ['Voice', 'Voice chat'] };
+/** Each level as the row under Sound names it, and in full: Volume (everything), then each channel. */
+const LEVEL_NAMES: Record<keyof Levels, [short: string, full: string]> = { master: ['Volume', 'Volume'], mine: ['Yours', 'Your cards'], others: ['Others', "Other players' cards"], voice: ['Voice', 'Voice chat'] };
 
-/** Volume, for everything; under it a row of the channels' levels, of which the one pressed opens its own slider. */
+/** Volume and the channels' levels in one row, and under it the one slider, for whichever is pressed (Volume at first). */
 /** `voice`: there is voice chat to have a level for. */
 function Volume({ prefs, voice }: { prefs: Prefs; voice: boolean }) {
-  const [open, setOpen] = useState<Channel | null>(null);
+  const [at, setAt] = useState<keyof Levels>('master');
   const slider = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (open) slider.current?.focus();
-  }, [open]);
   const { levels } = prefs;
-  const quiet = (ch: Channel) => prefs.muted && ch !== 'voice';
+  const quiet = (k: keyof Levels) => prefs.muted && k !== 'voice' && k !== 'master';
   return (
     <div className="volume">
-      <label className="level">
-        <span>
-          Volume <output>{percent(levels.master)}</output>
-        </span>
-        <input type="range" min="0" max="1" step="0.05" value={levels.master} onChange={(e) => setLevel('master', Number(e.target.value))} />
-      </label>
       <div className={`mix${voice ? '' : ' few'}`}>
-        {CHANNELS.filter((ch) => voice || ch !== 'voice').map((ch) => (
-          <button
-            key={ch}
-            type="button"
-            className={`${open === ch ? 'on' : ''}${quiet(ch) ? ' quiet' : ''}`}
-            aria-expanded={open === ch}
-            aria-controls={open === ch ? 'mix-level' : undefined}
-            data-tip={CHANNEL_NAMES[ch][1]}
-            onClick={() => setOpen(open === ch ? null : ch)}
-          >
-            {CHANNEL_NAMES[ch][0]}
-            <output>{percent(levels[ch])}</output>
-          </button>
-        ))}
+        {(['master', ...CHANNELS] as const)
+          .filter((k) => voice || k !== 'voice')
+          .map((k) => (
+            <button key={k} type="button" className={`${at === k ? 'on' : ''}${quiet(k) ? ' quiet' : ''}`} aria-pressed={at === k} aria-controls="mix-level" data-tip={k === 'master' ? undefined : LEVEL_NAMES[k][1]} onClick={() => (setAt(k), slider.current?.focus())}>
+              {LEVEL_NAMES[k][0]}
+              <output>{percent(levels[k])}</output>
+            </button>
+          ))}
       </div>
-      {open && (
-        <input
-          id="mix-level"
-          ref={slider}
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          aria-label={CHANNEL_NAMES[open][1]}
-          value={levels[open]}
-          disabled={quiet(open)}
-          onChange={(e) => setLevel(open, Number(e.target.value))}
-        />
-      )}
+      <input id="mix-level" ref={slider} type="range" min="0" max="1" step="0.05" aria-label={LEVEL_NAMES[at][1]} value={levels[at]} disabled={quiet(at)} onChange={(e) => setLevel(at, Number(e.target.value))} />
     </div>
   );
 }
@@ -434,15 +406,11 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <Gear />
         Settings
       </h3>
-      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). Offline there is no voice to send. */}
+      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). Offline there is no voice to send, and so no Output to tell from it. */}
       <div className="sound">
         <h3>Sound</h3>
-        <h4>Output</h4>
+        {others && <h4>Output</h4>}
         <Volume prefs={prefs} voice={others} />
-        <label className="check">
-          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-          <span>Bots say "Nertz"</span>
-        </label>
         {others && (
           <>
             <h4 className="input">Input</h4>
@@ -450,47 +418,52 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           </>
         )}
       </div>
-      {others && (
-        <>
-          <label className="check">
-            <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
-            <span>Show chat over the table</span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
-            <span>Show ping</span>
-          </label>
-        </>
-      )}
-      <label className="check">
-        <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
-        <span>Reduce motion</span>
-      </label>
-      {/* (Any time, a round or not: it changes the cards for nobody but you.) */}
-      <div className="faces">
-        <span id="faces-label">
-          Card faces{' '}
-          <Info>
-            How card faces display:
-            {FACES.map((f) => (
-              <span key={f} className="line">
-                {FACES_SAID[f][0]}: {FACES_SAID[f][1]}
-              </span>
-            ))}
-            <span className="line">Card backs don't change.</span>
-          </Info>
-        </span>
-        <span role="radiogroup" aria-labelledby="faces-label">
-          {FACES.map((f) => (
-            <button key={f} type="button" role="radio" aria-checked={prefs.faces === f} className={prefs.faces === f ? 'on' : ''} onClick={(e) => (setPrefs({ faces: f }), e.currentTarget.blur())}>
-              {FACES_SAID[f][0]}
-            </button>
-          ))}
-        </span>
+      {/* The switches, as many to a line as fit. */}
+      <div className="checks">
+        <label className="check">
+          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+          <span>Bots say "Nertz"</span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
+          <span>Reduce motion</span>
+        </label>
+        {others && (
+          <>
+            <label className="check">
+              <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
+              <span>Show chat over the table</span>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={prefs.ping} onChange={(e) => setPrefs({ ping: e.target.checked })} />
+              <span>Show ping</span>
+            </label>
+          </>
+        )}
       </div>
-      {/* Any time, a round or not: everyone sees your cards in the new back at once. */}
-      <div className="level">
-        <span>Card back</span>
+      {/* Your cards: whose faces they have, and beside that your back. Any time, a round or not: the faces change the cards for nobody but you; everyone sees your cards in a new back at once. */}
+      <div className="deck">
+        <div className="faces">
+          <span id="faces-label">
+            Card faces{' '}
+            <Info>
+              How card faces display:
+              {FACES.map((f) => (
+                <span key={f} className="line">
+                  {FACES_SAID[f][0]}: {FACES_SAID[f][1]}
+                </span>
+              ))}
+              <span className="line">Card backs don't change.</span>
+            </Info>
+          </span>
+          <span role="radiogroup" aria-labelledby="faces-label">
+            {FACES.map((f) => (
+              <button key={f} type="button" role="radio" aria-checked={prefs.faces === f} className={prefs.faces === f ? 'on' : ''} onClick={(e) => (setPrefs({ faces: f }), e.currentTarget.blur())}>
+                {FACES_SAID[f][0]}
+              </button>
+            ))}
+          </span>
+        </div>
         <YourBacks colour={BACKS[0]} />
       </div>
       {/* Keys: only where there is a keyboard. */}
