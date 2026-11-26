@@ -209,7 +209,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   pile, now or however many moves on (stock cards onto work piles, runs between them, face-down cards turned up; any
   card of the stock counts: shifting it brings any card up). A move that leads to neither does not count. It errs one
   way only: a hand that can get somewhere is never taken for dead. If nobody can, **the table is jammed** and the round ends there,
-  scored as it stands. Otherwise each player's waste (a group in flight included) goes back onto their stock, the top
+  scored as it stands, with **The table jammed!** across the middle before the score sheet. Otherwise each player's
+  waste (a group in flight included) goes back onto their stock, the top
   stock card moves to the bottom (so the threes come out differently: three votes in a row show every card), and all
   flags clear, and the round counts one more reshuffle. The table says so as it happens: **Reshuffle!** across the
   middle for a moment, to the riffle of a shuffle. Making any move clears your own flag.
