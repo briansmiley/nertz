@@ -1,13 +1,13 @@
 // The table of a window that plays offline: the server's own room (server/room.ts) and its bots, run here, behind a
 // line (client/line.ts) like the one to the game server. Nothing of the game is written again for it: what is sent is
-// read as the server reads it (`parseClientMsg`), goes where the server sends it (server/seat.ts, with the one table
-// there is here for all the tables), and what the room answers comes back as text. So the store (client/net.ts) plays an offline table as it
+// read and goes where the server sends it (server/seat.ts, with the one table there is here for all the tables), and
+// what the room answers comes back as text. So the store (client/net.ts) plays an offline table as it
 // plays any other. The table is this line's alone, and gone with it: nobody else can come to it, nothing of it is kept,
 // and its rounds are told to nobody (no `record`: they are on no one's record).
 import { Room, type Conn } from '../server/room';
 import { guard } from '../server/guard';
 import { seatAt, type Tables } from '../server/seat';
-import { BOT_LEVELS, CLOSE_OVER, hasSeat, MAX_PLAYERS, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
+import { BOT_LEVELS, CLOSE_OVER, hasSeat, MAX_PLAYERS, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { BotLevel, RoomView } from '../shared/types';
 import type { Dial } from './line';
 
@@ -40,6 +40,8 @@ function remember(room: RoomView): void {
 export const local: Dial = (heard) => {
   /** The one table there is here, once it is opened. */
   let table: Room | null = null;
+  /** The table being opened, until whoever asked for it has sat down at it. */
+  let opening: Room | null = null;
   /** Until the window closes the line, or the room does. */
   let up = true;
   let open = false;
@@ -55,8 +57,15 @@ export const local: Dial = (heard) => {
   const tables: Tables = {
     find: (code) => (table?.code === code ? table : undefined),
     // (A browser's queueMicrotask is not to be called as the room's own.)
-    open: () => new Room(randomRoomCode(), { schedule: (flush) => queueMicrotask(flush), testing: () => import.meta.env.DEV }),
-    taken: (room) => void (table = room),
+    open: () => (opening = new Room(randomRoomCode(), { schedule: (flush) => queueMicrotask(flush), testing: () => import.meta.env.DEV })),
+    taken: (room) => {
+      table = room;
+      if (room !== opening) return;
+      opening = null;
+      // A table just opened: nobody to talk to at it, and its company seated.
+      room.handle(conn, { t: 'social', text: false, voice: false });
+      for (const level of company()) room.handle(conn, { t: 'addBot', level });
+    },
     // Nobody else can come back to it: gone from it, it is gone.
     released: (room) => {
       room.close();
@@ -78,16 +87,7 @@ export const local: Dial = (heard) => {
     },
     send: (text) =>
       guard('a message', () => {
-        if (!up || !open) return;
-        const msg = parseClientMsg(text);
-        if (msg?.t === 'ping') return send(msg.at === undefined ? { t: 'pong' } : { t: 'pong', at: msg.at });
-        if (!msg) return seat.room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message');
-        seat.handle(msg);
-        // A table just opened: nobody to talk to at it, and its company seated.
-        if (msg.t === 'create' && seat.room) {
-          seat.room.handle(conn, { t: 'social', text: false, voice: false });
-          for (const level of company()) seat.room.handle(conn, { t: 'addBot', level });
-        }
+        if (up && open) seat.hear(text);
       }),
     close: down,
   };

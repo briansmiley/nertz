@@ -3,7 +3,7 @@
 // connection there is: a websocket of the server's (server/index.ts), or the line of a window that plays offline
 // (client/local.ts). What differs is only which tables there are (`Tables`), and what a connection must get past before
 // it is heard here at all (the server's rate limit, and its stopping for an update).
-import type { ClientMsg } from '../shared/protocol';
+import { parseClientMsg } from '../shared/protocol';
 import type { Conn, Room, SignedAs } from './room';
 
 /** The tables there are, as a connection needs them. */
@@ -20,8 +20,11 @@ export interface Tables {
 export interface Seat {
   /** The table this connection is at, if any. */
   readonly room: Room | null;
-  /** What it said: anything but a ping. */
-  handle(msg: Exclude<ClientMsg, { t: 'ping' }>): void;
+  /**
+   * What it sent, as it came: one message as text, or null for what is not text (a binary frame). A ping is answered;
+   * what cannot be read is said to be so, and at no table (it was the hello) ends the line.
+   */
+  hear(text: string | null): void;
   /** Its line closed: its place at the table is kept for it to come back to. */
   detach(): void;
 }
@@ -54,7 +57,10 @@ export function seatAt(conn: Conn, tables: Tables, signed: () => SignedAs | null
       return room;
     },
     detach,
-    handle(msg) {
+    hear(text) {
+      const msg = text === null ? null : parseClientMsg(text);
+      if (msg?.t === 'ping') return conn.send(msg.at === undefined ? { t: 'pong' } : { t: 'pong', at: msg.at });
+      if (!msg) return room ? conn.send({ t: 'error', message: 'Malformed message' }) : conn.close('Malformed message');
       if (msg.t === 'create' || msg.t === 'join') {
         if (!(msg.t === 'join' && room?.code === msg.room)) moveOn(); // a repeated join to the same table just re-seats
         let target: Room | string | undefined;

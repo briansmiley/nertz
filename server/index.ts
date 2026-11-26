@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { CLOSE_OVER, CLOSE_UPDATE, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, HEAR_MS, MAX_MESSAGE_BYTES, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
@@ -353,10 +353,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       alive.add(ws); // (anything it sends says it is there, as a pong does)
       guard('a message', () => {
         if (updating) return; // (the tables are kept as they stood: nothing said after that moves them)
-        const msg = isBinary ? null : parseClientMsg(data.toString());
-        if (msg?.t === 'ping') return send(msg.at === undefined ? { t: 'pong' } : { t: 'pong', at: msg.at });
-        if (!msg) return seat.room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
-        seat.handle(msg);
+        seat.hear(isBinary ? null : data.toString());
       });
     });
   });
