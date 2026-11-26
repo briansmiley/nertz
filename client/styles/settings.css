@@ -586,6 +586,18 @@ fieldset.rules .check {
   opacity: 0.8;
 }
 
+/* (Where the browser cannot be asked, the label and what to do instead are one line: "Full screen: add page to Home Screen".) */
+.whole.note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.35em;
+}
+
+.whole.note b::after {
+  content: ':';
+}
+
 .whole .go {
   justify-self: start;
   padding: 6px 12px;

@@ -275,7 +275,8 @@ function Heard({ gate }: { gate: number }) {
 
 /**
  * On a phone, how to be rid of the browser's bars. Where the browser can take the whole screen when asked (Android),
- * a button does it. An iPhone cannot be asked: there the game has to be put on the home screen and opened from it.
+ * a button does it, which says so itself, unlabelled. Elsewhere (an iPhone) it cannot be asked: there the game has to be put on the home screen and opened from
+ * it, said in one line after the label.
  * Nothing is shown with a mouse, nor once the game already has the screen to itself.
  */
 function WholeScreen() {
@@ -288,20 +289,17 @@ function WholeScreen() {
   const alone = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || (navigator as { standalone?: boolean }).standalone === true;
   if (!window.matchMedia('(pointer: coarse)').matches || (alone && !full)) return null;
   const able = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === 'function';
-  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent);
   return (
-    <div className="whole">
-      <b>Whole screen</b>
+    <div className={able ? 'whole' : 'whole note'}>
       {able ? (
         <button type="button" className="go" onClick={() => (full ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: 'hide' })).catch(() => {})}>
           {full ? 'Leave full screen' : 'Use the whole screen'}
         </button>
       ) : (
-        <small>
-          {apple
-            ? 'To hide the browser\u2019s bars: in Safari tap Share, then \u201cAdd to Home Screen\u201d, and open Nertz from there.'
-            : 'To hide the browser\u2019s bars: open the browser\u2019s menu, choose \u201cAdd to Home screen\u201d, and open Nertz from there.'}
-        </small>
+        <>
+          <b>Full screen</b>
+          <small>add page to Home Screen</small>
+        </>
       )}
     </div>
   );
