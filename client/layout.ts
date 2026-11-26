@@ -294,8 +294,22 @@ const HELD_OFF = [
   { x: 0.045, y: -0.03, rot: 1.5 },
   { x: 0.02, y: -0.065, rot: -0.5 },
 ] as const;
-/** A face-down card in a work pile shows this much of the strip a face-up card shows. */
-const DOWN_STEP = 0.45;
+/**
+ * How much of a work pile's card shows, as a share of what a face-up card shows: fanned out (`fan`), and squeezed as
+ * far as it goes while there is room (`least`). A face-up card keeps its whole rank; a face-down one has none to show,
+ * only an edge, just enough to count the pile by.
+ */
+interface Strip {
+  fan: number;
+  least: number;
+}
+const UP: Strip = { fan: 1, least: 1 };
+const DOWN: Strip = { fan: 0.45, least: 0.25 }; // (an edge a little deeper than a back's white border: each shows a band of its colour)
+/**
+ * Past their least, the oldest cards give way down to this share of a face-up card's whole rank. A face-down card's
+ * edge is already less: it keeps that.
+ */
+const SLIVER = 0.4;
 
 interface HandSpec {
   x: number;
@@ -330,27 +344,30 @@ interface HandSpec {
 }
 
 /**
- * How far below a fanned pile's first card each card sits. `show[j]` is how
- * much of card j shows relative to a face-up card. Every card shows `fan` if
- * that fits in `room`. If not, all are squeezed alike while a face-up card
- * still shows `min` (its whole rank). Past that only the oldest cards give
- * way, down to slivers, and the newest keep `min`: they are the ones in play.
+ * How far below a fanned pile's first card each card sits, for the share of a face-up card's strip each shows
+ * (`show`). Every card shows its whole fan (`fan`) if that fits in `room`. If not, all are squeezed alike towards
+ * their least (a face-up card's is `min`: its whole rank). Past that only the oldest cards give way, down to slivers,
+ * and the newest keep their least: they are the ones in play.
  */
-export function fanOut(show: readonly number[], fan: number, min: number, room: number): number[] {
+export function fanOut(show: readonly Strip[], fan: number, min: number, room: number): number[] {
   const covered = show.slice(0, -1); // the top card lies open
-  const total = covered.reduce((a, b) => a + b, 0);
-  const even = Math.min(fan, total > 0 ? room / total : fan);
-  const sliver = min * 0.4;
-  let steps = covered.map((w) => w * even);
-  if (even < min && room > total * sliver) {
-    let spare = room - total * sliver;
-    steps = covered.map((w) => w * sliver);
+  const sum = (a: readonly number[]) => a.reduce((x, y) => x + y, 0);
+  const full = covered.map((c) => c.fan * fan);
+  const least = covered.map((c) => c.least * min);
+  const sliver = covered.map((c) => Math.min(c.least, SLIVER) * min);
+  let steps = full;
+  if (room < sum(full) && room >= sum(least)) {
+    const t = (room - sum(least)) / (sum(full) - sum(least));
+    steps = least.map((l, j) => l + t * (full[j]! - l));
+  } else if (room < sum(least) && room > sum(sliver)) {
+    let spare = room - sum(sliver);
+    steps = [...sliver];
     for (let j = steps.length - 1; j >= 0 && spare > 0; j--) {
-      const more = Math.min(spare, covered[j]! * (min - sliver));
+      const more = Math.min(spare, least[j]! - sliver[j]!);
       steps[j]! += more;
       spare -= more;
     }
-  }
+  } else if (room < sum(least)) steps = sliver.map((s) => (s * room) / sum(sliver)); // absurdly long: squeezed evenly
   let y = 0;
   return [0, ...steps.map((s) => (y += s))];
 }
@@ -418,10 +435,12 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const work = p.work.map(({ cards: pile, down }, i) => {
     const x = workX + i * (h.w + h.gap);
     const room = h.rooms?.[i] ?? h.workRoom;
-    const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
-    // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
-    const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
-    const rise = clamp(wanted - room, 0, h.workRise[i] ?? 0);
+    const show = pile.map((_, j) => (j < down ? DOWN : UP));
+    // A pile too long for the room below the row squeezes first, its face-up cards down to their whole ranks and its
+    // face-down ones to an edge each; only what still does not fit then starts higher up, as far as the felt above it is free.
+    const covered = show.slice(0, -1);
+    const wanted = covered.reduce((a, c) => a + c.fan, 0) * h.workFan;
+    const rise = clamp(covered.reduce((a, c) => a + c.least, 0) * h.minStrip - room, 0, h.workRise[i] ?? 0);
     const at = fanOut(show, h.workFan, h.minStrip, room + rise);
     if (i === h.peek) {
       // Looked at: every card shows its whole strip, the pile reaching up over whatever is above it (and above the

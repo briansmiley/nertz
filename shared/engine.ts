@@ -124,6 +124,8 @@ const SET_UP_TOPS: Record<SetUp, { tops: [pile: 'nertz' | number, suit: Suit, ra
   'two-piles': { tops: [[0, 'S', 1], ['nertz', 'S', 2]] },
   // Two Aces left in the nertz pile: put them down and call.
   out: { tops: [['nertz', 'D', 1], ['nertz', 'C', 1]], nertz: 2 },
+  // A King of spades up, and the nertz pile from the Queen down to the Ace in alternate colours: play it all onto the King, the longest work pile there is.
+  run: { tops: [[0, 'S', 13], ...Array.from({ length: 12 }, (_, i): ['nertz', Suit, number] => ['nertz', i % 2 ? 'S' : 'H', 12 - i])] },
 };
 
 /**

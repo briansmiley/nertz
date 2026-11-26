@@ -193,7 +193,7 @@ export function anotherBack(had: Back | undefined, pool: readonly Back[] = Objec
 }
 
 /** For trying things out (never in production): the set-up deals Start may ask for (`?deal=aces`), each dealt by `setUpDeal`. */
-export const SET_UPS = ['aces', 'two-piles', 'out'] as const;
+export const SET_UPS = ['aces', 'two-piles', 'out', 'run'] as const;
 export type SetUp = (typeof SET_UPS)[number];
 
 export type ClientMsg =

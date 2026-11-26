@@ -34,9 +34,10 @@ second player, not "Duplicate tab": a duplicate copies the identity, takes over 
 Trying things out, locally and on [previews](#previews) (wherever the server has `TESTING=1`, or any `NODE_ENV` but
 `production`; never on staging or production):
 
-- `?deal=aces`, `?deal=two-piles` or `?deal=out` in the address: the dealer's Start deals every hand that set-up (Aces
-  and 2s up; an A♠ to put down with a 2♠ that two A♠ piles would take; a nertz pile of just two Aces). It stays in the
-  address when the table's code is added.
+- `?deal=aces`, `?deal=two-piles`, `?deal=out` or `?deal=run` in the address: the dealer's Start deals every hand that
+  set-up (Aces and 2s up; an A♠ to put down with a 2♠ that two A♠ piles would take; a nertz pile of just two Aces; a K♠
+  up with Q♥ down to A♠ on the nertz pile, to build the longest work pile). It stays in the address when the table's code
+  is added.
 - **Shift+D** replays the deal in this window; **Shift+N**, for whoever deals, has a bot go out now.
 
 Controls:

@@ -825,12 +825,16 @@ describe('table layout', () => {
     };
 
     it('fanOut: full fan while it fits, then an even squeeze down to a whole rank, then only the oldest cards give way', () => {
-      const up = (n: number) => Array.from({ length: n }, () => 1);
+      const up = (n: number) => Array.from({ length: n }, () => ({ fan: 1, least: 1 }));
+      const down = { fan: 0.5, least: 0.25 };
       const gaps = (at: number[]) => at.slice(1).map((y, j) => +(y - at[j]!).toFixed(3));
       expect(gaps(fanOut(up(4), 30, 20, 100))).toEqual([30, 30, 30]);
       expect(gaps(fanOut(up(5), 30, 20, 100))).toEqual([25, 25, 25, 25]);
       expect(gaps(fanOut(up(9), 30, 20, 100))).toEqual([8, 8, 8, 8, 8, 20, 20, 20]); // the newest stay readable, total still 100
-      expect(gaps(fanOut([0.5, 0.5, 1, 1], 30, 20, 1000))).toEqual([15, 15, 30]); // face-down cards show half as much
+      expect(gaps(fanOut([down, down, ...up(2)], 30, 20, 1000))).toEqual([15, 15, 30]); // face-down cards show half as much
+      // Squeezed, the face-down cards give way alongside the face-up ones, down to an edge each as those reach their whole rank.
+      expect(gaps(fanOut([down, down, ...up(3)], 30, 20, 70))).toEqual([10, 10, 25, 25]);
+      expect(gaps(fanOut([down, down, ...up(3)], 30, 20, 50))).toEqual([5, 5, 20, 20]);
       expect(fanOut([], 30, 20, 100)).toEqual([0]);
       expect(fanOut(up(1), 30, 20, 100)).toEqual([0]);
       expect(gaps(fanOut(up(30), 30, 20, 100)).every((g) => g > 3)).toBe(true); // absurdly long: just squeezed evenly
@@ -874,6 +878,40 @@ describe('table layout', () => {
       // Four face-up cards on one face-down card are all still readable.
       const seven = longPile(2, 1, 4);
       expect(strips(computeLayout(1280, 720, seven, 0), seven).slice(1).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true);
+    });
+
+    // Regression (SMI-307): a pile rose by all its full fan wanted, high over the cloth, before it squeezed at all.
+    const rows = (L: ReturnType<typeof computeLayout>, game: GameState) => ({
+      rise: L.me!.workAt[1]!.y - L.cards.find((c) => c.card.id === game.players[0]!.work[1]!.cards[0]!.id)!.y,
+      s: strips(L, game),
+      cardH: L.me!.nertz.h,
+    });
+
+    it('a pile that fits below the row at its whole ranks squeezes there and does not rise', () => {
+      for (const [W, H, n, down, up] of [[1440, 900, 2, 0, 5], [393, 609, 4, 2, 4]] as const) {
+        const game = longPile(n, down, up);
+        const { rise, s, cardH } = rows(computeLayout(W, H, game, 0), game);
+        expect(rise).toBe(0);
+        expect(s.slice(down).some((step) => step < cardH * 0.3 - 0.01)).toBe(true); // squeezed from its full fan...
+        expect(s.slice(down).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true); // ...but every rank whole,
+        // and the face-down cards squeezed with them, from their own fan towards an edge each that can still be counted.
+        for (const step of s.slice(0, down)) expect(step).toBeLessThan(cardH * 0.3 * 0.45 - 0.01);
+        for (const step of s.slice(0, down)) expect(step).toBeGreaterThanOrEqual(cardH * 0.21 * 0.25 - 0.01);
+      }
+    });
+
+    it('a pile that does not fit even at its whole ranks rises only by what is left over', () => {
+      for (const [W, H, n] of [[1440, 900, 2], [393, 609, 4]] as const) {
+        const game = longPile(n, 1, 5);
+        const { rise, s, cardH } = rows(computeLayout(W, H, game, 0), game);
+        expect(rise).toBeGreaterThan(0);
+        // Every card shows exactly its whole rank (a face-down card an edge): no more, as it would had it risen further.
+        expect(s[0]).toBeCloseTo(cardH * 0.21 * 0.25, 1);
+        for (const step of s.slice(1)) expect(step).toBeCloseTo(cardH * 0.21, 1);
+        // A longer pile rises further: this one has not used all the cloth there is.
+        const longer = longPile(n, 1, 9);
+        expect(rows(computeLayout(W, H, longer, 0), longer).rise).toBeGreaterThan(rise);
+      }
     });
 
     it('a pile looked at fans out in full above everything in the middle; its drop area, its top card and the rest of the hand stay put', () => {
