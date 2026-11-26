@@ -4,7 +4,9 @@
 // what the room answers comes back as text. So the store (client/net.ts) plays an offline table as it
 // plays any other. The table is this line's alone, and gone with it: nobody else can come to it, nothing of it is kept,
 // and its rounds are told to nobody (no `record`: they are on no one's record).
-import { Room, type Conn } from '../server/room';
+// The one table is opened here, or was the server's and is carried here (`Carried`): then it is the same table, and
+// from here on no different from one opened here.
+import { Room, type Conn, type Kept, type RoomOptions } from '../server/room';
 import { guard } from '../server/guard';
 import { seatAt, type Tables } from '../server/seat';
 import { BOT_LEVELS, CLOSE_OVER, hasSeat, MAX_PLAYERS, randomRoomCode, type ServerMsg } from '../shared/protocol';
@@ -37,11 +39,23 @@ function remember(room: RoomView): void {
   }
 }
 
-export const local: Dial = (heard) => {
-  /** The one table there is here, once it is opened. */
-  let table: Room | null = null;
-  /** The table being opened, until whoever asked for it has sat down at it. */
-  let opening: Room | null = null;
+/**
+ * A table taken offline: as it is kept (handed over by the server whole, or put together from this window's last
+ * snapshot: client/rebuild.ts), and whether whoever takes it had paused its round.
+ */
+export interface Carried {
+  kept: Kept;
+  paused: boolean;
+}
+
+/** A line to a table of this window's own: one it opens, or `carried`, come to by its code as it was on the server. */
+export const local = (carried?: Carried): Dial => (heard) => {
+  // (A browser's queueMicrotask is not to be called as the room's own.)
+  const options: RoomOptions = { schedule: (flush) => queueMicrotask(flush), testing: () => import.meta.env.DEV };
+  /** The one table there is here: the one carried here, or the one opened, once it is. */
+  let table: Room | null = carried ? Room.restored(carried.kept, options) : null;
+  /** The table nobody has sat down at here yet: carried, or being opened. */
+  let fresh: Room | null = table;
   /** Until the window closes the line, or the room does. */
   let up = true;
   let open = false;
@@ -56,15 +70,20 @@ export const local: Dial = (heard) => {
   const conn: Conn = { send, close: over };
   const tables: Tables = {
     find: (code) => (table?.code === code ? table : undefined),
-    // (A browser's queueMicrotask is not to be called as the room's own.)
-    open: () => (opening = new Room(randomRoomCode(), { schedule: (flush) => queueMicrotask(flush), testing: () => import.meta.env.DEV })),
+    open: () => (fresh = new Room(randomRoomCode(), options)),
     taken: (room) => {
+      const opened = room !== table;
       table = room;
-      if (room !== opening) return;
-      opening = null;
-      // A table just opened: nobody to talk to at it, and its company seated.
+      if (room !== fresh) return;
+      fresh = null;
+      // Sat down at for the first time here: nobody to talk to at it.
       room.handle(conn, { t: 'social', text: false, voice: false });
-      for (const level of company()) room.handle(conn, { t: 'addBot', level });
+      // Just opened, its company is seated. Carried here, its round goes on: it came stopped (`Room.restored`), and is paused again if it was.
+      if (opened) for (const level of company()) room.handle(conn, { t: 'addBot', level });
+      else {
+        room.handle(conn, { t: 'pause', on: false });
+        if (carried?.paused) room.handle(conn, { t: 'pause', on: true });
+      }
     },
     // Nobody else can come back to it: gone from it, it is gone.
     released: (room) => {

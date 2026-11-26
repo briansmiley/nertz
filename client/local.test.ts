@@ -5,14 +5,17 @@ import { CLOSE_OVER, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import { dragsOn } from '../shared/engine';
 import { lcg } from '../shared/testkit';
 import type { RoomView } from '../shared/types';
-import { COMPANY, local } from './local';
+import { Room } from '../server/room';
+import { FakeConn, startRound } from '../server/testkit';
+import { seeded, wire } from '../shared/testkit';
+import { COMPANY, local, type Carried } from './local';
 
 /** A window on a local line: everything it heard, and the table as it last saw it. */
-function dial() {
+function dial(carried?: Carried) {
   const heard: ServerMsg[] = [];
   const closed: { code: number; reason: string }[] = [];
   let opened = 0;
-  const line = local({ open: () => void opened++, message: (text) => void heard.push(JSON.parse(text) as ServerMsg), close: (code, reason) => void closed.push({ code, reason }) });
+  const line = local(carried)({ open: () => void opened++, message: (text) => void heard.push(JSON.parse(text) as ServerMsg), close: (code, reason) => void closed.push({ code, reason }) });
   return {
     line,
     heard,
@@ -174,6 +177,91 @@ describe('a local line', () => {
     expect(w.heard).toHaveLength(had);
     expect(w.closed).toEqual([]);
     expect(w.line.open).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('a table carried to a local line', () => {
+  const TOKEN = 'a'.repeat(32);
+  /** Ada at a table of the server's with two bots, a round in play; and the server's router to it. */
+  function served() {
+    const room = new Room('WXYZ', { rng: seeded(4), schedule: () => {} });
+    const ada = new FakeConn();
+    room.join(ada, 'Ada', TOKEN, true);
+    room.handle(ada, { t: 'addBot', level: 'fast' });
+    room.handle(ada, { t: 'addBot', level: 'slow' });
+    room.handle(ada, { t: 'botName', seat: 1, name: 'Babbage' });
+    startRound(room, ada);
+    vi.advanceTimersByTime(6000);
+    room.flush();
+    return { room, ada };
+  }
+  /** The window sits back down at the table it carried here. */
+  async function sat(carried: Carried) {
+    const w = dial(carried);
+    await vi.advanceTimersByTimeAsync(0);
+    w.say({ t: 'join', room: carried.kept.code, name: 'Ada', token: TOKEN });
+    await vi.advanceTimersByTimeAsync(0);
+    return w;
+  }
+  beforeEach(() => void vi.useFakeTimers());
+
+  it('is the same table, come to by its code: your seat, the bots and their names, the scores and the cards; and its round goes on', async () => {
+    const { room, ada } = served();
+    const was = ada.room;
+    const kept = wire(room.carried(ada)!);
+    const w = await sat({ kept, paused: false });
+    const now = w.room()!;
+    expect(now).toMatchObject({ code: 'WXYZ', phase: 'playing', round: 1, me: was.me, seat: was.seat, paused: null, game: { status: { at: 'play' } } });
+    expect(now.players).toEqual(was.players);
+    expect(now.players.map((p) => p.name)).toEqual(['Ada', 'Babbage', 'Bot Bix']);
+    expect(now.game!.slots).toEqual(was.game!.slots);
+    expect(now.game!.players.map((p) => p.nertz.at(-1))).toEqual(was.game!.players.map((p) => p.nertz.at(-1)));
+    expect(now.clock).toMatchObject({ running: true });
+    expect(now.clock!.ms).toBeGreaterThanOrEqual(was.clock!.ms);
+    expect(w.heard.findLast((m) => m.t === 'social')).toMatchObject({ text: false, voice: false });
+    const lay = JSON.stringify(now.game);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(JSON.stringify(w.room()!.game)).not.toBe(lay); // (the bots play on)
+    // And it is the window's own from here: the next table opens with these bots.
+    expect(JSON.parse(storage.get('nertz.company')!)).toEqual(['fast', 'slow']);
+    w.say({ t: 'leave' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a round you had paused is paused still, by you; one that only stood still for the handover is not', async () => {
+    const { room, ada } = served();
+    room.handle(ada, { t: 'pause', on: true });
+    const w = await sat({ kept: wire(room.carried(ada)!), paused: true });
+    expect(w.room()!.paused).toEqual({ by: 'player', id: w.room()!.me });
+    const lay = JSON.stringify(w.room()!.game);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(JSON.stringify(w.room()!.game)).toBe(lay);
+    w.say({ t: 'pause', on: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.room()!.paused).toBeNull();
+    w.line.close();
+  });
+
+  it('carried between rounds, the next round is dealt here; and no other table is to be found', async () => {
+    const { room, ada } = served();
+    room.handle(ada, { t: 'intent', seq: 0, intent: { k: 'end', on: true } });
+    room.flush();
+    const was = ada.room;
+    const kept = wire(room.carried(ada)!);
+    const w = await sat({ kept, paused: false });
+    expect(w.room()).toMatchObject({ phase: 'results', round: 1, paused: null, lastRound: was.lastRound });
+    w.say({ t: 'start' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.room()).toMatchObject({ phase: 'playing', round: 2 });
+    w.line.close();
+
+    const lost = dial({ kept, paused: false });
+    await vi.advanceTimersByTimeAsync(0);
+    lost.say({ t: 'join', room: 'ABCD', name: 'Ada', token: TOKEN });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lost.closed).toEqual([{ code: CLOSE_OVER, reason: 'Table ABCD not found.' }]);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

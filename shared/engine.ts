@@ -6,7 +6,7 @@
 import { CALL_OFF_MS, MAX_PLAYERS, parseIntent, SLOTS_PER_PLAYER, STOCK_CARD_MS, WORK_PILES, type SetUp } from './protocol';
 import { faceDown } from './settings';
 import { openPlace, roomAt, tiltAt, type Pt } from './table';
-import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
+import type { AnyCard, Card, CentrePile, GameState, HiddenCard, Intent, PileRef, PlayerState, PlayerView, RoomView, RoundEnd, RoundScore, Suit, WorkPile } from './types';
 
 export { DEAL_MS, GRACE_MS, SLOTS_PER_PLAYER, START_BEAT_MS, START_BEATS, START_MS, WORK_PILES } from './protocol';
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
@@ -753,6 +753,12 @@ export const hasSay = (p: PlayerView): boolean => plays(p) && p.connected && !p.
 
 /** The `people` of `endVote` as a room view lists them: those with a say who are not bots. */
 export const seatedPeople = (players: readonly PlayerView[]): number[] => players.flatMap((p) => (hasSay(p) && !p.bot ? [p.seat!] : []));
+
+/**
+ * Are you the only person in the room: nobody else at the table or watching, here or away, but bots? Such a table can
+ * be taken offline (the server's rule is its own, server/room.ts `carried`: the same one).
+ */
+export const alone = (room: Pick<RoomView, 'players' | 'me'>): boolean => room.players.every((p) => p.bot || p.id === room.me);
 
 /**
  * If everyone with a say in the `endVote` has voted to end the round, it ends there, to be scored as it stands
