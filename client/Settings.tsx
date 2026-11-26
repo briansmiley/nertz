@@ -289,7 +289,6 @@ function WholeScreen() {
   const alone = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || (navigator as { standalone?: boolean }).standalone === true;
   if (!window.matchMedia('(pointer: coarse)').matches || (alone && !full)) return null;
   const able = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === 'function';
-  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent);
   return (
     <div className={able ? 'whole' : 'whole note'}>
       <b>Full screen</b>
@@ -298,7 +297,7 @@ function WholeScreen() {
           {full ? 'Leave full screen' : 'Use the whole screen'}
         </button>
       ) : (
-        <small>{apple ? 'add page to Home Screen' : 'add page to Home screen'}</small>
+        <small>add page to Home Screen</small>
       )}
     </div>
   );
