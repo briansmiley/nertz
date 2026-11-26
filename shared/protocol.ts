@@ -93,6 +93,7 @@ export const CARD_BACKS = {
   atlas: 'Atlas',
   check: 'Check',
   'carpet-tint': 'Carpet',
+  damask: 'Damask',
   // Made by the owner in Midjourney: in their own colours, and as one-colour prints of the same pictures.
   acanthus: 'Acanthus',
   fern: 'Fern',
@@ -140,7 +141,7 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
   { name: 'Tilings', backs: ['check', 'diamonds', 'herringbone', 'honeycomb', 'starcross', 'houndstooth', 'shards', 'pinwheel', 'mosaic', 'flowers', 'voronoi', 'mondrian', 'penrose', 'hat-lines', 'hat-two', 'hat', 'bathroom', 'corridor', 'overlook', 'frames', 'facets', 'hatch', 'blocks', 'fans', 'tripods'] },
   { name: 'Maths', backs: ['hilbert', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'life', 'pulsar', 'penrose-triangle'] },
   { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'clover', 'clover-2', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia', 'birch'] },
-  { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
+  { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'carpet-tint', 'damask', 'tarot-star-tint', 'tarot-eye-tint'] },
   { name: 'Animals', backs: ['fox', 'owl', 'loong', 'rabbit', 'crane', 'phoenix', 'deer', 'koi', 'falcon', 'swallowtail', 'butterflies', 'ants', 'aster'] },
   { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'giglio', 'earth'] },
   { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye'] },

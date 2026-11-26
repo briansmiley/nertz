@@ -38,6 +38,22 @@ Subjects that worked:
 - **Aster** is her faithful draft softened by hand, not by the model: blurred (Gaussian, σ 2.2 at 1024 px wide) and
   re-cut at six times the contrast around the midpoint.
 
+## Damask
+
+`damask` (in the Ornate group, 26 Nov 2026) is the one ornament made this way, after the owner's phone photo of a
+blue damask-printed fabric. Its first draft was an edit of the photo, with the subject *after the damask medallion in
+this fabric photo. One large symmetrical medallion fills the card: leafy scrolls, curling fronds and small buds
+radiating from a small rayed sunburst rosette in the centre, mirrored left to right and top to bottom, with a ring of
+curling scroll lobes around it; parts of the neighbouring medallions are cropped by the card edges at the corners*, and
+the style with "loose and natural, not symmetrical" left out (an ornament should be symmetrical) and "fabric weave"
+added to what to leave out. It came out soft and ragged in its small leaves, so it was redrawn from that draft alone:
+"more cleanly… crisp, sharp, clean edges like cut paper: no blur, no soft or ragged fragments, no small specks… slightly
+bolder and simpler so they read at a small size".
+
+- **One medallion, neighbours cut by the edges**: the print's whole repeat would be texture at hand size.
+- **Ask for crisp edges in a second pass.** A busy first draft keeps its fine leaves blurred; redrawing it from itself
+  sharpens them.
+
 ## Making a back from an image
 
 Crop to 5:7, find the background's tone (the commonest dark value) and the white (the 99.5th percentile), stretch
