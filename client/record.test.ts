@@ -63,6 +63,23 @@ describe('rounds played offline', () => {
     expect(kept()).toEqual([['ada', 2]]);
   });
 
+  it('signed out offline, none more are kept and those kept wait for their account; the server is owed the sign-out, even after a reload, until it takes it', async () => {
+    let record = await load();
+    record.heard('ada');
+    record.heard(undefined);
+    record.keep(round(1));
+    expect(record.owesSignOut()).toBe(false);
+    record.forget();
+    expect(record.remembered()).toBeNull();
+    record.keep(round(2));
+    expect(kept()).toEqual([['ada', 1]]);
+    record = await load();
+    expect(record.owesSignOut()).toBe(true);
+    record.signedOut();
+    expect(record.owesSignOut()).toBe(false);
+    expect(kept()).toEqual([['ada', 1]]);
+  });
+
   it('go once the server says their account is signed in, the oldest first, and are taken out; others wait for theirs', async () => {
     const record = await load();
     record.heard('ada');

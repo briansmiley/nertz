@@ -5,7 +5,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addressIn, goBack, moved } from './address';
 import { reach, subscribe as onNet } from './net';
-import { heard } from './record';
+import { heard, owesSignOut, signedOut } from './record';
 import { handleOf } from '../shared/protocol';
 import type { Account, Among, Followed, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
@@ -62,6 +62,7 @@ export const ownPicture = (v: unknown): string | null => (typeof v === 'string' 
 
 async function ask(): Promise<void> {
   if (!reach().server) return set('off'); // no server to ask: nobody is signed in, and there is no signing in
+  if (owesSignOut() && (await post('/sign-out', {}).catch(() => null))) signedOut(); // (signed out here while offline: client/record.ts)
   try {
     const res = await fetch(PROFILE, { credentials: 'same-origin', cache: 'no-store' });
     const said = read(res.status, await res.json().catch(() => null));

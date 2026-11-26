@@ -352,6 +352,23 @@ label.check {
   gap: 0.55rem 1.4rem;
 }
 
+/* Offline, signing out: a word underlined, like the Profile page's, after the switches. */
+.checks .out {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 0.9rem/1.3 var(--ui);
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.checks .out:hover {
+  color: var(--ink);
+}
+
 /* Your cards: your back at the start of the line, its name wrapping if long, and at the end whose faces (the word over the choices). */
 .deck {
   position: relative; /* where the faces' (i) opens: under the whole line */

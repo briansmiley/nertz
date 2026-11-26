@@ -23,7 +23,7 @@ import { useDismiss } from './dismiss';
 import { FeedbackSlip } from './Feedback';
 import { UsageSlip } from './Usage';
 import { signedIn, useAccount } from './account';
-import { remembered } from './record';
+import { forget, useRemembered } from './record';
 import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
@@ -379,8 +379,9 @@ export function Corner({ room }: { room?: RoomView | null }) {
 /** Your settings, at the top of the corner's menu under a gear; whoever hosts finds the table's at the bottom of them. */
 function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs }) {
   const social = useSocial();
-  /** Whether anyone else can come to the table (client/net.ts `Reach`): if not, nothing here of chat, of voice, or of the line to the server. Without the server, and with someone signed in here last (client/record.ts), whether rounds played count once it is back. */
+  /** Whether anyone else can come to the table (client/net.ts `Reach`): if not, nothing here of chat, of voice, or of the line to the server. Without the server, and with someone signed in here last (client/record.ts), whether rounds played count once it is back, and signing out. */
   const { others, server } = useReach();
+  const remembered = useRemembered();
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
   /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). Closing the menu drops it. */
   const [keying, setKeying] = useState<Hotkey | null>(null);
@@ -443,13 +444,18 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
             </label>
           </>
         )}
-        {!server && remembered() && (
-          <label className="check">
-            <input type="checkbox" checked={prefs.saveStats} onChange={(e) => setPrefs({ saveStats: e.target.checked })} />
-            <span>
-              Save stats <Info>Games will count towards your record against bots when you go back online</Info>
-            </span>
-          </label>
+        {!server && remembered && (
+          <>
+            <label className="check">
+              <input type="checkbox" checked={prefs.saveStats} onChange={(e) => setPrefs({ saveStats: e.target.checked })} />
+              <span>
+                Save stats <Info>Games will count towards your record against bots when you go back online</Info>
+              </span>
+            </label>
+            <button type="button" className="out" onClick={forget}>
+              Sign out
+            </button>
+          </>
         )}
       </div>
       {/* Your cards: whose faces they have, and beside that your back. Any time, a round or not: the faces change the cards for nobody but you; everyone sees your cards in a new back at once. */}

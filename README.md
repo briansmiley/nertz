@@ -963,7 +963,8 @@ for by anyone but its owner, so that it cannot be told from one that is nobody's
 Rounds played offline count too, for whoever was last signed in in that browser (a sign-in that was good is trusted
 offline: there is nobody to ask), unless **Save stats** (in the settings while offline, when someone was signed in
 there last; on unless switched off) says not. They wait in the browser (`client/record.ts`) and go once the server says
-that same account is signed in again: another account's wait for theirs. `POST /stats {id, account, at, round}` takes
+that same account is signed in again: another account's wait for theirs. **Sign out** beside Save stats forgets the
+account there (nothing more is kept; what was waits for it) and signs the browser out once the server is back. `POST /stats {id, account, at, round}` takes
 one, for the cookie's account: 401 for nobody signed in and 409 for someone signed in who is not `account` (it keeps
 waiting), 400 for anything but a round of one person and bots that holds together (it is dropped), and the person's
 hand is the account's whatever was sent. A round sent twice is kept once (`round.offline`, the browser's id for it),
