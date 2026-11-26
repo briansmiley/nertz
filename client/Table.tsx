@@ -662,7 +662,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   /** Nertz has been called: the round is in grace, or over by the call. */
   const called = calledBy(game) !== null;
   /** The round ended by everyone voting to end it. */
-  const agreed = game.status.at === 'over' && game.status.end.by === 'vote';
+  const agreed = game.status.at === 'over' && game.status.end.by === 'vote' && game.status.end.voters > 1; // (one alone ended it: nobody agreed with anybody)
   /** Those who got Nertz: the caller, and anyone else whose nertz pile is empty. */
   const out = wentOut(game);
   // Aid for trying things out (`testing`): Shift+D replays the deal animation in this window only (nothing is sent; the cards are not re-dealt).
