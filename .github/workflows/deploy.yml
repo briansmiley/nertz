@@ -1,7 +1,6 @@
 # Push to `staging` -> https://nertz-staging.fly.dev ; push to `main` -> https://nertz.fly.dev .
-# Both run the checks first. A deploy drops every table (they live in the server's memory), so `main` waits until
-# nobody is connected before it deploys; staging does not wait. The image is built before the wait, not after it: what
-# follows "nobody connected" is then only the swap, not minutes of building in which a table can open.
+# Both run the checks first, then deploy at once: open tables are kept on the volume and come back paused (SMI-189),
+# so a deploy no longer waits for the games to end.
 name: Deploy
 
 on:
@@ -9,7 +8,7 @@ on:
     branches: [main, staging]
   workflow_dispatch:
 
-# A newer push to the same branch replaces an older run, including one still waiting for the tables to empty.
+# A newer push to the same branch replaces an older run.
 concurrency:
   group: deploy-${{ github.ref_name }}
   cancel-in-progress: true
@@ -42,17 +41,4 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200 # master as of 2026-11-21
       - name: Build the image
         run: flyctl deploy --app "$APP" --remote-only --build-only --push --image-label "$GITHUB_SHA"
-      - name: Wait until no game is on
-        if: github.ref_name == 'main'
-        run: |
-          # Asked every 30 seconds for up to 90 minutes. A game is a table someone is at that has dealt; a lobby doesn't count.
-          # (`.connections` is the fallback for a server from before `games` was reported.)
-          for i in $(seq 1 180); do
-            n=$(curl -fsS --max-time 20 "https://$APP.fly.dev/healthz" | jq -r '.games // .connections' || echo unknown)
-            if [ "$n" = "0" ]; then echo "No game on: deploying."; exit 0; fi
-            echo "$n game(s) on; waiting."
-            sleep 30
-          done
-          echo "Still in use after 90 minutes. Re-run this job when the tables are empty."
-          exit 1
       - run: flyctl deploy --app "$APP" --ha=false --image "registry.fly.io/$APP:$GITHUB_SHA"
