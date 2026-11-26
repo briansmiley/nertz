@@ -275,7 +275,7 @@ function Heard({ gate }: { gate: number }) {
 
 /**
  * On a phone, how to be rid of the browser's bars. Where the browser can take the whole screen when asked (Android),
- * a button does it. Elsewhere (an iPhone) it cannot be asked: there the game has to be put on the home screen and opened from
+ * a button does it, which says so itself, unlabelled. Elsewhere (an iPhone) it cannot be asked: there the game has to be put on the home screen and opened from
  * it, said in one line after the label.
  * Nothing is shown with a mouse, nor once the game already has the screen to itself.
  */
@@ -291,13 +291,15 @@ function WholeScreen() {
   const able = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === 'function';
   return (
     <div className={able ? 'whole' : 'whole note'}>
-      <b>Full screen</b>
       {able ? (
         <button type="button" className="go" onClick={() => (full ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: 'hide' })).catch(() => {})}>
           {full ? 'Leave full screen' : 'Use the whole screen'}
         </button>
       ) : (
-        <small>add page to Home Screen</small>
+        <>
+          <b>Full screen</b>
+          <small>add page to Home Screen</small>
+        </>
       )}
     </div>
   );
