@@ -120,6 +120,10 @@ const MIGRATIONS: string[] = [
      code text primary key,
      kept text not null
    ) strict, without rowid;`,
+  // A round played offline, in a browser, and sent once it was back (POST /stats, server/stats.ts): the id that browser
+  // gave it, so that one sent twice is kept once. Null for a round played here.
+  `alter table round add column offline text;
+   create unique index round_offline on round (offline);`,
 ];
 
 /** The file the environment asks for: `nertz.db` in DATA_DIR, which outside production is ./data unless said; null for none. */

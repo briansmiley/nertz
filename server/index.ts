@@ -153,7 +153,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   /** Pictures people put up of themselves, likewise (server/pictures.ts). */
   const pictures = reportDir ? openPictures(join(dirname(reportDir), 'pictures')) : null;
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
-  const stats = accounts && rounds && statsHandler({ accounts, rounds });
+  const stats = accounts && rounds && statsHandler({ accounts, rounds, home });
   const usage = accounts && rounds && usageHandler({ accounts, rounds });
   /** Who each open socket is signed in as: what its cookie said as it opened, for as long as it is open and the account is there. */
   const signed = new Map<WebSocket, Account>();

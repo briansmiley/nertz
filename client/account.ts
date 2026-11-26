@@ -5,6 +5,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addressIn, goBack, moved } from './address';
 import { reach, subscribe as onNet } from './net';
+import { heard } from './record';
 import { handleOf } from '../shared/protocol';
 import type { Account, Among, Followed, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
@@ -24,6 +25,7 @@ let signed: Signed = 'unknown';
 const listeners = new Set<() => void>();
 const set = (next: Signed): void => {
   signed = next;
+  heard(signedIn(next)?.id ?? (waysIn(next) ? null : undefined)); // (rounds played offline go to whoever this is: client/record.ts)
   for (const l of listeners) l();
 };
 

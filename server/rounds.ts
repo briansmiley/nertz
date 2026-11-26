@@ -26,7 +26,8 @@ export const USAGE_GAMES = 12;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface Rounds {
-  keep(round: RoundRecord, at?: number): void;
+  /** Keeps `round`, played at `at`; one played offline with the id its browser gave it (`offline`), unless one of that id is kept already: whether it was kept. */
+  keep(round: RoundRecord, at?: number, offline?: string): boolean;
   /** The record of whoever `account` is, over the rounds `among` says: all noughts for someone who has played none. */
   stats(account: string, among?: Among): Stats;
   /** How `account` has done against `other`, over the rounds both played (of those `among` says), snipes between the two of them too: all noughts for none. */
@@ -52,7 +53,7 @@ const counted = (id: string): string =>
                                   from hand k where k.round = ${id}))`;
 
 export function openRounds(db: Db): Rounds {
-  const round = db.prepare('insert into round (created_at, game, code, number, ending, ms) values (?, ?, ?, ?, ?, ?)');
+  const round = db.prepare('insert into round (created_at, game, code, number, ending, ms, offline) values (?, ?, ?, ?, ?, ?, ?) on conflict (offline) do nothing');
   const hand = db.prepare('insert into hand (round, seat, player, name, account, bot, out, played, nertz_left, delta, nertz) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const snipe = db.prepare('insert into snipe (round, by_seat, of_seat, card) values (?, ?, ?, ?)');
   // A round is won by the best score in it, by everyone who has it; a round of one hand is nobody's to win, and has no
@@ -121,11 +122,14 @@ export function openRounds(db: Db): Rounds {
   const count = (p: Played): Played => ({ games: p.games, rounds: p.rounds, players: p.players, guests: p.guests, bots: p.bots });
   const forget = db.prepare("update hand set account = null, name = '' where account = ?");
   return {
-    keep(r, at = Date.now()) {
-      transaction(db, () => {
-        const id = round.run(at, r.game, r.code, r.number, r.end.by, Math.round(r.ms)).lastInsertRowid;
+    keep(r, at = Date.now(), offline) {
+      return transaction(db, () => {
+        const made = round.run(at, r.game, r.code, r.number, r.end.by, Math.round(r.ms), offline ?? null);
+        if (!made.changes) return false;
+        const id = made.lastInsertRowid;
         for (const h of r.hands) hand.run(id, h.seat, h.player, h.name, h.account, h.bot, h.out, h.played, h.nertzLeft, h.delta, r.end.by === 'nertz' && r.end.out.includes(h.seat) ? 1 : 0);
         for (const s of r.snipes) snipe.run(id, s.by, s.of, s.card);
+        return true;
       });
     },
     stats: (account, among = 'all') => {

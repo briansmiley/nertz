@@ -2,8 +2,9 @@
 // line (client/line.ts) like the one to the game server. Nothing of the game is written again for it: what is sent is
 // read and goes where the server sends it (server/seat.ts, with the one table there is here for all the tables), and
 // what the room answers comes back as text. So the store (client/net.ts) plays an offline table as it
-// plays any other. The table is this line's alone, and gone with it: nobody else can come to it, nothing of it is kept,
-// and its rounds are told to nobody (no `record`: they are on no one's record).
+// plays any other. The table is this line's alone, and gone with it: nobody else can come to it, and nothing of it is
+// kept but its rounds: those go to the record of whoever was last signed in here, once they are back (client/record.ts),
+// unless the settings say not to (`Prefs.saveStats`, as each round ends).
 // The one table is opened here, or was the server's and is carried here (`Carried`): then it is the same table, and
 // from here on no different from one opened here.
 import { Room, type Conn, type Kept, type RoomOptions } from '../server/room';
@@ -11,6 +12,8 @@ import { guard } from '../server/guard';
 import { seatAt, type Tables } from '../server/seat';
 import { CLOSE_OVER, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { Dial } from './line';
+import { getPrefs } from './prefs';
+import { keep } from './record';
 
 /**
  * A table taken offline: as it is kept (handed over by the server whole, or put together from this window's last
@@ -24,7 +27,13 @@ export interface Carried {
 /** A line to a table of this window's own: one it opens, or `carried`, come to by its code as it was on the server. */
 export const local = (carried?: Carried): Dial => (heard) => {
   // (A browser's queueMicrotask is not to be called as the room's own.)
-  const options: RoomOptions = { schedule: (flush) => queueMicrotask(flush), testing: () => import.meta.env.DEV };
+  const options: RoomOptions = {
+    schedule: (flush) => queueMicrotask(flush),
+    testing: () => import.meta.env.DEV,
+    record: (round) => {
+      if (getPrefs().saveStats) keep(round);
+    },
+  };
   /** The one table there is here: the one carried here, or the one opened, once it is. */
   let table: Room | null = carried ? Room.restored(carried.kept, options) : null;
   /** The table nobody has sat down at here yet: carried, or being opened. */

@@ -408,8 +408,8 @@ export function Corner({ room }: { room?: RoomView | null }) {
 /** Your settings, at the top of the corner's menu under a gear; whoever hosts finds the table's at the bottom of them. */
 function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs }) {
   const social = useSocial();
-  /** Whether anyone else can come to the table (client/net.ts `Reach`): if not, nothing here of chat, of voice, or of the line to the server. */
-  const { others } = useReach();
+  /** Whether anyone else can come to the table (client/net.ts `Reach`): if not, nothing here of chat, of voice, or of the line to the server. Without the server, whether rounds played count once it is back. */
+  const { others, server } = useReach();
   const hosting = !!room?.players.find((p) => p.id === room.me)?.isHost;
   /** The hotkey being chosen: the next key pressed is it (Escape leaves it as it was, Backspace takes it away). Closing the menu drops it. */
   const [keying, setKeying] = useState<Hotkey | null>(null);
@@ -461,6 +461,14 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
             <span>Show ping</span>
           </label>
         </>
+      )}
+      {!server && (
+        <label className="check">
+          <input type="checkbox" checked={prefs.saveStats} onChange={(e) => setPrefs({ saveStats: e.target.checked })} />
+          <span>
+            Save stats <Info>Games will count towards your record against bots when you go back online</Info>
+          </span>
+        </label>
       )}
       <label className="check">
         <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
