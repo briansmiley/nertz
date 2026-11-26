@@ -460,6 +460,8 @@ describe('profile', () => {
     // (The database as it was before the migration that makes them: and one with no name, from signing in by email.)
     write("update profile set name = null where name = '李'");
     write("update \"user\" set createdAt = '2026-01-0' || (case email when 'ada@example.com' then 1 when 'bob@example.com' then 2 when 'ada2@example.com' then 3 else 4 end) || 'T00:00:00.000Z'");
+    write('drop index round_offline');
+    write('alter table round drop column offline');
     write('drop table room');
     write('drop table follow');
     write('alter table profile drop column handle_chosen');
@@ -479,6 +481,8 @@ describe('profile', () => {
     await ada.ask('/profile', { private: true }, { method: 'PUT' });
     await server.close();
     // (The database as it was before the migration that adds the switch.)
+    write('drop index round_offline');
+    write('alter table round drop column offline');
     write('drop table room');
     write('drop table follow');
     write('alter table profile drop column handle_chosen');
