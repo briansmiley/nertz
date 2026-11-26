@@ -69,7 +69,7 @@ describe('who is at the table between rounds', () => {
   // stood seat 3 up to watch, and added a bot, which sat at seat 4.
   const game = inPlay(seats(4), lcg(7));
   const was = roomOf(game, 0);
-  const lastRound = { end: { by: 'vote' as const }, scores: seats(4).map((seat) => ({ seat, id: seat, name: `p${seat}`, played: 0, nertzLeft: 0, delta: 0, total: 0, rounds: 1, calls: 0 })) };
+  const lastRound = { end: { by: 'vote' as const, voters: 4 }, scores: seats(4).map((seat) => ({ seat, id: seat, name: `p${seat}`, played: 0, nertzLeft: 0, delta: 0, total: 0, rounds: 1, calls: 0 })) };
   const players: PlayerView[] = [
     was.players[0]!,
     { ...was.players[0]!, id: 8, seat: 2, name: 'Bot Bix', isHost: false, bot: 'medium' },

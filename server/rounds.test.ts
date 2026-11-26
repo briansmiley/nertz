@@ -14,7 +14,7 @@ import { ACCOUNTS, ADA, BOB, Browser, Client, fakeGoogle, FakeConn, roomWith, ro
 
 /** A hand of a round, said shortly: who (an account, a bot, or with neither a guest), and what they scored. */
 const hand = (seat: number, who: string | null, delta: number, bot: 'slow' | null = null): RoundRecord['hands'][number] => ({ seat, player: seat + 1, name: who ?? (bot ? 'Bot' : 'Guest'), account: who, bot, out: null, played: Math.max(delta, 0), nertzLeft: Math.max(-delta, 0) / 2, delta });
-const round = (hands: RoundRecord['hands'], end: RoundRecord['end'] = { by: 'vote' }, number = 1, snipes: RoundRecord['snipes'] = []): RoundRecord => ({ game: 'g1', code: 'TEST', number, end, ms: 60_000, hands, snipes });
+const round = (hands: RoundRecord['hands'], end: RoundRecord['end'] = { by: 'vote', voters: 1 }, number = 1, snipes: RoundRecord['snipes'] = []): RoundRecord => ({ game: 'g1', code: 'TEST', number, end, ms: 60_000, hands, snipes });
 
 describe('rounds kept', () => {
   let db: Db;

@@ -762,7 +762,7 @@ export function resolveEndVote(state: GameState, people: Iterable<number>): Game
   if (!isLive(state)) return state;
   const { voters, voted } = endVote(state, people);
   if (voters === 0 || voted < voters) return state;
-  return endRound(state, { by: 'vote' });
+  return endRound(state, { by: 'vote', voters });
 }
 
 // ---------------------------------------------------------------- views, scoring, invariants

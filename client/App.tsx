@@ -1013,8 +1013,6 @@ function Results({ room }: { room: RoomView }) {
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
   const end = round?.end;
-  /** How many people the round's lines are of (a bot has no say in ending it): with one, nobody agreed with anybody. */
-  const agreed = (round?.scores ?? []).filter((s) => !room.players.find((p) => p.id === s.id)?.bot).length;
   /** The seats that got Nertz: each has the stamp in their line. */
   const out = end?.by === 'nertz' ? end.out : [];
   // Snipes: whoever beat others to a pile most often, and every pair of who did it to whom.
@@ -1044,7 +1042,7 @@ function Results({ room }: { room: RoomView }) {
       <Pad wide>
         <h2>Round {room.round}</h2>
         {/* Who got Nertz is said in their own lines of the sheet, with the stamp in the Nertz column; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
-        {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? (agreed > 1 ? 'Everyone agreed to end the round. Scored as it stands.' : 'Scored as it stands.') : 'Round over.'}</p>}
+        {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? (end.voters > 1 ? 'Everyone agreed to end the round. Scored as it stands.' : 'Scored as it stands.') : 'Round over.'}</p>}
         <table className="scores">
           <thead>
             <tr>

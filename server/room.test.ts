@@ -1120,7 +1120,22 @@ describe('Room', () => {
     sendIntent(room, b, 0, { k: 'end', on: true });
     room.flush();
     expect(room.phase).toBe('results');
-    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote', voters: 2 } });
+  });
+
+  it('a round ended by vote says how many had a say: one person among bots is one, and stays one when a bot is taken off the score sheet', () => {
+    const { room, conns } = roomWith(1);
+    const [a] = conns as [FakeConn];
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    expect(room.phase).toBe('results');
+    expect(room.lastRound!.end).toEqual({ by: 'vote', voters: 1 });
+    room.handle(a, { t: 'removeBot', seat: 1 });
+    room.flush();
+    expect(a.last.room.players).toHaveLength(2);
+    expect(a.last.room.lastRound!.end).toEqual({ by: 'vote', voters: 1 });
   });
 
   it('a round ended by vote is over on the final table like any other: no card is left in a hand, no finished pile left to clear', () => {
@@ -1141,7 +1156,7 @@ describe('Room', () => {
     room.flush();
     for (const conn of [a, b]) {
       const { phase, game } = conn.last.room;
-      expect([phase, game!.status]).toEqual(['results', { at: 'over', end: { by: 'vote' } }]);
+      expect([phase, game!.status]).toEqual(['results', { at: 'over', end: { by: 'vote', voters: 2 } }]);
       expect(game!.players.map((p) => p.holding)).toEqual([null, null]);
       expect(mustClear(game!, 1)).toBe(false);
     }

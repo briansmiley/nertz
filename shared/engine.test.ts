@@ -1133,7 +1133,7 @@ describe('voting to end the round', () => {
     const back = run(one, [0, { k: 'end', on: false }]);
     expect(back.players[0]!.ending).toBeUndefined();
     const both = run(one, [1, { k: 'end', on: true }]);
-    expect(resolveEndVote(both, [0, 1]).status).toEqual({ at: 'over', end: { by: 'vote' } }); // seat 2 (a bot, say) is not asked
+    expect(resolveEndVote(both, [0, 1]).status).toEqual({ at: 'over', end: { by: 'vote', voters: 2 } }); // seat 2 (a bot, say) is not asked
     expect(resolveEndVote(both, [])).toBe(both);
     const called: GameState = { ...both, status: { at: 'over', end: { by: 'nertz', seat: 0, out: [0] } } };
     expect(resolveEndVote(called, [0, 1])).toBe(called);
@@ -1147,7 +1147,7 @@ describe('voting to end the round', () => {
     expect(endVote(two, seatedPeople(back.players))).toEqual({ voters: 2, voted: 0 });
     const both = run(two, [0, { k: 'end', on: true }], [1, { k: 'end', on: true }]);
     expect(endVote(both, seatedPeople(back.players))).toEqual({ voters: 2, voted: 2 });
-    expect(resolveEndVote(both, seatedPeople(back.players)).status).toEqual({ at: 'over', end: { by: 'vote' } });
+    expect(resolveEndVote(both, seatedPeople(back.players)).status).toEqual({ at: 'over', end: { by: 'vote', voters: 2 } });
   });
 
   it('a round ended by vote is over like any other: a card in hand goes back, nobody is held to clearing a pile, and nothing more is taken', () => {
@@ -1335,7 +1335,7 @@ describe('calling nertz and scoring', () => {
     expect(checkInvariants(over)).toBeNull();
     expect(checkInvariants({ ...over, status: { at: 'over', end: { by: 'nertz', seat: 1, out: [1] } } })).toMatch(/out is not/);
     // A round that ends without a call gives nobody Nertz.
-    expect(wentOut({ ...over, status: { at: 'over', end: { by: 'vote' } } })).toEqual([]);
+    expect(wentOut({ ...over, status: { at: 'over', end: { by: 'vote', voters: 1 } } })).toEqual([]);
   });
 
   it('scores strictly cards in the middle (slots and tray) minus twice the nertz pile, with no bonus for going out', () => {

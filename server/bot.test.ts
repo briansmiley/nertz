@@ -213,7 +213,7 @@ describe('chooseIntent', () => {
     const state = table({ nertz: ['S5'], work: [['H6'], [], [], []] });
     for (const stage of ['dealing', 'ready', 'countdown'] as const) expect(look({ ...state, status: { at: stage } })).toBeNull();
     expect(look({ ...state, status: { at: 'grace', calledBy: 1, unheard: [] } })).toBeNull();
-    expect(look({ ...state, status: { at: 'over', end: { by: 'vote' } } })).toBeNull();
+    expect(look({ ...state, status: { at: 'over', end: { by: 'vote', voters: 1 } } })).toBeNull();
     expect(chooseIntent(viewFor(state, 5), 5, freshMemory(), always)).toBeNull();
     const hide = (c: { id: string; owner: number }) => ({ id: c.id, owner: c.owner, hidden: true as const });
     const dark: GameState = { ...state, players: state.players.map((p) => ({ ...p, nertz: p.nertz.map(hide), work: p.work.map((w) => ({ ...w, cards: w.cards.map(hide) })), waste: p.waste.map(hide), stock: p.stock.map(hide) })) };
