@@ -26,8 +26,8 @@ export const USAGE_GAMES = 12;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface Rounds {
-  /** Keeps `round`, played at `at`; one played offline with the id its browser gave it (`offline`), unless one of that id is kept already: whether it was kept. */
-  keep(round: RoundRecord, at?: number, offline?: string): boolean;
+  /** Keeps `round`, played at `at`; one played offline with the id its browser gave it (`offline`), unless one of that id is kept already. */
+  keep(round: RoundRecord, at?: number, offline?: string): void;
   /** The record of whoever `account` is, over the rounds `among` says: all noughts for someone who has played none. */
   stats(account: string, among?: Among): Stats;
   /** How `account` has done against `other`, over the rounds both played (of those `among` says), snipes between the two of them too: all noughts for none. */
@@ -123,13 +123,12 @@ export function openRounds(db: Db): Rounds {
   const forget = db.prepare("update hand set account = null, name = '' where account = ?");
   return {
     keep(r, at = Date.now(), offline) {
-      return transaction(db, () => {
+      transaction(db, () => {
         const made = round.run(at, r.game, r.code, r.number, r.end.by, Math.round(r.ms), offline ?? null);
-        if (!made.changes) return false;
+        if (!made.changes) return;
         const id = made.lastInsertRowid;
         for (const h of r.hands) hand.run(id, h.seat, h.player, h.name, h.account, h.bot, h.out, h.played, h.nertzLeft, h.delta, r.end.by === 'nertz' && r.end.out.includes(h.seat) ? 1 : 0);
         for (const s of r.snipes) snipe.run(id, s.by, s.of, s.card);
-        return true;
       });
     },
     stats: (account, among = 'all') => {
