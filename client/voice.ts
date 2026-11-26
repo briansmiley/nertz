@@ -9,7 +9,7 @@
 import { useSyncExternalStore } from 'react';
 import type { VoiceMember } from '../shared/chat';
 import { current, post } from './net';
-import { getPrefs, loudness, watchPrefs } from './prefs';
+import { GATE_MAX, gateLevel, getPrefs, loudness, micGain, setPrefs, watchPrefs } from './prefs';
 
 /**
  * STUN only: enough when at least one side of a pair can be reached directly,
@@ -57,6 +57,20 @@ const link = (id: number, to: Link | null): void => {
 const listeners = new Set<() => void>();
 let mic: MediaStream | null = null;
 let ctx: AudioContext | null = null;
+/**
+ * What goes out to the others: the microphone through its level and its gate (`Prefs.mic`), and a tap between the two
+ * for the gate's slider (`micInput`). Null without an audio context to do it in: then the microphone goes out as it is.
+ */
+interface Send {
+  gain: GainNode;
+  /** Null where the browser has no audio worklets: the level without the gate. */
+  gate: AudioWorkletNode | null;
+  input: AnalyserNode;
+  stream: MediaStream;
+}
+let send: Send | null = null;
+/** The stream the others are sent. */
+const sent = (): MediaStream | null => send?.stream ?? mic;
 let meterTimer: ReturnType<typeof setInterval> | undefined;
 const peers = new Map<number, Peer>();
 const meters = new Map<number, { node: AnalyserNode; source: MediaStreamAudioSourceNode }>();
@@ -79,10 +93,11 @@ export async function joinVoice(): Promise<void> {
   if (state.status !== 'off') return;
   set({ status: 'asking', error: null });
   const ask = ++asks;
-  // Made inside the click, so the browser lets it (and the audio elements later) play. It only tells who is speaking: voice goes on without one.
+  // Made inside the click, so the browser lets it (and the audio elements later) play. It tells who is speaking and carries your microphone's level and gate (`Send`): voice goes on without one.
   let made: AudioContext | null = null;
   try {
     made = new AudioContext();
+    void made.resume();
   } catch {
     // the browser has none to give
   }
@@ -94,18 +109,22 @@ export async function joinVoice(): Promise<void> {
     if (ask === asks && status() === 'asking') set({ status: 'off', error: 'No microphone: check the browser permission.' });
     return;
   }
+  // (A context that is not running would send silence: then the microphone goes out as it is.)
+  const wired = made?.state === 'running' ? await wire(made, stream) : null;
   if (ask !== asks || status() !== 'asking') {
     // Left the table while the browser was asking.
-    for (const t of stream.getTracks()) t.stop();
+    for (const t of [...stream.getTracks(), ...(wired?.stream.getTracks() ?? [])]) t.stop();
     void made?.close();
     return;
   }
   mic = stream;
   ctx = made;
-  void ctx?.resume();
+  send = wired;
+  tune();
   for (const t of mic.getAudioTracks()) t.enabled = !state.muted;
   const id = myId();
-  if (id !== undefined) meter(id, mic);
+  // Your own ring goes by what is sent: after the level and the gate, silent while muted.
+  if (id !== undefined) meter(id, sent()!);
   meterTimer = setInterval(measure, METER_MS);
   set({ status: 'on' });
   post({ t: 'voice', on: true, muted: state.muted });
@@ -115,8 +134,9 @@ export async function joinVoice(): Promise<void> {
 export function leaveVoice(tell = true): void {
   if (state.status === 'off') return;
   hangUp();
-  for (const t of mic?.getTracks() ?? []) t.stop();
+  for (const t of [...(mic?.getTracks() ?? []), ...(send?.stream.getTracks() ?? [])]) t.stop();
   mic = null;
+  send = null;
   clearInterval(meterTimer);
   for (const m of meters.values()) m.source.disconnect();
   meters.clear();
@@ -132,10 +152,93 @@ export function setMuted(muted: boolean): void {
   if (state.status === 'on') post({ t: 'voice', on: true, muted });
 }
 
+/** Your microphone's level as its slider shows it: 0 while you are muted (the saved level is kept, to come back to). */
+export const micShown = (level: number, muted: boolean): number => (muted ? 0 : level);
+
+/** The microphone's level from its slider: 0 is muting you (the saved level stays as it was), and anything above it unmutes you at that level. */
+export function setMicLevel(level: number): void {
+  if (level <= 0) return setMuted(true);
+  setPrefs({ mic: { ...getPrefs().mic, level } });
+  if (state.muted) setMuted(false);
+}
+
 /** Mute yourself if you are not, unmute if you are, from the store as it is now (not as last rendered); answers whether you are now muted. */
 export function toggleMuted(): boolean {
   setMuted(!state.muted);
   return state.muted;
+}
+
+/**
+ * The gate, on the audio thread (so no timer of a hidden tab holds it up): it opens the moment a block of sound is at
+ * its threshold or over, stays open a quarter of a second after the last one (the ends of words), and fades out then.
+ * A threshold of 0 is always open.
+ */
+const GATE = `registerProcessor('gate', class extends AudioWorkletProcessor {
+  static get parameterDescriptors() { return [{ name: 'threshold', defaultValue: 0, minValue: 0, automationRate: 'k-rate' }]; }
+  constructor() {
+    super();
+    this.gain = 1;
+    this.held = 0;
+    this.hold = Math.round((0.25 * sampleRate) / 128);
+    this.attack = 1 - Math.exp(-1 / (0.002 * sampleRate));
+    this.release = 1 - Math.exp(-1 / (0.06 * sampleRate));
+  }
+  process([input], [output], { threshold }) {
+    const t = threshold[0], n = output[0] ? output[0].length : 128;
+    let sum = 0;
+    for (const ch of input) for (let i = 0; i < ch.length; i++) sum += ch[i] * ch[i];
+    const rms = input.length ? Math.sqrt(sum / (input.length * n)) : 0;
+    if (t <= 0 || rms >= t) this.held = this.hold;
+    else if (this.held > 0) this.held--;
+    const to = this.held > 0 ? 1 : 0, k = to > this.gain ? this.attack : this.release;
+    for (let i = 0; i < n; i++) {
+      this.gain += (to - this.gain) * k;
+      for (let c = 0; c < output.length; c++) output[c][i] = input[c] ? input[c][i] * this.gain : 0;
+    }
+    return true;
+  }
+});`;
+
+/** The microphone through its level and its gate (`Send`); null if the browser will not have it. */
+async function wire(c: AudioContext, stream: MediaStream): Promise<Send | null> {
+  try {
+    const gain = c.createGain();
+    const input = c.createAnalyser();
+    input.fftSize = 512;
+    c.createMediaStreamSource(stream).connect(gain).connect(input);
+    let gate: AudioWorkletNode | null = null;
+    try {
+      const url = URL.createObjectURL(new Blob([GATE], { type: 'text/javascript' }));
+      await c.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      gate = new AudioWorkletNode(c, 'gate');
+    } catch {
+      // no worklets here
+    }
+    const out = c.createMediaStreamDestination();
+    (gate ? gain.connect(gate) : gain).connect(out);
+    return { gain, gate, input, stream: out.stream };
+  } catch {
+    return null;
+  }
+}
+
+/** The level and the gate as the settings have them now: they change while you talk. */
+function tune(): void {
+  if (!send || !ctx) return;
+  const m = getPrefs().mic;
+  send.gain.gain.setTargetAtTime(micGain(m), ctx.currentTime, 0.02);
+  const threshold = send.gate?.parameters.get('threshold');
+  if (threshold) threshold.value = gateLevel(m);
+}
+watchPrefs(tune);
+
+/**
+ * How loud your microphone is right now, after its level and before the gate, on the gate's own scale (0..1, as
+ * `Mic.gate`: over the gate is sent). Null when it cannot be told: not in voice, or no audio context.
+ */
+export function micInput(): number | null {
+  return send ? Math.min(1, Math.sqrt(rms(send.input) / GATE_MAX)) : null;
 }
 
 // ---------------------------------------------------------------- the mesh
@@ -176,7 +279,8 @@ function open(id: number): Peer {
   audio.volume = heard();
   const peer: Peer = { pc, audio, queued: [] };
   peers.set(id, peer);
-  for (const t of mic?.getAudioTracks() ?? []) pc.addTrack(t, mic!);
+  const out = sent();
+  for (const t of out?.getAudioTracks() ?? []) pc.addTrack(t, out!);
   pc.onicecandidate = (e) => {
     if (e.candidate) signal(id, { ice: e.candidate.toJSON() });
   };
@@ -259,15 +363,18 @@ function meter(id: number, stream: MediaStream): void {
   meters.set(id, { node, source });
 }
 
+const samples = new Float32Array(512);
+/** The rms of what an analyser (of 512) has just heard. */
+function rms(node: AnalyserNode): number {
+  node.getFloatTimeDomainData(samples);
+  let sum = 0;
+  for (const s of samples) sum += s * s;
+  return Math.sqrt(sum / samples.length);
+}
+
 function measure(): void {
   const speaking: number[] = [];
-  const samples = new Float32Array(512);
-  for (const [id, { node }] of meters) {
-    node.getFloatTimeDomainData(samples);
-    let sum = 0;
-    for (const s of samples) sum += s * s;
-    if (Math.sqrt(sum / samples.length) > SPEAKING_LEVEL) speaking.push(id);
-  }
+  for (const [id, { node }] of meters) if (rms(node) > SPEAKING_LEVEL) speaking.push(id);
   speaking.sort((a, b) => a - b);
   if (speaking.join() !== state.speaking.join()) set({ speaking });
 }

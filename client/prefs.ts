@@ -16,6 +16,8 @@ export interface Prefs {
   /** The game's sounds off. Voice chat is not muted by it: only by its own level, or by `levels.master`. */
   muted: boolean;
   levels: Levels;
+  /** Your own microphone, as it goes out to voice chat. */
+  mic: Mic;
   /** Reduced motion: true or false overrides the system setting; null follows it. */
   calm: boolean | null;
   /** Which card faces your own deck has (client/cards/Face.tsx): the table is told, and everyone sees your cards so (but as `faces` says). */
@@ -59,6 +61,18 @@ export interface Levels {
   voice: number;
 }
 export type Channel = Exclude<keyof Levels, 'master'>;
+
+/** Your voice as the others hear it: how loud (0..2, 1 as the microphone gives it), and the gate (0..1, 0 off) under which nothing is sent. */
+export interface Mic {
+  level: number;
+  gate: number;
+}
+/** The loudest a gate can be set to: the rms (of the signal after `micGain`) under which nothing is sent, at the gate's top. */
+export const GATE_MAX = 0.1;
+/** The microphone's gain: squared, as `loudness` is, so that its slider feels even (200%: four times as loud). */
+export const micGain = (m: Mic): number => m.level ** 2;
+/** The rms under which nothing is sent: 0 with the gate off. Squared likewise, so that the low end, where a room's noise is, has room on the slider. */
+export const gateLevel = (m: Mic): number => GATE_MAX * m.gate ** 2;
 export const CHANNELS = ['mine', 'others', 'voice'] as const satisfies readonly Channel[];
 
 /** A channel's gain as it plays: squared, so that a slider feels even. Muted, the game's channels are silent and voice chat is not. */
@@ -90,7 +104,7 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), mic: { level: 1, gate: 0 }, calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
@@ -135,12 +149,18 @@ function cleanLevels(v: Record<string, unknown>): Levels {
   return { master: unit(l.master, was.master), mine: unit(l.mine, was.mine), others: unit(l.others, was.others), voice: unit(l.voice, was.voice) };
 }
 
+function cleanMic(v: unknown): Mic {
+  const m = typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+  return { level: 2 * unit(typeof m.level === 'number' ? m.level / 2 : null, 0.5), gate: unit(m.gate, 0) };
+}
+
 /** Whatever was stored, made into valid preferences: unknown or damaged fields fall back to the defaults. */
 export function cleanPrefs(raw: unknown): Prefs {
   const v = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   return {
     muted: typeof v.muted === 'boolean' ? v.muted : DEFAULT_PREFS.muted,
     levels: cleanLevels(v),
+    mic: cleanMic(v.mic),
     calm: typeof v.calm === 'boolean' ? v.calm : null,
     deck: isDeck(v.deck) ? v.deck : DEFAULT_PREFS.deck,
     night: typeof v.night === 'boolean' ? v.night : v.deck === 'night', // ("night" was once a deck of its own)

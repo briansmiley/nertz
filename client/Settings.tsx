@@ -27,7 +27,8 @@ import { useCorners } from './fittings';
 import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
-import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Prefs } from './prefs';
+import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Mic, type Prefs } from './prefs';
+import { micInput, micShown, setMicLevel, useVoice } from './voice';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
@@ -205,6 +206,72 @@ function Volume({ prefs }: { prefs: Prefs }) {
   );
 }
 
+/** The two of your microphone, as the row under the channels names them, and in full. */
+const MIC_NAMES: Record<keyof Mic, [short: string, full: string]> = { level: ['Mic', 'Your microphone'], gate: ['Gate', 'Microphone threshold'] };
+
+/**
+ * Your microphone as voice chat sends it: its level and its gate, in a row like the channels', of which the one pressed
+ * opens its slider. Under Volume, and in the voice slip (Chat.tsx).
+ */
+export function MicLevels({ prefs }: { prefs: Prefs }) {
+  const [open, setOpen] = useState<keyof Mic | null>(null);
+  const slider = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) slider.current?.focus();
+  }, [open]);
+  const { mic } = prefs;
+  const { muted } = useVoice();
+  const shown: Mic = { ...mic, level: micShown(mic.level, muted) };
+  return (
+    <div className="mic-levels">
+      <div className="mix">
+        {(['level', 'gate'] as const).map((k) => (
+          <button key={k} type="button" className={open === k ? 'on' : ''} aria-expanded={open === k} data-tip={MIC_NAMES[k][1]} onClick={() => setOpen(open === k ? null : k)}>
+            {MIC_NAMES[k][0]}
+            <output>{k === 'gate' && !mic.gate ? 'off' : k === 'level' && muted ? 'Muted' : percent(shown[k])}</output>
+          </button>
+        ))}
+      </div>
+      {open && (
+        <div className="mic-slider">
+          <input
+            ref={slider}
+            type="range"
+            min="0"
+            max={open === 'level' ? 2 : 1}
+            step={open === 'level' ? 0.05 : 0.01}
+            aria-label={MIC_NAMES[open][1]}
+            value={shown[open]}
+            onChange={(e) => (open === 'level' ? setMicLevel(Number(e.target.value)) : setPrefs({ mic: { ...getPrefs().mic, gate: Number(e.target.value) } }))}
+          />
+          {open === 'gate' && <Heard gate={mic.gate} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Under the gate's slider while you are in voice: how loud you are now, on the slider's scale, green where it is sent. */
+function Heard({ gate }: { gate: number }) {
+  const on = useVoice().status === 'on';
+  const [loud, setLoud] = useState<number | null>(null);
+  useEffect(() => {
+    if (!on) return setLoud(null);
+    // (Falling back slowly, as a level meter does: the gate itself holds open a moment after a word.)
+    const timer = setInterval(() => {
+      const now = micInput();
+      setLoud((was) => (now === null ? null : Math.max(now, (was ?? 0) * 0.85)));
+    }, 50);
+    return () => clearInterval(timer);
+  }, [on]);
+  if (loud === null) return null;
+  return (
+    <span className={`heard${loud >= gate ? ' over' : ''}`} role="meter" aria-label="Your microphone now" aria-valuemin={0} aria-valuemax={1} aria-valuenow={loud}>
+      <i style={{ width: `${loud * 100}%` }} />
+    </span>
+  );
+}
+
 /**
  * On a phone, how to be rid of the browser's bars. Where the browser can take the whole screen when asked (Android),
  * a button does it. An iPhone cannot be asked: there the game has to be put on the home screen and opened from it.
@@ -364,11 +431,18 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <Gear />
         Settings
       </h3>
-      <Volume prefs={prefs} />
-      <label className="check">
-        <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-        <span>Bots say "Nertz"</span>
-      </label>
+      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). */}
+      <div className="sound">
+        <h3>Sound</h3>
+        <h4>Output</h4>
+        <Volume prefs={prefs} />
+        <label className="check">
+          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+          <span>Bots say "Nertz"</span>
+        </label>
+        <h4 className="input">Input</h4>
+        <MicLevels prefs={prefs} />
+      </div>
       <label className="check">
         <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
         <span>Show chat over the table</span>

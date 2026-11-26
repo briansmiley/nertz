@@ -270,6 +270,75 @@ label.check {
   accent-color: var(--red);
 }
 
+/* Sound: its heading as Hotkeys' is, then what you hear (Output) and your microphone (Input), each named small, Input
+   set off by a light rule, and the whole closed by one before the rest of your settings. */
+.sound {
+  display: grid;
+  gap: 0.35rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sound h3 {
+  margin-bottom: 0.1rem;
+}
+
+.sound h4 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.sound h4.input {
+  margin-top: 0.3rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+}
+
+/* Your microphone: a row like the channels', its two to the left, and the one pressed opens its slider under it. Under
+   the gate's, while you are in voice, how loud you are now on the same scale: green where it is sent. */
+.mic-levels {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mic-levels .mix {
+  justify-content: flex-start;
+  column-gap: 1.1rem;
+}
+
+.mic-slider {
+  display: grid;
+  gap: 4px;
+}
+
+.mic-slider input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--red);
+}
+
+/* (Inset by about half a thumb, so that the end of the bar stands where the thumb would.) */
+.heard {
+  height: 3px;
+  margin: 0 7px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.heard i {
+  display: block;
+  height: 100%;
+  background: #9a9482;
+  transition: width 50ms linear;
+}
+
+.heard.over i {
+  background: rgb(28, 148, 104);
+}
+
 /* A part of your settings slip set off by a rule above it (what whoever hosts allows at the table). */
 .end-vote {
   display: grid;

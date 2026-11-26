@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PLAIN_LOOK, type Look } from '../shared/protocol';
-import { cleanPrefs, DEFAULT_PREFS, hotkeyPressed, keyFree, loudness, seenLook, takeKey, type Levels, type Prefs } from './prefs';
+import { cleanPrefs, DEFAULT_PREFS, gateLevel, GATE_MAX, hotkeyPressed, keyFree, loudness, micGain, seenLook, takeKey, type Levels, type Prefs } from './prefs';
 
 describe('cleanPrefs: hotkeys', () => {
   it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
@@ -67,6 +67,30 @@ describe('cleanPrefs: levels', () => {
     expect(cleanPrefs({ levels: { master: -1 } }).levels).toEqual({ ...DEFAULT_PREFS.levels, master: 0 });
     expect(cleanPrefs({ levels: 'all of them' }).levels).toEqual(DEFAULT_PREFS.levels);
     expect(cleanPrefs(cleanPrefs({ volume: 0.3, others: 0.7 }))).toEqual(cleanPrefs({ volume: 0.3, others: 0.7 }));
+  });
+});
+
+describe('cleanPrefs: the microphone', () => {
+  it('leaves your voice as it was by default: at full, with no gate', () => {
+    expect(cleanPrefs(null).mic).toEqual({ level: 1, gate: 0 });
+    expect(cleanPrefs({ levels: { master: 0.5 } }).mic).toEqual(DEFAULT_PREFS.mic);
+    expect(micGain(DEFAULT_PREFS.mic)).toBe(1);
+    expect(gateLevel(DEFAULT_PREFS.mic)).toBe(0);
+  });
+
+  it('keeps a level up to twice as loud and a gate up to its top, and mends a damaged one', () => {
+    expect(cleanPrefs({ mic: { level: 1.6, gate: 0.3 } }).mic).toEqual({ level: 1.6, gate: 0.3 });
+    expect(cleanPrefs({ mic: { level: 9, gate: 2 } }).mic).toEqual({ level: 2, gate: 1 });
+    expect(cleanPrefs({ mic: { level: -1, gate: 'loud' } }).mic).toEqual({ level: 0, gate: 0 });
+    expect(cleanPrefs({ mic: { level: 'quiet' } }).mic).toEqual({ level: 1, gate: 0 });
+    expect(cleanPrefs({ mic: 'on' }).mic).toEqual(DEFAULT_PREFS.mic);
+  });
+
+  it('squares both, as the volume is', () => {
+    expect(micGain({ level: 2, gate: 0 })).toBe(4);
+    expect(micGain({ level: 0.5, gate: 0 })).toBe(0.25);
+    expect(gateLevel({ level: 1, gate: 1 })).toBe(GATE_MAX);
+    expect(gateLevel({ level: 1, gate: 0.5 })).toBeCloseTo(GATE_MAX / 4, 9);
   });
 });
 
