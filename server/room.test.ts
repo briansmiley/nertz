@@ -772,6 +772,20 @@ describe('Room', () => {
     expect(whereAll(room, a)).toEqual(['P0:w', 'P1:w', 'P2:w']);
   });
 
+  it('a bot may be seated as it was at another table: its name, unless someone here has it, and its backs', () => {
+    const { room, conns } = roomWith(1);
+    const [a] = conns as [FakeConn];
+    expect(send(room, a, { t: 'addBot', level: 'fast', name: '  Zed ', backs: { k: 'own', back: 'braid' } })).toBe(true);
+    expect(send(room, a, { t: 'addBot', level: 'slow', name: 'Zed' })).toBe(true); // (taken: it gets one of the usual)
+    expect(send(room, a, { t: 'addBot', level: 'slow', name: 'P0', backs: { k: 'lot', lot: 'nonsense' } })).toBe(true);
+    room.flush();
+    expect(a.room.players.filter((p) => p.bot).map((p) => [p.name, p.bot, p.look.backs])).toEqual([
+      ['Zed', 'fast', { k: 'own', back: 'braid' }],
+      ['Bot Ada', 'slow', PLAIN_LOOK.backs],
+      ['Bot Bix', 'slow', PLAIN_LOOK.backs],
+    ]);
+  });
+
   // SMI-281: the bots played a round out against the hand of the one person at it, whose line had dropped, and it was recorded.
   it('a round whose only person has gone waits for them: paused as theirs, its bots still, nothing recorded; back, they unpause it', () => {
     vi.useFakeTimers();

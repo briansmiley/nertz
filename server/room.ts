@@ -436,7 +436,7 @@ export class Room {
         return;
       }
       case 'addBot':
-        return this.addBot(player, msg.level);
+        return this.addBot(player, msg.level, msg.name, msg.backs);
       case 'removeBot':
         return this.removeBot(player, msg.seat);
       case 'reset':
@@ -1171,16 +1171,19 @@ export class Room {
    * Whoever deals seats a bot, and takes one off (`removeBot`): in the lobby, on the score sheet, and before their
    * Start, never once it is pressed. A bot sits down and gets up the way a person does: before Start it is dealt its
    * seat's hand (`fill`), and taken off it puts that hand aside (`gone`, `upFrom`). Nobody else's face-up cards change.
+   * `as` and `backs`: what it was called and played with at the table it comes from (client/net.ts `playOnline`).
    */
-  private addBot(by: Player, level: BotLevel): void {
+  private addBot(by: Player, level: BotLevel, as?: string, backs?: Backs): void {
     if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed)) return;
     const seat = this.seatFor();
     if (seat === null) return;
-    const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
+    const free = (n: string): boolean => !this.players.some((p) => p.name === n);
+    const name = as && free(as) ? as : (BOT_NAMES.find(free) ?? 'Bot');
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
     const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
     this.players.push(bot);
+    if (backs) this.dress(bot, { ...bot.look, backs });
     this.sitDown(bot, seat);
     this.fill(); // (before Start, its seat's hand goes on the table)
     this.changed();

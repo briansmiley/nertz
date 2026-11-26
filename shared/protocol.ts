@@ -231,8 +231,8 @@ export type ClientMsg =
   | { t: 'pause'; on: boolean }
   /** How my cards look: everyone sees the cards of my deck drawn that way. Every part of it is said, every time. */
   | { t: 'deck'; look: Look }
-  /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
-  | { t: 'addBot'; level: BotLevel }
+  /** Host only, between rounds: seat a bot (as it was at another table: its `name`, if nobody here has it, and its `backs`), or send the bot in `seat` away. */
+  | { t: 'addBot'; level: BotLevel; name?: string; backs?: Backs }
   | { t: 'removeBot'; seat: number }
   /** I put my one card `card` back unplayed, wherever I let it go; `seen` is the top of every pile in the middle when I took the card up (null: there was no pile). The server judges whether I was sniped meanwhile (`snipedBy`). */
   | { t: 'tried'; card: string; seen: (string | null)[] }
@@ -549,7 +549,9 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
-      return level ? { t: 'addBot', level } : null;
+      const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
+      const backs = parseBacks(v.backs);
+      return level ? { t: 'addBot', level, ...(name && { name }), ...(backs && { backs }) } : null;
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;
