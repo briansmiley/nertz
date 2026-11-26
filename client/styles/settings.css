@@ -159,6 +159,7 @@ body:has(.corner.right) .ping {
 }
 
 label.check {
+  position: relative; /* where its (i) opens: under the row, not under the whole slip */
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.6rem;
