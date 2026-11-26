@@ -305,7 +305,10 @@ interface Strip {
 }
 const UP: Strip = { fan: 1, least: 1 };
 const DOWN: Strip = { fan: 0.45, least: 0.25 }; // (an edge a little deeper than a back's white border: each shows a band of its colour)
-/** Past their least, the oldest cards give way down to this share of a face-up card's whole rank (no further than their least). */
+/**
+ * Past their least, the oldest cards give way down to this share of a face-up card's whole rank. A face-down card's
+ * edge is already less: it keeps that.
+ */
 const SLIVER = 0.4;
 
 interface HandSpec {
