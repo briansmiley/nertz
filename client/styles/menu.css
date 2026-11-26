@@ -69,6 +69,26 @@
   margin-left: auto;
 }
 
+/* (Wide enough, where there is the room, for Volume and the three channels on one line, and the card faces with your
+   back beside them.) */
+@media (min-width: 421px) {
+  .slip.menu {
+    width: 22rem;
+  }
+}
+
+/* (A phone held upright: the settings closer together, and the lines too, so that offline the whole slip fits the screen.) */
+@media (max-width: 420px) {
+  .menu .yours {
+    gap: 0.65rem;
+    padding: 1.2rem 1.2rem 0.9rem;
+  }
+
+  .acts .line {
+    padding: 0.5rem 0 0.55rem;
+  }
+}
+
 /* (A phone on its side is low: the two lines are closer, to leave the settings what height there is.) */
 @media (orientation: landscape) and (max-height: 499px) {
   .acts .line {
