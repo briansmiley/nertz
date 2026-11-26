@@ -421,7 +421,8 @@ describe('Room with bots', () => {
     });
   }, FUZZ_MS);
 
-  it('bots alone, driven only by their timers, finish rounds (the person is away, so the stuck vote is theirs)', () => {
+  // (Up from their cards for now, and here: with nobody of the round here at all it would wait for them, paused.)
+  it('bots alone, driven only by their timers, finish rounds (the person has stood up, so the stuck vote is theirs)', () => {
     vi.useFakeTimers();
     // Deals until two have been played out.
     untilReached({ 'played out': 2 }, 8, (_, reached, seed) => {
@@ -429,8 +430,8 @@ describe('Room with bots', () => {
       for (const level of ['slow', 'medium', 'fast', 'medium'] as const) room.handle(host, { t: 'addBot', level });
       room.handle(host, { t: 'start' });
       opening(room, host);
-      room.disconnect(host);
-      expect(room.connected).toBe(0); // four bots playing do not make the room look alive
+      room.handle(host, { t: 'sit', on: false });
+      expect(room.connected).toBe(1); // four bots playing do not make the room look any more alive
       expect(vi.getTimerCount()).toBe(4);
       const took = playOut(room, 60 * 60_000);
       if (took === null) return room.close(); // jammed
@@ -443,6 +444,7 @@ describe('Room with bots', () => {
       // Next round: a removed bot has no timer, the others get theirs back.
       const back = new FakeConn();
       room.join(back, 'Ann', 'tok-host', true);
+      room.handle(back, { t: 'sit', on: true }); // (whoever stood up watches once the round is over)
       room.handle(back, { t: 'removeBot', seat: 2 });
       room.handle(back, { t: 'start' });
       opening(room, back);

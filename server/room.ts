@@ -717,6 +717,7 @@ export class Room {
     this.playingSince = Date.now();
     // Play is open: the bots start looking at their cards now, like everyone else.
     for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p, true);
+    this.unattended();
     this.settle();
     this.changed();
   }
@@ -893,6 +894,19 @@ export class Room {
     this.changed();
   }
 
+  /**
+   * A round being played that none of its people is here for waits for them: paused, in the name of one who is away,
+   * the moment the last of them goes (`drop`) or play opens on nobody (`opened`). Otherwise its bots would play it out
+   * against hands nobody holds, and it would be scored and recorded so. It is a pause like one of theirs: back, they
+   * unpause it, as anyone in the round does. A round with someone of its own still here goes on.
+   */
+  private unattended(): void {
+    if (this.pausedBy || !this.state || !isLive(this.state)) return;
+    const people = this.players.filter((p) => !p.bot && this.inRound(p));
+    const away = people.find((p) => !p.conn);
+    if (away && !people.some((p) => p.conn)) this.stopPlay({ by: 'player', player: away });
+  }
+
   /** What the round's clock reads: how long the round has been played, not counting time paused. A draw is timed by it (`PlayerState.draw`). */
   private playedMs(): number {
     return (this.played ?? 0) + (this.playingSince === null ? 0 : Date.now() - this.playingSince);
@@ -954,6 +968,7 @@ export class Room {
     // Away for now: they stay where they were.
     this.letGo(player);
     this.social.left(player, this.players);
+    this.unattended();
     this.settle(); // the remaining connected players may now all be stuck
     this.changed();
   }
