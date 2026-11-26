@@ -28,7 +28,7 @@ import { useFeed } from './feed';
 import { Dots } from './Dots';
 import { kick, onDrag, onSnipe, pause, playable, playOffline, portable, post, sit, testing, useNet, useReach } from './net';
 import { Clock } from './Settings';
-import { Chair } from './icons';
+import { Chair, FastForward } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
 import { useDismiss } from './dismiss';
 import { usePicture } from './picture';
@@ -1201,9 +1201,12 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
           type="button"
           className={`skip${phone ? ' aside' : ''}`}
           style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          aria-label="Skip to the scores"
+          data-tip="Skip to the scores"
           onClick={skip}
         >
-          {phone ? 'Skip' : 'Skip to the scores'} <small>Esc</small>
+          <FastForward />
+          <small>Esc</small>
         </button>
       )}
     </div>
