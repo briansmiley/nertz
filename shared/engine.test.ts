@@ -312,7 +312,7 @@ describe('a set-up deal', () => {
             expect([...spots(p)].sort()).toEqual([...spots(was)].sort());
             // With what `out` put under the stock back on the nertz pile, every card lies where it was dealt but those named and those they were swapped with.
             const back = name === 'out' ? { ...p, nertz: [...p.stock.slice(0, 11), ...p.nertz], stock: p.stock.slice(11) } : p;
-            expect(spots(back).filter((x, j) => x !== spots(was)[j]).length).toBeLessThanOrEqual(name === 'aces' ? 8 : 4);
+            expect(spots(back).filter((x, j) => x !== spots(was)[j]).length).toBeLessThanOrEqual(name === 'run' ? 26 : name === 'aces' ? 8 : 4);
           }
         }
       }
@@ -339,6 +339,15 @@ describe('a set-up deal', () => {
     for (const p of g.players) expect(p.nertz.map(face)).toEqual(['C1', 'D1']);
     for (const f of ['D1', 'C1']) g = ok(applyIntent(g, 0, move(id(g, 0, f), fly(g, 0, id(g, 0, f)))));
     expect(calledBy(ok(applyIntent(g, 0, NERTZ)))).toBe(0);
+  });
+
+  it('run: the whole nertz pile but its last card plays onto a King, Queen down to Ace', () => {
+    let g = toPlay(setUpDeal(dealRound(seats(2), seeded(7)), 'run'));
+    for (const p of g.players) expect(tops(p).slice(0, 2)).toEqual(['H12', 'S13']);
+    for (let i = 0; i < 12; i++) g = ok(applyIntent(g, 0, move(g.players[0]!.nertz.at(-1)!.id, work(0))));
+    const pile = g.players[0]!.work[0]!;
+    expect(pile.cards.slice(pile.down).map(face)).toEqual(['S13', 'H12', 'S11', 'H10', 'S9', 'H8', 'S7', 'H6', 'S5', 'H4', 'S3', 'H2', 'S1']);
+    expect(g.players[0]!.nertz).toHaveLength(1);
   });
 });
 
