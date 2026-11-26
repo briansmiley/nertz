@@ -167,8 +167,9 @@ interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | '
 /**
  * A table as it is kept over a restart of the server (server/index.ts, in the database): plain JSON. Everything the
  * room is but what belongs to a connection or a clock: no socket, no timer, nothing a bot had in mind, and not who
- * paused it (it comes back with nobody at it, and stopped). Written by `Room.kept` and read by `Room.restored`, and
- * by nothing else; each field is the room's own of that name.
+ * paused it (it comes back with nobody at it, and stopped). Written by `Room.kept` and read by `Room.restored`; each
+ * field is the room's own of that name. (One other writer: a window that has lost its line makes one of the last
+ * snapshot it had, client/rebuild.ts, to play the table on by itself.)
  */
 export interface Kept {
   v: number;
@@ -357,7 +358,7 @@ export class Room {
   }
 
   /** Any message other than `join`/`create` from a connection that has joined. Unknown connections are ignored. */
-  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' | 'ping' }>): void {
+  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' | 'ping' | 'carry' }>): void {
     const player = this.conns.get(conn);
     if (!player) return;
     switch (msg.t) {
@@ -541,6 +542,22 @@ export class Room {
       host: this.host?.id ?? null,
       played: this.played === null ? null : this.playedMs(),
     };
+  }
+
+  /**
+   * Whoever `conn` is takes the table away, to play it on in a window of their own (client/local.ts): only the one
+   * person in the room, with bots. With anyone else there (at the table or watching, here or away, or gone with cards
+   * of theirs still lying) it stays, and this is null. Taken, it is as it is kept, and over here: nobody is at it
+   * (`empty`), nothing of it runs, and its round is told to nobody.
+   */
+  carried(conn: Conn): Kept | null {
+    const player = this.conns.get(conn);
+    if (!player || this.players.some((p) => !p.bot && p !== player)) return null;
+    const kept = this.kept();
+    this.close();
+    this.conns.clear();
+    this.players = [];
+    return kept;
   }
 
   /**

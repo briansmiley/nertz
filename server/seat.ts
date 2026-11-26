@@ -1,5 +1,6 @@
 // One connection's way to the tables: which it is at, and where what it says goes. Opening a table or coming to one
-// seats it there (`Room.join`); everything else is the table's to handle (`Room.handle`). The same for every
+// seats it there (`Room.join`); taking one away offline hands it over and gives it up (`Room.carried`); everything else
+// is the table's to handle (`Room.handle`). The same for every
 // connection there is: a websocket of the server's (server/index.ts), or the line of a window that plays offline
 // (client/local.ts). What differs is only which tables there are (`Tables`), and what a connection must get past before
 // it is heard here at all (the server's rate limit, and its stopping for an update).
@@ -75,6 +76,13 @@ export function seatAt(conn: Conn, tables: Tables, signed: () => SignedAs | null
         if (refusal) return conn.close(refusal);
         tables.taken(target);
         room = target;
+      } else if (msg.t === 'carry') {
+        // The table goes with whoever asks, if they are the only person at it: handed over whole, and nobody's here from then on.
+        const kept = room?.carried(conn);
+        if (!room || !kept) return;
+        conn.send({ t: 'carried', kept });
+        tables.released(room);
+        room = null;
       } else if (room) {
         room.handle(conn, msg);
         if (msg.t === 'leave') {

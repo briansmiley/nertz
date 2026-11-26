@@ -74,7 +74,7 @@ export function roomWith(n: number, { code = 'TEST', ...options }: RoomOptions &
 /** What a client sends, through the same validation as the real server. False if that refuses it. */
 export function send(room: Room, conn: Conn, raw: unknown): boolean {
   const msg = parseClientMsg(JSON.stringify(raw));
-  if (!msg || msg.t === 'join' || msg.t === 'create' || msg.t === 'ping') return false;
+  if (!msg || msg.t === 'join' || msg.t === 'create' || msg.t === 'ping' || msg.t === 'carry') return false;
   room.handle(conn, msg);
   return true;
 }
