@@ -94,7 +94,7 @@
    their hand, small. It is written in, so the column is as wide as it and it covers none of the figures beside it. */
 .scores .called {
   display: inline-block;
-  vertical-align: 2px; /* (not middle: that is the figures' x-height, so the stamp sat lower than the middle of their digits) */
+  vertical-align: 2px; /* (not middle: that is half the figures' x-height, below the middle of their digits) */
   font: 400 0.8rem/1 var(--display);
   text-transform: uppercase;
   letter-spacing: 0.01em;
