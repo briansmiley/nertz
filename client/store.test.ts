@@ -619,14 +619,14 @@ describe('a window that plays offline', () => {
     await vi.advanceTimersByTimeAsync(5000);
     const room = net.current().room!;
     expect(room.game!.status.at).toBe('play');
-    expect(actions.mayStand()).toBe(false);
+    expect(net.reach().others).toBe(false);
     expect(actions.standing(room)).toBeNull();
     expect(actions.tableActions(room).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'leave']);
     // (And the lone human's vote is not counted out loud.)
     expect(actions.tableActions(room).find((a) => a.id === 'vote')).toEqual({ id: 'vote', label: 'End round', on: false });
     net.leave();
     prefs.setPrefs({ offline: false });
-    expect(actions.mayStand()).toBe(true);
+    expect(net.reach().others).toBe(true);
     expect(actions.tableActions(room).map((a) => a.id)).toContain('stand');
   });
 

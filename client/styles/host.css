@@ -42,8 +42,3 @@ a.page:focus-visible {
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 0.2em;
 }
-
-/* Where nobody else can come (`alone`, on the root: client/App.tsx) you are the only one who could host: the mark by your name says nothing. */
-.alone .host {
-  display: none;
-}

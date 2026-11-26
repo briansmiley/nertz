@@ -18,7 +18,7 @@ import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
-import { openAction, press, useMayStand, type ActionId } from './actions';
+import { openAction, press, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, reachOf, sit, start, useNet, useReach, useRtt, type Reach } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
@@ -130,8 +130,6 @@ export function App() {
   const addressed = useAddressed();
   const page = reach.server ? addressed : null;
   useSounds(room, net.status === 'online');
-  // (For what the stylesheet leaves out where nobody else can come: the host's mark by a name, when you are the only one who could be.)
-  useEffect(() => void document.documentElement.classList.toggle('alone', !reach.others), [reach.others]);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -391,7 +389,7 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
  * altogether. Whoever hosts the table is asked first whether to hand it on, and to whom: some go on dealing from the side.
  */
 function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
-  const may = useMayStand();
+  const may = useReach().others;
   const mine = who.id === room.me;
   const says = mine ? 'Stand up (spectate)' : `Stand ${who.name} up (spectate)`;
   const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];

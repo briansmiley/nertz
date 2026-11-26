@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, reach, redeal, resetTable, sit, useReach } from './net';
+import { leave, pause, reach, redeal, resetTable, sit } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -25,20 +25,14 @@ export function canResume(room: RoomView): boolean {
  * Standing up from your cards, or sitting back down: from the deal until Nertz is called, if you play at the table.
  * From Start it is for now: standing, you are as good as away; you sit back down by saying so, or by playing; and at
  * the round's end you watch. Before Start you watch at once, and take a seat again as anyone watching does.
- * Null if neither is open to you; otherwise whether you are standing.
+ * Null if neither is open to you; otherwise whether you are standing. There is no standing up from a table, to watch
+ * it or for now, but where others can come to it (client/net.ts `Reach`): alone with bots there is nobody to watch, and
+ * nobody the round is played on for.
  */
 export function standing(room: RoomView): boolean | null {
   const me = meOf(room);
-  return mayStand() && room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
+  return reach().others && room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
 }
-
-/**
- * Is there any standing up from a table here, to watch it or for now? Only where others can come to it (client/net.ts
- * `Reach`): alone with bots there is nobody to watch, and nobody the round is played on for. The one rule, for the
- * menu, the lobby and the score sheet.
- */
-export const mayStand = (): boolean => reach().others;
-export const useMayStand = (): boolean => useReach().others;
 
 /** Can you deal the round over? Whoever deals, at any point of a round. */
 export const canRedeal = (room: RoomView): boolean => room.phase === 'playing' && !!room.game && !!meOf(room)?.isHost;

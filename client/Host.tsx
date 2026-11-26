@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useReach } from './net';
 
 /**
  * A name, as a span with `className`; if `host`, the host's mark by it.
@@ -13,8 +14,9 @@ export function Name({ host, className, children }: { host: boolean | undefined;
   );
 }
 
-/** The host's mark: a white puck with an H, its edge showing under it. */
+/** The host's mark: a white puck with an H, its edge showing under it. Not where nobody else can come: you are the only one who could host, and it says nothing. */
 function HostMark() {
+  if (!useReach().others) return null;
   return (
     <svg className="host" viewBox="0 0 16 17" role="img" aria-label="Host">
       <title>Host</title>
