@@ -6,7 +6,7 @@
 // Placement is exact. A card lands only if it is put down on one specific pile (the one under the pointer, else the
 // one under the card's centre) and fits there; nothing is rerouted. Only an Ace let go on the felt where there is no
 // room for a pile right there starts one at the nearest place that has room, if that is no more than a card away.
-import { canDrop, grab } from '../shared/engine';
+import { canDrop, grab, piled } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, roomNear, type Pt } from '../shared/table';
 import type { GameState, Intent, PileRef } from '../shared/types';
@@ -207,7 +207,7 @@ function feltUnder(d: Grip, centre: Pt, { game, you, L }: Scene): { to: PileRef;
   if (offFelt(at, n) > cardSize(n).h / 2) return undefined;
   const to: PileRef = { k: 'felt', x: round3(at.x), y: round3(at.y) };
   if (canDrop(game, you, d.held.id, to)) return { to, rect: landingAt(L, centre), ok: true };
-  const near = roomNear(at, game.slots.flatMap((pile) => (pile ? [pile.at] : [])), n, cardSize(n).w);
+  const near = roomNear(at, piled(game.slots), n, cardSize(n).w);
   if (near && canDrop(game, you, d.held.id, { k: 'felt', ...near })) return { to: { k: 'felt', ...near }, rect: landingAt(L, toScreen(L.felt, near)), ok: true };
   return { to, rect: landingAt(L, centre), ok: false };
 }

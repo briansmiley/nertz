@@ -140,6 +140,7 @@ describe('carrying a card (a mouse)', () => {
     if (!to) throw new Error('not started on the felt');
     expect(t.game.slots.some((p) => p?.cards[0]?.id === '0:DA')).toBe(true); // the engine took it
     expect(to.x - there.x).toBeGreaterThanOrEqual(w + gap);
+    expect(to.x - there.x).toBeCloseTo(w + gap, 2); // up against the room the pile keeps, no further off
     expect(Math.hypot(to.x - aim.x, to.y - aim.y)).toBeLessThanOrEqual(w);
     const c = toScreen(t.L.felt, to);
     expect(felt!.rect.x + felt!.rect.w / 2).toBeCloseTo(c.x);

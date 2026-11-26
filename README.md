@@ -176,8 +176,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   pile by a small gap (0.14 of a card's width): exactly what you see, and the same on everyone's screen. While you
   carry the Ace over the felt it is the size of a pile in the middle, with an outline that shows where it would land
   (a gold ring and a tick) or that there is no room near enough (a broken red ring, struck through, and a cross), and
-  every pile shows the room it keeps round itself. Let go with no room near enough and the Ace goes back. Two Aces for the same patch of felt: the
-  first lands, the second goes back. The table still holds at most 4 piles per player.
+  every pile shows the room it keeps round itself. Let go with no room near enough and the Ace goes back. Two Aces for
+  the same patch of felt: the first lands, the second goes back. The table still holds at most 4 piles per player.
 - **Precise placement.** A card lands only when released on the one pile where it legally fits. If someone got there first
   (the pile moved on, or the felt was taken), the card returns to where it came from. Nothing is ever rerouted to another pile.
 - **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King

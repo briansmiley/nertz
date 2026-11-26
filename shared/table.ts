@@ -141,12 +141,18 @@ const NEAR: readonly Pt[] = (() => {
 
 /**
  * The place nearest `p`, no further than `reach` from it, where a new pile may go given the piles already `placed`
- * (`p` itself if it is clear), or null when there is none that near. Deterministic.
+ * (`p` itself if it is clear), or null when there is none that near: the nearest of `NEAR` that is clear, brought
+ * back towards `p` until it is up against whatever is in the way. Deterministic.
  */
 export function roomNear(p: Pt, placed: readonly Pt[], n: number, reach: number): Pt | null {
-  for (const d of NEAR) {
-    const q = { x: round3(p.x + d.x * reach), y: round3(p.y + d.y * reach) };
-    if (roomAt(q, placed, n)) return q;
+  const out = (d: Pt, t: number): Pt => ({ x: round3(p.x + d.x * reach * t), y: round3(p.y + d.y * reach * t) });
+  const d = NEAR.find((d) => roomAt(out(d, 1), placed, n));
+  if (!d) return null;
+  let [lo, hi] = [0, 1]; // there is room `hi` of the way out along `d`, and none at `lo`
+  for (let i = 0; i < 10; i++) {
+    const mid = (lo + hi) / 2;
+    if (roomAt(out(d, mid), placed, n)) hi = mid;
+    else lo = mid;
   }
-  return null;
+  return out(d, hi);
 }
