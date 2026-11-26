@@ -8,7 +8,7 @@ import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, playOffline, playOnline, portable, reach, redeal, resetTable, returnable, sit, type Reach } from './net';
+import { connected, leave, pause, playOffline, playOnline, portable, reach, redeal, resetTable, returnable, sit, type Reach } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -78,8 +78,13 @@ export interface TableAction {
   on?: boolean;
   /** It cannot be undone, so it is asked first (`Sure`). */
   sure?: boolean;
-  /** Not yet open: it opens once the round is live. Shown, faded, and pressing it does nothing. */
+  /**
+   * Not open now, though it is there: Pause and End round until the round is live, Play online while this window has
+   * no network (client/net.ts `connected`). Shown, faded, and pressing it does nothing.
+   */
   coming?: boolean;
+  /** What keeps it from being open, where that wants saying: its tooltip then. */
+  why?: string;
 }
 
 /** The action, if it is open to you now (there, and not just coming). */
@@ -87,9 +92,11 @@ export const openAction = (room: RoomView | null, id: ActionId): TableAction | u
 
 const OFFLINE: TableAction = { id: 'offline', label: 'Play offline' };
 const ONLINE: TableAction = { id: 'online', label: 'Play online' };
+/** Play online, wherever it is listed: open if the server could be come to (`linked`), and otherwise there, and not to be pressed. Play offline is always open. */
+const online = (linked: boolean): TableAction => (linked ? ONLINE : { ...ONLINE, coming: true, why: 'No connection' });
 
 /** What there is to do where you are, as the menu lists it: at a table, the table's (`tableActions`); at none, the one way to the other of online and offline. */
-export const actionsAt = (room: RoomView | null, r: Reach = reach()): TableAction[] => (room ? tableActions(room) : [r.others ? OFFLINE : ONLINE]);
+export const actionsAt = (room: RoomView | null, r: Reach = reach(), linked: boolean = connected()): TableAction[] => (room ? tableActions(room, r, linked) : [r.others ? OFFLINE : online(linked)]);
 
 /**
  * Pause and the vote are coming to you: from the deal until the round is live, while you are dealt in and have a say
@@ -104,7 +111,7 @@ function roundComing(room: RoomView): boolean {
  * The table's actions as the menu lists them, in its order. Each is open to you now, or coming (in the list, not yet to be
  * pressed: Pause and End round before Start), or not there. Leaving is always one, and open.
  */
-export function tableActions(room: RoomView): TableAction[] {
+export function tableActions(room: RoomView, r: Reach = reach(), linked: boolean = connected()): TableAction[] {
   const vote = ballot(room);
   const up = standing(room);
   const coming = roundComing(room);
@@ -117,9 +124,9 @@ export function tableActions(room: RoomView): TableAction[] {
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
     // (Alone with bots at a table of the server's: it can be yours, and played on with no line. The connection banner offers the same.)
-    portable(room) && OFFLINE,
+    portable(room, r) && OFFLINE,
     // (And back, from an offline table nothing has been dealt at. Once it has, neither: there is no taking a game online.)
-    returnable(room) && ONLINE,
+    returnable(room, r) && online(linked),
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: true },
   ].filter((a) => !!a);

@@ -653,7 +653,7 @@ function probe(): void {
   ping();
   setTimeout(() => socket === ws && heard < asked && dropped(), PROBE_MS);
 }
-if (typeof window !== 'undefined') window.addEventListener('online', () => (probe(), peek()));
+if (typeof window !== 'undefined') window.addEventListener('online', () => (relink(), probe(), peek()));
 
 /** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
 function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false, company?: readonly Bot[]): void {
@@ -770,6 +770,32 @@ const OFFLINE: Reach = { others: false, server: false };
 export const reachOf = (net: Pick<NetState, 'offline'>): Reach => (net.offline ? OFFLINE : ONLINE);
 export const reach = (): Reach => reachOf(state);
 export const useReach = (): Reach => reachOf(useNet());
+
+// ---------------------------------------------------------------- the network
+
+/**
+ * Could this window come to the game server, were it to ask? Not without a network, which the browser says
+ * (`navigator.onLine`, kept in step by its `online` and `offline` events; no browser, or one that does not say, has
+ * one). That is all a window playing offline knows of it: it asks nothing of the server. The one rule it makes: Play
+ * online (actions.ts) is not open without. A window that plays online is not asked this: its line says (`Status`), and
+ * what it is offered is Play offline, which is always open.
+ */
+const network = (): boolean => typeof navigator === 'undefined' || navigator.onLine !== false;
+let linked = network();
+const linkListeners = new Set<() => void>();
+function relink(): void {
+  const now = network();
+  if (now === linked) return;
+  linked = now;
+  for (const l of linkListeners) l();
+}
+if (typeof window !== 'undefined') window.addEventListener('offline', relink); // (and `online`, with what else it does: above)
+export const connected = (): boolean => linked;
+export const useConnected = (): boolean =>
+  useSyncExternalStore(
+    (l) => (linkListeners.add(l), () => linkListeners.delete(l)),
+    connected,
+  );
 
 // ---------------------------------------------------------------- round trip
 

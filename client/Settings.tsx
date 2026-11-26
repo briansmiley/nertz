@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { setSeats, setTableSettings, setUnlisted, useReach } from './net';
+import { setSeats, setTableSettings, setUnlisted, useConnected, useReach } from './net';
 import { actionsAt, pauseKeyAction, perform } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
 import { Bug, Gear, MenuIcon } from './icons';
@@ -346,7 +346,7 @@ export function Corner({ room }: { room?: RoomView | null }) {
   useHotkey(prefs.pauseKey, room && pausing ? () => (perform(pausing, room), pausing === 'pause' ? 'Paused' : 'Resumed') : null);
 
   /** What can be done to the table now (actions.ts). */
-  const actions = actionsAt(room ?? null);
+  const actions = actionsAt(room ?? null, useReach(), useConnected());
   useDismiss(root, !!open, () => openCorner(null));
 
   /** Where the buttons stand (layout.ts: the table keeps clear of exactly that). */

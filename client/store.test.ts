@@ -753,6 +753,50 @@ describe('Play offline and Play online, in the menu', () => {
     expect(net.current()).toMatchObject({ status: 'idle', offline: false });
   });
 
+  it('Play online is not open while the browser has no network: there, not to be pressed, and open again once it is back; Play offline always is', async () => {
+    const heard = new Map<string, () => void>();
+    const browser = { onLine: false };
+    vi.stubGlobal('navigator', browser);
+    const listen = (e: string, l: () => void) => void heard.set(e, l);
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen });
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const net = await reload();
+    const prefs = await import('./prefs');
+    const actions = await import('./actions');
+    expect(net.connected()).toBe(false);
+    expect(actions.actionsAt(null)).toEqual([{ id: 'online', label: 'Play online', coming: true, why: 'No connection' }]);
+    expect(actions.openAction(null, 'online')).toBeUndefined();
+    actions.press('online', null);
+    expect(prefs.getPrefs().offline).toBe(true);
+    expect(net.current()).toMatchObject({ status: 'idle', offline: true });
+
+    // The same in the lobby of a table of the window's own.
+    net.create('Ada');
+    await told();
+    expect(actions.actionsAt(net.current().room).find((a) => a.id === 'online')).toMatchObject({ coming: true });
+    actions.press('online', net.current().room);
+    expect(net.current()).toMatchObject({ offline: true, room: { phase: 'lobby' } });
+    expect(sockets()).toBe(0);
+    net.leave();
+
+    // The network is back: the browser says so, and it is open.
+    browser.onLine = true;
+    heard.get('online')!();
+    expect(net.connected()).toBe(true);
+    expect(actions.actionsAt(null)).toEqual([{ id: 'online', label: 'Play online' }]);
+    actions.press('online', null);
+    expect(prefs.getPrefs().offline).toBe(false);
+
+    // And gone again: Play offline is what a window online is offered, and is open whatever the network.
+    browser.onLine = false;
+    heard.get('offline')!();
+    expect(net.connected()).toBe(false);
+    expect(actions.actionsAt(null)).toEqual([{ id: 'offline', label: 'Play offline' }]);
+    actions.press('offline', null);
+    expect(prefs.getPrefs().offline).toBe(true);
+  });
+
   it('Play offline where a new table cannot be reached gives that table up', async () => {
     vi.useFakeTimers();
     const net = await reload();
