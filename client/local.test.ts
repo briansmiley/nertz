@@ -8,7 +8,7 @@ import type { RoomView } from '../shared/types';
 import { Room } from '../server/room';
 import { FakeConn, startRound } from '../server/testkit';
 import { seeded, wire } from '../shared/testkit';
-import { COMPANY, local, type Carried } from './local';
+import { local, type Carried } from './local';
 
 /** A window on a local line: everything it heard, and the table as it last saw it. */
 function dial(carried?: Carried) {
@@ -29,6 +29,8 @@ function dial(carried?: Carried) {
 const settled = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+/** The bots at the table, by how quick they are. */
+const bots = (room: RoomView): string[] => room.players.flatMap((p) => (p.bot ? [p.bot] : [])).sort();
 /** A window at the table it opened. */
 async function seated() {
   const w = dial();
@@ -38,12 +40,6 @@ async function seated() {
   return w;
 }
 
-/** What the browser keeps for this page: here, the bots the last table had. Nothing, as each test begins. */
-let storage: Map<string, string>;
-beforeEach(() => {
-  storage = new Map();
-  vi.stubGlobal('localStorage', { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => void storage.set(k, v) });
-});
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -72,50 +68,50 @@ describe('a local line', () => {
     expect(w.room()).toMatchObject({ phase: 'lobby' });
   });
 
-  it('opens a table of its own: you deal, its company is seated, and it has neither chat nor voice', async () => {
+  it('opens a table of its own: you deal, nobody else is at it, and it has neither chat nor voice', async () => {
     const w = await seated();
     const room = w.room()!;
     const me = room.players.find((p) => p.id === room.me)!;
     expect(me).toMatchObject({ name: 'Ada', isHost: true, connected: true });
     expect(room.seat).toBe(me.seat);
-    expect(room.players.filter((p) => p.bot).map((p) => p.bot)).toEqual([...COMPANY]);
+    expect(room.players).toEqual([me]);
     expect(room.phase).toBe('lobby');
     expect(w.heard.findLast((m) => m.t === 'social')).toMatchObject({ text: false, voice: false, inVoice: [] });
+    // Alone, there is nobody to deal to; with a bot added, there is.
+    w.say({ t: 'start' });
+    await settled();
+    expect(w.room()!.phase).toBe('lobby');
+    w.say({ t: 'addBot', level: 'medium' });
+    w.say({ t: 'start' });
+    await settled();
+    expect(w.room()!.phase).toBe('playing');
+    w.line.close();
   });
 
   it('is spoken to as the server is: a ping is answered, nonsense is complained of, and what the window may do at a table it may do here', async () => {
     const w = await seated();
     w.say({ t: 'ping', at: 12.5 });
     w.line.send('nonsense');
-    w.say({ t: 'removeBot', seat: w.room()!.players.find((p) => p.bot)!.seat! });
+    w.say({ t: 'addBot', level: 'medium' });
     w.say({ t: 'addBot', level: 'fast' });
     w.say({ t: 'addBot', level: 'slow' });
     await settled();
+    w.say({ t: 'removeBot', seat: w.room()!.players.find((p) => p.bot === 'medium')!.seat! });
+    await settled();
     expect(w.heard).toContainEqual({ t: 'pong', at: 12.5 });
     expect(w.heard).toContainEqual({ t: 'error', message: 'Malformed message' });
-    expect(w.room()!.players.filter((p) => p.bot).map((p) => p.bot).sort()).toEqual(['fast', 'medium', 'medium', 'slow']);
+    expect(bots(w.room()!)).toEqual(['fast', 'slow']);
   });
 
-  it('opens with the bots the last table had (how many, and how quick): none at all is not remembered', async () => {
+  it('opens with nobody but you, whatever bots the last table had', async () => {
     const first = await seated();
-    const bots = () => first.room()!.players.filter((p) => p.bot);
-    first.say({ t: 'removeBot', seat: bots()[0]!.seat! });
     first.say({ t: 'addBot', level: 'fast' });
     first.say({ t: 'addBot', level: 'slow' });
     await settled();
+    expect(bots(first.room()!)).toEqual(['fast', 'slow']);
     first.say({ t: 'leave' });
     first.line.close();
-    const levels = async () => (await seated()).room()!.players.flatMap((p) => (p.bot ? [p.bot] : [])).sort();
-    expect(await levels()).toEqual(['fast', 'medium', 'medium', 'slow']);
-
-    const emptied = await seated();
-    for (const p of emptied.room()!.players.filter((p) => p.bot)) emptied.say({ t: 'removeBot', seat: p.seat! });
-    await settled();
-    expect(emptied.room()!.players.filter((p) => p.bot)).toEqual([]);
-    expect(await levels()).toEqual(['fast', 'medium', 'medium', 'slow']);
-
-    storage.set('nertz.company', '["fast","nonsense",7]'); // (whatever is kept there: only what a bot can be)
-    expect(await levels()).toEqual(['fast']);
+    expect(bots((await seated()).room()!)).toEqual([]);
   });
 
   it('has no table but the one it opens: one asked for by its code is not found, and nonsense for a hello ends it', async () => {
@@ -137,6 +133,7 @@ describe('a local line', () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockImplementation(lcg(5)); // (the same cards and the same bots every time)
     const w = await seated();
+    for (let i = 0; i < 3; i++) w.say({ t: 'addBot', level: 'medium' });
     let seq = 0;
     /** Deals, starts, and lets the bots play until the round is scored. You play nothing: you say you are stuck when they all are, and once that has dragged on, vote to end it (yours is the only vote). */
     const playRound = async (): Promise<void> => {
@@ -153,7 +150,7 @@ describe('a local line', () => {
     };
     await playRound();
     expect(w.room()).toMatchObject({ phase: 'results', round: 1 });
-    expect(w.room()!.lastRound!.scores).toHaveLength(1 + COMPANY.length);
+    expect(w.room()!.lastRound!.scores).toHaveLength(4);
     await playRound();
     expect(w.room()).toMatchObject({ phase: 'results', round: 2 });
 
@@ -168,6 +165,7 @@ describe('a local line', () => {
   it('closed by the window, it says nothing more and keeps no timer', async () => {
     vi.useFakeTimers();
     const w = await seated();
+    w.say({ t: 'addBot', level: 'medium' });
     w.say({ t: 'start' });
     await vi.advanceTimersByTimeAsync(100);
     const had = w.heard.length;
@@ -223,8 +221,6 @@ describe('a table carried to a local line', () => {
     const lay = JSON.stringify(now.game);
     await vi.advanceTimersByTimeAsync(15_000);
     expect(JSON.stringify(w.room()!.game)).not.toBe(lay); // (the bots play on)
-    // And it is the window's own from here: the next table opens with these bots.
-    expect(JSON.parse(storage.get('nertz.company')!)).toEqual(['fast', 'slow']);
     w.say({ t: 'leave' });
     await vi.advanceTimersByTimeAsync(0);
     expect(vi.getTimerCount()).toBe(0);

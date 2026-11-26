@@ -499,22 +499,25 @@ describe('a window that plays offline', () => {
     expect(net.current().offline).toBe(false);
   });
 
-  it('opens a table of its own with no socket: seated at once among bots, with nothing in the address and nothing kept for a reload', async () => {
+  it('opens a table of its own with no socket: seated at once, nobody else at it, with nothing in the address and nothing kept for a reload', async () => {
     const { net } = await offline();
     net.create('Ada');
     await told();
     expect(sockets()).toBe(0);
     const { status, room, error } = net.current();
     expect({ status, error }).toEqual({ status: 'online', error: null });
-    expect(room!.players.map((p) => p.bot ?? p.name)).toEqual(['Ada', 'medium', 'medium', 'medium']);
+    expect(room!.players.map((p) => p.bot ?? p.name)).toEqual(['Ada']);
     expect(address()).toBe('');
     expect(storage.has('nertz.seat')).toBe(false);
-    // What it does at the table goes to the table: another bot, and the deal.
+    // What it does at the table goes to the table: alone, there is no deal; a bot, and there is.
+    net.start();
+    await told();
+    expect(net.current().room).toMatchObject({ phase: 'lobby' });
     net.addBot('fast');
     net.start();
     await told();
     expect(net.current().room).toMatchObject({ phase: 'playing', round: 1 });
-    expect(net.current().room!.players).toHaveLength(5);
+    expect(net.current().room!.players.map((p) => p.bot ?? p.name)).toEqual(['Ada', 'fast']);
     net.leave();
   });
 
@@ -622,6 +625,7 @@ describe('a window that plays offline', () => {
     const actions = await import('./actions');
     net.create('Ada');
     await vi.advanceTimersByTimeAsync(0);
+    net.addBot('medium');
     net.start();
     await vi.advanceTimersByTimeAsync(5000);
     net.go();
@@ -682,6 +686,7 @@ describe('a window that plays offline', () => {
     const { net, prefs } = await offline();
     net.create('Ada');
     await vi.advanceTimersByTimeAsync(0);
+    net.addBot('medium');
     net.start();
     await vi.advanceTimersByTimeAsync(5000);
     net.go();
@@ -706,6 +711,7 @@ describe('a window that plays offline', () => {
     // Left before the round is live (the cards dealt, "1, 2, 3" being said): paused as soon as it is.
     net.create('Ada');
     await vi.advanceTimersByTimeAsync(0);
+    net.addBot('medium');
     net.start();
     await vi.advanceTimersByTimeAsync(5000);
     net.go();
@@ -816,7 +822,8 @@ describe('Play offline and Play online, in the menu', () => {
     prefs.setPrefs({ offline: true });
     net.create('Ada');
     await told();
-    net.removeBot(net.current().room!.players.find((p) => p.bot)!.seat!);
+    net.addBot('medium');
+    net.addBot('medium');
     net.addBot('fast');
     await told();
     const bots = net.current().room!.players.filter((p) => p.bot);
@@ -844,6 +851,7 @@ describe('Play offline and Play online, in the menu', () => {
     prefs.setPrefs({ offline: true });
     net.create('Ada');
     await told();
+    net.addBot('medium');
     net.start();
     await told();
     expect(net.current().room).toMatchObject({ phase: 'playing' });
