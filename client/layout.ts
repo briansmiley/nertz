@@ -916,10 +916,12 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const cards: Placed[] = [];
   const n = game.players.length; // (the felt and its cards are sized for those in the round)
   // The round's hands that are at the table (`hands`: all of them, but on the score sheet, see stage.ts `handsAt`) each
-  // have a place round it. Whoever sits at the table without one of them (`sitting`: they came in the middle of the
-  // round, were away at the deal, or sat down since it ended) has a place all the same, in seat order with the rest: a
-  // hand with no cards in it.
-  const empty = sitting.filter((seat) => !hands.some((p) => p.seat === seat));
+  // have a place round it. While the round is played, whoever sits at the table without one of them (`sitting`: they
+  // came in the middle of the round, or were away at the deal) has a place all the same, in seat order with the rest: a
+  // hand with no cards in it. Once it is over nobody does: whoever is not of the round (the queue sits down as it ends,
+  // anyone may at the score sheet) has a place once the next deal puts them in it. (A newcomer who is you watches until
+  // then, as anyone does who has no place.)
+  const empty = stage === 'live' ? sitting.filter((seat) => !hands.some((p) => p.seat === seat)) : [];
   const ring: PlayerState[] = empty.length
     ? [...hands, ...empty.map((seat): PlayerState => ({ seat, nertz: [], work: Array.from({ length: WORK_PILES }, () => ({ cards: [], down: 0 })), stock: [], waste: [], draw: null, stuck: false, holding: null }))].sort((a, b) => a.seat - b.seat)
     : hands;

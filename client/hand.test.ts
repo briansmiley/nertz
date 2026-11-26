@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { legalDrops } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
-import { offFelt, type Pt } from '../shared/table';
+import { cardSize, offFelt, pileGap, type Pt } from '../shared/table';
 import { hold, move, pile, slot, table, work } from '../shared/testkit';
 import type { GameState, Intent } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
@@ -115,12 +115,48 @@ describe('carrying a card (a mouse)', () => {
     expect(t.sent).toEqual([hold('0:DA'), move('0:DA', { k: 'felt', x: Math.round(to.x * 1000) / 1000, y: Math.round(to.y * 1000) / 1000 })]);
   });
 
-  it('an Ace too near a pile is shown that no pile may start there, and goes home', () => {
+  it('an Ace on top of a pile is shown that no pile may start there, and goes home', () => {
     const t = seatAt(game());
     t.down(t.at('0:DA'));
     t.move(t.slot(0));
     expect(t.sight?.felt?.ok).toBe(false);
     t.up(t.slot(0));
+    expect(t.sent).toEqual([hold('0:DA'), release]);
+  });
+
+  it('an Ace let go a little too near a pile starts one just clear of it, where its outline showed it would', () => {
+    const t = seatAt(game());
+    const [{ w }, gap] = [cardSize(2), pileGap(2)];
+    const there = t.game.slots[0]!.at;
+    const aim = { x: there.x + 0.7 * (w + gap), y: there.y };
+    t.down(t.at('0:DA'));
+    bring(t, toScreen(t.L.felt, aim));
+    const felt = t.sight?.felt;
+    expect(felt?.ok).toBe(true);
+    t.up(t.hand?.phase === 'carried' ? { x: t.hand.px, y: t.hand.py } : off);
+    expect(t.sent).toEqual([hold('0:DA'), move('0:DA', { k: 'felt', x: expect.any(Number), y: expect.any(Number) })]);
+    const sent = t.sent[1];
+    const to = sent?.k === 'move' && sent.to.k === 'felt' ? sent.to : null;
+    if (!to) throw new Error('not started on the felt');
+    expect(t.game.slots.some((p) => p?.cards[0]?.id === '0:DA')).toBe(true); // the engine took it
+    expect(to.x - there.x).toBeGreaterThanOrEqual(w + gap);
+    expect(to.x - there.x).toBeCloseTo(w + gap, 2); // up against the room the pile keeps, no further off
+    expect(Math.hypot(to.x - aim.x, to.y - aim.y)).toBeLessThanOrEqual(w);
+    const c = toScreen(t.L.felt, to);
+    expect(felt!.rect.x + felt!.rect.w / 2).toBeCloseTo(c.x);
+    expect(felt!.rect.y + felt!.rect.h / 2).toBeCloseTo(c.y);
+  });
+
+  it('an Ace let go in a crowd, with no room within a card of it, still goes home', () => {
+    const s = cardSize(2).w + pileGap(2) + 0.01; // a row of piles just clear of each other
+    const crowd = table([{ nertz: 'C3 DQ', work: ['S5', 'H4', 'DA', 'CK'], waste: 'S2' }, { waste: 'S2' }], {
+      slots: [{ cards: pile('S1', 1), x: -s, y: 0 }, { cards: pile('H1', 1), x: 0, y: 0 }, { cards: pile('C1', 1), x: s, y: 0 }],
+    });
+    const t = seatAt(crowd);
+    t.down(t.at('0:DA'));
+    bring(t, toScreen(t.L.felt, { x: s / 2, y: 0 }));
+    expect(t.sight?.felt?.ok).toBe(false);
+    t.up(t.hand?.phase === 'carried' ? { x: t.hand.px, y: t.hand.py } : off);
     expect(t.sent).toEqual([hold('0:DA'), release]);
   });
 

@@ -88,14 +88,19 @@ describe('who is at the table between rounds', () => {
     expect(handsAt('sheet', roomOf(game, 0, { phase: 'results', lastRound }))).toEqual([0, 1, 2, 3]); // (nobody gone: everyone's)
   });
 
-  it('lays out a place for whoever is at the table then and none for anyone gone: a seat someone else has taken is theirs, with no cards in it', () => {
+  it('lays out a place for each hand of the round still at the table then, and none for anyone gone or anyone who sat down since: they have one at the next deal', () => {
     const view = room.game!;
     const hands = view.players.filter((g) => handsAt('sheet', room).includes(g.seat));
     const L = computeLayout(1440, 900, view, 0, 'sheet', null, undefined, sitting, undefined, hands);
-    expect(L.opponents.map((o) => o.seat)).toEqual([2, 4]);
+    expect(L.opponents.map((o) => o.seat)).toEqual([]); // (seat 2 someone else's now, seat 4 new: neither is of the round)
     expect(L.cards.filter((c) => c.pile !== 'slot' && c.pile !== 'tray').every((c) => c.card.owner === 0)).toBe(true);
-    // While the round's end plays out, it is the table as the round left it, with whoever sat down since beside it.
-    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
+    // The one who sat down since, looking on: no place of their own, they watch the table as anyone without one does.
+    const theirs = computeLayout(1440, 900, view, 4, 'sheet', null, undefined, sitting, undefined, hands);
+    expect([theirs.me, theirs.opponents.map((o) => o.seat)]).toEqual([null, [0]]);
+    // While the round's end plays out, it is the table as the round left it: every hand of it, and nobody who sat down as it ended.
+    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3]);
+    // Only while a round is played does whoever sits at the table without a hand of it have a place: an empty one.
+    expect(computeLayout(1440, 900, view, 0, 'live', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
   });
 
   it('lays the table out for one alone at it (everyone else gone since: the one bot taken off), whatever the shape of the window', () => {

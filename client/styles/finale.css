@@ -270,7 +270,6 @@
 .table > div > .tag,
 .table .count,
 .table > .mine,
-.table > .vacant,
 .table > .shout {
   transition: opacity 0.45s;
 }
@@ -281,7 +280,6 @@
 .table.cleared > div > .tag,
 .table.cleared .count,
 .table.cleared > .mine,
-.table.cleared > .vacant,
 .table.cleared > .shout,
 .table.cleared > .gotnertz {
   opacity: 0;
