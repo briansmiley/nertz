@@ -761,8 +761,10 @@ describe('a table taken offline', () => {
     const { net, prefs, was, token } = await alone();
     const { rebuild } = await import('./rebuild');
     const wire = last();
-    expect(net.portable(net.current())).toBe(true);
-    net.takeOffline();
+    expect(net.portable(net.current().room)).toBe(true);
+    const actions = await import('./actions');
+    expect(actions.tableActions(net.current().room!).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'stand', 'offline', 'leave']);
+    actions.press('offline', net.current().room!); // (the menu's: done at once, not asked about)
     expect(wire.sent.at(-1)).toEqual({ t: 'carry' });
     // Until the server answers, nothing has changed.
     expect(net.current()).toMatchObject({ status: 'online', offline: false });
@@ -780,7 +782,8 @@ describe('a table taken offline', () => {
     expect(statuses).not.toContain('reconnecting');
     expect(prefs.getPrefs().offline).toBe(true);
     expect(net.reach()).toEqual({ others: false, server: false });
-    expect(net.portable(net.current())).toBe(false);
+    expect(net.portable(net.current().room)).toBe(false);
+    expect(actions.tableActions(net.current().room!).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'leave']);
     // The server's table is done with: its socket shut, nothing of it for a reload, and no other socket ever.
     expect(wire.shut).toBe(true);
     expect(address()).toBe('');
@@ -809,7 +812,7 @@ describe('a table taken offline', () => {
     last().deliver(at('ABCD', 1));
     await told();
     expect(net.current()).toMatchObject({ status: 'online', offline: false, room: { code: 'ABCD' } });
-    expect(net.portable(net.current())).toBe(false);
+    expect(net.portable(net.current().room)).toBe(false);
     const said = last().sent.length;
     net.takeOffline();
     prefs.setPrefs({ offline: false });
@@ -825,7 +828,7 @@ describe('a table taken offline', () => {
     expect(game(net).players[0]!.draw).not.toBeNull();
     last().closed();
     expect(net.current()).toMatchObject({ status: 'reconnecting', offline: false });
-    expect(net.portable(net.current())).toBe(true);
+    expect(net.portable(net.current().room)).toBe(true);
     await vi.advanceTimersByTimeAsync(300);
     const tried = sockets();
     last().closed(); // (still no server)
@@ -859,7 +862,7 @@ describe('a table taken offline', () => {
     last().deliver(withBots(1, { paused: { by: 'update', done: false }, clock: { ms: 5000, running: false } }));
     last().closed(CLOSE_UPDATE);
     expect(net.current()).toMatchObject({ status: 'updating', room: { paused: { by: 'update', done: false } } });
-    expect(net.portable(net.current())).toBe(true);
+    expect(net.portable(net.current().room)).toBe(true);
     net.takeOffline();
     await vi.advanceTimersByTimeAsync(0);
     expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { code: 'ABCD', paused: null, clock: { running: true } } });
@@ -883,7 +886,7 @@ describe('a table taken offline', () => {
     last().open();
     last().deliver(at('ABCD'));
     last().closed();
-    expect(net.portable(net.current())).toBe(false);
+    expect(net.portable(net.current().room)).toBe(false);
     net.takeOffline();
     prefs.setPrefs({ offline: true });
     await vi.advanceTimersByTimeAsync(0);

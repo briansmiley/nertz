@@ -19,7 +19,7 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, reachOf, sit, start, useNet, useReach, useRtt, type Reach, type Status } from './net';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, portable, reachOf, sit, start, takeOffline, useNet, useReach, useRtt, type Reach, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
@@ -94,8 +94,9 @@ function Toast({ say, className, onShut, children }: { say: string; className: s
  * The line to the table, lost and then back: one card, tipped while the line is down, that sets itself straight with the
  * mended robot when it is back. Both robots and both words are in it at once, one of each shown, so it keeps its size.
  * Put away while the line is down, it leaves the broken robot in the chat bar (`onTuck`), which brings it back.
+ * `offer`: what there is to do about it meanwhile (`PlayOffline`).
  */
-function Line({ back, onTuck }: { back: boolean; onTuck: () => void }) {
+function Line({ back, onTuck, offer }: { back: boolean; onTuck: () => void; offer: ReactNode }) {
   return (
     <Toast say={back ? 'back' : 'lost'} className={back ? 'line mended' : 'line'} onShut={back ? undefined : onTuck}>
       <span className="stack robots">
@@ -106,7 +107,18 @@ function Line({ back, onTuck }: { back: boolean; onTuck: () => void }) {
         <span>Connection lost. Reconnecting…</span>
         <span>Reconnected!</span>
       </span>
+      {offer}
     </Toast>
+  );
+}
+
+/** With the line down at a table nobody else is at but bots: play it on here, with no line (client/net.ts `takeOffline`). Nothing, at any other table. */
+function PlayOffline({ room }: { room: RoomView }) {
+  if (!portable(room, useReach())) return null;
+  return (
+    <button type="button" className="offer" onClick={takeOffline}>
+      Play offline
+    </button>
   );
 }
 
@@ -182,9 +194,10 @@ export function App() {
             Updating the game
             <Dots />
           </span>
+          <PlayOffline room={room} />
         </Toast>
       ) : (net.status === 'reconnecting' && !tucked) || back ? (
-        <Line back={back} onTuck={() => setTucked(true)} />
+        <Line back={back} onTuck={() => setTucked(true)} offer={!back && <PlayOffline room={room} />} />
       ) : (
         spectating && (
           <p className="banner low">

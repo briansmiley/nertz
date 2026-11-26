@@ -26,7 +26,7 @@ import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setBoard, setUnrevealed } from './social';
 import { useFeed } from './feed';
 import { Dots } from './Dots';
-import { kick, onDrag, onSnipe, pause, playable, post, sit, testing, useNet, useReach } from './net';
+import { kick, onDrag, onSnipe, pause, playable, portable, post, sit, takeOffline, testing, useNet, useReach } from './net';
 import { Clock } from './Settings';
 import { Chair } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -691,8 +691,10 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   /** The round is paused (the card over the table says by whom), and the table is not on its score sheet. */
   const paused = !!room.paused && !results;
   /** The line to the table is up: until it is, the card over a paused table offers nothing (an update: the table is on its way back). */
-  const online = useNet().status === 'online';
-  const { others } = useReach();
+  const { status } = useNet();
+  const online = status === 'online';
+  const reach = useReach();
+  const { others } = reach;
   /** Nothing can be started: the round is not live (the cards are still being dealt, play has not opened, Nertz has been called, or it is over), or it is paused. (A card already in hand may still land during grace.) */
   const frozen = replaying || !isLive(game) || paused;
   // Nothing stays fanned out once the round stops being played, and no timer outlives the table.
@@ -1220,6 +1222,12 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         {canResume(room) && online && (
           <button type="button" className="go" autoFocus onClick={() => pause(false)}>
             Resume game
+          </button>
+        )}
+        {/* The table is on its way back; alone at it with bots, it need not be waited for. (This card says the update mid-round, where the banner would: so it offers what the banner does.) */}
+        {status === 'updating' && portable(room, reach) && (
+          <button type="button" className="quiet" onClick={takeOffline}>
+            Play offline
           </button>
         )}
       </div>

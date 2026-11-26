@@ -136,6 +136,15 @@ export function Unplugged() {
   );
 }
 
+/** Taking the table offline (Lucide's wifi-off): the waves of a line, struck through. */
+export function NoLine() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 5.2-2.7M19 12.9a10 10 0 0 0-2.1-1.5M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8a15 15 0 0 0-11.3-3.8M2 2l20 20" />
+    </svg>
+  );
+}
+
 /** Resetting the table: the score pad inside an arrow that comes round. */
 export function Again() {
   return <img className="art" src="/icons/reset.png" alt="" aria-hidden="true" />;

@@ -552,8 +552,8 @@ function dropped(update = false): void {
   retry = setTimeout(() => connect(), Math.min(5000, 250 * 2 ** attempts++));
 }
 
-/** Can the table be taken offline (`takeOffline`)? One of the server's, with nobody in the room but you and bots. */
-export const portable = (net: Pick<NetState, 'room' | 'offline'>): boolean => !net.offline && !!net.room && alone(net.room);
+/** Can the table `room` be taken offline (`takeOffline`)? One others could come to (`Reach`), with nobody in the room but you and bots. */
+export const portable = (room: RoomView | null, r: Reach = reach()): boolean => r.others && !!room && alone(room);
 
 /**
  * Takes the table this window is at offline, to be played on in the window itself, if it can be (`portable`). While the

@@ -1,12 +1,12 @@
 // What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
-// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. Each has one rule here for whether it is open to you now; the menu
+// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; alone at it with bots, take it offline; at any time, leave. Each has one rule here for whether it is open to you now; the menu
 // (Menu.tsx), the pause key, the card over a paused table and the "End round" button at the table all ask it here. One that
 // cannot be undone is asked first (`press`), wherever it was pressed: the menu or the score sheet.
 import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, reach, redeal, resetTable, sit } from './net';
+import { leave, pause, portable, reach, redeal, resetTable, sit, takeOffline } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -65,7 +65,7 @@ export function ballot(room: RoomView): Ballot | null {
   return { ...tally, mine: !!me.ending, pressing: dragsOn(game) || tally.voted > 0 };
 }
 
-export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'leave';
+export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'offline' | 'leave';
 
 export interface TableAction {
   id: ActionId;
@@ -108,6 +108,8 @@ export function tableActions(room: RoomView): TableAction[] {
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: true },
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
+    // (Alone with bots at a table of the server's: it can be yours, and played on with no line. The connection banner offers the same.)
+    portable(room) && { id: 'offline' as const, label: 'Play offline' },
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: true },
   ].filter((a) => !!a);
@@ -134,6 +136,8 @@ export function perform(id: ActionId, room: RoomView): void {
       return resetTable();
     case 'stand':
       return sit(!!standing(room));
+    case 'offline':
+      return takeOffline();
     case 'leave':
       return leave();
   }
