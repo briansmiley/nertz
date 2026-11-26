@@ -416,6 +416,29 @@ describe('over the wire', () => {
     expect(await (await ada.ask('/stats?among=mixed')).json()).toMatchObject({ rounds: 0 });
   });
 
+  it('a round played offline at a sitting you sat at online is of that sitting; at anyone else\'s, it is a sitting of its own', async () => {
+    const [ada, bob] = [new Browser(server.port), new Browser(server.port)];
+    await ada.signIn(ADA);
+    await bob.signIn(BOB);
+    const id = async (b: Browser): Promise<string> => ((await (await b.ask('/profile')).json()) as Account).id;
+    const [adas, bobs] = [await id(ada), await id(bob)];
+    const a = await Client.open(server.port, null, 'Ada', undefined, true, ada.cookie);
+    const g = await Client.open(server.port, a.last.room.code, 'Guest');
+    const room = server.rooms.get(a.last.room.code)!;
+    await startOver(room, a, [a, g]);
+    await a.did({ k: 'end', on: true });
+    await g.did({ k: 'end', on: true });
+    await vi.waitFor(() => expect(room.phase).toBe('results'));
+    const sitting = room.kept().sitting;
+
+    const played: RoundRecord = { game: sitting, code: room.code, number: 2, end: { by: 'jam' }, ms: 60_000, hands: [hand(0, null, 12), hand(1, null, -4, 'slow')], snipes: [] };
+    expect((await ada.ask('/stats', { id: 'ab'.repeat(12), account: adas, at: Date.now(), round: played })).status).toBe(200);
+    expect((await bob.ask('/stats', { id: 'cd'.repeat(12), account: bobs, at: Date.now(), round: played })).status).toBe(200);
+    expect(rows(join(dir, 'nertz.db'), 'round').map((r) => r.game)).toEqual([sitting, sitting, `${bobs}/${sitting}`]);
+    a.ws.terminate();
+    g.ws.terminate();
+  });
+
   it('anything sent as a round played offline that is not one of you and bots, holding together, is refused', async () => {
     const ada = new Browser(server.port);
     await ada.signIn(ADA);

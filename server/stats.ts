@@ -33,9 +33,10 @@ const text = (v: unknown, most: number): v is string => typeof v === 'string' &&
 /**
  * What a browser sent as a round played offline by `account`, as a round to keep: null for anything that is not one.
  * One hand is a person's, `account`'s whatever the browser says, and every other hand (one at least) a bot's; seats,
- * players and scores hold together; the sitting it was played in is kept apart from everyone else's.
+ * players and scores hold together; the sitting it was played in is kept apart from everyone else's, unless it is one
+ * `account` sat at already (`sat`: a table carried offline mid-sitting is one sitting still).
  */
-export function offlineRound(v: unknown, account: string): RoundRecord | null {
+export function offlineRound(v: unknown, account: string, sat: (game: string) => boolean): RoundRecord | null {
   const r = v as Partial<Record<keyof RoundRecord, unknown>> | null;
   if (!r || typeof r !== 'object' || !text(r.game, 64) || typeof r.code !== 'string' || !isRoomCode(r.code) || !whole(r.number, 1, MOST_ROUNDS)) return null;
   if (typeof r.ms !== 'number' || !(r.ms >= 0 && r.ms <= MOST_MS)) return null;
@@ -65,8 +66,8 @@ export function offlineRound(v: unknown, account: string): RoundRecord | null {
     if (snipes.some((o) => o.of === s.of && o.card === s.card)) return null;
     snipes.push({ by: s.by as number, of: s.of as number, card: s.card });
   }
-  // (A sitting's id is the browser's to make: under the account's, it can be no sitting of anyone else's.)
-  return { game: `${account}/${r.game}`, code: r.code, number: r.number, end: ended, ms: r.ms, hands, snipes };
+  // (A sitting's id is the browser's to make: one not the account's own already goes under the account's, so it can be no sitting of anyone else's.)
+  return { game: sat(r.game) ? r.game : `${account}/${r.game}`, code: r.code, number: r.number, end: ended, ms: r.ms, hands, snipes };
 }
 
 export function statsHandler({ accounts, rounds, home }: { accounts: Accounts; rounds: Rounds; home: string | undefined }) {
@@ -108,7 +109,7 @@ export function statsHandler({ accounts, rounds, home }: { accounts: Accounts; r
     }
     if (!said || typeof said !== 'object' || typeof said.account !== 'string') return json(400, null);
     if (said.account !== me.id) return json(409, null);
-    const round = offlineRound(said.round, me.id);
+    const round = offlineRound(said.round, me.id, (game) => rounds.sat(me.id, game));
     const { id, at } = said;
     if (!round || typeof id !== 'string' || !/^[0-9a-f]{24}$/.test(id) || !whole(at, 1, Number.MAX_SAFE_INTEGER)) return json(400, null);
     rounds.keep(round, Math.min(at, Date.now()), id);

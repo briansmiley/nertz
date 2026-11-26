@@ -3,9 +3,9 @@
 // it is kept by this browser, in localStorage, and sent later: when the page loads, when the network comes back, and a
 // minute after a try the server put off.
 //
-// What is kept is every window's of this browser: each report has an id, a window sends them one at a time under a lock
-// the windows share (`navigator.locks`), and takes out exactly the one it sent. So a report goes once, however many
-// windows are open when the network comes back.
+// What is kept is every window's of this browser, and goes once (client/queue.ts).
+import { newId, queue, send as sent } from './queue';
+
 export interface Report {
   kind: 'bug' | 'idea';
   text: string;
@@ -30,59 +30,42 @@ const KEPT_PATIENCE_MS = 60_000;
 /** How long after the server put a report off (`Answer.again`) what is kept is tried again. */
 const AGAIN_MS = 60_000;
 
-const newId = (): string => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
-
-function kept(): Kept[] {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-    return Array.isArray(v) ? (v as Kept[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Writes what is kept; false if the browser would not take it (no storage, or no room in it). */
-function write(reports: Kept[]): boolean {
-  try {
-    if (reports.length) localStorage.setItem(KEY, JSON.stringify(reports));
-    else localStorage.removeItem(KEY);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Takes the report `id` out of what is kept, or puts `as` in its place: that one, wherever it is by now, and no other. */
-const settle = (id: string, as?: Kept): boolean => write(kept().flatMap((r) => (r.id !== id ? [r] : as ? [as] : [])));
-
 /**
  * What the server made of a report: taken; refused for good (a 4xx: it will never take it as it is); or not now, with
  * what it said, if it said anything. `again`: it is worth trying in a while (it answered that it cannot just now or
  * has had too many, or did not answer within `patience`); not so with no network to send on, which says when it is back.
  */
 type Answer = { k: 'taken' } | { k: 'refused'; message?: string } | { k: 'later'; message?: string; again: boolean };
-async function send({ id: _, ...report }: Kept, patience: number): Promise<Answer> {
-  const waiting = new AbortController();
-  const late = setTimeout(() => waiting.abort(), patience);
-  try {
-    const res = await fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(report), signal: waiting.signal });
-    const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
-    if (res.ok && body?.ok) return { k: 'taken' };
-    const message = typeof body?.message === 'string' ? body.message : undefined;
-    return res.status >= 400 && res.status < 500 && res.status !== 429 ? { k: 'refused', message } : { k: 'later', message, again: true };
-  } catch {
-    return { k: 'later', again: waiting.signal.aborted };
-  } finally {
-    clearTimeout(late);
-  }
-}
+const send = ({ id: _, ...report }: Kept, patience: number): Promise<Answer> =>
+  sent<Answer>(
+    '/feedback',
+    report,
+    patience,
+    async (res) => {
+      const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+      if (res.ok && body?.ok) return { k: 'taken' };
+      const message = typeof body?.message === 'string' ? body.message : undefined;
+      return res.status >= 400 && res.status < 500 && res.status !== 429 ? { k: 'refused', message } : { k: 'later', message, again: true };
+    },
+    (worth) => ({ k: 'later', again: worth }),
+  );
 
-let retry: ReturnType<typeof setTimeout> | undefined;
-/** What is kept is tried again in a while: once, however often that is asked. */
-function again(): void {
-  clearTimeout(retry);
-  retry = setTimeout(() => void flush(), AGAIN_MS);
-}
+/**
+ * What was kept is sent, the oldest first, until one does not get there (it and the rest wait for next time). One the
+ * server refuses for good is tried once more without its screenshot (too big a picture must not cost the words), and
+ * then dropped.
+ */
+const { kept, write, settle, again, flush } = queue<Kept>(KEY, AGAIN_MS, (all) => all[0], async (next) => {
+  const answer = await send(next, KEPT_PATIENCE_MS);
+  if (answer.k === 'later') {
+    if (answer.again) again();
+    return false;
+  }
+  if (answer.k === 'refused' && next.image) settle(next.id, { ...next, image: null });
+  else settle(next.id);
+  return true;
+});
+export { flush };
 
 /** Sends `report`; or, if it cannot be sent just now, keeps it for later (without its screenshot, if the browser has no room for that). */
 export async function post(report: Report): Promise<Posted> {
@@ -95,33 +78,6 @@ export async function post(report: Report): Promise<Posted> {
     if (write([...before, mine]) || write([...before, { ...mine, image: null }])) return { k: 'kept' };
   }
   return { k: 'error', message: answer.message ?? FAILED };
-}
-
-/** Runs `fn` while no other window of this browser is running one: under the lock they share, where the browser has such a thing. */
-const alone = (fn: () => Promise<void>): Promise<void> => (typeof navigator !== 'undefined' && navigator.locks ? navigator.locks.request(KEY, fn) : fn());
-
-let flushing = false;
-/**
- * What was kept is sent, the oldest first, until one does not get there (it and the rest wait for next time). One the
- * server refuses for good is tried once more without its screenshot (too big a picture must not cost the words), and
- * then dropped.
- */
-export async function flush(): Promise<void> {
-  if (flushing) return;
-  flushing = true;
-  try {
-    await alone(async () => {
-      // (What is kept is read anew each time: another window may have sent some of it while this one waited its turn.)
-      for (let next = kept()[0]; next; next = kept()[0]) {
-        const answer = await send(next, KEPT_PATIENCE_MS);
-        if (answer.k === 'later') return void (answer.again && again());
-        if (answer.k === 'refused' && next.image) settle(next.id, { ...next, image: null });
-        else settle(next.id);
-      }
-    });
-  } finally {
-    flushing = false;
-  }
 }
 
 /** From now on what is kept is sent whenever it may be: now, when the network is back, and a while after the server put it off (`again`). */

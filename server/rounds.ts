@@ -28,6 +28,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface Rounds {
   /** Keeps `round`, played at `at`; one played offline with the id its browser gave it (`offline`), unless one of that id is kept already. */
   keep(round: RoundRecord, at?: number, offline?: string): void;
+  /** Whether `account` has a hand in a round of the sitting `game`. */
+  sat(account: string, game: string): boolean;
   /** The record of whoever `account` is, over the rounds `among` says: all noughts for someone who has played none. */
   stats(account: string, among?: Among): Stats;
   /** How `account` has done against `other`, over the rounds both played (of those `among` says), snipes between the two of them too: all noughts for none. */
@@ -121,6 +123,7 @@ export function openRounds(db: Db): Rounds {
   );
   const count = (p: Played): Played => ({ games: p.games, rounds: p.rounds, players: p.players, guests: p.guests, bots: p.bots });
   const forget = db.prepare("update hand set account = null, name = '' where account = ?");
+  const sat = db.prepare('select 1 from round r join hand h on h.round = r.id where r.game = ? and h.account = ? limit 1');
   return {
     keep(r, at = Date.now(), offline) {
       transaction(db, () => {
@@ -131,6 +134,7 @@ export function openRounds(db: Db): Rounds {
         for (const s of r.snipes) snipe.run(id, s.by, s.of, s.card);
       });
     },
+    sat: (account, game) => sat.get(game, account) !== undefined,
     stats: (account, among = 'all') => {
       const s = stats.get({ $account: account, $among: among }) as unknown as Stats;
       return { rounds: s.rounds, won: s.won, nertz: s.nertz, points: s.points, bestPoints: s.bestPoints, cards: s.cards, bestCards: s.bestCards, nertzLeft: s.nertzLeft, ahead: s.ahead, snipes: s.snipes, sniped: s.sniped };
