@@ -483,6 +483,14 @@ describe('a window that plays offline', () => {
     for (let i = 0; i < 20; i++) await Promise.resolve();
   };
 
+  it('a page loaded with the settings saying offline asks the server nothing, not even its boot', async () => {
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: () => {} });
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const net = await reload();
+    expect(net.current().offline).toBe(true);
+    expect(sockets()).toBe(0);
+  });
+
   it('is offline as its settings say while it is at no table', async () => {
     const { net, prefs } = await offline();
     expect(net.current()).toMatchObject({ status: 'idle', offline: true });
@@ -652,13 +660,14 @@ describe('a window that plays offline', () => {
     net.create('Ada');
     await vi.advanceTimersByTimeAsync(0);
     const code = net.current().room!.code;
+    const before = sockets(); // (the page asked the server's boot as it loaded, before the settings said offline)
     vi.setSystemTime(Date.now() + 60 * 60_000); // (frozen: the clock went on, and no timer ran)
     await vi.advanceTimersByTimeAsync(60_000);
     listeners.get('online')!();
     listeners.get('visibilitychange')!();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(net.current()).toMatchObject({ status: 'online', error: null, room: { code } });
-    expect(sockets()).toBe(0);
+    expect(sockets()).toBe(before);
     net.leave();
   });
 
@@ -724,13 +733,11 @@ describe('a window that plays offline', () => {
 });
 
 describe('a page put up anew while the window was open', () => {
-  const OLD = '/assets/index-Old1.js';
-  const NEW = '/assets/index-New2.js';
-  const served = (src: string) => `<!doctype html><script type="module" crossorigin src="${src}"></script>`;
-  let fetched: ReturnType<typeof vi.fn>;
-  /** The server answers with a page (not a 502 from a proxy with nothing behind it). */
-  let answers = true;
-  beforeEach(() => void (answers = true));
+  /** Two starts of the server: the one this page was served by, and one put up since (an icon alone may have changed). */
+  const OLD = BOOT;
+  const NEW = 'registry.fly.io/nertz:deployment-new';
+  /** The server tells this socket which start of it it reached, as it tells every socket first. */
+  const welcome = (ws: FakeSocket, boot: string) => ws.deliver({ t: 'welcome', boot });
   /** The window comes back to the front. */
   let front: () => void;
   beforeEach(() => {
@@ -740,8 +747,6 @@ describe('a page put up anew while the window was open', () => {
       documentElement: { classList: { toggle: () => {} } }, // (client/prefs.ts)
       addEventListener: (_: string, fn: () => void) => void listeners.push(fn),
     });
-    fetched = vi.fn(async () => ({ ok: answers, text: async () => served(await theirs) }));
-    vi.stubGlobal('fetch', fetched);
     front = () => listeners.at(-1)!();
   });
   /** A page just loaded at home: the socket it opened to hear the server's boot has heard `boot`. */
@@ -775,42 +780,20 @@ describe('a page put up anew while the window was open', () => {
     expect(page.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('is loaded once for each page there is to have: where loading did not bring it (the copy the service worker keeps), the window does not load itself over and over', async () => {
-    built(OLD, NEW);
-    await reload();
-    front();
-    await settled();
-    expect(page.reload).toHaveBeenCalledTimes(1);
-    // The reload brought the old page again (the network gone at that moment): the window is as it was, and asks again.
-    built(OLD, NEW);
-    await reload();
-    front();
-    await settled();
-    front();
-    await settled();
-    expect(fetched).toHaveBeenCalledTimes(2);
-    expect(page.reload).toHaveBeenCalledTimes(1);
-    // A page newer still is another page: once for that one too.
-    built(OLD, '/assets/index-Newer3.js');
-    await reload();
-    front();
-    await settled();
-    expect(page.reload).toHaveBeenCalledTimes(2);
-  });
-
-  it('an answer that is no page (a server on its way up) is not taken for one', async () => {
-    built(OLD, NEW);
-    answers = false;
-    await reload();
-    front();
-    await settled();
-    expect(fetched).toHaveBeenCalledTimes(1);
-    expect(page.reload).not.toHaveBeenCalled();
-  });
-
-  it('is not loaded when it is the page the window has, and not asked for at all from the dev server', async () => {
-    built(OLD, OLD);
-    await reload();
+  it('is not loaded when the server is the same start: a line that dropped, or a window back at home', async () => {
+    vi.useFakeTimers();
+    const net = await home();
+    net.create('Ada');
+    welcome(last(), OLD);
+    last().open();
+    last().deliver(at('ABCD'));
+    last().closed();
+    await vi.advanceTimersByTimeAsync(300);
+    welcome(last(), OLD);
+    last().open();
+    last().deliver(at('ABCD'));
+    expect(net.current().status).toBe('online');
+    net.leave();
     front();
     welcome(last(), OLD);
     expect(page.reload).not.toHaveBeenCalled();

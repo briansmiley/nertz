@@ -19,7 +19,7 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, reachOf, sit, start, useNet, useReach, useRtt, type Reach } from './net';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, reachOf, sit, start, useNet, useReach, useRtt, type Reach, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
@@ -130,6 +130,8 @@ export function App() {
   const addressed = useAddressed();
   const page = reach.server ? addressed : null;
   useSounds(room, net.status === 'online');
+  const back = useBack(net.status);
+  const [tucked, setTucked] = useTucked(net.status);
   if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
@@ -172,8 +174,17 @@ export function App() {
       <Chat room={room} lost={tucked ? () => setTucked(false) : undefined} />
       <Sure room={room} />
       {reach.others && <Ping />}
-      {net.status === 'reconnecting' || net.status === 'updating' ? (
-        <p className="banner">{net.status === 'updating' ? <>Updating the game<Dots /></> : 'Connection lost. Reconnecting…'}</p>
+      {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
+        // (Mid-round the card over the paused table says it: the update paused the round.)
+        <Toast say="updating" className="updating">
+          <Riffle />
+          <span>
+            Updating the game
+            <Dots />
+          </span>
+        </Toast>
+      ) : (net.status === 'reconnecting' && !tucked) || back ? (
+        <Line back={back} onTuck={() => setTucked(true)} />
       ) : (
         spectating && (
           <p className="banner low">

@@ -339,6 +339,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       ws.close(CLOSE_OVER, fit);
     };
     const conn: Conn = { send, close: over };
+    send({ t: 'welcome', boot });
     /** Where it sits, and where what it says goes. The socket closed: the seat is kept for a reconnect (`detach`). */
     const seat = seatAt(conn, tables, () => signed.get(ws) ?? null);
 

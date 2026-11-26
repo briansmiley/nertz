@@ -323,7 +323,7 @@ watchPrefs(() => {
   if (getPrefs().offline === state.offline || state.room) return; // (at a table: it is what it was opened as, until it is left)
   if (session) return stop(null);
   set();
-  void renew(); // (back online: the page may have been put up anew meanwhile)
+  peek(); // (back online: the server may have been put up anew meanwhile)
 });
 
 /** Sends one message if the line is open. Game intents go through `send` instead. */
@@ -398,7 +398,7 @@ function stop(error: string | null): void {
   dealing = freshDealing;
   timed(null);
   show({ status: 'idle', error });
-  void renew(); // (the table may be gone because the server was put up anew: then so is this page)
+  renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
 /**
@@ -408,34 +408,29 @@ function stop(error: string | null): void {
  * loaded again whenever this window is at no table. At a table it is only once it is `back` there from an update the
  * server stopped for: the reload sits back down (`resume`). The same one again was only the line dropping.
  */
-async function renew(back = false): Promise<void> {
-  const free = (): boolean => back || (!state.room && !session);
-  if (typeof document === 'undefined' || !free() || !reach().server) return;
-  const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/"]')?.getAttribute('src');
-  if (!mine) return; // not a built page (development)
-  try {
-    const res = await fetch('/', { cache: 'no-store' });
-    if (!res.ok) return; // (a server on its way up, or a proxy with none behind it: not a page)
-    const theirs = /src="([^"]*\/assets\/[^"]+\.js)"/.exec(await res.text())?.[1];
-    if (!theirs || theirs === mine || !free()) return;
-    // Loading the page again is tried once for each page there is to have: where that does not bring it (the network
-    // gone again, and the page the one the service worker keeps), asking again and again would only load this one over and over.
-    if (renewedFor() === theirs) return;
-    renewedFor(theirs);
-    location.reload();
-  } catch {
-    // offline: next time
-  }
+let boot: string | null = null;
+let stale = false;
+function renew(back = false): void {
+  if (stale && (back || (!state.room && !session))) location.reload();
 }
-const RENEWED_KEY = 'nertz.renewed';
-/** The page (its script) this window last loaded itself anew for; given one, that is it from now. */
-function renewedFor(script?: string): string | null {
-  try {
-    if (script) sessionStorage.setItem(RENEWED_KEY, script);
-    return sessionStorage.getItem(RENEWED_KEY);
-  } catch {
-    return null;
-  }
+function booted(id: string): void {
+  boot ??= id;
+  stale ||= id !== boot;
+  renew();
+}
+/** A window at no table holds no socket: it opens one only to hear the server's boot, and closes it on the answer. (Offline it asks nothing.) */
+function peek(): void {
+  if (session || typeof document === 'undefined' || !reach().server) return;
+  const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
+  ws.onmessage = (e) => {
+    ws.close();
+    try {
+      const msg = JSON.parse(String(e.data)) as ServerMsg;
+      if (msg.t === 'welcome') booted(msg.boot);
+    } catch {
+      // not the server's: next time
+    }
+  };
 }
 /**
  * Gone from in front (another tab, the screen off), the round at a table of this window's own is paused: there is
@@ -447,10 +442,10 @@ function rest(): void {
   if (!session?.local || typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
   if (room?.game && isLive(room.game) && !room.paused) pause(true);
 }
-// Back in front: at a table, is the line still up (`probe`)? At none, is this still the page the server serves?
+// Back in front: at a table, is the line still up (`probe`)? At none, is this still the server this page was served by?
 if (typeof document !== 'undefined')
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') (probe(), void renew());
+    if (document.visibilityState === 'visible') (probe(), peek());
     else rest();
   });
 
@@ -473,7 +468,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
     rest();
-    if (updated) void renew(true);
+    if (updated) renew(true);
   },
   welcome: (msg) => booted(msg.boot),
   error: (msg) => set({ error: msg.message }),
@@ -575,7 +570,7 @@ function probe(): void {
   ping();
   setTimeout(() => socket === ws && heard < asked && dropped(), PROBE_MS);
 }
-if (typeof window !== 'undefined') window.addEventListener('online', () => (probe(), void renew()));
+if (typeof window !== 'undefined') window.addEventListener('online', () => (probe(), peek()));
 
 /** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
 function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false): void {
