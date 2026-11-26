@@ -340,10 +340,12 @@
   font-size: 22px;
 }
 
-.tag .hosting .standup:hover,
-.tag .hosting .unseat:hover {
-  opacity: 1;
-  color: var(--marigold);
+@media (hover: hover) {
+  .tag .hosting .standup:hover,
+  .tag .hosting .unseat:hover {
+    opacity: 1;
+    color: var(--marigold);
+  }
 }
 
 .tag .hosting .unseat.sure {
@@ -457,8 +459,10 @@
   font-size: 13px;
 }
 
-.stuck:hover {
-  border-color: var(--chalk);
+@media (hover: hover) {
+  .stuck:hover {
+    border-color: var(--chalk);
+  }
 }
 
 .stuck small {

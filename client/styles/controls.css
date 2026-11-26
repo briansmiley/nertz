@@ -78,8 +78,10 @@
   text-underline-offset: 3px;
 }
 
-.quiet:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .quiet:hover {
+    color: var(--ink);
+  }
 }
 
 .error,
@@ -117,10 +119,16 @@
   cursor: pointer;
 }
 
-.icon:hover,
 .icon.on {
   border-color: var(--ink);
   color: var(--ink);
+}
+
+@media (hover: hover) {
+  .icon:hover {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
 }
 
 .icon.on {
@@ -154,9 +162,14 @@
   transition: transform 0.12s ease-out;
 }
 
-.icon.bare:hover svg,
 .icon.bare.on svg {
   transform: translateY(-2px) rotate(-4deg);
+}
+
+@media (hover: hover) {
+  .icon.bare:hover svg {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 /* (The ear and the plus reach a little past the square: the ring goes round them too.) */
@@ -189,9 +202,14 @@ img.art {
   transition: transform 0.12s ease-out;
 }
 
-.icon:hover > img.art,
 .icon.on > img.art {
   transform: translateY(-2px) rotate(-4deg);
+}
+
+@media (hover: hover) {
+  .icon:hover > img.art {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 .icon:active > img.art {
@@ -414,8 +432,10 @@ img.art {
   transition: transform 0.12s ease-out;
 }
 
-.seat-art:hover img.art {
-  transform: translateY(-2px) rotate(-4deg);
+@media (hover: hover) {
+  .seat-art:hover img.art {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 .watching .sit,
@@ -457,9 +477,14 @@ img.art {
   border-bottom: 1.5px solid transparent;
 }
 
-.dropdown > button:hover,
 .dropdown > button[aria-expanded='true'] {
   border-bottom-color: var(--ink);
+}
+
+@media (hover: hover) {
+  .dropdown > button:hover {
+    border-bottom-color: var(--ink);
+  }
 }
 
 .dropdown svg.caret {
@@ -508,10 +533,16 @@ img.art {
   color: var(--ink-soft);
 }
 
-.dropdown [role='option']:hover,
 .dropdown [role='option']:focus-visible {
   color: var(--ink);
   background: rgba(27, 39, 51, 0.07);
+}
+
+@media (hover: hover) {
+  .dropdown [role='option']:hover {
+    color: var(--ink);
+    background: rgba(27, 39, 51, 0.07);
+  }
 }
 
 /* (The one chosen: ink, with the pad's red margin down its edge.) */

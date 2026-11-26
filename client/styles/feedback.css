@@ -86,8 +86,10 @@
   cursor: pointer;
 }
 
-.feedback .attach:hover {
-  border-color: var(--ink);
+@media (hover: hover) {
+  .feedback .attach:hover {
+    border-color: var(--ink);
+  }
 }
 
 /* (Its input is unseen: its focus is shown on the box.) */

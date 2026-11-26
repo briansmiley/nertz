@@ -12,8 +12,10 @@
   vertical-align: middle;
 }
 
-.pad h2 .invite:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .pad h2 .invite:hover {
+    color: var(--ink);
+  }
 }
 
 .pad h2 .invite svg {
@@ -72,9 +74,14 @@
   transition: transform 0.12s ease-out;
 }
 
-.seats .swatch:hover,
 .seats .swatch:focus-visible {
   transform: translateY(-2px) rotate(-4deg);
+}
+
+@media (hover: hover) {
+  .seats .swatch:hover {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 /* Seating a bot: level and Add. */
@@ -213,11 +220,18 @@
   field-sizing: content;
 }
 
-.pad input.botname:hover,
 .pad input.botname:focus {
   border-bottom-color: currentColor;
   outline: none;
   box-shadow: none;
+}
+
+@media (hover: hover) {
+  .pad input.botname:hover {
+    border-bottom-color: currentColor;
+    outline: none;
+    box-shadow: none;
+  }
 }
 
 .top .change {
@@ -232,9 +246,14 @@
   transition: transform 0.12s ease-out;
 }
 
-.top .change:hover,
 .top .change:focus-visible {
   transform: translateY(-2px) rotate(-4deg);
+}
+
+@media (hover: hover) {
+  .top .change:hover {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 .top .change:active {
@@ -266,9 +285,11 @@ button.code.copy {
   cursor: pointer;
 }
 
-button.code.copy:hover {
-  text-decoration: underline dotted 2px;
-  text-underline-offset: 0.15em;
+@media (hover: hover) {
+  button.code.copy:hover {
+    text-decoration: underline dotted 2px;
+    text-underline-offset: 0.15em;
+  }
 }
 
 button.code.copy small {
