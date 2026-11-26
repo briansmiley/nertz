@@ -91,8 +91,12 @@ body:has(.corner.right) .ping {
   background: rgba(8, 28, 33, 0.9);
 }
 
-/* The menu's three bars, drawn: bare on the cloth like the chat's buttons, no disc; hovered or open they lift and tip. */
+/* The menu's three bars, drawn: bare on the cloth like the chat's buttons, no disc; hovered or open they lift and tip.
+   No padding or border round them either: the button is as wide as the layout has it (layout.ts KNOB), so a slip
+   anchored at its right (in the bar across the top) ends where the layout says, inside the window. */
 .knob:has(> img.art) {
+  padding: 0;
+  border: 0;
   background: none;
 }
 
