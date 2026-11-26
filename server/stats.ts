@@ -48,15 +48,15 @@ export function offlineRound(v: unknown, account: string): RoundRecord | null {
     const bot = h.bot === null ? null : BOT_LEVELS.find((l) => l === h.bot);
     const out = h.out === null ? null : (['stood', 'left', 'kicked'] as const).find((o) => o === h.out);
     if (!name || bot === undefined || out === undefined || !whole(h.played, 0, MOST_PLAYED) || !whole(h.nertzLeft, 0, NERTZ_SIZE) || h.delta !== h.played - 2 * h.nertzLeft) return null;
-    hands.push({ seat: h.seat, player: h.player, name, account: bot ? null : account, bot, out, played: h.played, nertzLeft: h.nertzLeft, delta: h.delta });
+    hands.push({ seat: h.seat, player: h.player, name, account: bot ? null : account, bot, out, played: h.played, nertzLeft: h.nertzLeft, delta: h.played - 2 * h.nertzLeft });
   }
   const seats = new Set(hands.map((h) => h.seat));
   if (seats.size !== hands.length || new Set(hands.map((h) => h.player)).size !== hands.length || hands.filter((h) => !h.bot).length !== 1) return null;
-  const end = r.end as { by?: unknown; seat?: unknown; out?: unknown; voters?: unknown } | null;
+  const end = (r.end ?? {}) as { by?: unknown; seat?: unknown; out?: unknown; voters?: unknown };
   let ended: RoundEnd;
-  if (end?.by === 'jam') ended = { by: 'jam' };
-  else if (end?.by === 'vote' && whole(end.voters, 0, MAX_PLAYERS)) ended = { by: 'vote', voters: end.voters };
-  else if (end?.by === 'nertz' && seats.has(end.seat as number) && Array.isArray(end.out) && end.out.length <= hands.length && end.out.every((s) => seats.has(s as number))) ended = { by: 'nertz', seat: end.seat as number, out: [...new Set(end.out as number[])] };
+  if (end.by === 'jam') ended = { by: 'jam' };
+  else if (end.by === 'vote' && whole(end.voters, 0, MAX_PLAYERS)) ended = { by: 'vote', voters: end.voters };
+  else if (end.by === 'nertz' && seats.has(end.seat as number) && Array.isArray(end.out) && end.out.length <= hands.length && end.out.every((s) => seats.has(s as number))) ended = { by: 'nertz', seat: end.seat as number, out: [...new Set(end.out as number[])] };
   else return null;
   const snipes: RoundRecord['snipes'] = [];
   for (const raw of r.snipes as unknown[]) {
