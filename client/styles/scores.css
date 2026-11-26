@@ -250,6 +250,12 @@
   background: rgba(242, 179, 32, 0.3);
 }
 
+/* (Your line's colour reaches a little to the left of your chip, so the chip is not at its very edge; the names stay in
+   line with everyone else's.) */
+.scores tr.you th:first-child {
+  box-shadow: -0.4rem 0 rgba(242, 179, 32, 0.3);
+}
+
 @media (max-width: 480px) {
   .scores {
     font-size: 0.85rem;
