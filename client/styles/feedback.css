@@ -175,14 +175,14 @@
 }
 
 /* Writing on a phone (Feedback.tsx): the slip lies level across what the keyboard leaves of the screen (where and how
-   big, from the slip), the words written on the paper's own lines, Send at their end. What kind, and the screenshot,
-   are there again once the keyboard is put away. The paper runs on down behind the keyboard and the bar iOS floats
+   big, from the slip), the words written on the paper's own lines, what kind and Send by them. The screenshot is
+   there again once the keyboard is put away. The paper runs on down behind the keyboard and the bar iOS floats
    over it (`--under`, from the slip), so the table never shows between them. */
 .slip.feedback.writing {
   position: fixed;
   right: auto;
   bottom: 0;
-  grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) auto;
+  grid-template: auto auto minmax(0, 1fr) / minmax(0, 1fr) auto;
   gap: 0.4rem 0.9rem;
   max-height: none;
   overflow: visible;
@@ -204,14 +204,13 @@
 }
 
 .writing .slip-head,
-.writing .kinds,
 .writing .attach,
 .writing .shot {
   display: none;
 }
 
 .feedback.writing textarea {
-  grid-area: 1 / 1 / 3 / 2;
+  grid-area: 1 / 1 / 4 / 2;
   height: 100%;
   min-height: 0;
   padding: 0 0.1rem;
@@ -230,23 +229,54 @@
   font-size: 1rem;
 }
 
-.writing .error {
+/* What kind stays, kept small: under Send on its side, opposite it held upright. Pressing one must not end the writing. */
+.writing .kinds {
   grid-area: 2 / 2;
+  grid-template-columns: auto;
+}
+
+.writing .kinds button {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.writing .kinds svg {
+  width: 15px;
+  height: 15px;
+}
+
+.writing .error {
+  grid-area: 3 / 2;
   align-self: start;
   max-width: 8rem;
   font-size: 0.85rem;
   line-height: 1.3;
 }
 
-/* Held upright there is height to spare and little width: Send has the top line to itself (with whatever went wrong
-   beside it), and the words the whole width under it. */
+/* Held upright there is height to spare and little width: the top line is what kind, whatever went wrong, and Send,
+   and the words have the whole width under it. */
 @media (orientation: portrait) {
+  .slip.feedback.writing {
+    grid-template: auto minmax(0, 1fr) / auto minmax(0, 1fr) auto;
+  }
+
   .feedback.writing textarea {
-    grid-area: 2 / 1 / 3 / 3;
+    grid-area: 2 / 1 / 3 / 4;
+  }
+
+  .writing .kinds {
+    grid-area: 1 / 1;
+    grid-template-columns: 1fr 1fr;
+    align-self: start;
+  }
+
+  .writing .go {
+    grid-area: 1 / 3;
+    align-self: start;
   }
 
   .writing .error {
-    grid-area: 1 / 1;
+    grid-area: 1 / 2;
     align-self: center;
     max-width: none;
   }
