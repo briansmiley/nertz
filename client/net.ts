@@ -20,7 +20,6 @@ import { useSyncExternalStore } from 'react';
 import { alone, applyIntent, covered, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
 import { CLOSE_OVER, CLOSE_UPDATE, hasSeat, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
-import type { TableSettings } from '../shared/settings';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
 import type { Kept } from '../server/room';
 
@@ -713,11 +712,6 @@ export const setSeats = (step: 1 | -1): void => void post({ t: 'seats', step });
 
 /** Whoever deals, at any time: the table off the home page's list (on), or back on it (off). */
 export const setUnlisted = (on: boolean): void => void post({ t: 'unlisted', on });
-
-/** Host only, between rounds; the server ignores it otherwise. The change comes back in the next snapshot. */
-export function setTableSettings(patch: Partial<TableSettings>): void {
-  post({ t: 'settings', patch });
-}
 
 /**
  * Would `send` play this intent right now? Not if it is not legal in the state

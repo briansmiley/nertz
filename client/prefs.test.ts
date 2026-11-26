@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { PLAIN_LOOK, type Look } from '../shared/protocol';
 import { cleanPrefs, DEFAULT_PREFS, gateLevel, GATE_MAX, hotkeyPressed, keyFree, loudness, micGain, seenLook, takeKey, type Levels, type Prefs } from './prefs';
 
+describe('cleanPrefs: Tap to play', () => {
+  it('is off unless you ticked it, and prefs stored before it was yours have it off', () => {
+    expect(DEFAULT_PREFS.tapToMove).toBe(false);
+    expect(cleanPrefs(null).tapToMove).toBe(false);
+    expect(cleanPrefs({ muted: true }).tapToMove).toBe(false);
+    expect(cleanPrefs({ tapToMove: true }).tapToMove).toBe(true);
+    for (const bad of ['true', 1, null]) expect(cleanPrefs({ tapToMove: bad }).tapToMove).toBe(false);
+  });
+});
+
 describe('cleanPrefs: hotkeys', () => {
   it('gives the defaults to prefs stored before there were any (or before the sound key)', () => {
     expect(cleanPrefs(null)).toMatchObject({ soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' });

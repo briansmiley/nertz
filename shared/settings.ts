@@ -2,19 +2,12 @@
 // of independent options, stored in the room and sent in every RoomView. To add
 // an option: a field here, its default, a line in `parseSettings`, and a row in
 // client/Settings.tsx (`TableRules`) if the host is to be offered it.
+// None today: Tap to play, the last, is each player's own (client/prefs.ts
+// `Prefs.tapToMove`), and an older client asking the table for it changes nothing.
 
-export interface TableSettings {
-  /**
-   * Whether a card can be moved without dragging it: a tap or a click takes it
-   * up, and the next one says where it goes. The same on every screen; off, a
-   * card has to be dragged by mouse and finger alike. Dragging always works. A
-   * card moved so is never seen travelling, but the server cannot tell it from
-   * a drag (the same `hold` and `move`), so this only chooses gestures.
-   */
-  tapToMove: boolean;
-}
+export interface TableSettings {}
 
-export const DEFAULT_SETTINGS: TableSettings = { tapToMove: false };
+export const DEFAULT_SETTINGS: TableSettings = {};
 
 /**
  * How many face-down cards lie under the face-up one in each of the four work piles, by how many are dealt into the
@@ -30,11 +23,6 @@ export const faceDown = (players: number): number[] => [0, 1, 2, 3].map((i) => M
  */
 export function parseSettings(raw: unknown): Partial<TableSettings> | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-  const v = raw as Record<string, unknown>;
-  const patch: Partial<TableSettings> = {};
-  if ('tapToMove' in v) {
-    if (typeof v.tapToMove !== 'boolean') return null;
-    patch.tapToMove = v.tapToMove;
-  }
+  const patch: Partial<TableSettings> = {}; // (a line here for each option)
   return Object.keys(patch).length > 0 ? patch : null;
 }
