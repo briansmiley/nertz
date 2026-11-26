@@ -252,14 +252,41 @@ label.check {
 /* Sound: its heading as Hotkeys' is, then what you hear (Output) and your microphone (Input), each named small, Input
    set off by a light rule, and the whole closed by one before the rest of your settings. */
 .sound {
-  display: grid;
-  gap: 0.35rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--rule);
 }
 
-.sound h3 {
-  margin-bottom: 0.1rem;
+.sound-body {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+/* Its heading is the toggle: a small caret before it, turned down while open. */
+.sound summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  list-style: none;
+  cursor: pointer;
+}
+
+.sound summary::-webkit-details-marker {
+  display: none;
+}
+
+.sound summary::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 0.12s;
+}
+
+.sound[open] summary::before {
+  transform: rotate(45deg);
 }
 
 .sound h4 {
@@ -325,7 +352,7 @@ label.check {
   gap: 0.55rem 1.4rem;
 }
 
-/* Your cards: whose faces (the word over the choices), and at the end of the line your back, its name wrapping if long. */
+/* Your cards: your back at the start of the line, its name wrapping if long, and at the end whose faces (the word over the choices). */
 .deck {
   position: relative; /* where the faces' (i) opens: under the whole line */
   display: flex;

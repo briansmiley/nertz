@@ -406,24 +406,28 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <Gear />
         Settings
       </h3>
-      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). Offline there is no voice to send, and so no Output to tell from it. */}
-      <div className="sound">
-        <h3>Sound</h3>
-        {others && <h4>Output</h4>}
-        <Volume prefs={prefs} voice={others} />
-        {others && (
-          <>
-            <h4 className="input">Input</h4>
-            <MicLevels prefs={prefs} />
-          </>
-        )}
-      </div>
+      {/* Sound, closed until its heading is pressed: what you hear (Output), the bots' call of Nertz, and your microphone as voice chat sends it (Input). Offline there is no voice to send, and so no Output to tell from it. */}
+      <details className="sound">
+        <summary>
+          <h3>Sound</h3>
+        </summary>
+        <div className="sound-body">
+          {others && <h4>Output</h4>}
+          <Volume prefs={prefs} voice={others} />
+          <label className="check">
+            <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+            <span>Bots say "Nertz"</span>
+          </label>
+          {others && (
+            <>
+              <h4 className="input">Input</h4>
+              <MicLevels prefs={prefs} />
+            </>
+          )}
+        </div>
+      </details>
       {/* The switches, as many to a line as fit. */}
       <div className="checks">
-        <label className="check">
-          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-          <span>Bots say "Nertz"</span>
-        </label>
         <label className="check">
           <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
           <span>Reduce motion</span>
@@ -443,6 +447,7 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
       </div>
       {/* Your cards: whose faces they have, and beside that your back. Any time, a round or not: the faces change the cards for nobody but you; everyone sees your cards in a new back at once. */}
       <div className="deck">
+        <YourBacks colour={BACKS[0]} />
         <div className="faces">
           <span id="faces-label">
             Card faces{' '}
@@ -464,7 +469,6 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
             ))}
           </span>
         </div>
-        <YourBacks colour={BACKS[0]} />
       </div>
       {/* Keys: only where there is a keyboard. */}
       {!touchOnly() && (
