@@ -1,7 +1,7 @@
 // Feedback, from the corner's menu: a slip with a text box, Send, and beside it an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
 // Where it cannot be sent just now it is kept and sent later (client/outbox.ts), and the slip says Saved.
-// On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: the words, and Send.
+// On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: what kind, the words, and Send.
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
 import { Back } from './Menu';

@@ -175,8 +175,8 @@
 }
 
 /* Writing on a phone (Feedback.tsx): the slip lies level across what the keyboard leaves of the screen (where and how
-   big, from the slip), the words written on the paper's own lines, Send at their end. What kind, and the screenshot,
-   are there again once the keyboard is put away. The paper runs on down behind the keyboard and the bar iOS floats
+   big, from the slip), the words written on the paper's own lines, what kind and Send by them. The screenshot is
+   there again once the keyboard is put away. The paper runs on down behind the keyboard and the bar iOS floats
    over it (`--under`, from the slip), so the table never shows between them. */
 .slip.feedback.writing {
   position: fixed;
