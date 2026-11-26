@@ -114,24 +114,21 @@
   translate: 0 0;
 }
 
-/* The score for the round is the biggest thing beside a pile, shown as soon as that pile is in; once every pile is,
-   the best of them is picked out. */
+/* The score for the round is the biggest thing beside a pile, a bare number on the block, shown as soon as that pile is
+   in; once every pile is, the best of them is picked out. */
 .heap .net {
   grid-column: 2;
   grid-row: 2 / 4;
   justify-self: end;
-  padding: 3px 9px 4px;
-  border-radius: 99px;
-  background: #0a2228; /* solid: the score must read against cards and felt alike */
-  box-shadow: 0 0 0 1.5px rgba(241, 234, 216, 0.35), 0 3px 10px rgba(0, 0, 0, 0.45);
-  text-shadow: none;
-  font: 700 27px/1 var(--num);
+  padding: 3px 4px 4px;
+  font: 700 30px/1 var(--num);
   color: var(--chalk);
   opacity: 0;
   transition:
     opacity 0.35s,
     scale 0.35s,
-    background 0.35s;
+    color 0.35s,
+    text-shadow 0.35s;
 }
 
 .heap.sorted .net {
@@ -168,12 +165,11 @@
   font-weight: 700;
 }
 
+/* The winner's number in marigold, glowing: a soft light behind it rather than a pill round it. */
 .heap.best .net {
   scale: 1.1;
-  background: var(--marigold);
-  color: var(--ink);
-  box-shadow: 0 0 0 3px rgba(244, 180, 40, 0.25), 0 0 20px rgba(244, 180, 40, 0.55);
-  text-shadow: none;
+  color: var(--marigold);
+  text-shadow: 0 0 10px rgba(244, 180, 40, 0.7), 0 0 24px rgba(244, 180, 40, 0.45);
 }
 
 .heap.all:not(.best) .line,
@@ -195,8 +191,8 @@
 }
 
 .heap.short .net {
-  padding: 3px 7px 4px;
-  font-size: 24px;
+  padding: 3px 2px 4px;
+  font-size: 27px;
 }
 
 /* On a cleared table nobody's hand is left to say who is where: every place is set out, with its name, as the table
