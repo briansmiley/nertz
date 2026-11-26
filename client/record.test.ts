@@ -20,6 +20,8 @@ const round = (number: number): RoundRecord => ({ game: 'g', code: 'ABCD', numbe
 const keptNow = (): Waiting[] => JSON.parse(storage.get('nertz.rounds') ?? '[]') as Waiting[];
 /** The rounds kept, as whose and which. */
 const kept = (): [string, number][] => keptNow().map((r) => [r.account, r.round.number]);
+/** Someone signed in, as the server says. */
+const who = (id: string) => ({ id, name: id, image: null, picture: null });
 const settled = (): Promise<void> => new Promise((r) => setTimeout(r, 60));
 
 beforeEach(() => {
@@ -54,7 +56,7 @@ describe('rounds played offline', () => {
     record.keep(round(1));
     expect(kept()).toEqual([]);
     answers = ['down'];
-    record.heard('ada');
+    record.heard(who('ada'));
     record.heard(undefined); // (offline: who it was is not known, and is still remembered)
     record.keep(round(2), 5);
     expect(keptNow()).toEqual([{ id: expect.stringMatching(/^[0-9a-f]{24}$/), account: 'ada', at: 5, round: round(2) }]);
@@ -63,9 +65,19 @@ describe('rounds played offline', () => {
     expect(kept()).toEqual([['ada', 2]]);
   });
 
+  it('remember who was signed in, name and picture, across a reload: who you are offline', async () => {
+    let record = await load();
+    answers = ['down'];
+    record.heard({ id: 'ada', name: 'Ada', image: null, picture: '/pictures/0123456789abcdef.webp' });
+    record = await load();
+    record.heard(undefined);
+    expect(record.remembered()).toEqual({ id: 'ada', name: 'Ada', image: null, picture: '/pictures/0123456789abcdef.webp' });
+    expect(record.remembered()).toBe(record.remembered()); // (the same, read twice: React's to compare)
+  });
+
   it('signed out offline, none more are kept and those kept wait for their account; the server is owed the sign-out, even after a reload, until it takes it', async () => {
     let record = await load();
-    record.heard('ada');
+    record.heard(who('ada'));
     record.heard(undefined);
     record.keep(round(1));
     expect(record.owesSignOut()).toBe(false);
@@ -82,18 +94,18 @@ describe('rounds played offline', () => {
 
   it('go once the server says their account is signed in, the oldest first, and are taken out; others wait for theirs', async () => {
     const record = await load();
-    record.heard('ada');
+    record.heard(who('ada'));
     await settled();
     record.heard(undefined);
     record.keep(round(1));
-    record.heard('bob');
+    record.heard(who('bob'));
     record.heard(undefined);
     record.keep(round(2));
-    record.heard('ada');
+    record.heard(who('ada'));
     record.heard(undefined);
     record.keep(round(3));
     expect(kept()).toEqual([['ada', 1], ['bob', 2], ['ada', 3]]);
-    record.heard('ada');
+    record.heard(who('ada'));
     await settled();
     expect(sent.map((r) => r.round.number)).toEqual([1, 3]);
     expect(kept()).toEqual([['bob', 2]]);
@@ -102,7 +114,7 @@ describe('rounds played offline', () => {
     void record.flush();
     await settled();
     expect(sent).toHaveLength(2);
-    record.heard('bob');
+    record.heard(who('bob'));
     await settled();
     expect(sent.map((r) => [r.account, r.round.number])).toEqual([['ada', 1], ['ada', 3], ['bob', 2]]);
     expect(storage.has('nertz.rounds')).toBe(false);
@@ -110,11 +122,11 @@ describe('rounds played offline', () => {
 
   it('one the server refuses for good is dropped; signed in as someone else there (or nobody), it waits; with no network it goes when that is back', async () => {
     const record = await load();
-    record.heard('ada');
+    record.heard(who('ada'));
     record.heard(undefined);
     for (const n of [1, 2, 3]) record.keep(round(n));
     answers = [400, 409];
-    record.heard('ada');
+    record.heard(who('ada'));
     await settled();
     expect(kept()).toEqual([['ada', 2], ['ada', 3]]);
     answers = [401];
@@ -135,11 +147,11 @@ describe('rounds played offline', () => {
   it('what the server put off is tried again a minute later', async () => {
     vi.useFakeTimers();
     const record = await load();
-    record.heard('ada');
+    record.heard(who('ada'));
     record.heard(undefined);
     record.keep(round(1));
     answers = [503];
-    record.heard('ada');
+    record.heard(who('ada'));
     await vi.advanceTimersByTimeAsync(10);
     expect(sent).toHaveLength(1);
     answers = [200];
@@ -151,7 +163,7 @@ describe('rounds played offline', () => {
   it('with several windows open, each round goes once', async () => {
     storage.set('nertz.rounds', JSON.stringify([1, 2, 3, 4].map((n) => ({ id: `r${n}`, account: 'ada', at: 0, round: round(n) }))));
     const windows = [await load(), await load(), await load()];
-    for (const w of windows) w.heard('ada');
+    for (const w of windows) w.heard(who('ada'));
     await settled();
     expect(sent.map((r) => r.round.number)).toEqual([1, 2, 3, 4]);
     expect(storage.has('nertz.rounds')).toBe(false);

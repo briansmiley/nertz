@@ -173,6 +173,23 @@
   font-size: 0.9rem;
 }
 
+/* Offline, signed in: Sign out beside you, a word underlined like the Profile page's. */
+.named .guest .out {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 0.9rem/1.3 var(--ui);
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.named .guest .out:hover {
+  color: var(--ink);
+}
+
 /* The name a guest plays under, just below, from the same left edge. */
 .home .plays {
   margin-top: -0.6rem;

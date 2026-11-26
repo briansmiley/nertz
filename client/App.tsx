@@ -26,6 +26,7 @@ import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
 import { lastName, rememberedName, rememberName, satDownAs } from './name';
+import { forget, useRemembered } from './record';
 
 /**
  * Sit down at table `room`, or with null ask the server to open a new one (it picks the code). A guest's name is
@@ -591,10 +592,13 @@ function Home({ error, busy, cut, yours, reach }: { error: string | null; busy: 
   const ways = waysIn(account);
   /** This browser has sat down as a guest before (it remembers the name). */
   const [before] = useState(() => !!rememberedName());
-  const sits = sitterOf(account, before);
+  /** Offline, whoever was signed in here last (client/record.ts): still you, with no page to open, until you sign out. */
+  const remembered = useRemembered();
+  const offlineYou = !reach.server && remembered?.name ? remembered : null;
+  const sits = offlineYou ? 'you' : sitterOf(account, before);
   const clean = cleanName(name);
   /** The name you sit down under: your account's, or the one written in the field. */
-  const sitAs = sits === 'you' ? signedIn!.name! : sits === 'wait' ? '' : clean;
+  const sitAs = sits === 'you' ? (signedIn ?? offlineYou)!.name! : sits === 'wait' ? '' : clean;
   /** Sits down. Signed in with no name yet, the one written becomes the name you go by. */
   const go = (room: string | null): void => {
     if (signedIn && sits === 'name') void rename(sitAs);
@@ -669,6 +673,19 @@ function Home({ error, busy, cut, yours, reach }: { error: string | null; busy: 
                   <Avatar image={signedIn.picture ?? signedIn.image} name={signedIn.name} />
                   <span>{signedIn.name}</span>
                 </button>
+                <YourBacks colour={BACKS[0]} compact />
+              </div>
+            ) : sits === 'you' && offlineYou ? (
+              <div className="named">
+                <span className="guest">
+                  <span className="you">
+                    <Avatar image={offlineYou.picture ?? offlineYou.image} name={offlineYou.name} />
+                    <span>{offlineYou.name}</span>
+                  </span>
+                  <button type="button" className="out" onClick={forget}>
+                    Sign out
+                  </button>
+                </span>
                 <YourBacks colour={BACKS[0]} compact />
               </div>
             ) : sits === 'guest' ? (

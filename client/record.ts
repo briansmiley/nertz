@@ -8,6 +8,7 @@
 // As for feedback (client/outbox.ts), what is kept is every window's of this browser, and goes once (client/queue.ts);
 // the server keeps a round sent twice once besides.
 import type { RoundRecord } from '../server/rounds';
+import type { Account } from '../shared/types';
 import { useSyncExternalStore } from 'react';
 import { newId, queue, send as sent } from './queue';
 
@@ -20,7 +21,7 @@ export interface Waiting {
 }
 
 const KEY = 'nertz.rounds';
-/** Who was signed in, the last the server said. */
+/** Who was signed in, the last the server said: who you still are offline. */
 const ACCOUNT_KEY = 'nertz.account';
 /** Signed out here while offline: the server still has them signed in, until it is told. */
 const OWED_KEY = 'nertz.signOut';
@@ -30,10 +31,30 @@ const PATIENCE_MS = 60_000;
 /** How long after the server put a round off what is kept is tried again. */
 const AGAIN_MS = 60_000;
 
+/** Who was signed in here last, as the server said: their id, and what is shown of them offline. */
+export type Remembered = Pick<Account, 'id' | 'name' | 'image' | 'picture'>;
+
+/** What was last read of who is remembered, as it was kept: read again only when what is kept changes. */
+let read: { kept: string | null; who: Remembered | null } = { kept: null, who: null };
+
 /** Who was signed in here last, as the server said: what is played offline is kept for them; null for nobody. */
-export function remembered(): string | null {
+export function remembered(): Remembered | null {
+  let kept: string | null = null;
   try {
-    return localStorage.getItem(ACCOUNT_KEY);
+    kept = localStorage.getItem(ACCOUNT_KEY);
+  } catch {
+    // no storage: nobody is remembered
+  }
+  if (kept !== read.kept) read = { kept, who: rememberedFrom(kept) };
+  return read.who;
+}
+
+const text = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+function rememberedFrom(kept: string | null): Remembered | null {
+  try {
+    const v = kept && (JSON.parse(kept) as Partial<Record<keyof Remembered, unknown>> | null);
+    const id = v && text(v.id);
+    return id ? { id, name: text(v.name), image: text(v.image), picture: text(v.picture) } : null;
   } catch {
     return null;
   }
@@ -41,7 +62,7 @@ export function remembered(): string | null {
 
 const rememberers = new Set<() => void>();
 /** Who is remembered here, as it changes. */
-export const useRemembered = (): string | null =>
+export const useRemembered = (): Remembered | null =>
   useSyncExternalStore((l) => (rememberers.add(l), () => void rememberers.delete(l)), remembered);
 
 /** Signed out offline: nobody is remembered, and the server is owed a sign-out. */
@@ -80,10 +101,10 @@ let signedAs: string | null = null;
  * sent); nobody (then nobody is remembered either: a sign-in that is over counts for nothing offline); or `undefined`,
  * not known (offline, or not answered yet: whoever was remembered still is, and nothing is sent).
  */
-export function heard(account: string | null | undefined): void {
-  signedAs = account ?? null;
+export function heard(account: Remembered | null | undefined): void {
+  signedAs = account?.id ?? null;
   try {
-    if (account) localStorage.setItem(ACCOUNT_KEY, account);
+    if (account) localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ id: account.id, name: account.name, image: account.image, picture: account.picture }));
     else if (account === null) localStorage.removeItem(ACCOUNT_KEY);
   } catch {
     // no storage: nothing is kept for anyone
@@ -94,7 +115,7 @@ export function heard(account: string | null | undefined): void {
 
 /** A round played offline, kept for whoever was last signed in here: for nobody, if nobody was. */
 export function keep(round: RoundRecord, at = Date.now()): void {
-  const account = remembered();
+  const account = remembered()?.id;
   if (account) write([...kept().slice(-(MOST - 1)), { id: newId(), account, at, round }]);
 }
 

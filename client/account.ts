@@ -25,7 +25,7 @@ let signed: Signed = 'unknown';
 const listeners = new Set<() => void>();
 const set = (next: Signed): void => {
   signed = next;
-  heard(signedIn(next)?.id ?? (waysIn(next) ? null : undefined)); // (rounds played offline go to whoever this is: client/record.ts)
+  heard(signedIn(next) ?? (waysIn(next) ? null : undefined)); // (rounds played offline go to whoever this is: client/record.ts)
   for (const l of listeners) l();
 };
 
