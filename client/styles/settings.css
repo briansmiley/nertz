@@ -71,6 +71,9 @@ body:has(.corner.right) .ping {
   opacity: 0.45;
 }
 
+/* The menu's three bars, drawn: bare on the cloth like the chat's buttons, no disc; hovered or open they lift and tip.
+   No padding or border round them either: the button is as wide as the layout has it (layout.ts KNOB), so a slip
+   anchored at its right (in the bar across the top) ends where the layout says, inside the window. */
 .knob {
   display: inline-flex;
   align-items: center;
@@ -78,25 +81,11 @@ body:has(.corner.right) .ping {
   gap: 5px;
   min-width: 36px;
   height: 36px;
-  padding: 0 7px;
-  border: 1.5px solid transparent;
+  padding: 0;
+  border: 0;
   border-radius: 99px;
   font: 600 13px/1 var(--ui);
   color: var(--chalk);
-  background: rgba(8, 28, 33, 0.6);
-}
-
-.knob:hover,
-.knob.on {
-  background: rgba(8, 28, 33, 0.9);
-}
-
-/* The menu's three bars, drawn: bare on the cloth like the chat's buttons, no disc; hovered or open they lift and tip.
-   No padding or border round them either: the button is as wide as the layout has it (layout.ts KNOB), so a slip
-   anchored at its right (in the bar across the top) ends where the layout says, inside the window. */
-.knob:has(> img.art) {
-  padding: 0;
-  border: 0;
   background: none;
 }
 
@@ -110,22 +99,6 @@ body:has(.corner.right) .ping {
 .knob:hover > img.art,
 .knob.on > img.art {
   transform: translateY(-2px) rotate(-4deg);
-}
-
-.knob svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
-
-/* Muted is the state that must not be missed. */
-.knob.off {
-  border-color: var(--marigold);
-  color: var(--ink);
-  background: var(--marigold);
 }
 
 /* A slip torn off the score pad. */
