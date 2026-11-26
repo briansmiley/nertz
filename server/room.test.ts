@@ -396,6 +396,7 @@ describe('Room', () => {
     room.disconnect(a);
     sitDown(room, c); // mid-round: waits
     room.join(b, 'P1', 'tok-0001');
+    room.handle(b, { t: 'pause', on: false }); // (with nobody of the round here, it waited)
     sendIntent(room, b, 0, { k: 'nertz' });
     room.handle(b, { t: 'start' }); // (the dealer while the host is away)
     room.disconnect(b);
@@ -771,6 +772,82 @@ describe('Room', () => {
     expect(whereAll(room, a)).toEqual(['P0:w', 'P1:w', 'P2:w']);
   });
 
+  it('a bot may be seated as it was at another table: its name, unless someone here has it, and its backs', () => {
+    const { room, conns } = roomWith(1);
+    const [a] = conns as [FakeConn];
+    expect(send(room, a, { t: 'addBot', level: 'fast', name: '  Zed ', backs: { k: 'own', back: 'braid' } })).toBe(true);
+    expect(send(room, a, { t: 'addBot', level: 'slow', name: 'Zed' })).toBe(true); // (taken: it gets one of the usual)
+    expect(send(room, a, { t: 'addBot', level: 'slow', name: 'P0', backs: { k: 'lot', lot: 'nonsense' } })).toBe(true);
+    room.flush();
+    expect(a.room.players.filter((p) => p.bot).map((p) => [p.name, p.bot, p.look.backs])).toEqual([
+      ['Zed', 'fast', { k: 'own', back: 'braid' }],
+      ['Bot Ada', 'slow', PLAIN_LOOK.backs],
+      ['Bot Bix', 'slow', PLAIN_LOOK.backs],
+    ]);
+  });
+
+  // SMI-281: the bots played a round out against the hand of the one person at it, whose line had dropped, and it was recorded.
+  it('a round whose only person has gone waits for them: paused as theirs, its bots still, nothing recorded; back, they unpause it', () => {
+    vi.useFakeTimers();
+    const kept: unknown[] = [];
+    const { room, conns } = roomWith(1, { record: (r) => kept.push(r) });
+    const [a] = conns as [FakeConn];
+    room.handle(a, { t: 'addBot', level: 'fast' });
+    room.handle(a, { t: 'addBot', level: 'fast' });
+    startRound(room, a);
+    room.disconnect(a);
+    const lying = JSON.stringify(room.game);
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(JSON.stringify(room.game)).toBe(lying); // no bot has played a card
+    expect(room.phase).toBe('playing');
+    expect(kept).toEqual([]);
+
+    const back = new FakeConn();
+    expect(room.join(back, 'P0', 'tok-0000')).toBeNull();
+    room.flush();
+    expect(back.room).toMatchObject({ seat: 0, paused: { by: 'player', id: 0 }, clock: { running: false } });
+    room.handle(back, { t: 'pause', on: false });
+    room.flush();
+    expect(back.room.paused).toBeNull();
+    vi.advanceTimersByTime(60_000);
+    expect(JSON.stringify(room.game)).not.toBe(lying); // and the bots play on
+    vi.useRealTimers();
+  });
+
+  it('a round goes on while anyone of its own is here; it waits once the last of them has gone, and when play opens on nobody', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    const w = new FakeConn();
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    startRound(room, a);
+    room.join(w, 'W', 'tok-wwww'); // watching: not of the round
+    const paused = () => (room.flush(), w.last.room.paused);
+    room.disconnect(b);
+    expect(paused()).toBeNull(); // A plays on
+    room.disconnect(a);
+    expect(paused()).toEqual({ by: 'player', id: 0 });
+    room.join(b, 'P1', 'tok-0001');
+    room.handle(b, { t: 'pause', on: false }); // anyone in it unpauses it
+    expect(paused()).toBeNull();
+
+    // Gone during "1, 2, 3": the round is paused as soon as it is played.
+    vi.useFakeTimers();
+    const alone = roomWith(1);
+    const c = alone.conns[0]!;
+    alone.room.handle(c, { t: 'addBot', level: 'slow' });
+    alone.room.handle(c, { t: 'start' });
+    vi.advanceTimersByTime(DEAL_MS);
+    alone.room.handle(c, { t: 'go' });
+    alone.room.disconnect(c);
+    vi.advanceTimersByTime(START_MS);
+    expect(alone.room.game!.status.at).toBe('play');
+    const back = new FakeConn();
+    alone.room.join(back, 'P0', 'tok-0000');
+    alone.room.flush();
+    expect(back.room.paused).toEqual({ by: 'player', id: 0 });
+    vi.useRealTimers();
+  });
+
   it('someone may stand up from their cards for now: as good as away, back by saying so or by playing; watching once the round is over', () => {
     const { room, conns } = roomWith(3);
     const [a, b, c] = conns as [FakeConn, FakeConn, FakeConn];
@@ -1120,7 +1197,22 @@ describe('Room', () => {
     sendIntent(room, b, 0, { k: 'end', on: true });
     room.flush();
     expect(room.phase).toBe('results');
-    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote', voters: 2 } });
+  });
+
+  it('a round ended by vote says how many had a say: one person among bots is one, and stays one when a bot is taken off the score sheet', () => {
+    const { room, conns } = roomWith(1);
+    const [a] = conns as [FakeConn];
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    room.handle(a, { t: 'addBot', level: 'slow' });
+    startRound(room, a);
+    sendIntent(room, a, 0, { k: 'end', on: true });
+    expect(room.phase).toBe('results');
+    expect(room.lastRound!.end).toEqual({ by: 'vote', voters: 1 });
+    room.handle(a, { t: 'removeBot', seat: 1 });
+    room.flush();
+    expect(a.last.room.players).toHaveLength(2);
+    expect(a.last.room.lastRound!.end).toEqual({ by: 'vote', voters: 1 });
   });
 
   it('a round ended by vote is over on the final table like any other: no card is left in a hand, no finished pile left to clear', () => {
@@ -1141,7 +1233,7 @@ describe('Room', () => {
     room.flush();
     for (const conn of [a, b]) {
       const { phase, game } = conn.last.room;
-      expect([phase, game!.status]).toEqual(['results', { at: 'over', end: { by: 'vote' } }]);
+      expect([phase, game!.status]).toEqual(['results', { at: 'over', end: { by: 'vote', voters: 2 } }]);
       expect(game!.players.map((p) => p.holding)).toEqual([null, null]);
       expect(mustClear(game!, 1)).toBe(false);
     }

@@ -3,12 +3,12 @@
 // deal timer and the "1, 2, 3" start timer at the opening of a round, the
 // held-card grace timer at its end (and within it, the wait for a call to reach every window), the round's clock
 // (which a draw is timed by), and one timer per bot (see server/bot.ts); every rule about them lives in the engine.
+// Nor anything of Node's own: a window that plays offline runs this same room (client/local.ts).
 //
 // Concurrency: every method runs to completion on Node's single thread, so the
 // order in which messages arrive IS the order of play. An intent is applied to
 // the authoritative state or rejected, the sender's `ack` advances either way,
 // and one full snapshot per player goes out per event-loop turn (`flush`).
-import { randomUUID } from 'node:crypto';
 import { applyIntent, beforeStart, deal, expireGrace, finishDeal, inRound, isLive, landed, landsAt, openPlay, refused, resolveEndVote, resolveStuck, scoreRound, setUpDeal, snipedBy, startCountdown, viewFor, wentOut, withHands, yetToHear, type Rng } from '../shared/engine';
 import { anotherBack, backPool, DEAL_MS, DRAG_BURST, DRAG_RATE, fewestSeats, freeSeats, GRACE_MS, MAX_PLAYERS, MAX_WATCHERS, MIN_PLAYERS, PLAIN_LOOK, START_MS, type Backs, type ClientMsg, type DragAt, type Look, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { Account, BotLevel, GameState, Intent, Pause, Phase, PlayerState, RoomView, RoundResult, Seats, TableSummary } from '../shared/types';
@@ -34,6 +34,16 @@ export const testing = (env: NodeJS.ProcessEnv = process.env): boolean => env.TE
 export type SignedAs = Pick<Account, 'id' | 'handle' | 'picture' | 'private'>;
 /** Only what a room keeps, of whatever it is handed. */
 const kept = ({ id, handle, picture, private: hidden }: SignedAs): SignedAs => ({ id, handle, picture, private: hidden });
+
+/** A random id. (A window that plays offline has no `randomUUID` where its page is not a secure one: plain http, on anything but localhost.) */
+function uuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /** A live client connection, as far as a room cares. */
 export interface Conn {
@@ -141,13 +151,13 @@ const BOT_CONN: Conn = { send: () => {}, close: () => {} };
 const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
 /** Which `Kept` this server writes and reads. Whatever changes what is in one (a field of the room, of a player, of the engine's `GameState`) puts it up by one: a table kept by a server from before is then not brought back. */
-export const KEPT = 2;
+export const KEPT = 3;
 /**
  * The shape of a `Kept` of each version: its fingerprint, as server/room.test.ts takes it (every path in one, and the
  * kind of value there). That test fails when a table's shape is not the one written here for `KEPT`: then put `KEPT`
  * up by one and add the new shape under it. Never change one already here.
  */
-export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44' };
+export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'eb04bb1f703b' };
 
 /** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
 interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {
@@ -157,8 +167,9 @@ interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | '
 /**
  * A table as it is kept over a restart of the server (server/index.ts, in the database): plain JSON. Everything the
  * room is but what belongs to a connection or a clock: no socket, no timer, nothing a bot had in mind, and not who
- * paused it (it comes back with nobody at it, and stopped). Written by `Room.kept` and read by `Room.restored`, and
- * by nothing else; each field is the room's own of that name.
+ * paused it (it comes back with nobody at it, and stopped). Written by `Room.kept` and read by `Room.restored`; each
+ * field is the room's own of that name. (One other writer: a window that has lost its line makes one of the last
+ * snapshot it had, client/rebuild.ts, to play the table on by itself.)
  */
 export interface Kept {
   v: number;
@@ -199,6 +210,8 @@ export interface RoomOptions {
   hearMs?: number;
   /** Told each round as it is scored (server/rounds.ts keeps them). */
   record?: (round: RoundRecord) => void;
+  /** Whether the aids for trying things out are on, asked each time: `testing` (the default), which goes by this process's environment. */
+  testing?: () => boolean;
 }
 
 /** How long a bot takes to change its mind when the move it had settled on is no longer there, ms (about: 0.6 to 1.4 times this). */
@@ -231,7 +244,7 @@ export class Room {
   /** This round's snipes (see `sniped`): who, whom, and with which card. */
   private snipes: { by: number; of: number; card: string }[] = [];
   /** This sitting at the table (see `RoundRecord.game`): made when the table opens, and again when it starts over. */
-  private sitting: string = randomUUID();
+  private sitting: string = uuid();
   /** The last number given out to someone who began to wait for a seat (`Player.queued`), and the last `Player.id`. */
   private queue = 0;
   /** The count `sat` goes by. */
@@ -273,6 +286,7 @@ export class Room {
   private readonly schedule: (flush: () => void) => void;
   private readonly hearMs: number;
   private readonly record: RoomOptions['record'];
+  private readonly testing: () => boolean;
 
   constructor(
     readonly code: string,
@@ -283,6 +297,7 @@ export class Room {
     this.schedule = options.schedule ?? setImmediate;
     this.hearMs = options.hearMs ?? 0;
     this.record = options.record;
+    this.testing = options.testing ?? testing;
   }
 
   /** Number of live connections. */
@@ -343,7 +358,7 @@ export class Room {
   }
 
   /** Any message other than `join`/`create` from a connection that has joined. Unknown connections are ignored. */
-  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' | 'ping' }>): void {
+  handle(conn: Conn, msg: Exclude<ClientMsg, { t: 'join' | 'create' | 'ping' | 'carry' }>): void {
     const player = this.conns.get(conn);
     if (!player) return;
     switch (msg.t) {
@@ -421,7 +436,7 @@ export class Room {
         return;
       }
       case 'addBot':
-        return this.addBot(player, msg.level);
+        return this.addBot(player, msg.level, msg.name, msg.backs);
       case 'removeBot':
         return this.removeBot(player, msg.seat);
       case 'reset':
@@ -527,6 +542,22 @@ export class Room {
       host: this.host?.id ?? null,
       played: this.played === null ? null : this.playedMs(),
     };
+  }
+
+  /**
+   * Whoever `conn` is takes the table away, to play it on in a window of their own (client/local.ts): only the one
+   * person in the room, with bots. With anyone else there (at the table or watching, here or away, or gone with cards
+   * of theirs still lying) it stays, and this is null. Taken, it is as it is kept, and over here: nobody is at it
+   * (`empty`), nothing of it runs, and its round is told to nobody.
+   */
+  carried(conn: Conn): Kept | null {
+    const player = this.conns.get(conn);
+    if (!player || this.players.some((p) => !p.bot && p !== player)) return null;
+    const kept = this.kept();
+    this.close();
+    this.conns.clear();
+    this.players = [];
+    return kept;
   }
 
   /**
@@ -645,7 +676,7 @@ export class Room {
     for (const p of this.players) this.draw(p); // (whoever is on a lot with nothing drawn: dealt in or not, here or away)
     this.state = this.deal(dealt.map((p) => p.seat), this.rng);
     // A set-up deal (`?deal=aces`) is for trying things out: only where `testing` is on.
-    if (setUp && testing()) this.state = setUpDeal(this.state, setUp);
+    if (setUp && this.testing()) this.state = setUpDeal(this.state, setUp);
     this.phase = 'playing';
     this.pausedBy = null;
     this.played = 0; // the clock starts on the word NERTZ!
@@ -686,6 +717,7 @@ export class Room {
     this.playingSince = Date.now();
     // Play is open: the bots start looking at their cards now, like everyone else.
     for (const p of this.players) if (p.bot && this.inRound(p)) this.wake(p, true);
+    this.unattended();
     this.settle();
     this.changed();
   }
@@ -862,6 +894,19 @@ export class Room {
     this.changed();
   }
 
+  /**
+   * A round being played that none of its people is here for waits for them: paused, in the name of one who is away,
+   * the moment the last of them goes (`drop`) or play opens on nobody (`opened`). Otherwise its bots would play it out
+   * against hands nobody holds, and it would be scored and recorded so. It is a pause like one of theirs: back, they
+   * unpause it, as anyone in the round does. A round with someone of its own still here goes on.
+   */
+  private unattended(): void {
+    if (this.pausedBy || !this.state || !isLive(this.state)) return;
+    const people = this.players.filter((p) => !p.bot && this.inRound(p));
+    const away = people.find((p) => !p.conn);
+    if (away && !people.some((p) => p.conn)) this.stopPlay({ by: 'player', player: away });
+  }
+
   /** What the round's clock reads: how long the round has been played, not counting time paused. A draw is timed by it (`PlayerState.draw`). */
   private playedMs(): number {
     return (this.played ?? 0) + (this.playingSince === null ? 0 : Date.now() - this.playingSince);
@@ -923,6 +968,7 @@ export class Room {
     // Away for now: they stay where they were.
     this.letGo(player);
     this.social.left(player, this.players);
+    this.unattended();
     this.settle(); // the remaining connected players may now all be stuck
     this.changed();
   }
@@ -1125,16 +1171,19 @@ export class Room {
    * Whoever deals seats a bot, and takes one off (`removeBot`): in the lobby, on the score sheet, and before their
    * Start, never once it is pressed. A bot sits down and gets up the way a person does: before Start it is dealt its
    * seat's hand (`fill`), and taken off it puts that hand aside (`gone`, `upFrom`). Nobody else's face-up cards change.
+   * `as` and `backs`: what it was called and played with at the table it comes from (client/net.ts `playOnline`).
    */
-  private addBot(by: Player, level: BotLevel): void {
+  private addBot(by: Player, level: BotLevel, as?: string, backs?: Backs): void {
     if (by !== this.dealer || (this.phase === 'playing' && !this.unplayed)) return;
     const seat = this.seatFor();
     if (seat === null) return;
-    const name = BOT_NAMES.find((n) => !this.players.some((p) => p.name === n)) ?? 'Bot';
+    const free = (n: string): boolean => !this.players.some((p) => p.name === n);
+    const name = as && free(as) ? as : (BOT_NAMES.find(free) ?? 'Bot');
     // The token contains a character no client token may: nobody can join into a bot's seat. A bot has a deck like anyone: the plain one.
     const id = this.ids++;
     const bot: Player = { id, token: `bot:${id}`, account: null, name, seat: null, queued: null, look: PLAIN_LOOK, score: 0, conn: BOT_CONN, ack: -1, dirty: false, bot: { level, memory: freshMemory(), timer: null, pending: null } };
     this.players.push(bot);
+    if (backs) this.dress(bot, { ...bot.look, backs });
     this.sitDown(bot, seat);
     this.fill(); // (before Start, its seat's hand goes on the table)
     this.changed();
@@ -1154,7 +1203,7 @@ export class Room {
       if (p.look.backs.k === 'lot') p.look = { ...p.look, backs: { ...p.look.backs, drawn: null } }; // a table started over draws its lots over
     }
     this.round = 0;
-    this.sitting = randomUUID();
+    this.sitting = uuid();
     this.startTold = 0;
     this.lastRound = null;
     this.state = null;
@@ -1295,7 +1344,7 @@ export class Room {
    * The first bot in the round has its nertz pile put under its stock, drops whatever it was about to do, and calls.
    */
   private debugBotOut(by: Player): void {
-    if (!testing() || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
+    if (!this.testing() || by !== this.dealer || this.pausedBy || !this.state || !isLive(this.state)) return;
     const bot = this.players.find((p) => p.bot && this.state!.players.some((g) => g.seat === p.seat));
     if (!bot?.bot) return;
     if (bot.bot.timer) clearTimeout(bot.bot.timer);
@@ -1368,7 +1417,7 @@ export class Room {
       clock: this.played === null ? null : { ms: this.playedMs(), running: this.playingSince !== null },
       paused: this.pausedBy?.by === 'player' ? { by: 'player', id: this.pausedBy.player.id } : this.pausedBy,
       lastRound: this.lastRound,
-      testing: testing(),
+      testing: this.testing(),
     };
   }
 }

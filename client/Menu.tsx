@@ -1,12 +1,13 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: your settings at the top, under their
-// own head, and across the bottom what there is to do, a button each (its name a tooltip), in two lines: the table's
-// actions (which are there, open or coming, and what each does, is actions.ts), and under them sound on or off, for an
+// own head, and across the bottom what there is to do, a button each (its name a tooltip), a line for each kind: the
+// table's actions; Play offline or online, at a table or at none, which has its name on it (which are there, open or
+// not, and what each does, is actions.ts); and under them sound on or off, for an
 // admin how much the game is played (Usage.tsx), which opens in the same place, where feedback has no button of its own
 // the way to it, likewise, and at the far end leaving the table.
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
-import { Again, Bug, Chair, Chart, Door, Flag, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Again, Bug, Chair, Chart, Door, Flag, Globe, GlobeOff, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu (your settings in it), or feedback or how much the game is played, which it leads to. */
 export type Panel = 'menu' | 'feedback' | 'usage';
@@ -27,7 +28,10 @@ export function useCorner(): Panel | null {
 }
 
 /** Each action's icon, before its name. */
-export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Chair, leave: Door };
+/** The ones whose name is on the button, beside the icon: where you play is not a thing a picture says. */
+const SAID: ReadonlySet<ActionId> = new Set(['offline', 'online']);
+
+export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Chair, offline: GlobeOff, online: Globe, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {
@@ -52,30 +56,34 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
       <button
         key={a.id}
         type="button"
-        className={a.on ? 'icon on' : 'icon'}
+        className={`icon${a.on ? ' on' : ''}${SAID.has(a.id) ? ' worded' : ''}`}
         aria-pressed={a.on}
         aria-disabled={a.coming}
         aria-label={a.tally ? `${a.label} ${a.tally}` : a.label}
-        data-tip={a.label}
+        data-tip={a.why ?? (SAID.has(a.id) ? undefined : a.label)}
         onClick={(e) => {
           e.currentTarget.blur(); // keep Space for the cards
           if (a.coming) return; // (not yet: it stays, and so does the menu; its name is still its tip)
-          if (room) press(a.id, room);
+          press(a.id, room ?? null);
           if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
         }}
       >
         <Icon />
+        {SAID.has(a.id) && a.label}
         {a.tally && <small>{a.tally}</small>}
       </button>
     );
   };
-  const table = room ? actions.filter((a) => a.id !== 'leave') : [];
-  const leave = room && actions.find((a) => a.id === 'leave');
+  /** The table's own, and on a line to itself where you play: its words want the room. */
+  const table = actions.filter((a) => a.id !== 'leave' && !SAID.has(a.id));
+  const where = actions.filter((a) => SAID.has(a.id));
+  const leave = actions.find((a) => a.id === 'leave');
   return (
     <section className="slip menu" id="menu" aria-label="Menu">
       {children}
       <div className="acts">
         {table.length > 0 && <div className="line">{table.map(act)}</div>}
+        {where.length > 0 && <div className="line">{where.map(act)}</div>}
         <div className="line">
           <button type="button" className="icon" aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'} data-tip={muted ? 'Unmute' : 'Mute'} onClick={(e) => (e.currentTarget.blur(), onMute())}>
             <Speaker off={muted} />

@@ -13,7 +13,7 @@ describe('your own line', () => {
 
     // -104 before the round, 7 after it: the line says the one, then the other.
     const line = { seat: 0, id: 0, name: 'p0', played: 15, nertzLeft: 0, delta: 111, total: 7, rounds: 3, calls: 1 };
-    const results = { ...room, phase: 'results' as const, players: room.players.map((p) => (p.seat === 0 ? { ...p, score: 7 } : p)), lastRound: { end: { by: 'vote' as const }, scores: [line] } };
+    const results = { ...room, phase: 'results' as const, players: room.players.map((p) => (p.seat === 0 ? { ...p, score: 7 } : p)), lastRound: { end: { by: 'vote' as const, voters: 1 }, scores: [line] } };
     expect(fittingsOf(results, social, false).name).toBe(nameWidth('p0', '-104'));
   });
 });

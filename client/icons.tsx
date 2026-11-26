@@ -136,6 +136,16 @@ export function Unplugged() {
   );
 }
 
+/** Playing offline: the globe, struck through. */
+export function GlobeOff() {
+  return <img className="art" src="/icons/offline.png" alt="" aria-hidden="true" />;
+}
+
+/** Playing online: the same globe in the same place, whole, a green light on it. */
+export function Globe() {
+  return <img className="art" src="/icons/online.png" alt="" aria-hidden="true" />;
+}
+
 /** Resetting the table: the score pad inside an arrow that comes round. */
 export function Again() {
   return <img className="art" src="/icons/reset.png" alt="" aria-hidden="true" />;

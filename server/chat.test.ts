@@ -142,7 +142,7 @@ describe('how a round went', () => {
 
   it('says how it ended when nobody called', () => {
     expect(roundOver(2, { end: { by: 'jam' }, scores: [line(0, 0, -4), line(1, 1, -6)] })).toMatchObject({ end: 'jam', best: [{ who: 0, points: -4 }] });
-    expect(roundOver(2, { end: { by: 'vote' }, scores: [line(0, 0, 1)] }).end).toBe('vote');
+    expect(roundOver(2, { end: { by: 'vote', voters: 1 }, scores: [line(0, 0, 1)] }).end).toBe('vote');
   });
 });
 

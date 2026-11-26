@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
-import { CLOSE_OVER, CLOSE_UPDATE, HEAR_MS, MAX_MESSAGE_BYTES, parseClientMsg, randomRoomCode, type ServerMsg } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, HEAR_MS, MAX_MESSAGE_BYTES, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { OpenTables } from '../shared/types';
 import type { Account } from '../shared/types';
 import { accountsFromEnv, AUTH_PATH, openAccounts, type AccountsOptions } from './accounts';
@@ -20,6 +20,7 @@ import { STATS_PATH, statsHandler, USAGE_PATH, usageHandler } from './stats';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
 import { guard } from './guard';
 import { Room, type Conn, type Kept, type RoomOptions } from './room';
+import { seatAt, type Tables } from './seat';
 
 const ROOM_TTL_MS = 10 * 60_000; // a room with no connections lives this long
 const LOBBY_TTL_MS = 60_000; // ...unless it never dealt a round: an abandoned lobby holds nothing worth keeping
@@ -308,10 +309,20 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     });
   });
 
+  /** The tables, as a connection comes to them (server/seat.ts). */
+  const tables: Tables = {
+    find: (code) => rooms.get(code),
+    open: () => (rooms.size >= MAX_ROOMS ? 'The server is full. Try again later.' : new Room(freshCode(), tableOptions)),
+    taken: (room) => {
+      rooms.set(room.code, room);
+      idleSince.delete(room);
+    },
+    released,
+  };
+
   wss.on('connection', (ws: WebSocket, account: Account | null) => {
     alive.add(ws);
     if (account) signed.set(ws, account);
-    let room: Room | null = null;
     // Token bucket: a few seconds of burst, then `rate` messages per second.
     let allowance = rate * RATE_BURST_SECONDS;
     let refilled = Date.now();
@@ -329,31 +340,12 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
     };
     const conn: Conn = { send, close: over };
     send({ t: 'welcome', boot });
-    /** The socket closed: the seat is kept for a reconnect. */
-    const detach = (): void => {
-      if (!room) return;
-      const left = room;
-      room = null;
-      try {
-        left.disconnect(conn);
-      } finally {
-        released(left); // even if the disconnect threw, or the room would never be forgotten
-      }
-    };
-    /**
-     * The socket is going to another table. A seat in a lobby is given up (so a
-     * table opened and abandoned this way is forgotten at once, and one
-     * connection can never hold more than one never-started table); a seat in
-     * a game is kept, as for a dropped connection.
-     */
-    const moveOn = (): void => {
-      if (room?.phase === 'lobby') room.handle(conn, { t: 'leave' });
-      detach();
-    };
+    /** Where it sits, and where what it says goes. The socket closed: the seat is kept for a reconnect (`detach`). */
+    const seat = seatAt(conn, tables, () => signed.get(ws) ?? null);
 
     ws.on('pong', () => alive.add(ws));
     ws.on('error', () => {}); // e.g. an oversized frame; 'close' follows and does the cleanup
-    ws.on('close', () => (signed.delete(ws), guard("a socket's close", detach)));
+    ws.on('close', () => (signed.delete(ws), guard("a socket's close", seat.detach)));
     ws.on('message', (data, isBinary) => {
       const now = Date.now();
       allowance = Math.min(rate * RATE_BURST_SECONDS, allowance + ((now - refilled) / 1000) * rate) - 1;
@@ -362,31 +354,7 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
       alive.add(ws); // (anything it sends says it is there, as a pong does)
       guard('a message', () => {
         if (updating) return; // (the tables are kept as they stood: nothing said after that moves them)
-        const msg = isBinary ? null : parseClientMsg(data.toString());
-        if (msg?.t === 'ping') return send(msg.at === undefined ? { t: 'pong' } : { t: 'pong', at: msg.at });
-        if (!msg) return room ? send({ t: 'error', message: 'Malformed message' }) : over('Malformed message'); // (at no table, it was the hello)
-        if (msg.t === 'create' || msg.t === 'join') {
-          if (!(msg.t === 'join' && room?.code === msg.room)) moveOn(); // a repeated join to the same table just re-seats
-          let target: Room | undefined;
-          if (msg.t === 'join') {
-            target = rooms.get(msg.room);
-            if (!target) return over(`Table ${msg.room} not found.`);
-          } else {
-            if (rooms.size >= MAX_ROOMS) return over('The server is full. Try again later.');
-            target = new Room(freshCode(), tableOptions);
-          }
-          const refusal = target.join(conn, msg.name, msg.token, msg.t === 'create', signed.get(ws) ?? null); // (whoever opens a table sits down at it; whoever comes to one does if there is a seat and no round on, and else watches until they ask)
-          if (refusal) return over(refusal);
-          rooms.set(target.code, target);
-          idleSince.delete(target);
-          room = target;
-        } else if (room) {
-          room.handle(conn, msg);
-          if (msg.t === 'leave') {
-            released(room);
-            room = null;
-          }
-        }
+        seat.hear(isBinary ? null : data.toString());
       });
     });
   });

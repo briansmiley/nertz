@@ -1,5 +1,6 @@
 // Feedback, from the corner's menu: a slip with a text box, Send, and beside it an optional screenshot (a file, dropped, or pasted), sent
 // to the server's /feedback (server/feedback.ts), which keeps it and passes it on. Bug report or feature request: the same slip.
+// Where it cannot be sent just now it is kept and sent later (client/outbox.ts), and the slip says Saved.
 // On a phone, while its keyboard is up, the slip is laid across what of the screen the keyboard leaves: the words, and Send.
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent } from 'react';
 import type { RoomView } from '../shared/types';
@@ -7,6 +8,8 @@ import { Back } from './Menu';
 import { thisDevice } from './device';
 import { Bug as BugIcon } from './icons';
 import { rememberedName } from './name';
+import { useReach } from './net';
+import { post, type Posted } from './outbox';
 import { touchOnly } from './prefs';
 import { useAboveKeyboard } from './viewport';
 
@@ -86,15 +89,20 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
   const [kind, setKind] = useState<'bug' | 'idea'>('bug');
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
-  const [state, setState] = useState<{ k: 'idle' | 'sending' | 'sent' } | { k: 'error'; message: string }>({ k: 'idle' });
+  /** Where it stands: being written, on its way, or what came of it (`Posted`: sent, kept to send later, or not taken). */
+  const [state, setState] = useState<{ k: 'idle' | 'sending' } | Posted>({ k: 'idle' });
+  /** Sent, or kept to be: either way the slip is done with. */
+  const done = state.k === 'sent' || state.k === 'kept';
+  /** At a table of this window's own, or at none with nobody to ask: said in the report. */
+  const offline = !useReach().server;
   const form = useRef<HTMLFormElement>(null);
-  // Sent: the slip folds away to Send, saying so, and then puts itself away. (Closed before then, it is simply gone.)
+  // Done: the slip folds away to Send, saying so, and then puts itself away. (Closed before then, it is simply gone.)
   useEffect(() => {
-    if (state.k !== 'sent' || !form.current) return;
+    if (!done || !form.current) return;
     let here = true;
     void foldAway(form.current).catch(() => {}).then(() => here && close()); // (folded or not, it goes)
     return () => void (here = false);
-  }, [state.k]);
+  }, [done]);
   /** The words have the focus. */
   const [focused, setFocused] = useState(false);
   /** Writing with a phone's keyboard up: the slip is laid over what of the screen the keyboard leaves. */
@@ -126,12 +134,11 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
     const me = room?.players.find((p) => p.id === room.me);
     const stage = room ? (room.phase === 'playing' ? `round ${room.round}, ${room.game?.status.at ?? 'playing'}` : room.phase === 'results' ? `score sheet, round ${room.round}` : 'lobby') : 'first page';
     try {
-      const context = `${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${await thisDevice()}`;
-      const [res] = await Promise.all([fetch('/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: room?.code, context, image }) }), wait(SENDING_MS)]);
-      const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
-      if (!res.ok || !body?.ok) return setState({ k: 'error', message: body?.message ?? 'That did not go through. Try again in a moment.' });
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); // (on a phone the keyboard goes, and the slip back to its own place, to say it)
-      setState({ k: 'sent' });
+      const context = `${offline ? 'offline · ' : ''}${stage} · ${room?.players.length ?? 0} at the table · ${window.innerWidth}×${window.innerHeight} · ${await thisDevice()}`;
+      // (An offline table's code is nobody's to look up.)
+      const [posted] = await Promise.all([post({ kind, text, name: me?.name ?? (rememberedName() || undefined), room: offline ? undefined : room?.code, context, image }), wait(SENDING_MS)]);
+      if (posted.k !== 'error' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); // (on a phone the keyboard goes, and the slip back to its own place, to say it)
+      setState(posted);
     } catch {
       setState({ k: 'error', message: 'That did not go through. Try again in a moment.' });
     }
@@ -139,7 +146,7 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
 
   return (
     // (Keys typed here are not the game's: Space deals, M mutes.)
-    <form ref={form} className={`slip feedback${pad ? ' writing' : ''}${state.k === 'sent' ? ' sent' : ''}`} style={pad ? ({ left: pad.x, top: pad.y, width: pad.w, '--under': `${Math.max(0, document.documentElement.clientHeight - pad.y - pad.h)}px` } as CSSProperties) : undefined} aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
+    <form ref={form} className={`slip feedback${pad ? ' writing' : ''}${done ? ' sent' : ''}`} style={pad ? ({ left: pad.x, top: pad.y, width: pad.w, '--under': `${Math.max(0, document.documentElement.clientHeight - pad.y - pad.h)}px` } as CSSProperties) : undefined} aria-label="Feedback" onSubmit={submit} onPaste={onPaste} onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onKeyDown={(e) => e.stopPropagation()}>
       <header className="slip-head">
         {back && <Back onClick={back} />}
         <h3>Feedback</h3>
@@ -172,8 +179,8 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
         </p>
       )}
       {/* (Pressed while writing on a phone, it leaves the focus in the words: the keyboard stays up, and the slip where it is, until they are sent.) */}
-      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending' || state.k === 'sent'} onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
-        {state.k === 'sending' ? 'Sending…' : state.k === 'sent' ? 'Sent ✓' : kind === 'bug' ? 'Report bug' : 'Suggest'}
+      <button type="submit" className="go" disabled={!text.trim() || state.k === 'sending' || done} onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
+        {state.k === 'sending' ? 'Sending…' : state.k === 'sent' ? 'Sent ✓' : state.k === 'kept' ? 'Saved ✓' : kind === 'bug' ? 'Report bug' : 'Suggest'}
       </button>
       {/* (After Send, at its side: Tab from the words goes to Send. A screenshot can as well be dragged or pasted anywhere on the slip.) */}
       {image ? (

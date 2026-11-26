@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CLOSE_OVER, CLOSE_UPDATE } from '../shared/protocol';
 import { inPlay, lcg, roomOf } from '../shared/testkit';
+import type { GameState, RoomView } from '../shared/types';
 
 /** Just enough of a browser WebSocket: the test plays the server. */
 class FakeSocket {
@@ -96,7 +97,7 @@ describe('the connection', () => {
     net.create('Ada');
     expect(sockets()).toBe(1);
     expect(last().url).toBe('wss://nertz.example/ws');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
     expect(last().sent).toEqual([]); // nothing goes before it is open
 
     last().open();
@@ -161,7 +162,7 @@ describe('the connection', () => {
     const net = await reload();
     net.join('ABCD', 'Ada');
     last().closed(); // never opened
-    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…' });
+    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', offline: false });
     const waits: number[] = [];
     for (let i = 0; i < 7; i++) {
       const n = sockets();
@@ -232,7 +233,7 @@ describe('the connection', () => {
     old.closed(1005);
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
   });
 
   it('a socket that opens only after the window has moved on says nothing, on it or on the socket that took its place', async () => {
@@ -393,7 +394,7 @@ describe("this window's session", () => {
     vi.useFakeTimers();
     const net = await seated();
     last().closed(CLOSE_OVER, reason);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: reason, offline: false });
     expect(address()).toBe('');
     const before = sockets();
     vi.advanceTimersByTime(10_000);
@@ -406,7 +407,7 @@ describe("this window's session", () => {
     const net = await seated();
     last().closed(CLOSE_OVER, 'You were removed from the table by whoever deals.');
     net.join('ABCD', 'Ada');
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
     last().open();
     expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
     last().deliver(at('ABCD'));
@@ -436,7 +437,7 @@ describe("this window's session", () => {
     net.leave();
     expect(last().sent.at(-1)).toEqual({ t: 'leave' });
     expect(last().shut).toBe(true);
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
     expect(address()).toBe('');
     const before = sockets();
     await reload();
@@ -449,7 +450,7 @@ describe("this window's session", () => {
     last().closed();
     expect(net.current().status).toBe('reconnecting');
     net.leave();
-    expect(net.current()).toEqual({ status: 'idle', room: null, error: null });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
     net.join('WXYZ', 'Ada');
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
@@ -468,6 +469,557 @@ describe("this window's session", () => {
     const before = sockets();
     await reload();
     expect(sockets()).toBe(before);
+  });
+});
+
+describe('a window that plays offline', () => {
+  /** A page whose settings say offline: its table is its own (client/local.ts), told of only later. */
+  async function offline(): Promise<{ net: typeof import('./net'); prefs: typeof import('./prefs') }> {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    prefs.setPrefs({ offline: true });
+    return { net, prefs };
+  }
+  const told = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+
+  it('a page loaded with the settings saying offline asks the server nothing, not even its boot', async () => {
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: () => {} });
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const net = await reload();
+    expect(net.current().offline).toBe(true);
+    expect(sockets()).toBe(0);
+  });
+
+  it('is offline as its settings say while it is at no table', async () => {
+    const { net, prefs } = await offline();
+    expect(net.current()).toMatchObject({ status: 'idle', offline: true });
+    prefs.setPrefs({ offline: false });
+    expect(net.current().offline).toBe(false);
+  });
+
+  it('opens a table of its own with no socket: seated at once among bots, with nothing in the address and nothing kept for a reload', async () => {
+    const { net } = await offline();
+    net.create('Ada');
+    await told();
+    expect(sockets()).toBe(0);
+    const { status, room, error } = net.current();
+    expect({ status, error }).toEqual({ status: 'online', error: null });
+    expect(room!.players.map((p) => p.bot ?? p.name)).toEqual(['Ada', 'medium', 'medium', 'medium']);
+    expect(address()).toBe('');
+    expect(storage.has('nertz.seat')).toBe(false);
+    // What it does at the table goes to the table: another bot, and the deal.
+    net.addBot('fast');
+    net.start();
+    await told();
+    expect(net.current().room).toMatchObject({ phase: 'playing', round: 1 });
+    expect(net.current().room!.players).toHaveLength(5);
+    net.leave();
+  });
+
+  it('a table is offline or not as it was opened, whatever the settings say since; leaving it, the window is as they say', async () => {
+    const { net, prefs } = await offline();
+    net.create('Ada');
+    await told();
+    prefs.setPrefs({ offline: false });
+    expect(net.current()).toMatchObject({ status: 'online', offline: true });
+    net.leave();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
+    expect(sockets()).toBe(0);
+
+    net.create('Ada');
+    last().open();
+    last().deliver(at('ABCD'));
+    prefs.setPrefs({ offline: true });
+    expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' }, offline: false });
+    net.leave();
+    expect(net.current().offline).toBe(true);
+  });
+
+  it('Offline switched on while a new table cannot be reached: the window gives that table up, and is offline at once', async () => {
+    vi.useFakeTimers();
+    const net = await reload();
+    const prefs = await import('./prefs');
+    net.create('Ada');
+    last().closed(); // no server to be had
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(net.current()).toMatchObject({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', offline: false });
+    const tried = sockets();
+    prefs.setPrefs({ offline: true });
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets()).toBe(tried); // (and it has stopped trying)
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { phase: 'lobby' } });
+    expect(sockets()).toBe(tried);
+    net.leave();
+  });
+
+  it('only the switch itself gives a table up: some other setting changed while on the way to one changes nothing', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    net.join('WXYZ', 'Ada');
+    prefs.setPrefs({ muted: true });
+    expect(net.current()).toMatchObject({ status: 'connecting', offline: false });
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'WXYZ' });
+  });
+
+  it('a table that is there already is the server\'s, whatever the settings say: a reload sits back down at it, and one come to by its code is come to', async () => {
+    const net = await seated();
+    const prefs = await import('./prefs');
+    prefs.setPrefs({ offline: true }); // (another window of this browser switched it on)
+    expect(net.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' }, offline: false });
+    // The reload: the page's script anew, with the settings as they are kept.
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const before = sockets();
+    const again = await reload();
+    expect((await import('./prefs')).getPrefs().offline).toBe(true);
+    expect(sockets()).toBe(before + 1);
+    expect(again.current()).toMatchObject({ status: 'rejoining', offline: false });
+    last().open();
+    expect(last().sent[0]).toMatchObject({ t: 'join', room: 'ABCD', name: 'Ada' });
+    last().deliver(at('ABCD'));
+    expect(again.current()).toMatchObject({ status: 'online', room: { code: 'ABCD' }, offline: false, error: null });
+    expect(address()).toBe('?room=ABCD');
+    again.leave();
+    expect(again.current().offline).toBe(true);
+    // Come to by its code (a link someone sent), with Offline on: the server's table still.
+    again.join('WXYZ', 'Ada');
+    expect(sockets()).toBe(before + 2);
+    expect(again.current()).toMatchObject({ status: 'connecting', offline: false });
+  });
+
+  it('Offline pressed while the table a reload went back to cannot be reached, the settings saying offline already: the window gives the table up, and is offline', async () => {
+    vi.useFakeTimers();
+    // The page loads as a window that was at ABCD left it, with the settings as they are kept.
+    storage.set('nertz.seat', JSON.stringify({ room: 'ABCD', name: 'Ada' }));
+    page.search = '?room=ABCD';
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const net = await reload();
+    expect(net.current()).toMatchObject({ status: 'rejoining', offline: false });
+    const prefs = await import('./prefs');
+    last().closed(); // no server to be had
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(net.current()).toMatchObject({ status: 'reconnecting', room: null, offline: false });
+    const tried = sockets();
+    prefs.setPrefs({ offline: true }); // (what the settings said already: the window did not have it so)
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+    expect(address()).toBe('');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets()).toBe(tried);
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { phase: 'lobby' } });
+    net.leave();
+  });
+
+  it('there is no standing up from a table of its own, to watch or for now; at one others can come to, there is', async () => {
+    vi.useFakeTimers();
+    const { net, prefs } = await offline();
+    const actions = await import('./actions');
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    net.start();
+    await vi.advanceTimersByTimeAsync(5000);
+    net.go();
+    await vi.advanceTimersByTimeAsync(5000);
+    const room = net.current().room!;
+    expect(room.game!.status.at).toBe('play');
+    expect(net.reach().others).toBe(false);
+    expect(actions.standing(room)).toBeNull();
+    expect(actions.tableActions(room).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'leave']);
+    // (And the lone human's vote is not counted out loud.)
+    expect(actions.tableActions(room).find((a) => a.id === 'vote')).toEqual({ id: 'vote', label: 'End round', on: false });
+    net.leave();
+    prefs.setPrefs({ offline: false });
+    expect(net.reach().others).toBe(true);
+    expect(actions.tableActions(room).map((a) => a.id)).toContain('stand');
+  });
+
+  it("leaves someone's link in the address alone, and a reload lands at home", async () => {
+    page.search = '?room=WXYZ';
+    const { net } = await offline();
+    net.create('Ada');
+    await told();
+    expect(address()).toBe('?room=WXYZ');
+    net.leave();
+    expect(address()).toBe('?room=WXYZ');
+    await reload();
+    expect(sockets()).toBe(0);
+  });
+
+  it('its line never drops: however long the window was frozen in the background, and whatever it is told of the network, the table is there', async () => {
+    vi.useFakeTimers();
+    const listeners = new Map<string, () => void>();
+    const listen = (type: string, fn: () => void) => void listeners.set(type, fn);
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen });
+    const { net } = await offline();
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    const code = net.current().room!.code;
+    const before = sockets(); // (the page asked the server's boot as it loaded, before the settings said offline)
+    vi.setSystemTime(Date.now() + 60 * 60_000); // (frozen: the clock went on, and no timer ran)
+    await vi.advanceTimersByTimeAsync(60_000);
+    listeners.get('online')!();
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(net.current()).toMatchObject({ status: 'online', error: null, room: { code } });
+    expect(sockets()).toBe(before);
+    net.leave();
+  });
+
+  it('a round at its table is paused when the window is left (another tab, the screen off), and waits to be resumed; a table others are at is not', async () => {
+    vi.useFakeTimers();
+    const listeners = new Map<string, () => void>();
+    const listen = (type: string, fn: () => void) => void listeners.set(type, fn);
+    const doc = { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen };
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', doc);
+    const { net, prefs } = await offline();
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    net.start();
+    await vi.advanceTimersByTimeAsync(5000);
+    net.go();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(net.current().room).toMatchObject({ phase: 'playing', paused: null, game: { status: { at: 'play' } } });
+    doc.visibilityState = 'hidden';
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(0);
+    const me = net.current().room!.me;
+    expect(net.current().room!.paused).toEqual({ by: 'player', id: me });
+    const stood = JSON.stringify(net.current().room!.game);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    doc.visibilityState = 'visible';
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(JSON.stringify(net.current().room!.game)).toBe(stood); // (no bot played a card meanwhile)
+    net.pause(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current().room!.paused).toBeNull();
+    net.leave();
+
+    // Left before the round is live (the cards dealt, "1, 2, 3" being said): paused as soon as it is.
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    net.start();
+    await vi.advanceTimersByTimeAsync(5000);
+    net.go();
+    doc.visibilityState = 'hidden';
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current().room).toMatchObject({ paused: null, game: { status: { at: 'countdown' } } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(net.current().room).toMatchObject({ paused: { by: 'player', id: net.current().room!.me }, game: { status: { at: 'play' } } });
+    const lay = JSON.stringify(net.current().room!.game);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(JSON.stringify(net.current().room!.game)).toBe(lay);
+    doc.visibilityState = 'visible';
+    listeners.get('visibilitychange')!();
+    net.leave();
+
+    prefs.setPrefs({ offline: false });
+    net.create('Ada');
+    last().open();
+    last().deliver(at('ABCD'));
+    const before = last().sent.length;
+    doc.visibilityState = 'hidden';
+    listeners.get('visibilitychange')!();
+    expect(last().sent.slice(before)).toEqual([]);
+  });
+});
+
+describe('Play offline and Play online, in the menu', () => {
+  const told = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+  const ids = (actions: typeof import('./actions'), net: typeof import('./net')) => actions.actionsAt(net.current().room).map((a) => a.id);
+
+  it('at no table there is the one that is not so now, and it changes the settings', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    const actions = await import('./actions');
+    expect(ids(actions, net)).toEqual(['offline']);
+    actions.press('offline', null);
+    expect(prefs.getPrefs().offline).toBe(true);
+    expect(net.current()).toMatchObject({ status: 'idle', offline: true });
+    expect(ids(actions, net)).toEqual(['online']);
+    actions.press('online', null);
+    expect(prefs.getPrefs().offline).toBe(false);
+    expect(net.current()).toMatchObject({ status: 'idle', offline: false });
+  });
+
+  it('Play online is not open while the browser has no network: there, not to be pressed, and open again once it is back; Play offline always is', async () => {
+    const heard = new Map<string, () => void>();
+    const browser = { onLine: false };
+    vi.stubGlobal('navigator', browser);
+    const listen = (e: string, l: () => void) => void heard.set(e, l);
+    vi.stubGlobal('window', { addEventListener: listen });
+    vi.stubGlobal('document', { visibilityState: 'visible', documentElement: { classList: { toggle: () => {} } }, querySelector: () => null, addEventListener: listen });
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const net = await reload();
+    const prefs = await import('./prefs');
+    const actions = await import('./actions');
+    expect(net.connected()).toBe(false);
+    expect(actions.actionsAt(null)).toEqual([{ id: 'online', label: 'Play online', coming: true, why: 'No connection' }]);
+    expect(actions.openAction(null, 'online')).toBeUndefined();
+    actions.press('online', null);
+    expect(prefs.getPrefs().offline).toBe(true);
+    expect(net.current()).toMatchObject({ status: 'idle', offline: true });
+
+    // The same in the lobby of a table of the window's own.
+    net.create('Ada');
+    await told();
+    expect(actions.actionsAt(net.current().room).find((a) => a.id === 'online')).toMatchObject({ coming: true });
+    actions.press('online', net.current().room);
+    expect(net.current()).toMatchObject({ offline: true, room: { phase: 'lobby' } });
+    expect(sockets()).toBe(0);
+    net.leave();
+
+    // The network is back: the browser says so, and it is open.
+    browser.onLine = true;
+    heard.get('online')!();
+    expect(net.connected()).toBe(true);
+    expect(actions.actionsAt(null)).toEqual([{ id: 'online', label: 'Play online' }]);
+    actions.press('online', null);
+    expect(prefs.getPrefs().offline).toBe(false);
+
+    // And gone again: Play offline is what a window online is offered, and is open whatever the network.
+    browser.onLine = false;
+    heard.get('offline')!();
+    expect(net.connected()).toBe(false);
+    expect(actions.actionsAt(null)).toEqual([{ id: 'offline', label: 'Play offline' }]);
+    actions.press('offline', null);
+    expect(prefs.getPrefs().offline).toBe(true);
+  });
+
+  it('Play offline where a new table cannot be reached gives that table up', async () => {
+    vi.useFakeTimers();
+    const net = await reload();
+    net.create('Ada');
+    expect(net.unreachable(net.current())).toBe(false); // (still asking)
+    last().closed();
+    expect(net.unreachable(net.current())).toBe(true);
+    net.playOffline();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+    expect(net.unreachable(net.current())).toBe(false);
+  });
+
+  it('Play online in the lobby of an offline table: that table is left, and the server asked for one with the same bots; once it has dealt there is neither', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    const actions = await import('./actions');
+    prefs.setPrefs({ offline: true });
+    net.create('Ada');
+    await told();
+    net.removeBot(net.current().room!.players.find((p) => p.bot)!.seat!);
+    net.addBot('fast');
+    await told();
+    const bots = net.current().room!.players.filter((p) => p.bot);
+    net.nameBot(bots[0]!.seat!, 'Bot Zed');
+    net.botBack(bots[1]!.seat!, { k: 'own', back: 'plain' });
+    await told();
+    expect(ids(actions, net)).toEqual(['online', 'leave']);
+    const company = net.current().room!.players.flatMap((p) => (p.bot ? [{ t: 'addBot', level: p.bot, name: p.name, backs: p.look.backs }] : []));
+    expect(company.map((b) => b.level).sort()).toEqual(['fast', 'medium', 'medium']);
+    expect(company.map((b) => b.name)).toContain('Bot Zed');
+
+    actions.press('online', net.current().room);
+    expect(prefs.getPrefs().offline).toBe(false);
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
+    expect(sockets()).toBe(1);
+    last().open();
+    expect(last().sent.filter((m) => m.t !== 'deck')).toEqual([expect.objectContaining({ t: 'create', name: 'Ada' }), ...company]);
+    last().deliver(at('ABCD'));
+    expect(net.current()).toMatchObject({ status: 'online', offline: false, room: { code: 'ABCD' } });
+    // A line that drops and comes back sits down again: nobody is seated twice.
+    last().closed();
+    net.leave();
+
+    // Dealt, an offline table has neither; nor on its score sheet.
+    prefs.setPrefs({ offline: true });
+    net.create('Ada');
+    await told();
+    net.start();
+    await told();
+    expect(net.current().room).toMatchObject({ phase: 'playing' });
+    expect(ids(actions, net)).not.toContain('online');
+    expect(ids(actions, net)).not.toContain('offline');
+    const before = sockets();
+    net.playOnline();
+    await told();
+    expect(net.current()).toMatchObject({ offline: true, room: { phase: 'playing' } });
+    expect(sockets()).toBe(before);
+    expect(net.returnable({ ...net.current().room!, phase: 'results' })).toBe(false);
+    net.leave();
+  });
+});
+
+describe('a table taken offline', () => {
+  const told = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+  /** A snapshot of the table ABCD, in play, as seat 0 sees it: everyone else at it a bot. */
+  const withBots = (rev = 0, extra: Partial<RoomView> = {}) => {
+    const room = roomOf(inPlay([0, 1, 2], lcg(8)), 0, { clock: { ms: 4000, running: true }, ...extra });
+    return { t: 'state', rev, ack: -1, room: { ...room, players: room.players.map((p) => (p.id === 0 ? { ...p, name: 'Ada' } : { ...p, name: `Bot ${p.id}`, bot: 'fast' as const })) } };
+  };
+  /** A window at a table of the server's where nobody else is but bots. */
+  async function alone(extra: Partial<RoomView> = {}) {
+    const before = sockets();
+    const net = await reload();
+    if (sockets() > before) FakeSocket.all.pop()!.deliver({ t: 'welcome', boot: BOOT });
+    const prefs = await import('./prefs');
+    net.create('Ada');
+    last().open();
+    const snapshot = withBots(0, extra);
+    last().deliver(snapshot);
+    expect(net.current()).toMatchObject({ status: 'online', offline: false });
+    return { net, prefs, was: snapshot.room, token: last().sent[0]!.token as string };
+  }
+  const game = (net: typeof import('./net')): GameState => net.current().room!.game!;
+
+  it('with the line up, the server is asked for it and hands it over: the window plays on at the same table, its own now, and the settings say Offline', async () => {
+    const { net, prefs, was, token } = await alone();
+    const { rebuild } = await import('./rebuild');
+    const wire = last();
+    expect(net.portable(net.current().room)).toBe(true);
+    const actions = await import('./actions');
+    expect(actions.tableActions(net.current().room!).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'stand', 'offline', 'leave']);
+    actions.press('offline', net.current().room!); // (the menu's: done at once, not asked about)
+    expect(wire.sent.at(-1)).toEqual({ t: 'carry' });
+    // Until the server answers, nothing has changed.
+    expect(net.current()).toMatchObject({ status: 'online', offline: false });
+    expect(prefs.getPrefs().offline).toBe(false);
+    expect(wire.shut).toBe(false);
+    const statuses: string[] = [];
+    net.subscribe(() => statuses.push(net.current().status));
+    wire.deliver({ t: 'carried', kept: rebuild(was, token, lcg(2)) });
+    expect(net.current()).toMatchObject({ offline: true, room: { code: 'ABCD' } }); // (the table stays on screen meanwhile)
+    await told();
+    expect(net.current()).toMatchObject({ status: 'online', error: null, offline: true, room: { code: 'ABCD', phase: 'playing', round: 1, me: 0, seat: 0, paused: null } });
+    expect(net.current().room!.players.map((p) => [p.name, p.bot ?? null, p.connected])).toEqual([['Ada', null, true], ['Bot 1', 'fast', true], ['Bot 2', 'fast', true]]);
+    expect(game(net).slots).toEqual(was.game!.slots);
+    expect(game(net).players.map((p) => p.work.map((w) => w.cards.at(-1)))).toEqual(was.game!.players.map((p) => p.work.map((w) => w.cards.at(-1))));
+    expect(statuses).not.toContain('reconnecting');
+    expect(prefs.getPrefs().offline).toBe(true);
+    expect(net.reach()).toEqual({ others: false, server: false });
+    expect(net.portable(net.current().room)).toBe(false);
+    expect(actions.tableActions(net.current().room!).map((a) => a.id)).toEqual(['pause', 'vote', 'redeal', 'leave']);
+    // The server's table is done with: its socket shut, nothing of it for a reload, and no other socket ever.
+    expect(wire.shut).toBe(true);
+    expect(address()).toBe('');
+    expect(storage.has('nertz.seat')).toBe(false);
+    const had = sockets();
+    // What the window does now goes to its own table.
+    net.pause(true);
+    await told();
+    expect(net.current().room!.paused).toEqual({ by: 'player', id: 0 });
+    expect(wire.sent.at(-1)).toEqual({ t: 'carry' });
+    // There is no going back at the table: Online pressed, it is offline until it is left.
+    prefs.setPrefs({ offline: false });
+    await told();
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { code: 'ABCD' } });
+    net.leave();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: false });
+    expect(sockets()).toBe(had);
+  });
+
+  it('Offline switched on in the settings takes such a table along; one that others are at stays the server\'s, as does one the server will not hand over', async () => {
+    const { net, prefs } = await alone();
+    prefs.setPrefs({ offline: true });
+    expect(last().sent.at(-1)).toEqual({ t: 'carry' });
+    expect(net.current()).toMatchObject({ status: 'online', offline: false, room: { code: 'ABCD' } });
+    // (Someone came meanwhile: the server says nothing, and the table goes on as it was.)
+    last().deliver(at('ABCD', 1));
+    await told();
+    expect(net.current()).toMatchObject({ status: 'online', offline: false, room: { code: 'ABCD' } });
+    expect(net.portable(net.current().room)).toBe(false);
+    const said = last().sent.length;
+    net.takeOffline();
+    prefs.setPrefs({ offline: false });
+    prefs.setPrefs({ offline: true });
+    expect(last().sent).toHaveLength(said);
+    expect(last().shut).toBe(false);
+  });
+
+  it('with the line lost, the table is put back together from the last snapshot: what was in sight is where it was, what was sent and not answered is not in it, and the window stops trying the server', async () => {
+    vi.useFakeTimers();
+    const { net, prefs, was } = await alone();
+    expect(net.send({ k: 'draw' })).toBe(true); // (never answered)
+    expect(game(net).players[0]!.draw).not.toBeNull();
+    last().closed();
+    expect(net.current()).toMatchObject({ status: 'reconnecting', offline: false });
+    expect(net.portable(net.current().room)).toBe(true);
+    await vi.advanceTimersByTimeAsync(300);
+    const tried = sockets();
+    last().closed(); // (still no server)
+    const statuses: string[] = [];
+    net.subscribe(() => statuses.push(net.current().status));
+    net.takeOffline();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(statuses[0]).toBe('connecting'); // (never `online` straight out of `reconnecting`: the line is not back)
+    expect(net.current()).toMatchObject({ status: 'online', error: null, offline: true, room: { code: 'ABCD', me: 0, seat: 0, paused: null, clock: { running: true } } });
+    expect(prefs.getPrefs().offline).toBe(true);
+    const mine = game(net).players[0]!;
+    expect(mine.draw).toBeNull();
+    expect(mine.stock.map((c) => c.id)).toEqual(was.game!.players[0]!.stock.map((c) => c.id));
+    expect(game(net).players.map((p) => [p.nertz.at(-1), p.work.map((w) => w.cards.at(-1))])).toEqual(was.game!.players.map((p) => [p.nertz.at(-1), p.work.map((w) => w.cards.at(-1))]));
+    expect(address()).toBe('');
+    expect(storage.has('nertz.seat')).toBe(false);
+    // Its own table: a card can be played at once, and the bots play theirs.
+    expect(net.send({ k: 'draw' })).toBe(true);
+    const lay = JSON.stringify(game(net).players.slice(1));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(JSON.stringify(game(net).players.slice(1))).not.toBe(lay);
+    expect(sockets()).toBe(tried);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true });
+    net.leave();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+  });
+
+  it('with the server stopped for an update, likewise: the round it stopped goes on here, and the page is not loaded anew for it', async () => {
+    vi.useFakeTimers();
+    const { net } = await alone();
+    last().deliver(withBots(1, { paused: { by: 'update', done: false }, clock: { ms: 5000, running: false } }));
+    last().closed(CLOSE_UPDATE);
+    expect(net.current()).toMatchObject({ status: 'updating', room: { paused: { by: 'update', done: false } } });
+    expect(net.portable(net.current().room)).toBe(true);
+    net.takeOffline();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { code: 'ABCD', paused: null, clock: { running: true } } });
+    expect(page.reload).not.toHaveBeenCalled();
+    net.leave();
+  });
+
+  it('a round you had paused yourself is still paused by you; and a table with anyone else at it is not taken, line or no line', async () => {
+    vi.useFakeTimers();
+    const { net } = await alone();
+    last().deliver(withBots(1, { paused: { by: 'player', id: 0 }, clock: { ms: 5000, running: false } }));
+    last().closed();
+    net.takeOffline();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { paused: { by: 'player', id: 0 }, clock: { ms: 5000, running: false } } });
+    net.leave();
+
+    const prefs = await import('./prefs');
+    prefs.setPrefs({ offline: false });
+    net.create('Ada');
+    last().open();
+    last().deliver(at('ABCD'));
+    last().closed();
+    expect(net.portable(net.current().room)).toBe(false);
+    net.takeOffline();
+    prefs.setPrefs({ offline: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'reconnecting', offline: false, room: { code: 'ABCD' } });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(last().sent).toEqual([]); // (still trying the server)
+    net.leave();
   });
 });
 

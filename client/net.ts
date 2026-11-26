@@ -11,14 +11,18 @@
 // A draw comes as one step, its group on the waste and the time it was made.
 // What is on screen deals it out card by card on this window's own clock
 // (`dealOut`, `dealtBy`): no snapshot sets the pace.
-import { calm, getPrefs, lookOf, watchPrefs } from './prefs';
+import { calm, getPrefs, lookOf, setPrefs, watchPrefs } from './prefs';
+import { wire, type Line } from './line';
+import { local, type Carried } from './local';
+import { rebuild } from './rebuild';
 import { MOTION } from './layout';
 import { useSyncExternalStore } from 'react';
-import { applyIntent, covered, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
+import { alone, applyIntent, covered, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, CLOSE_UPDATE, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, hasSeat, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
+import type { Kept } from '../server/room';
 
 // ---------------------------------------------------------------- pure reconciliation
 
@@ -29,7 +33,7 @@ export interface Pending {
   at: number;
 }
 
-/** Everything that belongs to ONE websocket connection. A new socket starts from `freshSync`. */
+/** Everything that belongs to ONE connection (a `Line`). A new one starts from `freshSync`. */
 export interface Sync {
   /** Highest snapshot rev seen on this connection. */
   rev: number;
@@ -219,20 +223,36 @@ export interface NetState {
   /** Predicted room, or null when not in one. */
   room: RoomView | null;
   error: string | null;
+  /**
+   * This window plays offline: its tables are its own (client/local.ts), with bots and nobody else, and nothing is
+   * asked of the game server. At no table it is what the settings say (`Prefs.offline`); at one, whether the table is
+   * the window's own: opened so, or taken offline since (`carry`), until it is left. Never set: reckoned (`offline`)
+   * each time the state is.
+   */
+  offline: boolean;
 }
 
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null };
-const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
  * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
+ * `local`: the table is this window's own, and so is its line: the settings said offline as the session began, or the
+ * table was taken offline since (`carry`, the one place that happens). Never the other way: once local, until it ends.
+ * `company`: the bots a table it asks the server to open is opened with (`playOnline`).
  */
-let session: { room: string | null; name: string } | null = null;
-let socket: WebSocket | null = null;
+let session: { room: string | null; name: string; local: boolean; company?: readonly Bot[] } | null = null;
+/** A bot as it sits at one table, to be seated so at another. */
+type Bot = Pick<Extract<ClientMsg, { t: 'addBot' }>, 'level' | 'name' | 'backs'>;
+/** `NetState.offline` as it is now: the session's way, and with none the settings'. */
+const offline = (): boolean => session?.local ?? getPrefs().offline;
+let state: NetState = { status: 'idle', room: null, error: null, offline: offline() };
+const listeners = new Set<() => void>();
+let socket: Line | null = null;
 let sync: Sync = freshSync;
+/** The last snapshot of the session's table, whichever line brought it: what is left of the table when the line is lost (`takeOffline`). */
+let last: RoomView | null = null;
 let dealing: Dealing = freshDealing;
 let step: ReturnType<typeof setTimeout> | undefined;
 let attempts = 0;
@@ -244,8 +264,8 @@ let watch: ReturnType<typeof setInterval> | undefined;
 const PROBE_MS = 3_000;
 let memoryToken: string | undefined;
 
-function set(next: Partial<NetState>): void {
-  state = { ...state, ...next };
+function set(next: Partial<Omit<NetState, 'offline'>> = {}): void {
+  state = { ...state, ...next, offline: offline() };
   for (const l of listeners) l();
 }
 
@@ -253,7 +273,7 @@ function set(next: Partial<NetState>): void {
  * Puts the room on screen as it is now, each group in flight dealt out as far as this window has it (`dealOut`). And
  * again when its next card is due, or it lands: the pace is this window's own, whenever the snapshots come.
  */
-function show(next: Partial<NetState> = {}): void {
+function show(next: Partial<Omit<NetState, 'offline'>> = {}): void {
   clearTimeout(step);
   const out = dealOut(dealing, sync);
   dealing = out.dealing;
@@ -305,10 +325,22 @@ function tell(): void {
   if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
+// Offline or not is the settings' to say while this window is at no table (`NetState.offline`): where they say
+// otherwise than the window has it, it goes by them. On its way to a table it has not got to (a server that cannot be
+// reached, which is when offline is wanted; or one it was at before a reload) it gives that up for what they say.
+// At a table, Offline switched on (in another window: here it is `playOffline`) takes the table along if it can be
+// (`takeOffline`); otherwise it is what it is until it is left.
+watchPrefs(() => {
+  if (getPrefs().offline === state.offline) return;
+  if (state.room) return void (getPrefs().offline && takeOffline());
+  if (session) return stop(null);
+  set();
+  peek(); // (back online: the server may have been put up anew meanwhile)
+});
 
-/** Sends one message if the socket is open. Game intents go through `send` instead. */
+/** Sends one message if the line is open. Game intents go through `send` instead. */
 export function post(msg: ClientMsg): boolean {
-  if (socket?.readyState !== WebSocket.OPEN) return false;
+  if (!socket?.open) return false;
   socket.send(JSON.stringify(msg));
   return true;
 }
@@ -336,6 +368,7 @@ function setUpInUrl(): SetUp | undefined {
  * What survives a reload: from the window's first snapshot of a table until its session ends, sessionStorage says
  * where it sits and as whom, and the address names the table (a link to share). Written and cleared here alone. Only
  * `room` is the session's: anything else in the address (a set-up deal) stays as it was.
+ * Not for a table of this window's own (`session.local`): it is gone with the page, and nobody else can come to it.
  */
 function keep(seat: { room: string; name: string } | null): void {
   try {
@@ -368,12 +401,13 @@ export function resume(): void {
 function stop(error: string | null): void {
   clearTimeout(retry);
   clearInterval(watch);
+  if (!session?.local) keep(null);
   session = null;
-  keep(null);
   const old = socket;
   socket = null;
   old?.close();
   sync = freshSync;
+  last = null;
   dealing = freshDealing;
   timed(null);
   show({ status: 'idle', error });
@@ -397,9 +431,9 @@ function booted(id: string): void {
   stale ||= id !== boot;
   renew();
 }
-/** A window at no table holds no socket: it opens one only to hear the server's boot, and closes it on the answer. */
+/** A window at no table holds no socket: it opens one only to hear the server's boot, and closes it on the answer. (Offline it asks nothing.) */
 function peek(): void {
-  if (session || typeof document === 'undefined') return;
+  if (session || typeof document === 'undefined' || !reach().server) return;
   const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
   ws.onmessage = (e) => {
     ws.close();
@@ -411,8 +445,22 @@ function peek(): void {
     }
   };
 }
+/**
+ * Gone from in front (another tab, the screen off), the round at a table of this window's own is paused: there is
+ * nobody else it is played on for, and the bots would play on. Asked as the window goes, and of every snapshot that
+ * comes while it is gone: a round not yet live then (its cards being dealt, "1, 2, 3") is paused as soon as it is.
+ */
+function rest(): void {
+  const room = state.room;
+  if (!session?.local || typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
+  if (room?.game && isLive(room.game) && !room.paused) pause(true);
+}
 // Back in front: at a table, is the line still up (`probe`)? At none, is this still the server this page was served by?
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && (probe(), peek()));
+if (typeof document !== 'undefined')
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') (probe(), peek());
+    else rest();
+  });
 
 const social = (msg: SocialServerMsg): void => {
   for (const fn of socialListeners) fn(msg);
@@ -425,16 +473,19 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     const updated = state.status === 'updating';
     if (session && !state.room) {
       session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
-      keep({ room: session.room, name: session.name });
+      if (!session.local) keep({ room: session.room, name: session.name });
     }
     sync = onSnapshot(sync, msg);
+    last = sync.server;
     show({ status: 'online', error: null });
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
+    rest();
     if (updated) renew(true);
   },
   welcome: (msg) => booted(msg.boot),
+  carried: (msg) => carry(msg.kept),
   error: (msg) => set({ error: msg.message }),
   snipe: (msg) => {
     for (const fn of snipeListeners) fn(msg);
@@ -451,37 +502,38 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
   },
 };
 
-function connect(): void {
+function connect(carried?: Carried): void {
   if (!session) return;
-  const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/ws`);
-  socket = ws;
-  heard = Date.now();
-  sync = freshSync; // seq, pending and rev all belong to the connection
-  dealing = { ...dealing, looking: false };
-  ws.onopen = () => {
-    if (socket === ws && session) {
+  const line: Line = (session.local ? local(carried) : wire)({
+    open: () => {
+      if (socket !== line || !session) return;
       post(hello(session.room, session.name, token()));
+      if (!session.room) for (const bot of session.company ?? []) post({ t: 'addBot', ...bot });
       toldDeck = null;
       tell(); // my cards' faces and backs, for everyone at the table
       if (getPrefs().ping) ping(); // (and the time to the server, at once rather than at the next look)
-    }
-  };
-  ws.onmessage = (e) => {
-    if (socket !== ws) return;
-    heard = Date.now();
-    let msg: ServerMsg;
-    try {
-      msg = JSON.parse(String(e.data)) as ServerMsg;
-    } catch {
-      return;
-    }
-    if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
-  };
-  ws.onclose = (e) => {
-    if (socket !== ws) return;
-    if (e.code === CLOSE_OVER) return stop(e.reason);
-    dropped(e.code === CLOSE_UPDATE);
-  };
+    },
+    message: (text) => {
+      if (socket !== line) return;
+      heard = Date.now();
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(text) as ServerMsg;
+      } catch {
+        return;
+      }
+      if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
+    },
+    close: (code, reason) => {
+      if (socket !== line) return;
+      if (code === CLOSE_OVER) return stop(reason);
+      dropped(code === CLOSE_UPDATE);
+    },
+  });
+  socket = line;
+  heard = Date.now();
+  sync = freshSync; // seq, pending and rev all belong to the connection
+  dealing = { ...dealing, looking: false };
 }
 
 /**
@@ -492,10 +544,7 @@ function connect(): void {
 function dropped(update = false): void {
   const old = socket;
   socket = null;
-  if (old) {
-    old.onopen = old.onmessage = old.onclose = null; // (a silent socket may say it closed much later, or never)
-    old.close();
-  }
+  old?.close();
   // Unacknowledged intents died with the connection: show the plain snapshot until we are back, its groups in flight
   // as far as this window has dealt them (one that is down here stays down), and no further.
   sync = { ...sync, pending: [] };
@@ -505,7 +554,74 @@ function dropped(update = false): void {
   else set({ status, error: state.room ? null : 'Cannot reach the game server. Still trying…' });
   clearTimeout(step);
   clearTimeout(retry);
-  retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempts++));
+  retry = setTimeout(() => connect(), Math.min(5000, 250 * 2 ** attempts++));
+}
+
+/**
+ * Play offline, wherever it is pressed (actions.ts, and each card that says the server cannot be reached). At a table:
+ * the table goes offline with you, if it can (`takeOffline`). At none: the settings say Offline, which also gives up a
+ * table the window was on its way to (the `watchPrefs` above).
+ */
+export function playOffline(): void {
+  if (state.room) takeOffline();
+  else setPrefs({ offline: true });
+}
+
+/** Can the table `room` be left for one like it on the server (`playOnline`)? One of this window's own, before its first deal: a game begun offline stays offline. */
+export const returnable = (room: RoomView | null, r: Reach = reach()): boolean => !r.others && room?.phase === 'lobby';
+
+/**
+ * Play online. At no table: the settings say so. In the lobby of a table of this window's own (`returnable`): that
+ * table is left, the settings say Online, and the server is asked for a new one under the same name, with the same
+ * bots (how quick, what called, their backs). The one way from offline to online at a table; there is none once it
+ * has dealt.
+ */
+export function playOnline(): void {
+  const room = state.room;
+  if (!room) return setPrefs({ offline: false });
+  if (!session || !returnable(room)) return;
+  const company = room.players.flatMap((p) => (p.bot && hasSeat(p) ? [{ level: p.bot, name: p.name, backs: p.look.backs }] : []));
+  const { name } = session;
+  setPrefs({ offline: false });
+  open(null, name, 'connecting', false, company);
+}
+
+/** At no table, and the server cannot be reached for the one asked for (a new one, or one come to by its code). */
+export const unreachable = (net: Pick<NetState, 'room' | 'status'>): boolean => !net.room && (net.status === 'reconnecting' || net.status === 'updating');
+
+/** Can the table `room` be taken offline (`takeOffline`)? One others could come to (`Reach`), with nobody in the room but you and bots. */
+export const portable = (room: RoomView | null, r: Reach = reach()): boolean => r.others && !!room && alone(room);
+
+/**
+ * Takes the table this window is at offline, to be played on in the window itself, if it can be (`portable`). While the
+ * line is up the server is asked for it (`carry`), and hands it over exactly as it is (`carried`), or, someone having
+ * come meanwhile, does not. With the line down (reconnecting, or the server stopped for an update) the table is put
+ * back together from the last snapshot this window had (client/rebuild.ts): what it had sent and not heard back about
+ * is not in it.
+ */
+export function takeOffline(): void {
+  if (!session || session.local || !last || !alone(last)) return;
+  if (state.status === 'online' && post({ t: 'carry' })) return;
+  carry(rebuild(last, token()));
+}
+
+/**
+ * The one place a session becomes the window's own: its table, as `kept`, is behind a line of this window's from here
+ * on (client/local.ts), and it sits back down there as who it was. Nothing of it is for a reload any more, the settings
+ * say Offline, and it never goes back: it is an offline table like one opened so, its rounds on nobody's record.
+ */
+function carry(kept: Kept): void {
+  if (!session || session.local) return;
+  const paused = last?.paused?.by === 'player';
+  clearTimeout(retry);
+  socket?.close();
+  socket = null;
+  timed(null);
+  keep(null);
+  session = { room: kept.code, name: session.name, local: true };
+  set({ status: 'connecting', error: null }); // (not `online` out of `reconnecting`: the line is not back, the table is here)
+  setPrefs({ offline: true });
+  connect({ kept, paused });
 }
 
 /**
@@ -514,6 +630,7 @@ function dropped(update = false): void {
  */
 function check(): void {
   if (!session || !socket) return; // (no socket: a reconnect is on its way)
+  if (session.local) return; // (a table of this window's own has no line to die: quiet for however long, a window frozen in the background, it is there)
   const quiet = Date.now() - heard;
   if (quiet > SILENT_MS) return dropped();
   if (quiet >= PING_MS || getPrefs().ping) ping();
@@ -524,23 +641,24 @@ function check(): void {
  * has `PROBE_MS` to answer a ping; with none, a reconnect waiting out its backoff goes now.
  */
 function probe(): void {
-  if (!session) return;
+  if (!session || session.local) return;
   if (!socket) {
     clearTimeout(retry);
     attempts = 0;
     return connect();
   }
-  if (socket.readyState !== WebSocket.OPEN) return; // (still connecting: `check` sees to it)
+  if (!socket.open) return; // (still connecting: `check` sees to it)
   const ws = socket;
   const asked = Date.now();
   ping();
   setTimeout(() => socket === ws && heard < asked && dropped(), PROBE_MS);
 }
-if (typeof window !== 'undefined') window.addEventListener('online', probe);
+if (typeof window !== 'undefined') window.addEventListener('online', () => (relink(), probe(), peek()));
 
-function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting'): void {
+/** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
+function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false, company?: readonly Bot[]): void {
   if (session) stop(null);
-  session = { room, name };
+  session = { room, name, local, ...(company && { company }) };
   attempts = 0;
   set({ status, error: null });
   connect();
@@ -548,7 +666,8 @@ function open(room: string | null, name: string, status: 'connecting' | 'rejoini
 }
 
 /** Opens a new table. The server picks its code; it arrives as `room.code` in the first snapshot. */
-export const create = (name: string): void => open(null, name);
+/** Offline (the settings say), the table is this window's own, and is there at once. */
+export const create = (name: string): void => open(null, name, 'connecting', getPrefs().offline);
 
 /** Sits down at an existing table. A code nobody opened is refused: the server closes with CLOSE_OVER and the reason. */
 export const join = (room: string, name: string): void => open(room, name);
@@ -608,7 +727,7 @@ export function setTableSettings(patch: Partial<TableSettings>): void {
  */
 export function playable(intent: Intent): boolean {
   const room = state.room;
-  if (socket?.readyState !== WebSocket.OPEN || !sync.server || !room?.game || room.phase !== 'playing') return false;
+  if (!socket?.open || !sync.server || !room?.game || room.phase !== 'playing') return false;
   return room.seat !== null && applyIntent(room.game, room.seat, intent).ok;
 }
 
@@ -635,6 +754,48 @@ export const subscribe = (l: () => void) => {
 export const current = (): NetState => state;
 
 export const useNet = (): NetState => useSyncExternalStore(subscribe, current);
+/**
+ * What this window can reach, which is what there is to show for it. The two things offline is the lack of:
+ * `others`: anyone else can come to its table (so the table has a code and a link, can be come to by one, is listed or
+ * private, has seats to count and to stand up from, chat, voice, a host, and a line whose time is worth showing);
+ * `server`: the game server can be asked (who is signed in, their page and record, feedback, whether the page is new).
+ * Derived from the store's state and nothing else: whoever shows or asks something goes by this, never by the setting.
+ */
+export interface Reach {
+  others: boolean;
+  server: boolean;
+}
+const ONLINE: Reach = { others: true, server: true };
+const OFFLINE: Reach = { others: false, server: false };
+export const reachOf = (net: Pick<NetState, 'offline'>): Reach => (net.offline ? OFFLINE : ONLINE);
+export const reach = (): Reach => reachOf(state);
+export const useReach = (): Reach => reachOf(useNet());
+
+// ---------------------------------------------------------------- the network
+
+/**
+ * Could this window come to the game server, were it to ask? Not without a network, which the browser says
+ * (`navigator.onLine`, kept in step by its `online` and `offline` events; no browser, or one that does not say, has
+ * one). That is all a window playing offline knows of it: it asks nothing of the server. The one rule it makes: Play
+ * online (actions.ts) is not open without. A window that plays online is not asked this: its line says (`Status`), and
+ * what it is offered is Play offline, which is always open.
+ */
+const network = (): boolean => typeof navigator === 'undefined' || navigator.onLine !== false;
+let linked = network();
+const linkListeners = new Set<() => void>();
+function relink(): void {
+  const now = network();
+  if (now === linked) return;
+  linked = now;
+  for (const l of linkListeners) l();
+}
+if (typeof window !== 'undefined') window.addEventListener('offline', relink); // (and `online`, with what else it does: above)
+export const connected = (): boolean => linked;
+export const useConnected = (): boolean =>
+  useSyncExternalStore(
+    (l) => (linkListeners.add(l), () => linkListeners.delete(l)),
+    connected,
+  );
 
 // ---------------------------------------------------------------- round trip
 

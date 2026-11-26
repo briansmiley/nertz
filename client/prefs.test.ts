@@ -187,3 +187,12 @@ describe("seenLook: someone's cards on your screen", () => {
     expect(cleanPrefs({ myFaces: 'yes' }).faces).toBe('owner');
   });
 });
+
+describe('cleanPrefs: offline', () => {
+  it('is online unless it was plainly chosen: prefs stored before there was the choice, or damaged, are online', () => {
+    expect(DEFAULT_PREFS.offline).toBe(false);
+    expect(cleanPrefs(null).offline).toBe(false);
+    expect(cleanPrefs({ offline: 'yes' }).offline).toBe(false);
+    expect(cleanPrefs({ offline: true }).offline).toBe(true);
+  });
+});

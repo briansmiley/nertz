@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
+import { checkInvariants, viewFor } from '../shared/engine';
 import { CLOSE_OVER, type ServerMsg } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
 import { startServer, type NertzServer } from './index';
@@ -111,6 +112,102 @@ describe('the end of a connection', () => {
     await vi.waitFor(() => expect(ann.got.at(-1)).toEqual({ t: 'pong', at: 1234.5 }));
     ann.send({ t: 'ping', at: 'soon' } as never);
     await vi.waitFor(() => expect(ann.got.filter((m) => m.t === 'pong')).toEqual([{ t: 'pong', at: 1234.5 }, { t: 'pong' }]));
+  });
+});
+
+describe('a table taken offline', () => {
+  const carried = (c: Awaited<ReturnType<typeof hello>>) => c.got.filter((m) => m.t === 'carried');
+  /** Everything `c` has sent has been dealt with: nonsense is complained of in order, after all that came before. */
+  const answered = async (c: Awaited<ReturnType<typeof hello>>) => {
+    const n = c.got.filter((m) => m.t === 'error').length;
+    c.send('?');
+    await vi.waitFor(() => expect(c.got.filter((m) => m.t === 'error').length).toBeGreaterThan(n));
+  };
+
+  it('by the one person at it, with bots: handed over whole, a round on or not, and forgotten here at once', async () => {
+    const ann = await hello(null, 'Ann');
+    await taken(ann);
+    const code = ann.last().code;
+    ann.send({ t: 'addBot', level: 'fast' });
+    ann.send({ t: 'addBot', level: 'slow' });
+    ann.send({ t: 'start' });
+    await vi.waitFor(() => expect(ann.last().phase).toBe('playing'));
+    const was = ann.last();
+    ann.send({ t: 'carry' });
+    await vi.waitFor(() => expect(carried(ann)).toHaveLength(1));
+    const { kept } = carried(ann)[0]!;
+    expect(kept).toMatchObject({ code, phase: 'playing', round: 1, host: was.me });
+    expect(kept.players.map((p) => [p.name, p.seat, p.bot ?? null])).toEqual(was.players.map((p) => [p.name, p.seat, p.bot ?? null]));
+    expect(kept.players.find((p) => p.id === was.me)!.token).toBe(ann.token);
+    expect(checkInvariants(kept.state!)).toBeNull();
+    expect(viewFor(kept.state!, was.seat!)).toEqual(was.game); // (every card as it lay, the face-down ones known)
+    // Its code is dead: the table is not one of the server's, nothing more is said of it, and nobody comes to it.
+    expect(server.rooms.has(code)).toBe(false);
+    const said = ann.got.length;
+    ann.send({ t: 'pause', on: true });
+    ann.send({ t: 'ping' });
+    await vi.waitFor(() => expect(ann.got.slice(said).map((m) => m.t)).toEqual(['pong']));
+    expect(ann.ws.readyState).toBe(WebSocket.OPEN);
+    const late = await hello(code, 'Late');
+    await vi.waitFor(() => expect(late.end.code).toBe(CLOSE_OVER));
+    expect(late.end.reason).toBe(`Table ${code} not found.`);
+  });
+
+  it('not with anyone else in the room: at the table or watching, here or away, or gone with their cards still lying. Then nothing happens', async () => {
+    const ann = await hello(null, 'Ann');
+    await taken(ann);
+    const code = ann.last().code;
+    const refused = async () => {
+      ann.send({ t: 'carry' });
+      await answered(ann);
+      expect(carried(ann)).toEqual([]);
+      expect(server.rooms.has(code)).toBe(true);
+    };
+    // Someone watching.
+    const bob = await hello(code, 'Bob');
+    await taken(bob);
+    bob.send({ t: 'sit', on: false });
+    await vi.waitFor(() => expect(ann.last().players.find((p) => p.name === 'Bob')?.seat).toBeNull());
+    await refused();
+    // At the table, and then away.
+    bob.send({ t: 'sit', on: true });
+    await vi.waitFor(() => expect(ann.last().players.find((p) => p.name === 'Bob')?.seat).not.toBeNull());
+    await refused();
+    bob.ws.terminate();
+    await vi.waitFor(() => expect(ann.last().players.find((p) => p.name === 'Bob')?.connected).toBe(false));
+    await refused();
+    // Gone for good in the middle of a round: their cards lie there until it is over.
+    const cy = await hello(code, 'Cy');
+    await taken(cy);
+    cy.send({ t: 'sit', on: true });
+    await vi.waitFor(() => expect(ann.last().players.find((p) => p.name === 'Cy')?.seat).not.toBeNull());
+    ann.send({ t: 'kick', id: ann.last().players.find((p) => p.name === 'Bob')!.id });
+    ann.send({ t: 'start' });
+    await vi.waitFor(() => expect(ann.last().game?.status.at).toBe('ready'), 5000);
+    ann.send({ t: 'go' });
+    await vi.waitFor(() => expect(ann.last().game?.status.at).toBe('play'), 5000);
+    cy.send({ t: 'leave' });
+    await vi.waitFor(() => expect(ann.last().players.find((p) => p.name === 'Cy')?.left).toBe(true));
+    await refused();
+    // The round over, they are off the list: the table is hers alone, and goes with her.
+    ann.send({ t: 'intent', seq: 0, intent: { k: 'end', on: true } });
+    await vi.waitFor(() => expect(ann.last().phase).toBe('results'));
+    expect(ann.last().players.map((p) => p.name)).toEqual(['Ann']);
+    ann.send({ t: 'carry' });
+    await vi.waitFor(() => expect(carried(ann)).toHaveLength(1));
+    expect(server.rooms.has(code)).toBe(false);
+  }, 15_000);
+
+  it('asked at no table, nothing happens', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+    sockets.push(ws);
+    const got: ServerMsg[] = [];
+    ws.on('message', (data) => got.push(JSON.parse(data.toString()) as ServerMsg));
+    await new Promise((ok, fail) => ws.once('open', ok).once('error', fail));
+    ws.send(JSON.stringify({ t: 'carry' }));
+    ws.send(JSON.stringify({ t: 'ping' }));
+    await vi.waitFor(() => expect(got.map((m) => m.t)).toEqual(['welcome', 'pong']));
+    expect(ws.readyState).toBe(WebSocket.OPEN);
   });
 });
 

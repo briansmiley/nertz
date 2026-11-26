@@ -127,9 +127,10 @@ export type RoundStatus = { at: 'dealing' | 'ready' | 'countdown' | 'play' } | {
  * How a round ended: `seat` called Nertz, and `out` got it: every seat whose nertz pile was empty when the round ended
  * (in seat order, the caller among them; another may have emptied theirs without calling, or with the last move of
  * grace). Or without a call, scored as it stands: a 'jam' when everyone said they were stuck and no hand could ever
- * get a card to the middle or off its nertz pile (`canProgress`); a 'vote' when every connected person voted to end it.
+ * get a card to the middle or off its nertz pile (`canProgress`); a 'vote' when every connected person voted to end
+ * it: `voters` of them had a say (`endVote`).
  */
-export type RoundEnd = { by: 'nertz'; seat: number; out: number[] } | { by: 'jam' } | { by: 'vote' };
+export type RoundEnd = { by: 'nertz'; seat: number; out: number[] } | { by: 'jam' } | { by: 'vote'; voters: number };
 
 /**
  * Where a card can be dropped: one of your own work piles, one specific centre

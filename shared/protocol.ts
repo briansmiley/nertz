@@ -4,6 +4,7 @@ import { parseSettings, type TableSettings } from './settings';
 import { TABLE } from './table';
 import type { BotLevel, Intent, PileRef, PlayerView, RoomView, Seats } from './types';
 import { round3 } from './numbers';
+import type { Kept } from '../server/room'; // (only its shape: the table as the server hands it over, `carried`)
 
 /**
  * The card faces there are to choose from (client/cards/Face.tsx): this project's own, large print, one with faces on
@@ -214,6 +215,12 @@ export type ClientMsg =
   | { t: 'unlisted'; on: boolean }
   | { t: 'intent'; seq: number; intent: Intent }
   | { t: 'leave' }
+  /**
+   * Take the table offline, into this window (client/local.ts): answered with `carried`, and the table is the server's no
+   * longer. Only for the one person in the room, with bots: with anyone else there, at the table or watching, here or
+   * away, nothing happens.
+   */
+  | { t: 'carry' }
   /** Whoever deals, between rounds: start over. Everyone's score goes back to nothing and the table to its lobby, as before the first deal. */
   | { t: 'reset' }
   /** For trying things out, refused by a server in production: make a bot go out now (its nertz pile is put under its stock, and it calls). */
@@ -224,8 +231,8 @@ export type ClientMsg =
   | { t: 'pause'; on: boolean }
   /** How my cards look: everyone sees the cards of my deck drawn that way. Every part of it is said, every time. */
   | { t: 'deck'; look: Look }
-  /** Host only, between rounds: seat a bot, or send the bot in `seat` away. */
-  | { t: 'addBot'; level: BotLevel }
+  /** Host only, between rounds: seat a bot (as it was at another table: its `name`, if nobody here has it, and its `backs`), or send the bot in `seat` away. */
+  | { t: 'addBot'; level: BotLevel; name?: string; backs?: Backs }
   | { t: 'removeBot'; seat: number }
   /** I put my one card `card` back unplayed, wherever I let it go; `seen` is the top of every pile in the middle when I took the card up (null: there was no pile). The server judges whether I was sniped meanwhile (`snipedBy`). */
   | { t: 'tried'; card: string; seen: (string | null)[] }
@@ -266,6 +273,8 @@ export type ServerMsg =
   | ({ t: 'drag'; seat: number } & DragAt)
   /** The answer to `ping`, with its `at`. */
   | { t: 'pong'; at?: number }
+  /** The answer to `carry`: the whole table, every card known, as the server keeps one (server/room.ts `Kept`). It has forgotten it: its code is nobody's now. */
+  | { t: 'carried'; kept: Kept }
   | SocialServerMsg;
 
 /**
@@ -518,6 +527,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'go' };
     case 'leave':
       return { t: 'leave' };
+    case 'carry':
+      return { t: 'carry' };
     case 'reset':
       return { t: 'reset' };
     case 'debugBotOut':
@@ -538,7 +549,9 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'addBot': {
       const level = v.level === undefined ? 'medium' : BOT_LEVELS.find((l) => l === v.level);
-      return level ? { t: 'addBot', level } : null;
+      const name = typeof v.name === 'string' && v.name.length <= 200 ? cleanName(v.name) : '';
+      const backs = parseBacks(v.backs);
+      return level ? { t: 'addBot', level, ...(name && { name }), ...(backs && { backs }) } : null;
     }
     case 'removeBot':
       return isIndex(v.seat, MAX_PLAYERS) ? { t: 'removeBot', seat: v.seat } : null;

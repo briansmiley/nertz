@@ -16,6 +16,7 @@ describe('parseClientMsg', () => {
     expect(parseClientMsg('{"t":"start","junk":true}')).toEqual({ t: 'start' });
     expect(parseClientMsg('{"t":"go","seat":3}')).toEqual({ t: 'go' }); // the dealer's "1, 2, 3": carries nothing
     expect(parseClientMsg({ t: 'leave' })).toEqual({ t: 'leave' });
+    expect(parseClientMsg({ t: 'carry', kept: {} })).toEqual({ t: 'carry' }); // (asks for the table: it carries nothing)
     expect(parseClientMsg(JSON.stringify({ t: 'intent', seq: 4, intent: { k: 'move', cardId: 'c1', count: 2, to: { k: 'work', i: 3, z: 1 } } }))).toEqual({
       t: 'intent',
       seq: 4,

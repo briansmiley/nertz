@@ -296,7 +296,7 @@ describe('bots starting piles', () => {
         for (let i = 0; i < bots && i < 5; i++) room.handle(host, { t: 'addBot', level: 'fast' });
         const players = Math.min(6, bots + 1);
         startRound(room, host);
-        room.disconnect(host); // the person is away: the bots' stuck votes are the only ones
+        room.handle(host, { t: 'sit', on: false }); // the person has stood up: the bots' stuck votes are the only ones (were they gone, the round would wait for them)
         dealt++;
         const t0 = Date.now();
         let most = 0;

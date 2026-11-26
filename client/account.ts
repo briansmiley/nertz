@@ -4,6 +4,7 @@
 // (`/profile/following`), and for an admin how much the game is played (`/usage`).
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addressIn, goBack, moved } from './address';
+import { reach, subscribe as onNet } from './net';
 import { handleOf } from '../shared/protocol';
 import type { Account, Among, Followed, Page, Stats, Usage, Versus, Way } from '../shared/types';
 
@@ -58,11 +59,13 @@ const PROFILE = '/profile';
 export const ownPicture = (v: unknown): string | null => (typeof v === 'string' && /^\/pictures\/[0-9a-f]{16}\.webp$/.test(v) ? v : null);
 
 async function ask(): Promise<void> {
+  if (!reach().server) return set('off'); // no server to ask: nobody is signed in, and there is no signing in
   try {
     const res = await fetch(PROFILE, { credentials: 'same-origin', cache: 'no-store' });
-    set(read(res.status, await res.json().catch(() => null)));
+    const said = read(res.status, await res.json().catch(() => null));
+    if (reach().server) set(said);
   } catch {
-    set('off'); // no answer at all: nothing to offer
+    if (reach().server) set('off'); // no answer at all: nothing to offer
   }
 }
 
@@ -76,6 +79,16 @@ const subscribe = (l: () => void): (() => void) => {
   }
   return () => void listeners.delete(l);
 };
+
+// Offline, or back from it: who is signed in is asked again (and until the server has said, is not known).
+let server = reach().server;
+onNet(() => {
+  if (server === reach().server) return;
+  server = reach().server;
+  if (!asked) return;
+  if (server) set('unknown');
+  void ask();
+});
 
 export function useAccount(): Signed {
   return useSyncExternalStore(subscribe, () => signed);

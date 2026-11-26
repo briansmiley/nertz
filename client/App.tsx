@@ -19,17 +19,22 @@ import { Dropdown } from './Dropdown';
 import { Name } from './Host';
 import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
 import { openAction, press, type ActionId } from './actions';
-import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, sit, start, useNet, useRtt, type Status } from './net';
+import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, playOffline, portable, reachOf, sit, start, unreachable, useNet, useReach, useRtt, type Reach, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
 import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
-import { rememberedName, rememberName } from './name';
+import { lastName, rememberedName, rememberName, satDownAs } from './name';
 
-/** Sit down at table `room`, or with null ask the server to open a new one (it picks the code). A guest's name is remembered by the browser; an account's is the account's. */
-function enter(room: string | null, name: string, guest: boolean): void {
-  if (guest) rememberName(name);
+/**
+ * Sit down at table `room`, or with null ask the server to open a new one (it picks the code). A guest's name is
+ * remembered by the browser (`remember`); an account's is the account's, and so may the one sat down under offline be
+ * (`lastName`), where nobody is signed in to say.
+ */
+function enter(room: string | null, name: string, remember: boolean): void {
+  if (remember) rememberName(name);
+  satDownAs(name);
   if (room) join(room, name);
   else create(name);
 }
@@ -89,8 +94,9 @@ function Toast({ say, className, onShut, children }: { say: string; className: s
  * The line to the table, lost and then back: one card, tipped while the line is down, that sets itself straight with the
  * mended robot when it is back. Both robots and both words are in it at once, one of each shown, so it keeps its size.
  * Put away while the line is down, it leaves the broken robot in the chat bar (`onTuck`), which brings it back.
+ * `offer`: what there is to do about it meanwhile (`PlayOffline`).
  */
-function Line({ back, onTuck }: { back: boolean; onTuck: () => void }) {
+function Line({ back, onTuck, offer }: { back: boolean; onTuck: () => void; offer: ReactNode }) {
   return (
     <Toast say={back ? 'back' : 'lost'} className={back ? 'line mended' : 'line'} onShut={back ? undefined : onTuck}>
       <span className="stack robots">
@@ -101,7 +107,18 @@ function Line({ back, onTuck }: { back: boolean; onTuck: () => void }) {
         <span>Connection lost. Reconnecting…</span>
         <span>Reconnected!</span>
       </span>
+      {offer}
     </Toast>
+  );
+}
+
+/** With the line down at a table nobody else is at but bots: play it on here, with no line (client/net.ts `playOffline`). Nothing, at any other table. */
+function PlayOffline({ room }: { room: RoomView }) {
+  if (!portable(room, useReach())) return null;
+  return (
+    <button type="button" className="offer" onClick={playOffline}>
+      Play offline
+    </button>
   );
 }
 
@@ -120,8 +137,10 @@ export function App() {
   const net = useNet();
   const room = net.room;
   const account = useAccount();
-  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. */
-  const page = useAddressed();
+  const reach = reachOf(net);
+  /** Whose page the address is: yours is the home page's pad turned over; anyone else's, a page of its own. With no server to ask, no one's. */
+  const addressed = useAddressed();
+  const page = reach.server ? addressed : null;
   useSounds(room, net.status === 'online');
   const back = useBack(net.status);
   const [tucked, setTucked] = useTucked(net.status);
@@ -133,7 +152,7 @@ export function App() {
   if (!room) {
     return (
       <>
-        <Home error={net.error} busy={net.status !== 'idle'} yours={page} />
+        <Home key={net.offline ? 'offline' : 'online'} error={net.error} busy={net.status !== 'idle'} cut={unreachable(net)} yours={page} reach={reach} />
         <Corner />
       </>
     );
@@ -166,7 +185,7 @@ export function App() {
       {room.phase === 'lobby' && <Lobby room={room} />}
       <Chat room={room} lost={tucked ? () => setTucked(false) : undefined} />
       <Sure room={room} />
-      <Ping />
+      {reach.others && <Ping />}
       {net.status === 'updating' && !(room.phase !== 'lobby' && room.paused?.by === 'update') ? (
         // (Mid-round the card over the paused table says it: the update paused the round.)
         <Toast say="updating" className="updating">
@@ -175,9 +194,10 @@ export function App() {
             Updating the game
             <Dots />
           </span>
+          <PlayOffline room={room} />
         </Toast>
       ) : (net.status === 'reconnecting' && !tucked) || back ? (
-        <Line back={back} onTuck={() => setTucked(true)} />
+        <Line back={back} onTuck={() => setTucked(true)} offer={!back && <PlayOffline room={room} />} />
       ) : (
         spectating && (
           <p className="banner low">
@@ -221,6 +241,11 @@ function Named({ who, children }: { who: PlayerView | undefined; children: React
       {children}
     </a>
   );
+}
+
+/** On the button that deals, while there is nobody to deal to but you: whom it is waiting for; or, where nobody else can come, what to do about it. */
+function Short() {
+  return useReach().others ? 'Waiting for a second player' : 'Add a bot to deal';
 }
 
 /** The server deals only to players who are connected, and needs two of them. */
@@ -300,20 +325,25 @@ function Mini({ seat, suit, rank, style, look }: { seat?: number; suit?: 'S' | '
 /** For whoever deals, between rounds and before their Start: a robot's head and a plus, bare, a button that opens a slip for seating a bot. */
 function AddBot({ room }: { room: RoomView }) {
   const [level, setLevel] = useState<BotLevel>('medium');
-  const full = freeSeats(room.seats) === 0;
+  // A full table has no slip to open: the robot is there, faded, and says why.
+  if (freeSeats(room.seats) === 0) {
+    return (
+      <span className="pop-at">
+        <button type="button" className="icon bare" aria-disabled="true" aria-label="Add a bot: the table is full" data-tip="The table is full">
+          <RobotPlus />
+        </button>
+      </span>
+    );
+  }
   return (
     <Pop icon={<RobotPlus />} label="Add a bot" bare>
       <h3>Add a bot</h3>
-      {full ? (
-        <p className="hint">The table is full.</p>
-      ) : (
-        <div className="bots">
-          <Dropdown value={level} options={BOT_LEVELS} choose={setLevel} label="Bot speed" />
-          <button type="button" className="plain" onClick={() => addBot(level)}>
-            Add
-          </button>
-        </div>
-      )}
+      <div className="bots">
+        <Dropdown value={level} options={BOT_LEVELS} choose={setLevel} label="Bot speed" />
+        <button type="button" className="plain" onClick={() => addBot(level)}>
+          Add
+        </button>
+      </div>
     </Pop>
   );
 }
@@ -383,6 +413,7 @@ function Colour({ room, seat }: { room: RoomView; seat: number }) {
  * altogether. Whoever hosts the table is asked first whether to hand it on, and to whom: some go on dealing from the side.
  */
 function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
+  const may = useReach().others;
   const mine = who.id === room.me;
   const says = mine ? 'Stand up (spectate)' : `Stand ${who.name} up (spectate)`;
   const heirs = mine && who.isHost ? room.players.filter((p) => hasSeat(p) && !p.bot && p.id !== who.id) : [];
@@ -390,6 +421,7 @@ function StandUp({ room, who }: { room: RoomView; who: PlayerView }) {
   const root = useRef<HTMLSpanElement>(null);
   useDismiss(root, !!step, () => setStep(null));
   const up = () => (sit(false, mine ? undefined : who.id), setStep(null));
+  if (!may) return null;
   return (
     <span className="pop-at" ref={root}>
       <button type="button" className="standup" aria-label={says} data-tip={says} onClick={() => (heirs.length ? setStep(step ? null : 'ask') : up())}>
@@ -549,10 +581,11 @@ function Avatar({ image, name }: { image: string | null; name: string | null }) 
 }
 
 /** The home page; `yours`, with the pad turned over to your page, or on it who you follow (the address is yours: `useAddressed`). */
-function Home({ error, busy, yours }: { error: string | null; busy: boolean; yours: Addressed | null }) {
-  const invited = roomInUrl();
-  /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. */
-  const [name, setName] = useState(rememberedName);
+/** `cut`: the server cannot be reached for the table asked for (client/net.ts `unreachable`), which `error` says. */
+function Home({ error, busy, cut, yours, reach }: { error: string | null; busy: boolean; cut: boolean; yours: Addressed | null; reach: Reach }) {
+  const invited = reach.others ? roomInUrl() : '';
+  /** The name written in the field: a guest's own (the browser remembers it), or the first for an account with none yet. Never an account's name. With no server to say who is signed in: the one you last sat down under. */
+  const [name, setName] = useState(reach.server ? rememberedName : lastName);
   const account = useAccount();
   const signedIn = signedInAs(account);
   const ways = waysIn(account);
@@ -565,7 +598,7 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
   /** Sits down. Signed in with no name yet, the one written becomes the name you go by. */
   const go = (room: string | null): void => {
     if (signedIn && sits === 'name') void rename(sitAs);
-    enter(room, sitAs, !signedIn);
+    enter(room, sitAs, !signedIn && reach.server);
   };
   /**
    * The pad turned over to the way in. Signing in from it turns it to your page; signing out of your page turns it
@@ -675,13 +708,19 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
             {error && (
               <p className="error" role="alert">
                 {error}
+                {/* The server cannot be reached for the table asked for: one of your own can be had now. */}
+                {cut && (
+                  <button type="button" className="quiet" onClick={playOffline}>
+                    Play offline
+                  </button>
+                )}
               </p>
             )}
             <div className="ways">
               <button type="button" className="go" disabled={!ready} onClick={() => go(null)}>
                 {busy && !typed ? 'Connecting…' : 'New Table'}
               </button>
-              <div className="way">
+              {reach.others && <div className="way">
                 <label htmlFor="code">Join existing table</label>
                 <div className="pair">
                   <input
@@ -699,9 +738,9 @@ function Home({ error, busy, yours }: { error: string | null; busy: boolean; you
                     {busy && typed ? '…' : 'Join'}
                   </button>
                 </div>
-              </div>
+              </div>}
             </div>
-            <Tables onPick={pick} />
+            {reach.others && <Tables onPick={pick} />}
           </form>
         )}
       </Pad>
@@ -726,7 +765,7 @@ function Lobby({ room }: { room: RoomView }) {
         <TableRules room={room} />
         {me?.isHost ? (
           <button className="go" disabled={!ready} onClick={start}>
-            {ready ? 'Deal the first round' : 'Waiting for a second player'}
+            {ready ? 'Deal the first round' : <Short />}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal.</p>
@@ -780,6 +819,7 @@ function TableHead({ room }: { room: RoomView }) {
   const me = room.players.find((p) => p.id === room.me);
   const [codeCopied, copyCode] = useCopy(room.code);
   const [copied, copy] = useCopy(`${location.origin}/?room=${room.code}`);
+  const { others } = useReach();
 
   return (
     <>
@@ -787,7 +827,8 @@ function TableHead({ room }: { room: RoomView }) {
           {me?.isHost && <AddBot room={room} />}
           <Act id="leave" room={room} />
         </div>
-        <h2>
+        {/* A table nobody else can come to has no code to give anyone: where it would be, that says so. */}
+        {!others ? <h2>Table <span className="code">Offline</span></h2> : <h2>
           Table{' '}
           {/* The code itself is a button: pressed, it is copied (just the code, for saying or typing; the chain after it copies the link). */}
           <button type="button" className="code copy" aria-label={`Table code ${room.code}: copy it`} data-tip="Copy the code" onClick={copyCode}>
@@ -797,7 +838,7 @@ function TableHead({ room }: { room: RoomView }) {
           <button type="button" className="invite" onClick={copy} aria-label="Copy the link to this table" data-tip={copied ? 'Copied' : 'Copy the link'}>
             {copied ? <Check /> : <LinkIcon />}
           </button>
-        </h2>
+        </h2>}
     </>
   );
 }
@@ -1011,7 +1052,7 @@ function Results({ room }: { room: RoomView }) {
       <Pad wide>
         <h2>Round {room.round}</h2>
         {/* Who got Nertz is said in their own lines of the sheet, with the stamp in the Nertz column; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
-        {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? 'Everyone agreed to end the round. Scored as it stands.' : 'Round over.'}</p>}
+        {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? (end.voters > 1 ? 'Everyone agreed to end the round. Scored as it stands.' : 'Scored as it stands.') : 'Round over.'}</p>}
         <table className="scores">
           <thead>
             <tr>
@@ -1094,7 +1135,7 @@ function Results({ room }: { room: RoomView }) {
         {round?.snipes && top && <Snipes snipes={round.snipes} top={top} who={who} />}
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
-            {enoughToDeal(room) ? 'Next round' : 'Waiting for a second player'}
+            {enoughToDeal(room) ? 'Next round' : <Short />}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>

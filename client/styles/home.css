@@ -439,3 +439,11 @@
   font: 400 0.8rem/1rem var(--ui);
   color: var(--ink-soft);
 }
+
+/* What went wrong asking for a table, and beside it (under it, where there is no room) what there is to do instead. */
+.home .error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.8rem;
+}

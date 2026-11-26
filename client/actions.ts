@@ -1,12 +1,14 @@
 // What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
-// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. Each has one rule here for whether it is open to you now; the menu
+// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. And
+// where you play: offline (at home; or alone at a table with bots, which comes along) or online (at home; or from the
+// lobby of an offline table, for one like it on the server). Each has one rule here for whether it is open to you now; the menu
 // (Menu.tsx), the pause key, the card over a paused table and the "End round" button at the table all ask it here. One that
 // cannot be undone is asked first (`press`), wherever it was pressed: the menu or the score sheet.
 import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, redeal, resetTable, sit } from './net';
+import { connected, leave, pause, playOffline, playOnline, portable, reach, redeal, resetTable, returnable, sit, type Reach } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -25,11 +27,13 @@ export function canResume(room: RoomView): boolean {
  * Standing up from your cards, or sitting back down: from the deal until Nertz is called, if you play at the table.
  * From Start it is for now: standing, you are as good as away; you sit back down by saying so, or by playing; and at
  * the round's end you watch. Before Start you watch at once, and take a seat again as anyone watching does.
- * Null if neither is open to you; otherwise whether you are standing.
+ * Null if neither is open to you; otherwise whether you are standing. There is no standing up from a table, to watch
+ * it or for now, but where others can come to it (client/net.ts `Reach`): alone with bots there is nobody to watch, and
+ * nobody the round is played on for.
  */
 export function standing(room: RoomView): boolean | null {
   const me = meOf(room);
-  return room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
+  return reach().others && room.phase === 'playing' && !!room.game && (isLive(room.game) || !hasOpened(room.game)) && !!me && plays(me) && !me.bot ? !!me.standing : null;
 }
 
 /** Can you deal the round over? Whoever deals, at any point of a round. */
@@ -63,7 +67,7 @@ export function ballot(room: RoomView): Ballot | null {
   return { ...tally, mine: !!me.ending, pressing: dragsOn(game) || tally.voted > 0 };
 }
 
-export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'leave';
+export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'offline' | 'online' | 'leave';
 
 export interface TableAction {
   id: ActionId;
@@ -74,12 +78,25 @@ export interface TableAction {
   on?: boolean;
   /** It cannot be undone, so it is asked first (`Sure`). */
   sure?: boolean;
-  /** Not yet open: it opens once the round is live. Shown, faded, and pressing it does nothing. */
+  /**
+   * Not open now, though it is there: Pause and End round until the round is live, Play online while this window has
+   * no network (client/net.ts `connected`). Shown, faded, and pressing it does nothing.
+   */
   coming?: boolean;
+  /** What keeps it from being open, where that wants saying: its tooltip then. */
+  why?: string;
 }
 
 /** The action, if it is open to you now (there, and not just coming). */
-export const openAction = (room: RoomView, id: ActionId): TableAction | undefined => tableActions(room).find((t) => t.id === id && !t.coming);
+export const openAction = (room: RoomView | null, id: ActionId): TableAction | undefined => actionsAt(room).find((t) => t.id === id && !t.coming);
+
+const OFFLINE: TableAction = { id: 'offline', label: 'Play offline' };
+const ONLINE: TableAction = { id: 'online', label: 'Play online' };
+/** Play online, wherever it is listed: open if the server could be come to (`linked`), and otherwise there, and not to be pressed. Play offline is always open. */
+const online = (linked: boolean): TableAction => (linked ? ONLINE : { ...ONLINE, coming: true, why: 'No connection' });
+
+/** What there is to do where you are, as the menu lists it: at a table, the table's (`tableActions`); at none, the one way to the other of online and offline. */
+export const actionsAt = (room: RoomView | null, r: Reach = reach(), linked: boolean = connected()): TableAction[] => (room ? tableActions(room, r, linked) : [r.others ? OFFLINE : online(linked)]);
 
 /**
  * Pause and the vote are coming to you: from the deal until the round is live, while you are dealt in and have a say
@@ -94,17 +111,22 @@ function roundComing(room: RoomView): boolean {
  * The table's actions as the menu lists them, in its order. Each is open to you now, or coming (in the list, not yet to be
  * pressed: Pause and End round before Start), or not there. Leaving is always one, and open.
  */
-export function tableActions(room: RoomView): TableAction[] {
+export function tableActions(room: RoomView, r: Reach = reach(), linked: boolean = connected()): TableAction[] {
   const vote = ballot(room);
   const up = standing(room);
   const coming = roundComing(room);
   return [
     canPause(room) ? { id: 'pause' as const, label: 'Pause' } : coming && { id: 'pause' as const, label: 'Pause', coming: true },
     canResume(room) && { id: 'resume' as const, label: 'Resume game' },
-    vote ? { id: 'vote' as const, label: 'End round', tally: `${vote.voted}/${vote.voters}`, on: vote.mine } : coming && { id: 'vote' as const, label: 'End round', coming: true },
+    // (With a say of your own alone, the one human at the table, there is nothing to count.)
+    vote ? { id: 'vote' as const, label: 'End round', ...(vote.voters > 1 && { tally: `${vote.voted}/${vote.voters}` }), on: vote.mine } : coming && { id: 'vote' as const, label: 'End round', coming: true },
     canRedeal(room) && { id: 'redeal' as const, label: 'Restart round', sure: true },
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
+    // (Alone with bots at a table of the server's: it can be yours, and played on with no line. The connection banner offers the same.)
+    portable(room, r) && OFFLINE,
+    // (And back, from an offline table nothing has been dealt at. Once it has, neither: there is no taking a game online.)
+    returnable(room, r) && online(linked),
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: true },
   ].filter((a) => !!a);
@@ -117,20 +139,24 @@ export function pauseKeyAction(room: RoomView | null | undefined): 'pause' | 're
 }
 
 /** Does it. (Each is refused by the server too, by its own rule, if the table has changed since.) */
-export function perform(id: ActionId, room: RoomView): void {
+export function perform(id: ActionId, room: RoomView | null): void {
   switch (id) {
     case 'pause':
       return pause(true);
     case 'resume':
       return pause(false);
     case 'vote':
-      return void send({ k: 'end', on: !ballot(room)?.mine });
+      return void (room && send({ k: 'end', on: !ballot(room)?.mine }));
     case 'redeal':
       return redeal();
     case 'reset':
       return resetTable();
     case 'stand':
-      return sit(!!standing(room));
+      return void (room && sit(!!standing(room)));
+    case 'offline':
+      return playOffline();
+    case 'online':
+      return playOnline();
     case 'leave':
       return leave();
   }
@@ -146,7 +172,7 @@ function ask(id: ActionId | null): void {
 }
 
 /** Pressed: done at once, or asked first if it cannot be undone. Not open to you now (coming, or not there): nothing. */
-export function press(id: ActionId, room: RoomView): void {
+export function press(id: ActionId, room: RoomView | null): void {
   const a = openAction(room, id);
   if (!a) return;
   if (a.sure) ask(id);
