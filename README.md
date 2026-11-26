@@ -960,6 +960,15 @@ on one's own page). The handle may come in any case. 401 for nobody signed in, b
 anyone's; 404 for a handle that is nobody's (an account deleted takes its page with it), and for a private page asked
 for by anyone but its owner, so that it cannot be told from one that is nobody's.
 
+Rounds played offline count too, for whoever was last signed in in that browser (a sign-in that was good is trusted
+offline: there is nobody to ask), unless **Save stats** (in the settings while offline; on unless switched off) says
+not. They wait in the browser (`client/record.ts`) and go once the server says that same account is signed in again:
+another account's wait for theirs. `POST /stats {id, account, at, round}` takes one, for the cookie's account: 401 for
+nobody signed in and 409 for someone signed in who is not `account` (it keeps waiting), 400 for anything but a round of
+one person and bots that holds together (it is dropped), and the person's hand is the account's whatever was sent. A
+round sent twice is kept once (`round.offline`, the browser's id for it), and both times answered 200. Played with
+nobody but bots, they count as such: in All and Bots, never in Humans or Humans and bots.
+
 `/profile` is one's own profile, by one's cookie (`server/profile.ts`): `GET` it (or a 401 naming the ways in, for
 nobody signed in); `PUT {name?, handle?, private?}` a new name to go by, a handle of their own (in any case: kept in
 lower), whether their page is private, or any of them together (anything else, or none, is a 400; a handle someone else
