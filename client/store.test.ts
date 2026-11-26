@@ -733,6 +733,88 @@ describe('a window that plays offline', () => {
   });
 });
 
+describe('Play offline and Play online, in the menu', () => {
+  const told = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+  const ids = (actions: typeof import('./actions'), net: typeof import('./net')) => actions.actionsAt(net.current().room).map((a) => a.id);
+
+  it('at no table there is the one that is not so now, and it changes the settings', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    const actions = await import('./actions');
+    expect(ids(actions, net)).toEqual(['offline']);
+    actions.press('offline', null);
+    expect(prefs.getPrefs().offline).toBe(true);
+    expect(net.current()).toMatchObject({ status: 'idle', offline: true });
+    expect(ids(actions, net)).toEqual(['online']);
+    actions.press('online', null);
+    expect(prefs.getPrefs().offline).toBe(false);
+    expect(net.current()).toMatchObject({ status: 'idle', offline: false });
+  });
+
+  it('Play offline where a new table cannot be reached gives that table up', async () => {
+    vi.useFakeTimers();
+    const net = await reload();
+    net.create('Ada');
+    expect(net.unreachable(net.current())).toBe(false); // (still asking)
+    last().closed();
+    expect(net.unreachable(net.current())).toBe(true);
+    net.playOffline();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+    expect(net.unreachable(net.current())).toBe(false);
+  });
+
+  it('Play online in the lobby of an offline table: that table is left, and the server asked for one with the same bots; once it has dealt there is neither', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    const actions = await import('./actions');
+    prefs.setPrefs({ offline: true });
+    net.create('Ada');
+    await told();
+    net.removeBot(net.current().room!.players.find((p) => p.bot)!.seat!);
+    net.addBot('fast');
+    await told();
+    const bots = net.current().room!.players.filter((p) => p.bot);
+    net.nameBot(bots[0]!.seat!, 'Bot Zed');
+    net.botBack(bots[1]!.seat!, { k: 'own', back: 'plain' });
+    await told();
+    expect(ids(actions, net)).toEqual(['online', 'leave']);
+    const company = net.current().room!.players.flatMap((p) => (p.bot ? [{ t: 'addBot', level: p.bot, name: p.name, backs: p.look.backs }] : []));
+    expect(company.map((b) => b.level).sort()).toEqual(['fast', 'medium', 'medium']);
+    expect(company.map((b) => b.name)).toContain('Bot Zed');
+
+    actions.press('online', net.current().room);
+    expect(prefs.getPrefs().offline).toBe(false);
+    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
+    expect(sockets()).toBe(1);
+    last().open();
+    expect(last().sent.filter((m) => m.t !== 'deck')).toEqual([expect.objectContaining({ t: 'create', name: 'Ada' }), ...company]);
+    last().deliver(at('ABCD'));
+    expect(net.current()).toMatchObject({ status: 'online', offline: false, room: { code: 'ABCD' } });
+    // A line that drops and comes back sits down again: nobody is seated twice.
+    last().closed();
+    net.leave();
+
+    // Dealt, an offline table has neither; nor on its score sheet.
+    prefs.setPrefs({ offline: true });
+    net.create('Ada');
+    await told();
+    net.start();
+    await told();
+    expect(net.current().room).toMatchObject({ phase: 'playing' });
+    expect(ids(actions, net)).not.toContain('online');
+    expect(ids(actions, net)).not.toContain('offline');
+    const before = sockets();
+    net.playOnline();
+    await told();
+    expect(net.current()).toMatchObject({ offline: true, room: { phase: 'playing' } });
+    expect(sockets()).toBe(before);
+    expect(net.returnable({ ...net.current().room!, phase: 'results' })).toBe(false);
+    net.leave();
+  });
+});
+
 describe('a table taken offline', () => {
   const told = async (): Promise<void> => {
     for (let i = 0; i < 20; i++) await Promise.resolve();

@@ -145,6 +145,15 @@ export function NoLine() {
   );
 }
 
+/** Back online (Lucide's wifi): the same waves, whole. */
+export function OnLine() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 14 0M2 8.8a15 15 0 0 1 20 0" />
+    </svg>
+  );
+}
+
 /** Resetting the table: the score pad inside an arrow that comes round. */
 export function Again() {
   return <img className="art" src="/icons/reset.png" alt="" aria-hidden="true" />;

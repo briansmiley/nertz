@@ -1,12 +1,13 @@
 // The one button in the corner (☰, Settings.tsx `Corner`) and the slip it opens: your settings at the top, under their
-// own head, and across the bottom what there is to do, a button each (its name a tooltip), in two lines: the table's
-// actions (which are there, open or coming, and what each does, is actions.ts), and under them sound on or off, for an
+// own head, and across the bottom what there is to do, a button each (its name a tooltip), in two lines: the actions
+// of where you are, a table's or at none Play offline or online (which are there, open or coming, and what each does,
+// is actions.ts), and under them sound on or off, for an
 // admin how much the game is played (Usage.tsx), which opens in the same place, where feedback has no button of its own
 // the way to it, likewise, and at the far end leaving the table.
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import type { RoomView } from '../shared/types';
 import { answer, press, useAsked, type ActionId, type TableAction } from './actions';
-import { Again, Bug, Chair, Chart, Door, Flag, NoLine, PauseIcon, Play, Redeal, Speaker } from './icons';
+import { Again, Bug, Chair, Chart, Door, Flag, NoLine, OnLine, PauseIcon, Play, Redeal, Speaker } from './icons';
 
 /** What the corner has open: the menu (your settings in it), or feedback or how much the game is played, which it leads to. */
 export type Panel = 'menu' | 'feedback' | 'usage';
@@ -27,7 +28,7 @@ export function useCorner(): Panel | null {
 }
 
 /** Each action's icon, before its name. */
-export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Chair, offline: NoLine, leave: Door };
+export const ICONS: Record<ActionId, () => React.JSX.Element> = { pause: PauseIcon, resume: Play, vote: Flag, redeal: Redeal, reset: Again, stand: Chair, offline: NoLine, online: OnLine, leave: Door };
 
 /** Back to the menu, at the head of a slip it led to. */
 export function Back({ onClick }: { onClick: () => void }) {
@@ -60,7 +61,7 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
         onClick={(e) => {
           e.currentTarget.blur(); // keep Space for the cards
           if (a.coming) return; // (not yet: it stays, and so does the menu; its name is still its tip)
-          if (room) press(a.id, room);
+          press(a.id, room ?? null);
           if (a.id !== 'vote') onDone(); // (the vote stays up: its tally is the answer)
         }}
       >
@@ -69,8 +70,8 @@ export function Menu({ room, actions, muted, onMute, onFeedback, onUsage, onDone
       </button>
     );
   };
-  const table = room ? actions.filter((a) => a.id !== 'leave') : [];
-  const leave = room && actions.find((a) => a.id === 'leave');
+  const table = actions.filter((a) => a.id !== 'leave');
+  const leave = actions.find((a) => a.id === 'leave');
   return (
     <section className="slip menu" id="menu" aria-label="Menu">
       {children}

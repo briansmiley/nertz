@@ -19,7 +19,7 @@ import { MOTION } from './layout';
 import { useSyncExternalStore } from 'react';
 import { alone, applyIntent, covered, grab, isHidden, isLive, landsAt, refused, yetToHear } from '../shared/engine';
 import type { SocialServerMsg } from '../shared/chat';
-import { CLOSE_OVER, CLOSE_UPDATE, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
+import { CLOSE_OVER, CLOSE_UPDATE, hasSeat, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { TableSettings } from '../shared/settings';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
 import type { Kept } from '../server/room';
@@ -240,8 +240,11 @@ const SEAT_KEY = 'nertz.seat';
  * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
  * `local`: the table is this window's own, and so is its line: the settings said offline as the session began, or the
  * table was taken offline since (`carry`, the one place that happens). Never the other way: once local, until it ends.
+ * `company`: the bots a table it asks the server to open is opened with (`playOnline`).
  */
-let session: { room: string | null; name: string; local: boolean } | null = null;
+let session: { room: string | null; name: string; local: boolean; company?: readonly Bot[] } | null = null;
+/** A bot as it sits at one table, to be seated so at another. */
+type Bot = Pick<Extract<ClientMsg, { t: 'addBot' }>, 'level' | 'name' | 'backs'>;
 /** `NetState.offline` as it is now: the session's way, and with none the settings'. */
 const offline = (): boolean => session?.local ?? getPrefs().offline;
 let state: NetState = { status: 'idle', room: null, error: null, offline: offline() };
@@ -325,7 +328,8 @@ watchPrefs(tell);
 // Offline or not is the settings' to say while this window is at no table (`NetState.offline`): where they say
 // otherwise than the window has it, it goes by them. On its way to a table it has not got to (a server that cannot be
 // reached, which is when offline is wanted; or one it was at before a reload) it gives that up for what they say.
-// At a table, Offline switched on takes the table along if it can be (`takeOffline`); otherwise it is what it is until it is left.
+// At a table, Offline switched on (in another window: here it is `playOffline`) takes the table along if it can be
+// (`takeOffline`); otherwise it is what it is until it is left.
 watchPrefs(() => {
   if (getPrefs().offline === state.offline) return;
   if (state.room) return void (getPrefs().offline && takeOffline());
@@ -504,6 +508,7 @@ function connect(carried?: Carried): void {
     open: () => {
       if (socket !== line || !session) return;
       post(hello(session.room, session.name, token()));
+      if (!session.room) for (const bot of session.company ?? []) post({ t: 'addBot', ...bot });
       toldDeck = null;
       tell(); // my cards' faces and backs, for everyone at the table
       if (getPrefs().ping) ping(); // (and the time to the server, at once rather than at the next look)
@@ -551,6 +556,38 @@ function dropped(update = false): void {
   clearTimeout(retry);
   retry = setTimeout(() => connect(), Math.min(5000, 250 * 2 ** attempts++));
 }
+
+/**
+ * Play offline, wherever it is pressed (actions.ts, and each card that says the server cannot be reached). At a table:
+ * the table goes offline with you, if it can (`takeOffline`). At none: the settings say Offline, which also gives up a
+ * table the window was on its way to (the `watchPrefs` above).
+ */
+export function playOffline(): void {
+  if (state.room) takeOffline();
+  else setPrefs({ offline: true });
+}
+
+/** Can the table `room` be left for one like it on the server (`playOnline`)? One of this window's own, before its first deal: a game begun offline stays offline. */
+export const returnable = (room: RoomView | null, r: Reach = reach()): boolean => !r.others && room?.phase === 'lobby';
+
+/**
+ * Play online. At no table: the settings say so. In the lobby of a table of this window's own (`returnable`): that
+ * table is left, the settings say Online, and the server is asked for a new one under the same name, with the same
+ * bots (how quick, what called, their backs). The one way from offline to online at a table; there is none once it
+ * has dealt.
+ */
+export function playOnline(): void {
+  const room = state.room;
+  if (!room) return setPrefs({ offline: false });
+  if (!session || !returnable(room)) return;
+  const company = room.players.flatMap((p) => (p.bot && hasSeat(p) ? [{ level: p.bot, name: p.name, backs: p.look.backs }] : []));
+  const { name } = session;
+  setPrefs({ offline: false });
+  open(null, name, 'connecting', false, company);
+}
+
+/** At no table, and the server cannot be reached for the one asked for (a new one, or one come to by its code). */
+export const unreachable = (net: Pick<NetState, 'room' | 'status'>): boolean => !net.room && (net.status === 'reconnecting' || net.status === 'updating');
 
 /** Can the table `room` be taken offline (`takeOffline`)? One others could come to (`Reach`), with nobody in the room but you and bots. */
 export const portable = (room: RoomView | null, r: Reach = reach()): boolean => r.others && !!room && alone(room);
@@ -619,9 +656,9 @@ function probe(): void {
 if (typeof window !== 'undefined') window.addEventListener('online', () => (probe(), peek()));
 
 /** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
-function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false): void {
+function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false, company?: readonly Bot[]): void {
   if (session) stop(null);
-  session = { room, name, local };
+  session = { room, name, local, ...(company && { company }) };
   attempts = 0;
   set({ status, error: null });
   connect();

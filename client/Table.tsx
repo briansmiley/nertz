@@ -26,7 +26,7 @@ import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setBoard, setUnrevealed } from './social';
 import { useFeed } from './feed';
 import { Dots } from './Dots';
-import { kick, onDrag, onSnipe, pause, playable, portable, post, sit, takeOffline, testing, useNet, useReach } from './net';
+import { kick, onDrag, onSnipe, pause, playable, playOffline, portable, post, sit, testing, useNet, useReach } from './net';
 import { Clock } from './Settings';
 import { Chair } from './icons';
 import { ballot, canResume, perform, standing } from './actions';
@@ -1226,7 +1226,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         )}
         {/* The table is on its way back; alone at it with bots, it need not be waited for. (This card says the update mid-round, where the banner would: so it offers what the banner does.) */}
         {status === 'updating' && portable(room, reach) && (
-          <button type="button" className="quiet" onClick={takeOffline}>
+          <button type="button" className="quiet" onClick={playOffline}>
             Play offline
           </button>
         )}

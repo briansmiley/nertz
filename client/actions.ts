@@ -1,12 +1,14 @@
 // What can be done to the table, as opposed to your own settings (Settings.tsx): during a round, pause it or
-// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; alone at it with bots, take it offline; at any time, leave. Each has one rule here for whether it is open to you now; the menu
+// unpause it, vote to end it, restart it, stand up from it for now; between rounds, reset it; at any time, leave. And
+// where you play: offline (at home; or alone at a table with bots, which comes along) or online (at home; or from the
+// lobby of an offline table, for one like it on the server). Each has one rule here for whether it is open to you now; the menu
 // (Menu.tsx), the pause key, the card over a paused table and the "End round" button at the table all ask it here. One that
 // cannot be undone is asked first (`press`), wherever it was pressed: the menu or the score sheet.
 import { useSyncExternalStore } from 'react';
 import { dragsOn, endVote, hasOpened, inRound, isLive, plays, seatedPeople } from '../shared/engine';
 import type { RoomView } from '../shared/types';
 import { send } from './clearFirst';
-import { leave, pause, portable, reach, redeal, resetTable, sit, takeOffline } from './net';
+import { leave, pause, playOffline, playOnline, portable, reach, redeal, resetTable, returnable, sit, type Reach } from './net';
 
 const meOf = (room: RoomView) => room.players.find((p) => p.id === room.me);
 
@@ -65,7 +67,7 @@ export function ballot(room: RoomView): Ballot | null {
   return { ...tally, mine: !!me.ending, pressing: dragsOn(game) || tally.voted > 0 };
 }
 
-export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'offline' | 'leave';
+export type ActionId = 'pause' | 'resume' | 'vote' | 'redeal' | 'reset' | 'stand' | 'offline' | 'online' | 'leave';
 
 export interface TableAction {
   id: ActionId;
@@ -81,7 +83,13 @@ export interface TableAction {
 }
 
 /** The action, if it is open to you now (there, and not just coming). */
-export const openAction = (room: RoomView, id: ActionId): TableAction | undefined => tableActions(room).find((t) => t.id === id && !t.coming);
+export const openAction = (room: RoomView | null, id: ActionId): TableAction | undefined => actionsAt(room).find((t) => t.id === id && !t.coming);
+
+const OFFLINE: TableAction = { id: 'offline', label: 'Play offline' };
+const ONLINE: TableAction = { id: 'online', label: 'Play online' };
+
+/** What there is to do where you are, as the menu lists it: at a table, the table's (`tableActions`); at none, the one way to the other of online and offline. */
+export const actionsAt = (room: RoomView | null, r: Reach = reach()): TableAction[] => (room ? tableActions(room) : [r.others ? OFFLINE : ONLINE]);
 
 /**
  * Pause and the vote are coming to you: from the deal until the round is live, while you are dealt in and have a say
@@ -109,7 +117,9 @@ export function tableActions(room: RoomView): TableAction[] {
     canReset(room) && { id: 'reset' as const, label: 'Reset table', sure: true },
     up !== null && { id: 'stand' as const, label: up ? 'Sit back down' : 'Stand up', on: up },
     // (Alone with bots at a table of the server's: it can be yours, and played on with no line. The connection banner offers the same.)
-    portable(room) && { id: 'offline' as const, label: 'Play offline' },
+    portable(room) && OFFLINE,
+    // (And back, from an offline table nothing has been dealt at. Once it has, neither: there is no taking a game online.)
+    returnable(room) && ONLINE,
     // (Whoever leaves in the middle of a round does not come back to their cards: they lie there, and are scored.)
     { id: 'leave' as const, label: 'Leave table', sure: true },
   ].filter((a) => !!a);
@@ -122,22 +132,24 @@ export function pauseKeyAction(room: RoomView | null | undefined): 'pause' | 're
 }
 
 /** Does it. (Each is refused by the server too, by its own rule, if the table has changed since.) */
-export function perform(id: ActionId, room: RoomView): void {
+export function perform(id: ActionId, room: RoomView | null): void {
   switch (id) {
     case 'pause':
       return pause(true);
     case 'resume':
       return pause(false);
     case 'vote':
-      return void send({ k: 'end', on: !ballot(room)?.mine });
+      return void (room && send({ k: 'end', on: !ballot(room)?.mine }));
     case 'redeal':
       return redeal();
     case 'reset':
       return resetTable();
     case 'stand':
-      return sit(!!standing(room));
+      return void (room && sit(!!standing(room)));
     case 'offline':
-      return takeOffline();
+      return playOffline();
+    case 'online':
+      return playOnline();
     case 'leave':
       return leave();
   }
@@ -153,7 +165,7 @@ function ask(id: ActionId | null): void {
 }
 
 /** Pressed: done at once, or asked first if it cannot be undone. Not open to you now (coming, or not there): nothing. */
-export function press(id: ActionId, room: RoomView): void {
+export function press(id: ActionId, room: RoomView | null): void {
   const a = openAction(room, id);
   if (!a) return;
   if (a.sure) ask(id);
