@@ -27,9 +27,13 @@ import { Spread } from './Spread';
 import { Table } from './Table';
 import { lastName, rememberedName, rememberName, satDownAs } from './name';
 
-/** Sit down at table `room`, or with null ask the server to open a new one (it picks the code). A guest's name is remembered by the browser; an account's is the account's. */
-function enter(room: string | null, name: string, guest: boolean): void {
-  if (guest) rememberName(name);
+/**
+ * Sit down at table `room`, or with null ask the server to open a new one (it picks the code). A guest's name is
+ * remembered by the browser (`remember`); an account's is the account's, and so may the one sat down under offline be
+ * (`lastName`), where nobody is signed in to say.
+ */
+function enter(room: string | null, name: string, remember: boolean): void {
+  if (remember) rememberName(name);
   satDownAs(name);
   if (room) join(room, name);
   else create(name);
@@ -594,7 +598,7 @@ function Home({ error, busy, yours, reach }: { error: string | null; busy: boole
   /** Sits down. Signed in with no name yet, the one written becomes the name you go by. */
   const go = (room: string | null): void => {
     if (signedIn && sits === 'name') void rename(sitAs);
-    enter(room, sitAs, !signedIn);
+    enter(room, sitAs, !signedIn && reach.server);
   };
   /**
    * The pad turned over to the way in. Signing in from it turns it to your page; signing out of your page turns it
