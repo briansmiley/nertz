@@ -434,11 +434,22 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <Gear />
         Settings
       </h3>
-      <Volume prefs={prefs} voice={others} />
-      <label className="check">
-        <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-        <span>Bots say "Nertz"</span>
-      </label>
+      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). Offline there is no voice to send. */}
+      <div className="sound">
+        <h3>Sound</h3>
+        <h4>Output</h4>
+        <Volume prefs={prefs} voice={others} />
+        <label className="check">
+          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+          <span>Bots say "Nertz"</span>
+        </label>
+        {others && (
+          <>
+            <h4 className="input">Input</h4>
+            <MicLevels prefs={prefs} />
+          </>
+        )}
+      </div>
       {others && (
         <>
           <label className="check">

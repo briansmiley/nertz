@@ -106,7 +106,7 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, offline: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), mic: { level: 1, gate: 0 }, calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, offline: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
