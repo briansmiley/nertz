@@ -122,13 +122,13 @@ export function profileHandler({ db, accounts, rounds, reports, pictures, home, 
   }
 }
 
-const TOO_BIG = Symbol('too big');
+export const TOO_BIG = Symbol('too big');
 
 /**
  * What a request carries: `TOO_BIG` for more than `max` bytes, said or sent. (A body may come with no size said: over
  * HTTP/2, or chunked, as Fly's proxy passes such a one on. It is read as far as `max`, like any other.)
  */
-async function readBytes(req: IncomingMessage, max: number): Promise<Buffer | typeof TOO_BIG> {
+export async function readBytes(req: IncomingMessage, max: number): Promise<Buffer | typeof TOO_BIG> {
   if (Number(req.headers['content-length']) > max) return TOO_BIG;
   const chunks: Buffer[] = [];
   let size = 0;

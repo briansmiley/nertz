@@ -397,6 +397,83 @@ describe('over the wire', () => {
     g.ws.terminate();
   });
 
+  it('a round played offline is added to your record once, as yours against bots, whoever the browser says played it', async () => {
+    const [ada, guest] = [new Browser(server.port), new Browser(server.port)];
+    await ada.signIn(ADA);
+    const me = ((await (await ada.ask('/profile')).json()) as Account).id;
+    // (The browser says the person's hand is someone else's: it is the signed-in account's all the same.)
+    const played: RoundRecord = { game: 'sitting', code: 'ABCD', number: 1, end: { by: 'nertz', seat: 0, out: [0] }, ms: 60_000, hands: [{ ...hand(0, 'someone-else', 12), name: 'Ada' }, hand(1, null, -4, 'slow')], snipes: [{ by: 1, of: 0, card: '0:H5' }] };
+    const offline = { id: 'ab'.repeat(12), account: me, at: Date.now() - 60_000, round: played };
+    expect((await guest.ask('/stats', offline)).status).toBe(401);
+    expect((await ada.ask('/stats', offline, { method: 'POST', origin: 'https://evil.example' })).status).toBe(403);
+    expect((await ada.ask('/stats', { ...offline, account: 'someone-else' })).status).toBe(409); // (kept in the browser for whoever that is)
+    expect(await (await ada.ask('/stats')).json()).toMatchObject({ rounds: 0 });
+    // Sent twice (the answer to the first lost on the way, say), it is kept once: and taken both times, so the browser lets it go.
+    for (let i = 0; i < 2; i++) expect(await (await ada.ask('/stats', offline)).json()).toEqual({ ok: true });
+    expect(await (await ada.ask('/stats')).json()).toMatchObject({ rounds: 1, won: 1, nertz: 1, points: 12, sniped: 1 });
+    expect(await (await ada.ask('/stats?among=bots')).json()).toMatchObject({ rounds: 1 });
+    expect(await (await ada.ask('/stats?among=humans')).json()).toMatchObject({ rounds: 0 });
+    expect(await (await ada.ask('/stats?among=mixed')).json()).toMatchObject({ rounds: 0 });
+  });
+
+  it('a round played offline at a sitting you sat at online is of that sitting; at anyone else\'s, it is a sitting of its own', async () => {
+    const [ada, bob] = [new Browser(server.port), new Browser(server.port)];
+    await ada.signIn(ADA);
+    await bob.signIn(BOB);
+    const id = async (b: Browser): Promise<string> => ((await (await b.ask('/profile')).json()) as Account).id;
+    const [adas, bobs] = [await id(ada), await id(bob)];
+    const a = await Client.open(server.port, null, 'Ada', undefined, true, ada.cookie);
+    const g = await Client.open(server.port, a.last.room.code, 'Guest');
+    const room = server.rooms.get(a.last.room.code)!;
+    await startOver(room, a, [a, g]);
+    await a.did({ k: 'end', on: true });
+    await g.did({ k: 'end', on: true });
+    await vi.waitFor(() => expect(room.phase).toBe('results'));
+    const sitting = room.kept().sitting;
+
+    const played: RoundRecord = { game: sitting, code: room.code, number: 2, end: { by: 'jam' }, ms: 60_000, hands: [hand(0, null, 12), hand(1, null, -4, 'slow')], snipes: [] };
+    expect((await ada.ask('/stats', { id: 'ab'.repeat(12), account: adas, at: Date.now(), round: played })).status).toBe(200);
+    expect((await bob.ask('/stats', { id: 'cd'.repeat(12), account: bobs, at: Date.now(), round: played })).status).toBe(200);
+    expect(rows(join(dir, 'nertz.db'), 'round').map((r) => r.game)).toEqual([sitting, sitting, `${bobs}/${sitting}`]);
+    a.ws.terminate();
+    g.ws.terminate();
+  });
+
+  it('anything sent as a round played offline that is not one of you and bots, holding together, is refused', async () => {
+    const ada = new Browser(server.port);
+    await ada.signIn(ADA);
+    const me = ((await (await ada.ask('/profile')).json()) as Account).id;
+    const [you, bot] = [hand(0, null, 12), hand(1, null, -4, 'slow')];
+    const played: RoundRecord = { game: 'sitting', code: 'ABCD', number: 1, end: { by: 'jam' }, ms: 60_000, hands: [you, bot], snipes: [] };
+    const refused: unknown[] = [
+      null,
+      { ...played, hands: [you] }, // alone: no bot
+      { ...played, hands: [you, { ...bot, bot: null }] }, // someone else, a person
+      { ...played, hands: [{ ...you, bot: 'slow' }, bot] }, // nobody but bots
+      { ...played, hands: [you, { ...bot, bot: 'genius' }] },
+      { ...played, hands: [you, { ...bot, delta: 30 }] }, // a score that does not add up
+      { ...played, hands: [you, { ...bot, played: 99, delta: 99 }] }, // more cards than a deck
+      { ...played, hands: [you, { ...bot, seat: 0 }] }, // one seat twice
+      { ...played, hands: [you, { ...bot, player: you.player }] }, // one player twice
+      { ...played, hands: [you, { ...bot, name: ' ' }] },
+      { ...played, end: { by: 'nertz', seat: 5, out: [5] } }, // called from no seat at the table
+      { ...played, end: { by: 'resign' } },
+      { ...played, snipes: [{ by: 0, of: 0, card: '0:H5' }] },
+      { ...played, snipes: [{ by: 0, of: 1, card: '1:H5' }, { by: 0, of: 1, card: '1:H5' }] },
+      { ...played, ms: -1 },
+      { ...played, number: 0 },
+      { ...played, code: 'nope!' },
+      { ...played, game: '' },
+    ];
+    for (const [i, round] of refused.entries()) expect((await ada.ask('/stats', { id: i.toString(16).padStart(24, '0'), account: me, at: Date.now(), round })).status, JSON.stringify(round)).toBe(400);
+    expect((await ada.ask('/stats', { id: 'not-an-id', account: me, at: Date.now(), round: played })).status).toBe(400);
+    expect((await ada.ask('/stats', { id: 'cd'.repeat(12), account: me, at: 'yesterday', round: played })).status).toBe(400);
+    expect(await (await ada.ask('/stats')).json()).toMatchObject({ rounds: 0 });
+    // And as it was, it is taken.
+    expect((await ada.ask('/stats', { id: 'cd'.repeat(12), account: me, at: Date.now(), round: played })).status).toBe(200);
+    expect(await (await ada.ask('/stats')).json()).toMatchObject({ rounds: 1 });
+  });
+
   it("someone's page is where their handle says: their record, and the asker's against them; for someone signed in alone", async () => {
     const [ada, bob, guest] = [new Browser(server.port), new Browser(server.port), new Browser(server.port)];
     await ada.signIn(ADA);
