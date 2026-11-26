@@ -876,6 +876,37 @@ describe('table layout', () => {
       expect(strips(computeLayout(1280, 720, seven, 0), seven).slice(1).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true);
     });
 
+    // Regression (SMI-307): a pile rose by all its full fan wanted, high over the cloth, before it squeezed at all.
+    const rows = (L: ReturnType<typeof computeLayout>, game: GameState) => ({
+      rise: L.me!.workAt[1]!.y - L.cards.find((c) => c.card.id === game.players[0]!.work[1]!.cards[0]!.id)!.y,
+      s: strips(L, game),
+      cardH: L.me!.nertz.h,
+    });
+
+    it('a pile that fits below the row at its whole ranks squeezes there and does not rise', () => {
+      for (const [W, H, n, down, up] of [[1440, 900, 2, 0, 5], [393, 609, 4, 1, 4]] as const) {
+        const game = longPile(n, down, up);
+        const { rise, s, cardH } = rows(computeLayout(W, H, game, 0), game);
+        expect(rise).toBe(0);
+        expect(s.slice(down).some((step) => step < cardH * 0.3 - 0.01)).toBe(true); // squeezed from its full fan...
+        expect(s.slice(down).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true); // ...but every rank whole
+      }
+    });
+
+    it('a pile that does not fit even at its whole ranks rises only by what is left over', () => {
+      for (const [W, H, n] of [[1440, 900, 2], [393, 609, 4]] as const) {
+        const game = longPile(n, 1, 5);
+        const { rise, s, cardH } = rows(computeLayout(W, H, game, 0), game);
+        expect(rise).toBeGreaterThan(0);
+        // Every card shows exactly its whole rank (a face-down card its share of that): no more, as it would had it risen further.
+        expect(s[0]).toBeCloseTo(cardH * 0.21 * 0.45, 1);
+        for (const step of s.slice(1)) expect(step).toBeCloseTo(cardH * 0.21, 1);
+        // A longer pile rises further: this one has not used all the cloth there is.
+        const longer = longPile(n, 1, 9);
+        expect(rows(computeLayout(W, H, longer, 0), longer).rise).toBeGreaterThan(rise);
+      }
+    });
+
     it('a pile looked at fans out in full above everything in the middle; its drop area, its top card and the rest of the hand stay put', () => {
       for (const [W, H] of [[1280, 720], [1920, 1080]] as const) {
         const game = longPile(6, 2, 10);

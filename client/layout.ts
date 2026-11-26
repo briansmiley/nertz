@@ -419,9 +419,11 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     const x = workX + i * (h.w + h.gap);
     const room = h.rooms?.[i] ?? h.workRoom;
     const show = pile.map((_, j) => (j < down ? DOWN_STEP : 1));
-    // A pile too long for the room below the row starts higher up instead, as far as the felt above it is free.
-    const wanted = show.slice(0, -1).reduce((a, b) => a + b, 0) * h.workFan;
-    const rise = clamp(wanted - room, 0, h.workRise[i] ?? 0);
+    // A pile too long for the room below the row squeezes first, down to its cards' whole ranks; only what still does
+    // not fit then starts higher up, as far as the felt above it is free.
+    const covered = show.slice(0, -1).reduce((a, b) => a + b, 0);
+    const wanted = covered * h.workFan;
+    const rise = clamp(covered * h.minStrip - room, 0, h.workRise[i] ?? 0);
     const at = fanOut(show, h.workFan, h.minStrip, room + rise);
     if (i === h.peek) {
       // Looked at: every card shows its whole strip, the pile reaching up over whatever is above it (and above the
