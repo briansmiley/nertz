@@ -492,7 +492,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const [peek, setPeek] = useState<number | null>(null);
   const peekWait = useRef<{ i: number; t: number } | null>(null);
   useEffect(() => () => void (peekWait.current && clearTimeout(peekWait.current.t)), []);
-  // (Everyone at the table has a place round it: whoever is not in the round, an empty one.)
+  // (Everyone at the table has a place round it: whoever is not in the round, an empty one while it is played.)
   const seated = room.players.filter((p) => p.seat !== null).map((p) => p.seat).join(); // (those watching have no place at it)
   const sitting = useMemo(() => (seated ? seated.split(',').map(Number) : []), [seated]);
   // The round's hands at the table: once the score sheet is up, only of those still sitting where they played them.

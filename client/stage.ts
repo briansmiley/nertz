@@ -30,9 +30,9 @@ export const unrevealed = (stage: Stage, round: number): number | null => (revea
 
 /**
  * The seats whose hands of the round are at the table at `stage`: every one while it is played and while its end plays
- * out (whoever has gone since left their cards where they lie). Once the score sheet is up, the table is who is at it
- * now: a hand is there only while whoever played it still sits where they did. (Their seat, empty or someone else's by
- * now, is no longer theirs.)
+ * out (whoever has gone since left their cards where they lie). Once the score sheet is up, the table is who of the
+ * round is at it still: a hand is there only while whoever played it still sits where they did. (Their seat, empty or
+ * someone else's by now, is no longer theirs.)
  */
 export function handsAt(stage: Stage, room: RoomView): number[] {
   const seats = room.game?.players.map((g) => g.seat) ?? [];
