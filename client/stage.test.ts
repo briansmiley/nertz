@@ -97,8 +97,10 @@ describe('who is at the table between rounds', () => {
     // The one who sat down since, looking on: no place of their own, they watch the table as anyone without one does.
     const theirs = computeLayout(1440, 900, view, 4, 'sheet', null, undefined, sitting, undefined, hands);
     expect([theirs.me, theirs.opponents.map((o) => o.seat)]).toEqual([null, [0]]);
-    // While the round's end plays out, it is the table as the round left it, with whoever sat down since beside it.
-    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
+    // While the round's end plays out, it is the table as the round left it: every hand of it, and nobody who sat down as it ended.
+    expect(computeLayout(1440, 900, view, 0, 'wash', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3]);
+    // Only while a round is played does whoever sits at the table without a hand of it have a place: an empty one.
+    expect(computeLayout(1440, 900, view, 0, 'live', null, undefined, sitting).opponents.map((o) => o.seat)).toEqual([1, 2, 3, 4]);
   });
 
   it('lays the table out for one alone at it (everyone else gone since: the one bot taken off), whatever the shape of the window', () => {
