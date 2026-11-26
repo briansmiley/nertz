@@ -166,7 +166,7 @@ function stacksOn(card: Card, onto: AnyCard | undefined): boolean {
 const slotAccepts = ({ cards }: CentrePile, card: Card): boolean => cards.length === card.rank - 1 && cards[0].suit === card.suit;
 
 /** The places of the piles lying in these slots. */
-const piled = (slots: GameState['slots']): Pt[] => slots.flatMap((pile) => (pile ? [pile.at] : []));
+export const piled = (slots: GameState['slots']): Pt[] => slots.flatMap((pile) => (pile ? [pile.at] : []));
 
 /**
  * May a new pile be started at `at` (table space)? There must be a slot left

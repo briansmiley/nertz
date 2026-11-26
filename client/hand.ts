@@ -4,13 +4,14 @@
 // that out (it sends the intents and moves the card elements); it decides nothing.
 //
 // Placement is exact. A card lands only if it is put down on one specific pile (the one under the pointer, else the
-// one under the card's centre) and fits there; nothing is rerouted.
-import { canDrop, grab } from '../shared/engine';
+// one under the card's centre) and fits there; nothing is rerouted. Only an Ace let go on the felt where there is no
+// room for a pile right there starts one at the nearest place that has room, if that is no more than a card away.
+import { canDrop, grab, piled } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
-import { cardSize, offFelt, type Pt } from '../shared/table';
+import { cardSize, offFelt, roomNear, type Pt } from '../shared/table';
 import type { GameState, Intent, PileRef } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
-import { dropTarget, landingAt, toTable, type Layout, type Placed, type Rect } from './layout';
+import { dropTarget, landingAt, toScreen, toTable, type Layout, type Placed, type Rect } from './layout';
 import { clamp, round3 } from '../shared/numbers';
 
 const DRAG_SLOP = 6; // px of travel before a press becomes a carry
@@ -193,15 +194,22 @@ const reachOf = (d: Grip, L: Layout): number => (d.touch && d.held.k === 'card' 
  */
 const pileUnder = <T extends { hit: Rect }>(d: Grip, at: Aim, piles: readonly T[], L: Layout): T | undefined => dropTarget(piles, pointOf(d, at), at.centre, reachOf(d, L));
 /**
- * An Ace that is over no pile of yours aims at the felt under `centre`: that very point, nothing snaps. Returned as
- * soon as any of the card is over the felt, whether or not a pile may start there (`ok`), for the outline.
+ * An Ace that is over no pile of yours aims at the felt under `centre`: that very point if a pile may start there,
+ * else the nearest point no more than a card's width away that has room. So one let go a little too near a pile (or
+ * hanging over the edge) lands just clear of it, and one let go on top of a pile, or in a crowd, does not. `rect` is
+ * where it would land. Returned as soon as any of the card is over the felt, whether or not a pile may start there
+ * (`ok`), for the outline.
  */
 function feltUnder(d: Grip, centre: Pt, { game, you, L }: Scene): { to: PileRef; rect: Rect; ok: boolean } | undefined {
   if (d.held.k !== 'card' || !d.held.ace) return undefined;
+  const n = game.players.length;
   const at = toTable(L.felt, centre.x, centre.y);
-  if (offFelt(at, game.players.length) > cardSize(game.players.length).h / 2) return undefined;
+  if (offFelt(at, n) > cardSize(n).h / 2) return undefined;
   const to: PileRef = { k: 'felt', x: round3(at.x), y: round3(at.y) };
-  return { to, rect: landingAt(L, centre), ok: canDrop(game, you, d.held.id, to) };
+  if (canDrop(game, you, d.held.id, to)) return { to, rect: landingAt(L, centre), ok: true };
+  const near = roomNear(at, piled(game.slots), n, cardSize(n).w);
+  if (near && canDrop(game, you, d.held.id, { k: 'felt', ...near })) return { to: { k: 'felt', ...near }, rect: landingAt(L, toScreen(L.felt, near)), ok: true };
+  return { to, rect: landingAt(L, centre), ok: false };
 }
 
 /**
@@ -290,7 +298,7 @@ function take(d: Pressed, phase: 'carried' | 'tapped', p: Pt, scene: Scene): { h
 
 /**
  * Puts down what is in hand. Only the pile `at` points to counts: one that takes the card (the nearest, if a finger
- * is a little off), or for an Ace that very spot of the felt; for a finished pile, the tray. Anywhere else, and with
+ * is a little off), or for an Ace the spot of the felt `feltUnder` shows; for a finished pile, the tray. Anywhere else, and with
  * no `at`, it is put back. If the move is refused by the server a moment later (someone got there first) the card
  * goes home just the same, and the server takes it out of the hand by itself.
  */
