@@ -7,14 +7,13 @@
 //   While the sound is off, a small badge in the chat bar (Chat.tsx)
 //   says so, and turns it back on. The score sheet's gear opens the same menu.
 //   Whoever hosts finds the table's own settings at the bottom of theirs: chat
-//   and voice, and between rounds the house rules.
+//   and voice, whether the table is listed, and between rounds the seats.
 // - `TableRules`: the seats and house rules on the lobby sheet, for everyone to read.
 // Also the small icon buttons the sheets share (`Pop`, `Robot`, `RobotPlus`; the rest are in icons.tsx).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { TableSettings } from '../shared/settings';
 import { DECKS, fewestSeats, MAX_PLAYERS } from '../shared/protocol';
 import type { RoomView } from '../shared/types';
-import { setSeats, setTableSettings, setUnlisted, useConnected, useReach } from './net';
+import { setSeats, setUnlisted, useConnected, useReach } from './net';
 import { actionsAt, pauseKeyAction, perform } from './actions';
 import { Menu, openCorner, useCorner } from './Menu';
 import { Bug, Gear, MenuIcon } from './icons';
@@ -432,6 +431,12 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           <input type="checkbox" checked={calm()} onChange={(e) => setPrefs({ calm: e.target.checked })} />
           <span>Reduce motion</span>
         </label>
+        <label className="check">
+          <input type="checkbox" checked={prefs.tapToMove} onChange={(e) => setPrefs({ tapToMove: e.target.checked })} />
+          <span>
+            Tap to play <Info>Allows tapping a card then its destination, without dragging</Info>
+          </span>
+        </label>
         {others && (
           <>
             <label className="check">
@@ -500,13 +505,13 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
           })}
         </div>
       )}
-      {/* Whoever hosts: whether this table has text chat and voice at all, whether it is listed, and between rounds its house rules. */}
-      {/* (Where nobody else can come there are only the house rules, between rounds: in a round, nothing.) */}
-      {room && hosting && (others || room.phase !== 'playing') && (
+      {/* Whoever hosts: whether this table has text chat and voice at all, whether it is listed, and between rounds its seats. */}
+      {/* (Where nobody else can come, none of it.) */}
+      {room && hosting && others && (
         <div className="end-vote">
-          <h3>{others ? 'Host' : 'Table'}</h3>
+          <h3>Host</h3>
           {/* Each row: the switch for the table, and at its end the same for those only watching (the glasses). */}
-          {others && <><div className="allow">
+          <div className="allow">
             <label className="check">
               <input type="checkbox" checked={social.text} onChange={(e) => setSocial({ text: e.target.checked })} />
               <span>Allow text chat</span>
@@ -519,14 +524,14 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
               <span>Allow voice chat</span>
             </label>
             <Specs on={social.voice && social.watchVoice} disabled={!social.voice} what="Voice chat" onChange={(watchVoice) => setSocial({ watchVoice })} />
-          </div></>}
-          {/* (Between rounds it is with the house rules below; mid-round, when they are hidden, here on its own.) */}
+          </div>
+          {/* (Between rounds it is under the seats; mid-round, when they are hidden, here on its own.) */}
           {room.phase === 'playing' && <Private room={room} mine />}
           {room.phase !== 'playing' && (
             <>
               <SeatCount room={room} mine />
               <div className="rules">
-                <Rules room={room} mine />
+                <Private room={room} mine />
               </div>
             </>
           )}
@@ -561,26 +566,7 @@ function SeatCount({ room, mine }: { room: RoomView; mine: boolean }) {
   );
 }
 
-/**
- * The table's house rules: one row per option of `TableSettings` that the host is offered, and whether the table is private.
- * Set by whoever hosts (`mine`), between rounds; read by everyone else.
- */
-function Rules({ room, mine }: { room: RoomView; mine: boolean }) {
-  const set = (patch: Partial<TableSettings>) => setTableSettings(patch);
-  return (
-    <>
-      <label className="check">
-        <input type="checkbox" checked={room.settings.tapToMove} disabled={!mine} onChange={(e) => set({ tapToMove: e.target.checked })} />
-        <span>
-          Tap to play <Info>Allows tapping a card then its destination, without dragging</Info>
-        </span>
-      </label>
-      <Private room={room} mine={mine} />
-    </>
-  );
-}
-
-/** Whether the table is left off the open tables list. Unlike the house rules it can be switched mid-round too. */
+/** Whether the table is left off the open tables list. Unlike the seats it can be switched mid-round too. */
 function Private({ room, mine }: { room: RoomView; mine: boolean }) {
   // (A table nobody else can come to is on no list, and has no code.)
   if (!useReach().others) return null;
@@ -597,14 +583,14 @@ function Private({ room, mine }: { room: RoomView; mine: boolean }) {
 /** The seats and house rules on the lobby sheet: everyone sees what the table plays by; whoever hosts can change them there too. */
 export function TableRules({ room }: { room: RoomView }) {
   const mine = room.players.find((p) => p.isHost)?.id === room.me;
-  /** Where nobody else can come there is the one rule: it stands by itself, with no heading over it. */
-  const { others } = useReach();
+  /** Where nobody else can come there is nothing here: the seats are as many as you seat, and the table is on no list. */
+  if (!useReach().others) return null;
   return (
     <>
       <SeatCount room={room} mine={mine} />
-      <fieldset className={`rules${mine ? '' : ' locked'}${others ? '' : ' one'}`} data-tip={mine ? undefined : 'Only the room host can set these.'} aria-label="Table rules">
-        {others && <legend>Table rules</legend>}
-        <Rules room={room} mine={mine} />
+      <fieldset className={`rules${mine ? '' : ' locked'}`} data-tip={mine ? undefined : 'Only the room host can set these.'} aria-label="Table rules">
+        <legend>Table rules</legend>
+        <Private room={room} mine={mine} />
       </fieldset>
     </>
   );

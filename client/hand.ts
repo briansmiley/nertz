@@ -89,7 +89,7 @@ export interface Scene {
   playingOut: boolean;
   /** Nothing can be started. (A card already in hand may still land.) */
   frozen: boolean;
-  /** The table rule for moving a card without dragging it: tap (or click) it, then where it goes. */
+  /** Your setting (prefs.ts) for moving a card without dragging it: tap (or click) it, then where it goes. */
   tapToMove: boolean;
   /** The slot of your finished pile that is waiting to be carried to the tray, or -1 (clearFirst.tsx `waitingPile`). */
   waiting: number;

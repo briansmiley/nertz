@@ -159,6 +159,7 @@ body:has(.corner.right) .ping {
 }
 
 label.check {
+  position: relative; /* where its (i) opens: under the row, not under the whole slip */
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.6rem;
@@ -480,8 +481,8 @@ label.check {
   color: var(--ink-soft);
 }
 
-/* On the lobby sheet the two rules read as one line, Tap to play then Private table; on the narrowest phones the
-   second wraps under the first. The ☰ menu's Host section, a narrow slip, keeps them stacked. */
+/* On the lobby sheet the rules read as one line; on the narrowest phones each wraps under the one before. The ☰
+   menu's Host section, a narrow slip, keeps them stacked. */
 fieldset.rules {
   position: relative;
   display: flex;
@@ -493,11 +494,6 @@ fieldset.rules {
 
 fieldset.rules legend {
   width: 100%;
-}
-
-/* A rule alone has no heading, and its own line of the sheet whatever stands beside the rules elsewhere. */
-.pad.lobby > fieldset.rules.one {
-  grid-column: 1 / -1;
 }
 
 /* On a narrow sheet each (i) opens under the whole line, as wide as the sheet; once the sheet is wide, under its own rule. */
