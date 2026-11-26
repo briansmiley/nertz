@@ -583,6 +583,30 @@ describe('a window that plays offline', () => {
     expect(again.current()).toMatchObject({ status: 'connecting', offline: false });
   });
 
+  it('Offline pressed while the table a reload went back to cannot be reached, the settings saying offline already: the window gives the table up, and is offline', async () => {
+    vi.useFakeTimers();
+    // The page loads as a window that was at ABCD left it, with the settings as they are kept.
+    storage.set('nertz.seat', JSON.stringify({ room: 'ABCD', name: 'Ada' }));
+    page.search = '?room=ABCD';
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ offline: true }), setItem: () => {} });
+    const net = await reload();
+    expect(net.current()).toMatchObject({ status: 'rejoining', offline: false });
+    const prefs = await import('./prefs');
+    last().closed(); // no server to be had
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(net.current()).toMatchObject({ status: 'reconnecting', room: null, offline: false });
+    const tried = sockets();
+    prefs.setPrefs({ offline: true }); // (what the settings said already: the window did not have it so)
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
+    expect(address()).toBe('');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets()).toBe(tried);
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current()).toMatchObject({ status: 'online', offline: true, room: { phase: 'lobby' } });
+    net.leave();
+  });
+
   it('there is no standing up from a table of its own, to watch or for now; at one others can come to, there is', async () => {
     vi.useFakeTimers();
     const { net, prefs } = await offline();
@@ -667,6 +691,25 @@ describe('a window that plays offline', () => {
     net.pause(false);
     await vi.advanceTimersByTimeAsync(0);
     expect(net.current().room!.paused).toBeNull();
+    net.leave();
+
+    // Left before the round is live (the cards dealt, "1, 2, 3" being said): paused as soon as it is.
+    net.create('Ada');
+    await vi.advanceTimersByTimeAsync(0);
+    net.start();
+    await vi.advanceTimersByTimeAsync(5000);
+    net.go();
+    doc.visibilityState = 'hidden';
+    listeners.get('visibilitychange')!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.current().room).toMatchObject({ paused: null, game: { status: { at: 'countdown' } } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(net.current().room).toMatchObject({ paused: { by: 'player', id: net.current().room!.me }, game: { status: { at: 'play' } } });
+    const lay = JSON.stringify(net.current().room!.game);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(JSON.stringify(net.current().room!.game)).toBe(lay);
+    doc.visibilityState = 'visible';
+    listeners.get('visibilitychange')!();
     net.leave();
 
     prefs.setPrefs({ offline: false });

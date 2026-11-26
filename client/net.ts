@@ -224,7 +224,7 @@ export interface NetState {
   /**
    * This window plays offline: its tables are its own (client/local.ts), with bots and nobody else, and nothing is
    * asked of the game server. At no table it is what the settings say (`Prefs.offline`); at one, what they said when
-   * it was opened, until it is left.
+   * it was opened, until it is left. Never set: reckoned (`offline`) each time the state is.
    */
   offline: boolean;
 }
@@ -232,14 +232,16 @@ export interface NetState {
 const TOKEN_KEY = 'nertz.token';
 const SEAT_KEY = 'nertz.seat';
 
-let state: NetState = { status: 'idle', room: null, error: null, offline: getPrefs().offline };
-const listeners = new Set<() => void>();
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
  * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
- * `local`: the table is this window's own (`NetState.offline`, as the session began), and so is its line.
+ * `local`: the table is this window's own (the settings said offline as the session began), and so is its line.
  */
 let session: { room: string | null; name: string; local: boolean } | null = null;
+/** `NetState.offline` as it is now: the session's way, and with none the settings'. */
+const offline = (): boolean => session?.local ?? getPrefs().offline;
+let state: NetState = { status: 'idle', room: null, error: null, offline: offline() };
+const listeners = new Set<() => void>();
 let socket: Line | null = null;
 let sync: Sync = freshSync;
 let dealing: Dealing = freshDealing;
@@ -253,8 +255,8 @@ let watch: ReturnType<typeof setInterval> | undefined;
 const PROBE_MS = 3_000;
 let memoryToken: string | undefined;
 
-function set(next: Partial<NetState>): void {
-  state = { ...state, ...next };
+function set(next: Partial<Omit<NetState, 'offline'>> = {}): void {
+  state = { ...state, ...next, offline: offline() };
   for (const l of listeners) l();
 }
 
@@ -262,7 +264,7 @@ function set(next: Partial<NetState>): void {
  * Puts the room on screen as it is now, each group in flight dealt out as far as this window has it (`dealOut`). And
  * again when its next card is due, or it lands: the pace is this window's own, whenever the snapshots come.
  */
-function show(next: Partial<NetState> = {}): void {
+function show(next: Partial<Omit<NetState, 'offline'>> = {}): void {
   clearTimeout(step);
   const out = dealOut(dealing, sync);
   dealing = out.dealing;
@@ -314,15 +316,13 @@ function tell(): void {
   if (now !== toldDeck && post({ t: 'deck', look })) toldDeck = now;
 }
 watchPrefs(tell);
-// Offline or not is the settings' to say while this window is at no table (`NetState.offline`). On its way to one it
-// has not got to (a server that cannot be reached, which is when offline is wanted) it gives that up for what is asked now.
-let wanted = getPrefs().offline;
+// Offline or not is the settings' to say while this window is at no table (`NetState.offline`): where they say
+// otherwise than the window has it, it goes by them. On its way to a table it has not got to (a server that cannot be
+// reached, which is when offline is wanted; or one it was at before a reload) it gives that up for what they say.
 watchPrefs(() => {
-  if (wanted === getPrefs().offline) return;
-  wanted = getPrefs().offline;
-  if (state.room) return; // (at a table: it is what it was opened as, until it is left)
+  if (getPrefs().offline === state.offline || state.room) return; // (at a table: it is what it was opened as, until it is left)
   if (session) return stop(null);
-  set({ offline: wanted });
+  set();
   void renew(); // (back online: the page may have been put up anew meanwhile)
 });
 
@@ -397,7 +397,7 @@ function stop(error: string | null): void {
   sync = freshSync;
   dealing = freshDealing;
   timed(null);
-  show({ status: 'idle', error, offline: getPrefs().offline });
+  show({ status: 'idle', error });
   void renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
@@ -437,13 +437,21 @@ function renewedFor(script?: string): string | null {
     return null;
   }
 }
+/**
+ * Gone from in front (another tab, the screen off), the round at a table of this window's own is paused: there is
+ * nobody else it is played on for, and the bots would play on. Asked as the window goes, and of every snapshot that
+ * comes while it is gone: a round not yet live then (its cards being dealt, "1, 2, 3") is paused as soon as it is.
+ */
+function rest(): void {
+  const room = state.room;
+  if (!session?.local || typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
+  if (room?.game && isLive(room.game) && !room.paused) pause(true);
+}
 // Back in front: at a table, is the line still up (`probe`)? At none, is this still the page the server serves?
-// Gone from in front (another tab, the screen off): the round at a table of this window's own is paused. There is
-// nobody else it is played on for, and the bots would play on.
 if (typeof document !== 'undefined')
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') (probe(), void renew());
-    else if (session?.local) pause(true);
+    else rest();
   });
 
 const social = (msg: SocialServerMsg): void => {
@@ -464,7 +472,8 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
     if (hearsCall(state.room)) send({ k: 'heard' });
-    if (updated) renew(true);
+    rest();
+    if (updated) void renew(true);
   },
   welcome: (msg) => booted(msg.boot),
   error: (msg) => set({ error: msg.message }),
@@ -573,7 +582,7 @@ function open(room: string | null, name: string, status: 'connecting' | 'rejoini
   if (session) stop(null);
   session = { room, name, local };
   attempts = 0;
-  set({ status, error: null, offline: session.local });
+  set({ status, error: null });
   connect();
   watch = setInterval(check, PING_MS);
 }
