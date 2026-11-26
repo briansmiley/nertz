@@ -290,31 +290,51 @@
   transition: opacity 0.45s;
 }
 
+/* Skipping to the scores: fast-forward, play's drawn triangle twice (icons.tsx), bare on the cloth like the corner's
+   buttons. */
 .skip {
   position: absolute;
   z-index: 20001;
   left: 50%;
   translate: -50% -50%; /* (its middle on the menu's button's: `top` is set where it is drawn) */
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
-  padding: 4px 12px;
-  border-radius: 99px;
-  font-size: 12.5px;
+  padding: 4px;
   border: 0;
+  border-radius: 6px;
+  font-size: 12.5px;
   color: var(--chalk-dim);
-  background: rgba(8, 28, 33, 0.6);
+  background: none;
   white-space: nowrap;
 }
 
-.skip small {
-  margin-left: 4px;
-  opacity: 0.7;
+.ff {
+  display: flex;
+}
+
+.ff > img.art {
+  width: 26px;
+  height: 26px;
+}
+
+.ff > img.art + img.art {
+  margin-left: -12px;
 }
 
 @media (pointer: coarse) {
   .skip {
-    padding: 8px 14px;
-    font-size: 14px;
-    color: var(--chalk);
+    padding: 6px;
+  }
+
+  .ff > img.art {
+    width: 30px;
+    height: 30px;
+  }
+
+  .ff > img.art + img.art {
+    margin-left: -14px;
   }
 
   .skip small {
