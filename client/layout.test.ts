@@ -825,12 +825,16 @@ describe('table layout', () => {
     };
 
     it('fanOut: full fan while it fits, then an even squeeze down to a whole rank, then only the oldest cards give way', () => {
-      const up = (n: number) => Array.from({ length: n }, () => 1);
+      const up = (n: number) => Array.from({ length: n }, () => ({ fan: 1, least: 1 }));
+      const down = { fan: 0.5, least: 0.25 };
       const gaps = (at: number[]) => at.slice(1).map((y, j) => +(y - at[j]!).toFixed(3));
       expect(gaps(fanOut(up(4), 30, 20, 100))).toEqual([30, 30, 30]);
       expect(gaps(fanOut(up(5), 30, 20, 100))).toEqual([25, 25, 25, 25]);
       expect(gaps(fanOut(up(9), 30, 20, 100))).toEqual([8, 8, 8, 8, 8, 20, 20, 20]); // the newest stay readable, total still 100
-      expect(gaps(fanOut([0.5, 0.5, 1, 1], 30, 20, 1000))).toEqual([15, 15, 30]); // face-down cards show half as much
+      expect(gaps(fanOut([down, down, ...up(2)], 30, 20, 1000))).toEqual([15, 15, 30]); // face-down cards show half as much
+      // Squeezed, the face-down cards give way alongside the face-up ones, down to an edge each as those reach their whole rank.
+      expect(gaps(fanOut([down, down, ...up(3)], 30, 20, 70))).toEqual([10, 10, 25, 25]);
+      expect(gaps(fanOut([down, down, ...up(3)], 30, 20, 50))).toEqual([5, 5, 20, 20]);
       expect(fanOut([], 30, 20, 100)).toEqual([0]);
       expect(fanOut(up(1), 30, 20, 100)).toEqual([0]);
       expect(gaps(fanOut(up(30), 30, 20, 100)).every((g) => g > 3)).toBe(true); // absurdly long: just squeezed evenly
@@ -884,12 +888,15 @@ describe('table layout', () => {
     });
 
     it('a pile that fits below the row at its whole ranks squeezes there and does not rise', () => {
-      for (const [W, H, n, down, up] of [[1440, 900, 2, 0, 5], [393, 609, 4, 1, 4]] as const) {
+      for (const [W, H, n, down, up] of [[1440, 900, 2, 0, 5], [393, 609, 4, 2, 4]] as const) {
         const game = longPile(n, down, up);
         const { rise, s, cardH } = rows(computeLayout(W, H, game, 0), game);
         expect(rise).toBe(0);
         expect(s.slice(down).some((step) => step < cardH * 0.3 - 0.01)).toBe(true); // squeezed from its full fan...
-        expect(s.slice(down).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true); // ...but every rank whole
+        expect(s.slice(down).every((step) => step >= cardH * 0.21 - 0.01)).toBe(true); // ...but every rank whole,
+        // and the face-down cards squeezed with them, from their own fan towards an edge each that can still be counted.
+        for (const step of s.slice(0, down)) expect(step).toBeLessThan(cardH * 0.3 * 0.45 - 0.01);
+        for (const step of s.slice(0, down)) expect(step).toBeGreaterThanOrEqual(cardH * 0.21 * 0.25 - 0.01);
       }
     });
 
@@ -898,8 +905,8 @@ describe('table layout', () => {
         const game = longPile(n, 1, 5);
         const { rise, s, cardH } = rows(computeLayout(W, H, game, 0), game);
         expect(rise).toBeGreaterThan(0);
-        // Every card shows exactly its whole rank (a face-down card its share of that): no more, as it would had it risen further.
-        expect(s[0]).toBeCloseTo(cardH * 0.21 * 0.45, 1);
+        // Every card shows exactly its whole rank (a face-down card an edge): no more, as it would had it risen further.
+        expect(s[0]).toBeCloseTo(cardH * 0.21 * 0.25, 1);
         for (const step of s.slice(1)) expect(step).toBeCloseTo(cardH * 0.21, 1);
         // A longer pile rises further: this one has not used all the cloth there is.
         const longer = longPile(n, 1, 9);
