@@ -461,7 +461,7 @@ else's quieter by default (Others at 40%, and under a lower ceiling than yours).
   refused sounds as the card going home; and nothing is compared across a reconnect or reload, so nothing is replayed.
 
 **Your settings** (from the menu, bottom left on every screen, and the gear on the score sheet, which opens the same
-slip): sound on or off, the levels, reduce motion, card faces. Whoever hosts has the table's own settings at the bottom of theirs:
+slip): sound on or off, the levels, reduce motion, tap to play, card faces. Whoever hosts has the table's own settings at the bottom of theirs:
 text and voice chat, and between rounds the table rules. Nobody else sees them there.
 They stand under **Sound**, as **Output** (what you hear) and **Input** (your microphone). Volume is for everything; under it **Yours** (your cards and the table's own sounds: the count, the call of Nertz, a
 bot's spoken "Nertz", the reshuffle), **Others** (other players' cards) and **Voice** (voice chat) each show their level, and a press
@@ -471,6 +471,9 @@ quieter is not sent; off at first). Each opens its slider the same way, and whil
 you are now under it, green where it would be sent. Mic at 0 is muting yourself in voice: while you are muted it shows 0
 and "Muted", the level you had is kept, and unmuting (or drawing the slider up) brings it back. The same row is at the foot of the voice slip (Chat.tsx).
 Reduce motion follows the system setting until you touch it, then overrules it either way.
+**Tap to play** (`Prefs.tapToMove`, off by default) lets a tap or a click take a card up and the next put it down, on
+every screen alike; off, every card is dragged. Dragging always works. Anyone can tick it, host or not, in a room or
+offline: the table is not told, and the server cannot tell such a move from a drag (the same `hold` and `move`).
 **Card faces** (`Prefs.faces`: **Owner's**, the default, **Mine** or **Big print**) is whose faces every card has on your
 screen: each card in its owner's style, every card in the style you chose for your own deck, or every card in Big print
 (light or dark as yours are, in both of the last two), your own hand included: for when somebody's deck is hard to read.
@@ -483,10 +486,8 @@ Your settings are kept in `localStorage`; without storage they last until the pa
 every snapshot (`RoomView.settings`). They change with `{ t: 'settings', patch }`, which the server takes only from
 whoever may deal and only between rounds, so a round keeps the rules it was dealt under. An option the server does not
 know is dropped (an older client asking for one changes nothing). `shared/settings.ts` holds the one object and its
-validation. One option today, only a choice of gesture for the client: "Move without dragging" (`tapToMove`, on by
-default: a tap or a click takes a card up and the next puts it down, on every screen alike; off, every card is
-dragged), listed under "Table rules". The server cannot hold anyone to `tapToMove`: a card taken up by a tap and one
-picked up to be dragged are the same `hold` and `move`.
+validation. It has no options today: Tap to play, the last, is each player's own now (under your settings), so "Table
+rules" lists only whether the table is private, and offline, where that means nothing, the lobby sheet has none.
 
 ## How concurrency works
 

@@ -32,6 +32,11 @@ export interface Prefs {
   botVoice: boolean;
   /** What is said in the chat is shown over the table as it comes, while the chat is closed. */
   chatOver: boolean;
+  /**
+   * Tap to play: a tap or a click takes a card up, and the next one says where it goes (client/hand.ts). Off, a card
+   * has to be dragged. Dragging always works. The table is not told: to the server a card moved so is a drag like any.
+   */
+  tapToMove: boolean;
   /** The time a message takes to the server and back, in a corner of the screen (client/net.ts measures it while this is on). */
   ping: boolean;
   /** Play offline: tables of this window's own, with bots, and nothing asked of the game server (client/net.ts `NetState.offline`, which is what to go by). */
@@ -106,7 +111,7 @@ function fromOne(volume?: unknown, others?: unknown): Levels {
   return { master: 1, mine, others: mine * Math.sqrt(unit(others, 0.25)), voice: 1 };
 }
 
-export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), mic: { level: 1, gate: 0 }, calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, ping: false, offline: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
+export const DEFAULT_PREFS: Prefs = { muted: false, levels: fromOne(), mic: { level: 1, gate: 0 }, calm: null, deck: 'modern', back: 'plain', night: false, faces: 'owner', bare: false, random: null, botVoice: true, chatOver: true, tapToMove: false, ping: false, offline: false, soundKey: 'KeyM', voiceKey: 'KeyV', pauseKey: 'KeyP' };
 const KEY = 'nertz.prefs';
 
 /** The keys you choose for yourself, in the order they are listed. */
@@ -171,6 +176,7 @@ export function cleanPrefs(raw: unknown): Prefs {
     bare: v.bare === true,
     botVoice: v.botVoice !== false,
     chatOver: v.chatOver !== false,
+    tapToMove: v.tapToMove === true,
     ping: v.ping === true,
     offline: v.offline === true,
     random: isLot(v.random) ? v.random : null,

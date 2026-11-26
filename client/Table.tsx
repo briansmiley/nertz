@@ -756,8 +756,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   const toClear = (slot: number) => slot === must.slot;
   const finished = (slot: number) => completedBy(game.slots[slot]) !== null;
 
-  /** The table rule for moving a card without dragging it: tap (or click) it, then where it goes. */
-  const tapToMove = room.settings.tapToMove;
+  /** Your setting for moving a card without dragging it: tap (or click) it, then where it goes. */
+  const tapToMove = prefs.tapToMove;
   const scene: Scene = { game, you, L, byId, live: stage === 'live', playingOut, frozen, tapToMove, waiting: must.slot, plays: playable };
 
   /** A click on the stock, or Space: one draw (or the waste turned back over). Its group comes in one step and is dealt out here, on the round's clock (net.ts). */
