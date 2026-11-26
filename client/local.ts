@@ -9,35 +9,8 @@
 import { Room, type Conn, type Kept, type RoomOptions } from '../server/room';
 import { guard } from '../server/guard';
 import { seatAt, type Tables } from '../server/seat';
-import { BOT_LEVELS, CLOSE_OVER, hasSeat, MAX_PLAYERS, randomRoomCode, type ServerMsg } from '../shared/protocol';
-import type { BotLevel, RoomView } from '../shared/types';
+import { CLOSE_OVER, randomRoomCode, type ServerMsg } from '../shared/protocol';
 import type { Dial } from './line';
-
-/** Who is at the first offline table as it opens, besides you: there is nobody else to wait for. Whoever opened it changes them as at any table. */
-export const COMPANY: readonly BotLevel[] = ['medium', 'medium', 'medium'];
-
-/** The bots an offline table opens with: those of the last one (their levels; `remember`), or `COMPANY`. */
-const KEY = 'nertz.company';
-function company(): readonly BotLevel[] {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    const levels = Array.isArray(v) ? v.filter((l): l is BotLevel => BOT_LEVELS.includes(l as BotLevel)).slice(0, MAX_PLAYERS - 1) : [];
-    return levels.length ? levels : COMPANY;
-  } catch {
-    return COMPANY;
-  }
-}
-/** The bots at the table now are those the next one opens with. (None is not a company: the next has the last there was.) */
-function remember(room: RoomView): void {
-  const levels = room.players.flatMap((p) => (p.bot && hasSeat(p) ? [p.bot] : []));
-  if (!levels.length) return;
-  try {
-    const now = JSON.stringify(levels);
-    if (localStorage.getItem(KEY) !== now) localStorage.setItem(KEY, now);
-  } catch {
-    // no storage: the next table has the usual company
-  }
-}
 
 /**
  * A table taken offline: as it is kept (handed over by the server whole, or put together from this window's last
@@ -62,7 +35,6 @@ export const local = (carried?: Carried): Dial => (heard) => {
   /** Everything said to the window is said later, in the order it was said: never from inside its own `send`. */
   const later = (fn: () => void): void => queueMicrotask(() => up && fn());
   const send = (msg: ServerMsg): void => {
-    if (msg.t === 'state') remember(msg.room);
     const text = JSON.stringify(msg);
     later(() => heard.message(text));
   };
@@ -78,12 +50,11 @@ export const local = (carried?: Carried): Dial => (heard) => {
       fresh = null;
       // Sat down at for the first time here: nobody to talk to at it.
       room.handle(conn, { t: 'social', text: false, voice: false });
-      // Just opened, its company is seated. Carried here, its round goes on: it came stopped (`Room.restored`), and is paused again if it was.
-      if (opened) for (const level of company()) room.handle(conn, { t: 'addBot', level });
-      else {
-        room.handle(conn, { t: 'pause', on: false });
-        if (carried?.paused) room.handle(conn, { t: 'pause', on: true });
-      }
+      // Just opened, it has nobody but you: you seat the bots, as at any table. Carried here, its round goes on: it came
+      // stopped (`Room.restored`), and is paused again if it was.
+      if (opened) return;
+      room.handle(conn, { t: 'pause', on: false });
+      if (carried?.paused) room.handle(conn, { t: 'pause', on: true });
     },
     // Nobody else can come back to it: gone from it, it is gone.
     released: (room) => {
