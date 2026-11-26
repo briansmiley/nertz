@@ -270,6 +270,32 @@ label.check {
   accent-color: var(--red);
 }
 
+/* Sound: its heading as Hotkeys' is, then what you hear (Output) and your microphone (Input), each named small, Input
+   set off by a light rule, and the whole closed by one before the rest of your settings. */
+.sound {
+  display: grid;
+  gap: 0.35rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sound h3 {
+  margin-bottom: 0.1rem;
+}
+
+.sound h4 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.sound h4.input {
+  margin-top: 0.3rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+}
+
 /* Your microphone: a row like the channels', its two to the left, and the one pressed opens its slider under it. Under
    the gate's, while you are in voice, how loud you are now on the same scale: green where it is sent. */
 .mic-levels {

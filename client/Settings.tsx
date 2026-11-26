@@ -28,7 +28,7 @@ import type { ClockAt } from './layout';
 import { SaidWord, useHotkey } from './hotkey';
 import { BACKS } from './cards/Face';
 import { calm, CHANNELS, FACES, getPrefs, HOTKEYS, keyName, setLevel, setPrefs, takeKey, touchOnly, usePrefs, type Channel, type Faces, type Hotkey, type Mic, type Prefs } from './prefs';
-import { micInput, useVoice } from './voice';
+import { micInput, micShown, setMicLevel, useVoice } from './voice';
 import { setSocial, useSocial } from './social';
 
 /** Each hotkey as the settings list it. */
@@ -202,13 +202,12 @@ function Volume({ prefs }: { prefs: Prefs }) {
           onChange={(e) => setLevel(open, Number(e.target.value))}
         />
       )}
-      <MicLevels prefs={prefs} />
     </div>
   );
 }
 
 /** The two of your microphone, as the row under the channels names them, and in full. */
-const MIC_NAMES: Record<keyof Mic, [short: string, full: string]> = { level: ['Mic', 'Your microphone'], gate: ['Gate', 'Noise gate: quieter than this is not sent'] };
+const MIC_NAMES: Record<keyof Mic, [short: string, full: string]> = { level: ['Mic', 'Your microphone'], gate: ['Gate', 'Microphone threshold'] };
 
 /**
  * Your microphone as voice chat sends it: its level and its gate, in a row like the channels', of which the one pressed
@@ -221,13 +220,15 @@ export function MicLevels({ prefs }: { prefs: Prefs }) {
     if (open) slider.current?.focus();
   }, [open]);
   const { mic } = prefs;
+  const { muted } = useVoice();
+  const shown: Mic = { ...mic, level: micShown(mic.level, muted) };
   return (
     <div className="mic-levels">
       <div className="mix">
         {(['level', 'gate'] as const).map((k) => (
           <button key={k} type="button" className={open === k ? 'on' : ''} aria-expanded={open === k} data-tip={MIC_NAMES[k][1]} onClick={() => setOpen(open === k ? null : k)}>
             {MIC_NAMES[k][0]}
-            <output>{k === 'gate' && !mic.gate ? 'off' : percent(mic[k])}</output>
+            <output>{k === 'gate' && !mic.gate ? 'off' : k === 'level' && muted ? 'Muted' : percent(shown[k])}</output>
           </button>
         ))}
       </div>
@@ -240,8 +241,8 @@ export function MicLevels({ prefs }: { prefs: Prefs }) {
             max={open === 'level' ? 2 : 1}
             step={open === 'level' ? 0.05 : 0.01}
             aria-label={MIC_NAMES[open][1]}
-            value={mic[open]}
-            onChange={(e) => setPrefs({ mic: { ...getPrefs().mic, [open]: Number(e.target.value) } })}
+            value={shown[open]}
+            onChange={(e) => (open === 'level' ? setMicLevel(Number(e.target.value)) : setPrefs({ mic: { ...getPrefs().mic, gate: Number(e.target.value) } }))}
           />
           {open === 'gate' && <Heard gate={mic.gate} />}
         </div>
@@ -430,11 +431,18 @@ function YourSettings({ room, prefs }: { room?: RoomView | null; prefs: Prefs })
         <Gear />
         Settings
       </h3>
-      <Volume prefs={prefs} />
-      <label className="check">
-        <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
-        <span>Bots say "Nertz"</span>
-      </label>
+      {/* Sound: what you hear (Output), and your microphone as voice chat sends it (Input). */}
+      <div className="sound">
+        <h3>Sound</h3>
+        <h4>Output</h4>
+        <Volume prefs={prefs} />
+        <label className="check">
+          <input type="checkbox" checked={prefs.botVoice} disabled={prefs.muted} onChange={(e) => setPrefs({ botVoice: e.target.checked })} />
+          <span>Bots say "Nertz"</span>
+        </label>
+        <h4 className="input">Input</h4>
+        <MicLevels prefs={prefs} />
+      </div>
       <label className="check">
         <input type="checkbox" checked={prefs.chatOver} onChange={(e) => setPrefs({ chatOver: e.target.checked })} />
         <span>Show chat over the table</span>

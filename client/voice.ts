@@ -9,7 +9,7 @@
 import { useSyncExternalStore } from 'react';
 import type { VoiceMember } from '../shared/chat';
 import { current, post } from './net';
-import { GATE_MAX, gateLevel, getPrefs, loudness, micGain, watchPrefs } from './prefs';
+import { GATE_MAX, gateLevel, getPrefs, loudness, micGain, setPrefs, watchPrefs } from './prefs';
 
 /**
  * STUN only: enough when at least one side of a pair can be reached directly,
@@ -150,6 +150,16 @@ export function setMuted(muted: boolean): void {
   for (const t of mic?.getAudioTracks() ?? []) t.enabled = !muted;
   set({ muted });
   if (state.status === 'on') post({ t: 'voice', on: true, muted });
+}
+
+/** Your microphone's level as its slider shows it: 0 while you are muted (the saved level is kept, to come back to). */
+export const micShown = (level: number, muted: boolean): number => (muted ? 0 : level);
+
+/** The microphone's level from its slider: 0 is muting you (the saved level stays as it was), and anything above it unmutes you at that level. */
+export function setMicLevel(level: number): void {
+  if (level <= 0) return setMuted(true);
+  setPrefs({ mic: { ...getPrefs().mic, level } });
+  if (state.muted) setMuted(false);
 }
 
 /** Mute yourself if you are not, unmute if you are, from the store as it is now (not as last rendered); answers whether you are now muted. */
