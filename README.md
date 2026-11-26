@@ -45,7 +45,7 @@ Controls:
 | --- | --- |
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
 | ...or tap or click it, then the pile (if the table moves without dragging) | the same, without carrying it |
-| Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there |
+| Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there (or at the nearest room, if that is within a card's width) |
 | Drag a finished pile (one you put the King on) to the tray, bottom right (or tap or click it, then the tray, if the table moves without dragging) | clear it and free its place. Until you have, you can do nothing else |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
@@ -171,14 +171,15 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   any card or run.
 - **The middle** holds up to 4 piles per player in the round, shared by everyone. Every card but an Ace goes on the
   specific pile it extends, up by suit to the King, one card at a time. An Ace starts a pile at the very point of the
-  felt where it is let go (see [The table](#the-table)). The whole card must lie on the felt, and clear of every other
+  felt where it is let go (see [The table](#the-table)), or, if there is no room right there, at the nearest point no
+  more than a card's width away that has room. The whole card must lie on the felt, and clear of every other
   pile by a small gap (0.14 of a card's width): exactly what you see, and the same on everyone's screen. While you
-  carry the Ace over the felt it is the size of a pile in the middle, with an outline on it that says whether there is
-  room (a gold ring and a tick) or not (a broken red ring, struck through, and a cross), and every pile shows the room
-  it keeps round itself. Let go where there is no room and the Ace goes back. Two Aces for the same patch of felt: the
+  carry the Ace over the felt it is the size of a pile in the middle, with an outline that shows where it would land
+  (a gold ring and a tick) or that there is no room near enough (a broken red ring, struck through, and a cross), and
+  every pile shows the room it keeps round itself. Let go with no room near enough and the Ace goes back. Two Aces for the same patch of felt: the
   first lands, the second goes back. The table still holds at most 4 piles per player.
 - **Precise placement.** A card lands only when released on the one pile where it legally fits. If someone got there first
-  (the pile moved on, or the felt was taken), the card returns to where it came from. Nothing is ever rerouted.
+  (the pile moved on, or the felt was taken), the card returns to where it came from. Nothing is ever rerouted to another pile.
 - **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King
   drags it to the **tray** at the side. Its place is then free for a new Ace. Tray piles still count for scoring.
 - **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in

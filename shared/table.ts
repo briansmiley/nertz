@@ -130,3 +130,23 @@ export const roomAt = (p: Pt, placed: readonly Pt[], n: number): boolean => onTa
 export function openPlace(placed: readonly Pt[], n: number): Pt | null {
   return scan(n).find((p) => roomAt(p, placed, n)) ?? null;
 }
+
+/** Points of a disc of radius 1 on a fine grid, its middle first and then outwards: where `roomNear` looks. */
+const NEAR: readonly Pt[] = (() => {
+  const k = 10;
+  const pts: Pt[] = [];
+  for (let i = -k; i <= k; i++) for (let j = -k; j <= k; j++) if (Math.hypot(i, j) <= k) pts.push({ x: i / k, y: j / k });
+  return pts.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+})();
+
+/**
+ * The place nearest `p`, no further than `reach` from it, where a new pile may go given the piles already `placed`
+ * (`p` itself if it is clear), or null when there is none that near. Deterministic.
+ */
+export function roomNear(p: Pt, placed: readonly Pt[], n: number, reach: number): Pt | null {
+  for (const d of NEAR) {
+    const q = { x: round3(p.x + d.x * reach), y: round3(p.y + d.y * reach) };
+    if (roomAt(q, placed, n)) return q;
+  }
+  return null;
+}
