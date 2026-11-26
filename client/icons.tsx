@@ -94,6 +94,16 @@ export function Play() {
   return <img className="art" src="/icons/resume.png" alt="" aria-hidden="true" />;
 }
 
+/** Skipping to the scores: play's triangle twice. */
+export function FastForward() {
+  return (
+    <span className="ff" aria-hidden="true">
+      <img className="art" src="/icons/resume.png" alt="" />
+      <img className="art" src="/icons/resume.png" alt="" />
+    </span>
+  );
+}
+
 /** Ending the round where it stands: the white flag, giving up on it. */
 export function Flag() {
   return <img className="art" src="/icons/flag.png" alt="" aria-hidden="true" />;
