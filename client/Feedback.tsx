@@ -151,7 +151,8 @@ export function FeedbackSlip({ room, back, close }: { room?: RoomView | null; ba
         {back && <Back onClick={back} />}
         <h3>Feedback</h3>
       </header>
-      <div className="kinds" role="radiogroup" aria-label="What kind">
+      {/* (Pressed while writing, like Send, they leave the focus in the words.) */}
+      <div className="kinds" role="radiogroup" aria-label="What kind" onMouseDown={pad ? (e) => e.preventDefault() : undefined}>
         <button type="button" role="radio" aria-checked={kind === 'bug'} className={kind === 'bug' ? 'on' : ''} onClick={() => setKind('bug')}>
           <BugIcon />
           Bug
