@@ -175,9 +175,10 @@
 }
 
 /* Writing on a phone (Feedback.tsx): the slip lies level across what the keyboard leaves of the screen (where and how
-   big, from the slip), the words written on the paper's own lines, what kind and Send by them. The screenshot is
-   there again once the keyboard is put away. The paper runs on down behind the keyboard and the bar iOS floats
-   over it (`--under`, from the slip), so the table never shows between them. */
+   big, from the slip), the words written on the paper's own lines, what kind and Send by them. The screenshot, held
+   upright, is a small one at the foot of the visible paper, on the empty lines (it is whole again once the keyboard is
+   put away). The paper runs on down behind the keyboard and the bar iOS floats over it (`--under`, from the slip), so
+   the table never shows between them. */
 .slip.feedback.writing {
   position: fixed;
   right: auto;
@@ -279,5 +280,28 @@
     grid-area: 1 / 2;
     align-self: center;
     max-width: none;
+  }
+
+  /* Bottom centre of the paper the keyboard leaves, between the pill and button iOS floats at its corners. Not
+     pressable (so the words keep the focus), and its bin is not needed here. The words stop short of it, so it never
+     covers the line being written. */
+  .feedback.writing:has(.shot) textarea {
+    padding-bottom: 4rem;
+  }
+
+  .writing .shot {
+    display: block;
+    position: absolute;
+    left: 50%;
+    margin: 0;
+    bottom: calc(var(--under, 0px) + 0.8rem);
+    width: 4.6rem;
+    height: 3.4rem;
+    translate: -50% 0;
+    pointer-events: none;
+  }
+
+  .writing .shot .trash {
+    display: none;
   }
 }
