@@ -31,8 +31,13 @@ export type Doing =
 
 export const IN_PILE: Doing = { k: 'pile' };
 
-/** A card that the layout moves from the place `from` to the place `to`, moved by `by`: within its pile, or travelling to another. */
-export const moving = (from: string, to: string, by: Whose): Doing => (from === to ? IN_PILE : { k: 'travelling', by });
+/**
+ * A card doing `now` that the layout moves from the place `from` to the place `to`, moved by `by`: travelling to
+ * another pile, or within its own. One that is still on its way to the pile it is in (the round ends as it lands, and
+ * its pile is laid out anew) goes on travelling, moved by whoever was moving it, until it is there.
+ */
+export const moving = (from: string, to: string, by: Whose, now: Doing): Doing =>
+  from !== to ? { k: 'travelling', by } : now.k === 'travelling' || now.k === 'turning' ? { k: 'travelling', by: now.by } : IN_PILE;
 
 /** In a player's hand: the pointer (or that player's reports) says where it is, not the layout. */
 export const inHand = (d: Doing): d is Doing & { k: 'held' | 'carried' } => d.k === 'held' || d.k === 'carried';
