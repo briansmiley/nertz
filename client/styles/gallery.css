@@ -1,4 +1,4 @@
-/* Your cards, to look at and choose (/?decks). */
+/* Your cards, to look at and choose (BackPicker). */
 
 .showroom {
   max-width: 1080px;
@@ -75,6 +75,42 @@
   font: 400 1.5rem/1 var(--display);
   color: var(--marigold);
   letter-spacing: 0.02em;
+}
+
+/* Backs or faces: the one shown named as a heading, the other small after it, to be pressed. (They change places and
+   sizes as they are pressed: BackPicker moves them; the colour goes over here.) */
+.showroom .panels {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.showroom .panels button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 400 1rem/1 var(--display);
+  letter-spacing: 0.02em;
+  color: rgba(241, 234, 216, 0.5);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.3s ease-out;
+}
+
+.showroom .panels button.on {
+  font-size: 1.5rem;
+  color: var(--marigold);
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .showroom .panels button:not(.on):hover {
+    color: var(--chalk);
+  }
+}
+
+.calm .showroom .panels button {
+  transition: none;
 }
 
 /* Backs with or without their white edge: a small switch beside the counters. */
@@ -543,20 +579,6 @@
 
   .showroom .heading {
     gap: 12px;
-  }
-
-  /* The sheet's heading has more after it than a line of a phone holds: its switches go onto lines of their own. */
-  .picker .heading {
-    flex-wrap: wrap;
-    row-gap: 12px;
-  }
-
-  .picker .heading:has(.edge)::after {
-    flex-basis: 40%;
-  }
-
-  .picker .heading .edge {
-    margin-left: auto;
   }
 
   /* The colours, behind one counter that is a slice of each (in its middle, the one shown now): pressed, they come out under it. */
