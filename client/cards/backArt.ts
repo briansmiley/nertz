@@ -1936,6 +1936,7 @@ export const BACK_ART: Record<Exclude<Back, 'plain'>, BackArt> = {
   lion: file(1),
   ornate: file(1.8),
   damask: file(1.3),
+  seraph: file(1.25),
   rosette: file(1.8),
   check: file(2.2),
   stars: file(2.4),

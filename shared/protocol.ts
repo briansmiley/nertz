@@ -95,6 +95,7 @@ export const CARD_BACKS = {
   check: 'Check',
   'carpet-tint': 'Carpet',
   damask: 'Damask',
+  seraph: 'Seraph',
   // Made by the owner in Midjourney: in their own colours, and as one-colour prints of the same pictures.
   acanthus: 'Acanthus',
   fern: 'Fern',
@@ -145,7 +146,7 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
   { name: 'Ornate', backs: ['guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'carpet-tint', 'damask', 'tarot-star-tint', 'tarot-eye-tint'] },
   { name: 'Animals', backs: ['fox', 'owl', 'loong', 'rabbit', 'crane', 'phoenix', 'deer', 'koi', 'falcon', 'swallowtail', 'butterflies', 'ants', 'aster'] },
   { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'giglio', 'earth', 'enterprise'] },
-  { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye'] },
+  { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye', 'seraph'] },
 ];
 /**
  * A lot: backs to draw one from by chance, in place of a back of one's own choosing: once for a table, when its first

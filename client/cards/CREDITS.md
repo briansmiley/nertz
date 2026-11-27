@@ -41,6 +41,9 @@ white-on-nothing pattern that is printed in each player's colour.
   is in `art/backs/STYLE.md`.
 - `damask` was generated for the owner with OpenAI's image API (26 Nov 2026) after a photo the owner took of a printed
   fabric: a new medallion in its spirit, not a copy of the print. How it was made is in `art/backs/STYLE.md`.
+- `seraph` was generated for the owner with OpenAI's image API (27 Nov 2026) from a written description only (wings
+  crossing round an eye in shadow), with `aster` as the reference for its texture. No outside image was given to the
+  model. How it was made is in `art/backs/STYLE.md`.
 - `lightcone` (drawn in `backArt.ts`) is the logo of Lightcone Infrastructure, taken from the owner's own copy of its
   file. It is their mark, not this project's: the owner's choice to include; check with them before it is deployed publicly.
 - `enterprise` (drawn in `backArt.ts`) is the delta insignia of Star Trek's Starfleet, traced from a picture the owner
