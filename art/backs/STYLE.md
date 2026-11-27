@@ -54,6 +54,23 @@ bolder and simpler so they read at a small size".
 - **Ask for crisp edges in a second pass.** A busy first draft keeps its fine leaves blurred; redrawing it from itself
   sharpens them.
 
+## Seraph
+
+`seraph` (in the Celestial group, 27 Nov 2026) was written from a description, with no outside image given to the
+model: the style prompt, symmetrical, with the subject *a mythical winged guardian seen head-on and mirrored left to
+right and top to bottom: two pairs of great feathered wings, one pair rising upward and one pair reaching downward,
+their long arms crossing over and under each other like a woven knot around a single large open eye at the centre of
+the card. A small full moon sits above the top wings*. That gave clean but flat drafts. Two edits followed:
+
+1. Texture, with the draft and `aster.png` as references: "Give it the texture and level of detail of the second
+   image (a cat): every feather built from many fine carved strokes, hatching and stippled flecks, like a woodcut or
+   engraving… Take only the line texture from the cat, nothing of the cat itself."
+2. Shadow, from that draft alone: "sink [the eye] deep into shadow… mostly swallowed by solid navy: no bright white
+   eyeball. Only its outline, a few fine carved strokes on the lids, the rim of the iris and a small bright glint…"
+
+- **One of our own backs is a fine reference for texture.** Aster's woodcut strokes carried over without any of the cat.
+- About $0.13 in all (`--issue` was not given; see the usage log for 27 Nov).
+
 ## Making a back from an image
 
 Crop to 5:7, find the background's tone (the commonest dark value) and the white (the 99.5th percentile), stretch
