@@ -1,4 +1,4 @@
-// The backs to choose among, as they are shown wherever one is chosen (the gallery at /?decks, and the sheet opened
+// The backs to choose among, as they are shown wherever one is chosen (the page of your cards, BackPicker, opened
 // from a card in a table's lobby): each kind a fan of its first few cards, the rest fading off behind them, and the kind that is picked up dealt out under the
 // row, first a card with a question mark on it (any one of that kind, drawn by lot when a table's first round is dealt), then every
 // back of the kind with its small rendition tucked against it.

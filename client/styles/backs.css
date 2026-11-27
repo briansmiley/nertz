@@ -55,97 +55,12 @@
   opacity: 0.6;
 }
 
-/* The sheet of backs: over the whole window, on the cloth's colours. */
+/* Your cards to choose (BackPicker): the page of them, laid over the whole window on the cloth, and scrolled on its own. */
 .picker {
   position: fixed;
   inset: 0;
   z-index: 48000; /* over the score sheet, the chat and your settings (it is opened from them), under the connection banner */
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgba(4, 16, 20, 0.62);
-}
-
-.picker .sheet {
-  box-sizing: border-box;
-  width: min(680px, 100%);
-  max-height: min(86vh, 760px);
   overflow: hidden auto; /* (not sideways: the last pile's fan runs a few pixels past the edge on a phone) */
-  padding: 16px 18px 20px;
-  border-radius: 14px;
-  background: #123a41;
-  color: var(--chalk);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-}
-
-.picker .shut {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  border-radius: 99px;
-  background: none;
-  color: var(--chalk);
-  font: 400 24px/1 var(--ui);
-  cursor: pointer;
-}
-
-/* The sheet holds the same piles as the page of cards (.showroom): a little smaller, and with no page margins. One size
-   whichever panel is up (backs or faces): the sheet does not jump when the other is chosen; a longer panel scrolls inside it. */
-.picker .sheet.showroom {
-  width: min(940px, 100%);
-  max-width: none;
-  height: min(86vh, 760px);
-  margin: 0;
-  padding: 30px 18px 22px;
-}
-
-.picker .heading {
-  margin: 0 0 4px;
-}
-
-.picker .sheet.showroom > .heading {
-  margin-top: 0;
-}
-
-.picker .sheet section > .heading {
-  margin-top: 0.4rem;
-}
-
-/* The sheet of your own cards has two panels: backs and faces. */
-.picker .panels {
-  display: inline-flex;
-  border: 1.5px solid currentColor;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.picker .panels button {
-  padding: 4px 14px 5px;
-  border: 0;
-  font: 600 0.9rem/1.2 var(--ui);
-  color: inherit;
-  background: none;
-  cursor: pointer;
-}
-
-.picker .panels button.on {
-  color: var(--ink);
-  background: var(--marigold);
-}
-
-.picker .heading .shut {
-  order: 3;
-}
-
-.picker .stack {
-  zoom: 0.7;
-}
-
-.picker .lay > .mini:first-child {
-  zoom: 0.8;
-}
-
-.picker .pile b {
-  font-size: 1rem;
+  overscroll-behavior: contain;
+  background: inherit; /* the felt, as the body has it */
 }

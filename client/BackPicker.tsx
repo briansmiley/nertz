@@ -1,18 +1,30 @@
-// The backs to choose among, in a sheet over whatever is on screen: the same piles as on the page of cards
-// (BackShelf), in one colour; over them, the choice of any back at all by lot, and of backs without their white
-// edge. Opened from a card: the one beside your name in a table's lobby, the one beside a bot's there (whoever deals:
-// that bot's), or the card that stands for your backs (`YourBacks`: on the first page and in your settings).
-import { useEffect, useState } from 'react';
+// Your cards, to look at and choose: every back, lying in a loose spread as if dealt out, shown in whichever of the
+// colours you like; or (for your own cards) every deck of faces as a fanned hand, the other of the two named small
+// beside the one shown. Opened over whatever is on
+// screen from a card: the one beside your name in a table's lobby, the one beside a bot's there (whoever deals: that
+// bot's), or the card that stands for your backs (`YourBacks`: on the first page and in your settings).
+import { useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import { createPortal } from 'react-dom';
 import { CARD_BACKS, type Back } from '../shared/protocol';
 import { BackShelf } from './BackShelf';
-import { backOf } from './cards/Face';
-import { FaceShelf } from './FaceShelf';
-import { setPrefs, usePrefs } from './prefs';
+import { BACKS, backOf } from './cards/Face';
+import { useDismiss } from './dismiss';
+import { FaceShelf, Night } from './FaceShelf';
+import { calm, setPrefs, usePrefs } from './prefs';
 
-/** `faces`: your own cards are being chosen, so the sheet has a second panel, for the faces (as the page of cards has). */
+const PANELS = { backs: 'Backs', faces: 'Faces' } as const;
+type Panel = keyof typeof PANELS;
+
+/**
+ * `colour`: the colour the backs are first shown in (whoever's they are: theirs at the table). `faces`: your own cards
+ * are being chosen, so the faces can be shown in place of the backs. `onBare`: whether these backs can go without their white edge.
+ */
 export function BackPicker({ title, colour, bare, back, random, onPick, onRandom, onBare, onClose, faces }: { faces?: boolean; title: string; colour: string; bare: boolean; back: Back; random: string | null; onPick: (back: Back) => void; onRandom: (scope: string | null) => void; onBare?: (bare: boolean) => void; onClose: () => void }) {
-  const [panel, setPanel] = useState<'backs' | 'faces'>('backs');
+  const [ink, setInk] = useState(() => Math.max(0, (BACKS as readonly string[]).indexOf(colour)));
+  const [panel, setPanel] = useState<Panel>('backs');
+  /** The one shown first and large; the other after it, small, to be pressed. */
+  const order: Panel[] = !faces ? ['backs'] : panel === 'backs' ? ['backs', 'faces'] : ['faces', 'backs'];
   useEffect(() => {
     const key = (e: KeyboardEvent): void => void (e.key === 'Escape' && onClose());
     addEventListener('keydown', key);
@@ -20,43 +32,75 @@ export function BackPicker({ title, colour, bare, back, random, onPick, onRandom
   }, [onClose]);
   // (Put straight into the page, not into the sheet it was opened from: the lobby's lies at a slight angle, and anything inside it would lie at that angle too and be placed by it, not by the window.)
   return createPortal(
-    <div className="picker" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="sheet showroom">
-        <div className="heading">
-          <h2>{title}</h2>
-          {faces && (
-            <div className="panels" role="tablist">
-              <button type="button" role="tab" aria-selected={panel === 'backs'} className={panel === 'backs' ? 'on' : ''} onClick={() => setPanel('backs')}>
-                Backs
-              </button>
-              <button type="button" role="tab" aria-selected={panel === 'faces'} className={panel === 'faces' ? 'on' : ''} onClick={() => setPanel('faces')}>
-                Faces
-              </button>
-            </div>
-          )}
-          {panel === 'backs' && onBare && (
-            <button type="button" className={`edge${bare ? ' on' : ''}`} aria-pressed={bare} data-tip="Backs without the white edge: the pattern runs to the edge of the card" onClick={() => onBare(!bare)}>
-              <span className="lever" />
-              Borderless
-            </button>
-          )}
-          {panel === 'backs' && (
-            <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} data-tip="Any back at all, drawn by lot when the first round is dealt, and kept for the table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
-              <span className="lever" />
-              Random
-            </button>
-          )}
-          <button type="button" className="shut" aria-label="Close" onClick={onClose}>
-            ×
+    <div className="picker" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="showroom">
+        <header>
+          <button type="button" className="back-to" aria-label="Back" data-tip="Back" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14.5 5.5L8 12l6.5 6.5" />
+            </svg>
           </button>
-        </div>
-        {panel === 'backs' ? <BackShelf colour={colour} bare={bare} back={back} random={random} onPick={onPick} onRandom={onRandom} /> : <FaceShelf />}
+          <h1>{title}</h1>
+          {/* A back drawn by lot for a table, from all of them: up here, apart from how the backs are shown below. (From one kind only: the first card of that kind's spread.) */}
+          <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} data-tip="Any back at all, drawn by lot when a table's first round is dealt, and kept for that table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
+            <span className="lever" />
+            Random back
+          </button>
+        </header>
+        <section>
+          <div className="heading">
+            <div className="panels" role="tablist">
+              {order.map((p) => (
+                <motion.button key={p} layout transition={calm() ? { duration: 0 } : { type: 'spring', bounce: 0.15, duration: 0.4 }} type="button" role="tab" aria-selected={p === panel} className={p === panel ? 'on' : ''} onClick={() => setPanel(p)}>
+                  {PANELS[p]}
+                </motion.button>
+              ))}
+            </div>
+            {panel === 'backs' ? (
+              <>
+                {onBare && (
+                  <button type="button" className={`edge${bare ? ' on' : ''}`} aria-pressed={bare} data-tip="Backs without the white edge: the pattern runs to the edge of the card" onClick={() => onBare(!bare)}>
+                    <span className="lever" />
+                    Borderless
+                  </button>
+                )}
+                <Inks ink={ink} onInk={setInk} />
+              </>
+            ) : (
+              <Night />
+            )}
+          </div>
+          {panel === 'backs' ? <BackShelf colour={BACKS[ink]!} bare={bare} back={back} random={random} onPick={onPick} onRandom={onRandom} /> : <FaceShelf />}
+        </section>
       </div>
     </div>,
     document.body,
   );
 }
 
+/** Every colour as a slice of one counter: what the colours are chosen from where there is no room for a row of them. */
+const PIE = `conic-gradient(${BACKS.map((c, i) => `${c} ${(i / BACKS.length) * 360}deg ${((i + 1) / BACKS.length) * 360}deg`).join(', ')})`;
+
+/**
+ * The colour the backs are shown in: a counter of each. On a phone they are behind one counter of all the colours
+ * (the one shown now in its middle), and come out under it when it is pressed; put away again by choosing one, by
+ * pressing anywhere else, or by Escape.
+ */
+function Inks({ ink, onInk }: { ink: number; onInk: (ink: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const here = useRef<HTMLDivElement>(null);
+  useDismiss(here, open, () => setOpen(false));
+  return (
+    <div ref={here} className={`inks${open ? ' open' : ''}`}>
+      <button type="button" className="pie" aria-label="Show the backs in another colour" aria-expanded={open} style={{ background: PIE, color: BACKS[ink] }} onClick={() => setOpen(!open)} />
+      <div className="counters" role="radiogroup" aria-label="Show the backs in this colour">
+        {BACKS.map((c, i) => (
+          <button key={c} type="button" role="radio" aria-checked={i === ink} aria-label={`Colour ${i + 1}`} className={i === ink ? 'on' : ''} style={{ background: c }} onClick={() => (onInk(i), setOpen(false))} />
+        ))}
+      </div>
+    </div>
+  );
+}
 /** The sheet for your own backs (and faces): what is picked is yours, at every table. */
 export function YourBackPicker({ colour, onClose }: { colour: string; onClose: () => void }) {
   const prefs = usePrefs();

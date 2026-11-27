@@ -1,6 +1,5 @@
-// The decks of faces to choose among, as they are shown wherever one is chosen (the page of cards at /?decks, and the
-// "Faces" panel of the sheet opened from your card back): every deck as a fanned hand, light or dark, with the whole
-// deck behind "See all 52". Each is shown with its small rendition too: what other players' piles are drawn with.
+// The decks of faces to choose among, on the page of your cards (BackPicker): every deck as a fanned hand, light or
+// dark, with the whole deck behind "See all 52". Each is shown with its small rendition too: what other players' piles are drawn with.
 import { Fragment, useState, type CSSProperties } from 'react';
 import { DECKS, type Deck } from '../shared/protocol';
 import type { Suit } from '../shared/types';
@@ -23,21 +22,24 @@ function Card({ deck, night, suit, rank, mini }: { deck: Deck; night: boolean; s
   );
 }
 
+/** Light or dark cards: two counters, as the backs have for their colour. (Beside the faces' heading.) */
+export function Night() {
+  const prefs = usePrefs();
+  return (
+    <div className="inks" role="radiogroup" aria-label="Light or dark cards">
+      {([false, true] as const).map((night) => (
+        <button key={String(night)} type="button" role="radio" aria-checked={prefs.night === night} aria-label={night ? 'Dark cards' : 'Light cards'} data-tip={night ? 'Dark cards' : 'Light cards'} className={prefs.night === night ? 'on' : ''} style={{ background: night ? '#1b2132' : '#fffdf7' }} onClick={() => setPrefs({ night })} />
+      ))}
+    </div>
+  );
+}
+
 export function FaceShelf() {
   const prefs = usePrefs();
   /** The deck whose 52 cards are laid out, if any: one at a time, across the whole page, the other decks faded. */
   const [all, setAll] = useState<Deck | null>(null);
   return (
-    <section>
-      <div className="heading">
-        <h2>Faces</h2>
-        {/* Light or dark cards: two counters, as the backs have for their colour. */}
-        <div className="inks" role="radiogroup" aria-label="Light or dark cards">
-          {([false, true] as const).map((night) => (
-            <button key={String(night)} type="button" role="radio" aria-checked={prefs.night === night} aria-label={night ? 'Dark cards' : 'Light cards'} data-tip={night ? 'Dark cards' : 'Light cards'} className={prefs.night === night ? 'on' : ''} style={{ background: night ? '#1b2132' : '#fffdf7' }} onClick={() => setPrefs({ night })} />
-          ))}
-        </div>
-      </div>
+    <>
       <div className={`decks${all ? ' one' : ''}`}>
         {(Object.keys(DECKS) as Deck[]).map((deck) => (
           <Fragment key={deck}>
@@ -69,6 +71,6 @@ export function FaceShelf() {
           </Fragment>
         ))}
       </div>
-    </section>
+    </>
   );
 }

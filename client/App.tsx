@@ -3,7 +3,6 @@ import { rename, sitter as sitterOf, signedIn as signedInAs, signIn, useAccount,
 import { goBack, showPage, useAddressed, type Addressed } from './address';
 import { SignIn } from './SignIn';
 import { Follow, FollowingList, Profile, Theirs } from './Profile';
-import { Gallery } from './Gallery';
 import { useAnimate } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
@@ -145,7 +144,6 @@ export function App() {
   useSounds(room, net.status === 'online');
   const back = useBack(net.status);
   const [tucked, setTucked] = useTucked(net.status);
-  if (!room && new URLSearchParams(location.search).has('decks')) return <Gallery />;
   // (A reload at a table sits straight back down: nothing of the home page meanwhile, unless it cannot.)
   if (!room && net.status === 'rejoining') return null;
   // (Whose it is, yours or not, is not known until the server says who is signed in.)
