@@ -650,7 +650,7 @@
 /* A phone held sideways (one wider than 720px: a narrower one has the phone's rules above, its piles in two rows): the piles and the cards dealt out below them smaller, so every pile and its name stands in the one row. */
 @media (orientation: landscape) and (max-height: 499px) and (min-width: 721px) {
   .showroom .stack {
-    zoom: 0.42;
+    zoom: 0.52;
     margin-bottom: 12px;
   }
 
