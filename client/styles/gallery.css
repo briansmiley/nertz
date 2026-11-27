@@ -252,15 +252,16 @@
   }
 }
 
-/* Picked up: its cards go down towards where they are dealt out, and only the outline of the first is left. */
+/* Picked up: its cards are taken up at once (BackShelf deals them out from where they lay), and only the outline of the first is left. */
 .showroom .pile.open .stack {
   translate: 0 0;
   border-color: var(--marigold);
 }
 
 .showroom .pile.open .stack .mini {
-  transform: translate(0, 46px) rotate(0deg) scale(0.8);
+  transform: none;
   opacity: 0;
+  transition: none;
 }
 
 .showroom .pile b {
@@ -322,23 +323,6 @@
   transform: rotate(45deg);
 }
 
-/* Each card comes down from the row of piles, one after another. */
-.showroom .dealt .lay {
-  animation: laid 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-  animation-delay: calc(var(--n) * 24ms);
-}
-
-@keyframes laid {
-  from {
-    opacity: 0;
-    transform: translateY(-34px) rotate(-6deg) scale(0.8);
-  }
-}
-
-.calm .showroom .dealt .lay {
-  animation: none;
-}
-
 .calm .showroom .stack .mini {
   transition: none;
 }
@@ -375,6 +359,21 @@
   }
 }
 
+/* While a card is on its way from the pile (BackShelf deals them), its name and small rendition wait for it. */
+.showroom .lay > :not(:first-child) {
+  transition: opacity 0.14s ease-out;
+}
+
+.showroom .lay.coming > :not(:first-child) {
+  opacity: 0;
+  transition: none;
+}
+
+/* (and, for the two frames before a deal starts, the cards themselves) */
+.showroom .dealt.waiting .lay > .mini:first-child {
+  opacity: 0;
+}
+
 /* Its small rendition, tucked against the corner. */
 .showroom .lay .mini.small {
   position: absolute;
@@ -395,6 +394,13 @@
 
 .showroom .lay.on {
   border-color: var(--marigold);
+  transition: border-color 0.14s ease-out;
+}
+
+/* (and yours is squared off in gold only once its card is down) */
+.showroom .lay.on.coming {
+  border-color: transparent;
+  transition: none;
 }
 
 .showroom .lay.on em {

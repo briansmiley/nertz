@@ -333,9 +333,9 @@ export function riffle(): void {
   setTimeout(stop, 240);
 }
 
-/** A pile of backs dealt out (the decks page): five light cards put down one after another, a little unevenly, each softer than a card played at the table, and thinned so that there is the pat of the card but no knock of the table under it. */
-export function layOut(): void {
-  for (let i = 0; i < 5; i++) hit(pick(PLACES), { gain: rand(0.14, 0.19), rate: rand(1.3, 1.5), thin: 600, delay: i * 0.062 + rand(0, 0.014) });
+/** A pile of backs dealt out (the decks page): `count` light cards put down one after another, `gap` seconds apart and a little unevenly, each softer than a card played at the table, and thinned so that there is the pat of the card but no knock of the table under it. */
+export function layOut(count = 5, gap = 0.062, after = 0): void {
+  for (let i = 0; i < count; i++) hit(pick(PLACES), { gain: rand(0.12, 0.17), rate: rand(1.3, 1.5), thin: 600, delay: after + i * gap + rand(0, 0.014) });
 }
 
 export function recycle(who: Who = 'me'): void {
