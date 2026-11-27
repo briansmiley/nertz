@@ -38,6 +38,39 @@ Subjects that worked:
 - **Aster** is her faithful draft softened by hand, not by the model: blurred (Gaussian, σ 2.2 at 1024 px wide) and
   re-cut at six times the contrast around the midpoint.
 
+## Smooth animals: giraffes, python, sphinx
+
+`giraffes`, `python` and `sphinx` (26 Nov 2026) are animals with no fur or feathers to cut, or little. With the prompt
+above alone they came out flat and too clean: smooth even outlines, large plain fills, nothing around them, like a
+logo. What the first animals have, and these lacked, is ragged tapered edges and many small cuts inside that follow
+the body. So one more sentence goes in before the style:
+
+> Hand-cut look, like a traditional paper cutting or woodcut made with a knife: edges lively and slightly irregular,
+> never smooth vector curves or even outlines. Form and roundness are suggested by many small tapered cuts and nicks of
+> varying width that follow the body, denser on the side turned away from the light. Not a logo, not clip art.
+
+and the subject names what there is to cut, and a little of where the animal is:
+
+- **giraffes**: two adults seen close, from the tops of their legs up, cropped by the bottom edge (no feet, no ground,
+  no grass): mostly necks and heads against open sky, one browsing the crown of a thorny acacia at the top, the other
+  turned back toward us; short bristly manes, spots as uneven hand-cut patches, large and bold.
+- **python**: a ball python in a loose pile of overlapping coils, slender rather than fat, neck rising in a gentle S,
+  head in profile near the top; three or four fern fronds and a couple of fallen leaves, mostly open space; blotches as
+  irregular patches with ragged edges, and rows of small crescent scale nicks along each coil, thicker underneath.
+- **sphinx**: "a mythical sphinx from an ancient Greek vase", sitting upright in profile on a rocky outcrop: a lion's
+  furry body and ruff, a calm human face with wind-blown hair and a headband, large feathered eagle wings raised high.
+  It was drawn with thistles and grasses on the rock, then edited: "remove the thistles, grasses and all other plants".
+
+Giraffes and python are cut closer than the others: a 5:7 window 72% of the picture's width, from its top edge, in
+the middle from side to side, so the heads are large and the bodies run off the bottom and sides.
+
+- **Too much setting is texture.** Whole giraffes in tall grass among three trees, each with small spots, were lost at
+  hand size; a hairless cat on a rumpled blanket turned to stripes. A few large things around the animal are enough.
+- **An edit keeps what is there; it does not reshape well.** Taking the plants off the sphinx was clean. Making a snake
+  slimmer by an edit left gaps in its body: it was drawn again from a new prompt.
+- **A woman's head and chest on an animal's body is refused** by the image API's filter. "A calm human face" on "a
+  lion's furry body" is not.
+
 ## Damask
 
 `damask` (in the Ornate group, 26 Nov 2026) is the one ornament made this way, after the owner's phone photo of a
