@@ -96,9 +96,14 @@ body:has(.corner.right) .ping {
   transition: transform 0.12s ease-out;
 }
 
-.knob:hover > img.art,
 .knob.on > img.art {
   transform: translateY(-2px) rotate(-4deg);
+}
+
+@media (hover: hover) {
+  .knob:hover > img.art {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 /* A slip torn off the score pad. */
@@ -395,12 +400,19 @@ label.check {
   outline: none;
 }
 
-.info:hover,
 .info:focus-visible,
 .info:focus {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--paper);
+}
+
+@media (hover: hover) {
+  .info:hover {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
 }
 
 .info .tip {
@@ -414,9 +426,14 @@ label.check {
   cursor: default; /* its look is the tooltip's (tip.css) */
 }
 
-.info:hover .tip,
 .info:focus .tip {
   display: block;
+}
+
+@media (hover: hover) {
+  .info:hover .tip {
+    display: block;
+  }
 }
 
 .rules .check {
@@ -728,8 +745,10 @@ fieldset.rules .check {
   cursor: pointer;
 }
 
-.slip-head .back:hover {
-  background: rgba(0, 0, 0, 0.06);
+@media (hover: hover) {
+  .slip-head .back:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
 }
 
 .slip-head .back svg {

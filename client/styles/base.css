@@ -184,9 +184,11 @@ button {
   font: 400 20px/24px var(--ui);
 }
 
-.banner .shut:hover {
-  background: rgba(27, 39, 51, 0.08);
-  color: var(--ink);
+@media (hover: hover) {
+  .banner .shut:hover {
+    background: rgba(27, 39, 51, 0.08);
+    color: var(--ink);
+  }
 }
 
 /* What the banner offers: a seat, to whoever is watching; or to just watch, to whoever is waiting for one. */
@@ -201,9 +203,11 @@ button {
   cursor: pointer;
 }
 
-.banner button:hover {
-  background: var(--chalk);
-  color: var(--ink);
+@media (hover: hover) {
+  .banner button:hover {
+    background: var(--chalk);
+    color: var(--ink);
+  }
 }
 
 /* What the connection card offers while the line is down (App.tsx `PlayOffline`): ink on the card, not chalk on ink. */
@@ -216,9 +220,11 @@ button {
   font-size: 15px;
 }
 
-.banner.net .offer:hover {
-  background: var(--ink);
-  color: var(--card);
+@media (hover: hover) {
+  .banner.net .offer:hover {
+    background: var(--ink);
+    color: var(--card);
+  }
 }
 
 /* A slip is open (client/dismiss.ts): the page under it is shut to the pointer, so a press beside the slip touches

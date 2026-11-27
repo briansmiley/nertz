@@ -55,8 +55,10 @@
   rotate: 90deg;
 }
 
-.snipes .top:hover .chev {
-  stroke: var(--ink);
+@media (hover: hover) {
+  .snipes .top:hover .chev {
+    stroke: var(--ink);
+  }
 }
 
 .snipes .n {

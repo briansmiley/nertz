@@ -340,9 +340,11 @@
   transition: color 120ms, background-color 120ms;
 }
 
-.opening .unask:hover {
-  color: var(--chalk);
-  background: rgba(8, 28, 33, 0.9);
+@media (hover: hover) {
+  .opening .unask:hover {
+    color: var(--chalk);
+    background: rgba(8, 28, 33, 0.9);
+  }
 }
 
 @keyframes waitedon {
@@ -382,8 +384,10 @@
   transition: box-shadow 120ms, background-color 120ms;
 }
 
-.opening .roster.dealer[role='button']:hover {
-  box-shadow: inset 0 0 0 1.5px var(--chalk-dim);
+@media (hover: hover) {
+  .opening .roster.dealer[role='button']:hover {
+    box-shadow: inset 0 0 0 1.5px var(--chalk-dim);
+  }
 }
 
 .opening .roster.dealer[role='button']:focus-visible,

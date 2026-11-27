@@ -166,10 +166,15 @@
   transition: transform 0.12s ease-out, filter 0.15s;
 }
 
-.chat-bar > button:hover > img.art,
 .chat-bar > button.on > img.art,
 .chat-bar > button.open > img.art {
   transform: translateY(-2px) rotate(-4deg);
+}
+
+@media (hover: hover) {
+  .chat-bar > button:hover > img.art {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 .chat-bar > button:active > img.art {
@@ -269,8 +274,10 @@
   transition: transform 0.12s ease-out;
 }
 
-.chat-bar button.lost:hover .robot-net {
-  transform: translateY(-2px) rotate(-4deg);
+@media (hover: hover) {
+  .chat-bar button.lost:hover .robot-net {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 @keyframes lost-in {
@@ -533,8 +540,10 @@
   transition: transform 0.12s ease-out;
 }
 
-.voice-slip button.mic-at:hover img.art {
-  transform: translateY(-2px) rotate(-4deg);
+@media (hover: hover) {
+  .voice-slip button.mic-at:hover img.art {
+    transform: translateY(-2px) rotate(-4deg);
+  }
 }
 
 /* Join and Leave, where the slip's heading ends: the table's chunky button made small and tipped a little, the same

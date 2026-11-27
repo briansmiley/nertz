@@ -83,10 +83,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tables li button:hover b,
-.tables li button:hover .names {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+@media (hover: hover) {
+  .tables li button:hover b,
+  .tables li button:hover .names {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 
 /* On the first page, who sits down (you, a guest, or only a name) and the card beside it. */
@@ -156,8 +158,10 @@
   fill: var(--paper);
 }
 
-.named button.you:hover span {
-  text-decoration-color: currentColor;
+@media (hover: hover) {
+  .named button.you:hover span {
+    text-decoration-color: currentColor;
+  }
 }
 
 /* A guest: Guest, and beside it Sign in, a button of its own. */
@@ -186,8 +190,10 @@
   cursor: pointer;
 }
 
-.named .guest .out:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .named .guest .out:hover {
+    color: var(--ink);
+  }
 }
 
 /* The name a guest plays under, just below, from the same left edge. */

@@ -38,8 +38,10 @@
   background: rgba(8, 28, 33, 0.6);
 }
 
-.showroom .back-to:hover {
-  border-color: var(--chalk);
+@media (hover: hover) {
+  .showroom .back-to:hover {
+    border-color: var(--chalk);
+  }
 }
 
 .showroom .back-to svg {
@@ -202,10 +204,16 @@
 }
 
 /* Under the pointer a pile opens a little, like a hand: enough to see what kind of thing is in it. */
-.showroom .pile:not(.open):hover .stack .mini,
 .showroom .pile:not(.open):focus-visible .stack .mini {
   transform: translate(calc(var(--k) * 16px - 6px), calc(var(--k) * var(--k) * 0.6px - 6px)) rotate(calc(var(--k) * 4.5deg - 2deg));
   opacity: calc(1 - max(0, var(--k) - 3) * 0.5);
+}
+
+@media (hover: hover) {
+  .showroom .pile:not(.open):hover .stack .mini {
+    transform: translate(calc(var(--k) * 16px - 6px), calc(var(--k) * var(--k) * 0.6px - 6px)) rotate(calc(var(--k) * 4.5deg - 2deg));
+    opacity: calc(1 - max(0, var(--k) - 3) * 0.5);
+  }
 }
 
 /* Picked up: its cards go down towards where they are dealt out, and only the outline of the first is left. */
@@ -321,9 +329,14 @@
   filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
 }
 
-.showroom .lay:hover > .mini:first-child,
 .showroom .lay.on > .mini:first-child {
   transform: rotate(0deg);
+}
+
+@media (hover: hover) {
+  .showroom .lay:hover > .mini:first-child {
+    transform: rotate(0deg);
+  }
 }
 
 /* Its small rendition, tucked against the corner. */
@@ -404,12 +417,14 @@
 }
 
 /* Under the pointer the hand opens right out, over its neighbours, so that most of every face shows. */
-.showroom .fan:hover {
-  z-index: 5;
-}
+@media (hover: hover) {
+  .showroom .fan:hover {
+    z-index: 5;
+  }
 
-.showroom .fan:hover .leaf {
-  transform: translate(calc(var(--i) * 68px), calc(var(--i) * var(--i) * 1.2px - 6px)) rotate(calc(var(--i) * 2.5deg));
+  .showroom .fan:hover .leaf {
+    transform: translate(calc(var(--i) * 68px), calc(var(--i) * var(--i) * 1.2px - 6px)) rotate(calc(var(--i) * 2.5deg));
+  }
 }
 
 .showroom .about {
@@ -445,10 +460,16 @@
   cursor: pointer;
 }
 
-.showroom .more:hover,
 .showroom .more[aria-expanded='true'] {
   color: var(--chalk);
   border-color: var(--chalk);
+}
+
+@media (hover: hover) {
+  .showroom .more:hover {
+    color: var(--chalk);
+    border-color: var(--chalk);
+  }
 }
 
 /* All 52: four rows of thirteen, a suit to a row, as wide as the page and no wider than the cards are in play. */
@@ -632,6 +653,8 @@
   transition: opacity 0.2s;
 }
 
-.showroom .decks.one article:not(.open):hover {
-  opacity: 0.7;
+@media (hover: hover) {
+  .showroom .decks.one article:not(.open):hover {
+    opacity: 0.7;
+  }
 }

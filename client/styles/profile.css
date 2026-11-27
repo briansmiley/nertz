@@ -139,9 +139,14 @@
   stroke-linejoin: round;
 }
 
-.yourpicture label:hover .edit,
 .yourpicture label:focus-within .edit {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  .yourpicture label:hover .edit {
+    opacity: 1;
+  }
 }
 
 .yourpicture.busy .edit {
@@ -255,9 +260,14 @@
   transition: opacity 0.15s;
 }
 
-.yourpicture:hover .unpicture,
 .unpicture:focus-visible {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  .yourpicture:hover .unpicture {
+    opacity: 1;
+  }
 }
 
 @media (hover: none) {
@@ -300,9 +310,14 @@
   border-bottom: 2px solid transparent;
 }
 
-.pad input.yourname:hover,
 .pad input.yourname:focus {
   border-bottom-color: var(--ink);
+}
+
+@media (hover: hover) {
+  .pad input.yourname:hover {
+    border-bottom-color: var(--ink);
+  }
 }
 
 /* (Bigger than the 16px a phone's field is held to, so that typing does not zoom the page in: it keeps its size.) */
@@ -350,14 +365,22 @@
   outline: none;
 }
 
-.profile .yourhandle:hover,
 .profile .yourhandle:focus-within {
   color: var(--ink);
 }
 
-.pad .profile .yourhandle input:hover,
 .pad .profile .yourhandle input:focus {
   border-bottom-color: currentColor;
+}
+
+@media (hover: hover) {
+  .profile .yourhandle:hover {
+    color: var(--ink);
+  }
+
+  .pad .profile .yourhandle input:hover {
+    border-bottom-color: currentColor;
+  }
 }
 
 .pad .profile .yourhandle.taken input {
@@ -452,12 +475,14 @@
   text-underline-offset: 0.2em;
 }
 
-.profile .outs button:hover {
-  color: var(--ink);
-}
+@media (hover: hover) {
+  .profile .outs button:hover {
+    color: var(--ink);
+  }
 
-.profile .outs .gone:hover {
-  color: var(--red);
+  .profile .outs .gone:hover {
+    color: var(--red);
+  }
 }
 
 .go.danger {
@@ -506,8 +531,10 @@
   cursor: pointer;
 }
 
-.profile .back:hover {
-  background: rgba(0, 0, 0, 0.06);
+@media (hover: hover) {
+  .profile .back:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
 }
 
 .profile .back svg {
@@ -560,8 +587,10 @@
   background: #fff;
 }
 
-.signin .by:hover {
-  background: #f6f6f4;
+@media (hover: hover) {
+  .signin .by:hover {
+    background: #f6f6f4;
+  }
 }
 
 /* Email, pressed: pushed in, with the ink's edge, while its address is open under it. */
@@ -629,8 +658,10 @@
   text-underline-offset: 0.2em;
 }
 
-.signin .sent button:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .signin .sent button:hover {
+    color: var(--ink);
+  }
 }
 
 /* ------------------------------------------------------------ someone's page (/u/<handle>) */
@@ -675,8 +706,10 @@
   cursor: pointer;
 }
 
-.profile .you > .follow:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .profile .you > .follow:hover {
+    color: var(--ink);
+  }
 }
 
 @container (max-width: 16rem) {
@@ -727,9 +760,11 @@
   color: var(--ink-soft);
 }
 
-.profile .followingcount:hover span {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+@media (hover: hover) {
+  .profile .followingcount:hover span {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 
 /* Who you follow: a line each, written on the pad's own rules, the head staying put while they scroll by (each
@@ -804,9 +839,11 @@
   text-overflow: ellipsis;
 }
 
-.followinglist a:hover .name {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+@media (hover: hover) {
+  .followinglist a:hover .name {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 
 .followinglist .private {
@@ -873,9 +910,14 @@
   cursor: pointer;
 }
 
-.profile .private:hover,
 .profile .private[aria-checked='true'] {
   color: var(--ink);
+}
+
+@media (hover: hover) {
+  .profile .private:hover {
+    color: var(--ink);
+  }
 }
 
 .profile .private .lever {

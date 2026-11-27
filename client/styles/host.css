@@ -36,9 +36,16 @@ a.page {
   text-decoration: none;
 }
 
-a.page:hover,
 a.page:focus-visible {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 0.2em;
+}
+
+@media (hover: hover) {
+  a.page:hover {
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+    text-underline-offset: 0.2em;
+  }
 }

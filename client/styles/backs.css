@@ -22,14 +22,19 @@
   transition: transform 0.12s ease-out;
 }
 
-.mybacks:hover .mini,
 .mybacks:focus-visible .mini {
   transform: translateY(-2px) rotate(-7deg);
 }
 
-.mybacks:hover small {
-  opacity: 1;
-  text-decoration: underline;
+@media (hover: hover) {
+  .mybacks:hover .mini {
+    transform: translateY(-2px) rotate(-7deg);
+  }
+
+  .mybacks:hover small {
+    opacity: 1;
+    text-decoration: underline;
+  }
 }
 
 .mybacks.compact .mini {

@@ -87,8 +87,10 @@
   font-size: 1.15rem;
 }
 
-.pad input:hover {
-  border-bottom-color: var(--ink);
+@media (hover: hover) {
+  .pad input:hover {
+    border-bottom-color: var(--ink);
+  }
 }
 
 .pad input:focus-visible {
@@ -134,10 +136,16 @@
   cursor: pointer;
 }
 
-.unseat:hover,
 .unseat:focus-visible {
   opacity: 1;
   color: var(--red);
+}
+
+@media (hover: hover) {
+  .unseat:hover {
+    opacity: 1;
+    color: var(--red);
+  }
 }
 
 @media (max-width: 480px) {
@@ -179,9 +187,11 @@
   cursor: pointer;
 }
 
-.standup:hover {
-  opacity: 1;
-  color: var(--ink);
+@media (hover: hover) {
+  .standup:hover {
+    opacity: 1;
+    color: var(--ink);
+  }
 }
 
 .standup svg {
@@ -208,10 +218,16 @@
   cursor: pointer;
 }
 
-.follow.small:hover,
 .follow.small[aria-pressed='true'] {
   opacity: 1;
   color: var(--ink);
+}
+
+@media (hover: hover) {
+  .follow.small:hover {
+    opacity: 1;
+    color: var(--ink);
+  }
 }
 
 .follow.small svg {
