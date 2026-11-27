@@ -313,7 +313,7 @@ export function workDrop(who: Who = 'me'): void {
 }
 
 /** One card's faint papery whisper, thinned and eased in so there is no knock in it: never twice quite the same. */
-function whisper(o: Shot = {}): Stop {
+function whisper(o: HitShot = {}): Stop {
   return hit(pick(FLICKS), { gain: rand(0.09, 0.12), rate: rand(1.15, 1.35), thin: 1800, attack: 0.012, ...o });
 }
 
@@ -333,9 +333,16 @@ export function riffle(): void {
   setTimeout(stop, 240);
 }
 
-/** A pile of backs dealt out (the decks page): `count` light cards put down one after another, `gap` seconds apart and a little unevenly, each softer than a card played at the table, and thinned so that there is the pat of the card but no knock of the table under it. */
-export function layOut(count = 5, gap = 0.062, after = 0): void {
-  for (let i = 0; i < count; i++) hit(pick(PLACES), { gain: rand(0.12, 0.17), rate: rand(1.3, 1.5), thin: 600, delay: after + i * gap + rand(0, 0.014) });
+/** A pile of backs dealt out (the decks page): `count` light cards put down one after another, `gap` seconds apart and a little unevenly (stopped, the ones still to come are not heard), each softer than a card played at the table, and thinned so that there is the pat of the card but no knock of the table under it. */
+export function layOut(count = 5, gap = 0.062, after = 0): Stop {
+  const stops = Array.from({ length: count }, (_, i) => hit(pick(PLACES), { gain: rand(0.12, 0.17), rate: rand(1.3, 1.5), thin: 600, delay: after + i * gap + rand(0, 0.014) }));
+  return () => stops.forEach((stop) => stop());
+}
+
+/** The backs dealt out going back into their pile (the decks page), over `over` seconds: a quick pile of whispers, coming closer together as the cards speed up into it. */
+export function gatherIn(over = 0.26): void {
+  const n = 7;
+  for (let i = 0; i < n; i++) whisper({ delay: over * Math.sqrt(i / (n - 1)) + rand(0, 0.012), rate: rand(1.3, 1.6) });
 }
 
 export function recycle(who: Who = 'me'): void {

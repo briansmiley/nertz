@@ -977,7 +977,7 @@ function Sitters({ room }: { room: RoomView }) {
             bare={false}
             back={botHas}
             random={picked.look.backs.k === 'lot' ? picked.look.backs.lot : null}
-            onPick={(back) => (botBack(picked.seat, { k: 'own', back }), setPicking(null))}
+            onPick={(back) => botBack(picked.seat, { k: 'own', back })}
             onRandom={(lot) => botBack(picked.seat, lot ? { k: 'lot', lot, drawn: null } : { k: 'own', back: botHas })}
             onClose={() => setPicking(null)}
           />

@@ -236,7 +236,10 @@
   transition:
     transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1),
     opacity 0.18s ease-out;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
+  /* Each card drawn apart from the page, always: a phone otherwise draws a card apart only while it moves, and so every
+     card of a pile at once as a deal or a putting back starts (a frame it misses) and puts them all back as it ends (with
+     each a pixel off where it was drawn, and a moment's shudder). */
+  will-change: transform, opacity;
 }
 
 /* Under the pointer a pile opens a little, like a hand: enough to see what kind of thing is in it. */
@@ -346,7 +349,7 @@
 .showroom .lay > .mini:first-child {
   transform: rotate(var(--lie));
   transition: transform 0.16s ease-out;
-  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+  will-change: transform, opacity; /* (see .stack .mini) */
 }
 
 .showroom .lay.on > .mini:first-child {
@@ -359,19 +362,24 @@
   }
 }
 
-/* While a card is on its way from the pile (BackShelf deals them), its name and small rendition wait for it. */
-.showroom .lay > :not(:first-child) {
-  transition: opacity 0.14s ease-out;
+/* The cards' shadows are their backs' own (box-shadow), not a filter on the card: a phone draws a filtered card over
+   again in every frame it moves, and a pile dealt out moves two dozen of them at once. */
+.showroom .stack .mini > .back {
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 3px 4px rgba(0, 0, 0, 0.32);
 }
 
-.showroom .lay.coming > :not(:first-child) {
-  opacity: 0;
-  transition: none;
+.showroom .lay > .mini:first-child > .back {
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 6px 8px rgba(0, 0, 0, 0.35);
 }
 
-/* (and, for the two frames before a deal starts, the cards themselves) */
-.showroom .dealt.waiting .lay > .mini:first-child {
-  opacity: 0;
+.showroom .lay .mini.small > .back {
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 4px 5px rgba(0, 0, 0, 0.5);
 }
 
 /* Its small rendition, tucked against the corner. */
@@ -381,7 +389,6 @@
   top: 108px;
   zoom: 0.34;
   transform: rotate(8deg);
-  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.5));
 }
 
 .showroom .lay em {
@@ -395,12 +402,6 @@
 .showroom .lay.on {
   border-color: var(--marigold);
   transition: border-color 0.14s ease-out;
-}
-
-/* (and yours is squared off in gold only once its card is down) */
-.showroom .lay.on.coming {
-  border-color: transparent;
-  transition: none;
 }
 
 .showroom .lay.on em {
