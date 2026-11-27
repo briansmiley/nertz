@@ -26,7 +26,8 @@
   margin-left: auto;
 }
 
-/* (A bare chevron, as on the menu's slips; it stands out in the margin so that the title lines up with the page.) */
+/* The way back to whatever the page was opened over: a bare chevron, as at the head of a slip. (Its button stands out
+   in the margin, so that the chevron is at the page's edge.) */
 .showroom header > .back {
   position: static;
   display: grid;
