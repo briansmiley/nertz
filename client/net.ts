@@ -662,14 +662,15 @@ if (typeof window !== 'undefined') window.addEventListener('online', () => (reli
 
 /**
  * `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code,
- * or sat back down at after a reload) is the server's. A session it replaces (`playOnline`) leaves its table on screen
- * until the new one's first snapshot takes its place: never the home page in between.
+ * or sat back down at after a reload) is the server's. A session it replaces at a table (`playOnline`) leaves that table on
+ * screen as it was until the new one's first snapshot takes its place, or the line is lost on the way (`dropped`): never
+ * the home page in between.
  */
 function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false, company?: readonly Bot[]): void {
   if (session) end();
   session = { room, name, local, ...(company && { company }) };
   attempts = 0;
-  set({ status, error: null });
+  if (!state.room) set({ status, error: null });
   connect();
   watch = setInterval(check, PING_MS);
 }

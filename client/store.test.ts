@@ -234,7 +234,7 @@ describe('the connection', () => {
     old.closed(1005);
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
-    expect(net.current()).toMatchObject({ status: 'connecting', error: null, offline: false });
+    expect(net.current().error).toBeNull();
     expect(net.current().room).toBe(shown); // (the table it left, on screen until the new one is there)
   });
 
@@ -840,10 +840,11 @@ describe('Play offline and Play online, in the menu', () => {
     const lobby = net.current().room;
     const shown: (string | null)[] = [];
     const unheard = net.subscribe(() => shown.push(net.current().room?.code ?? null));
+    const was = net.current();
     actions.press('online', lobby);
     expect(prefs.getPrefs().offline).toBe(false);
-    // The offline table stays on screen until the server's is there: nothing of the home page in between.
-    expect(net.current()).toEqual({ status: 'connecting', room: lobby, error: null, offline: false });
+    // Nothing of the switch shows until the server's table is there: the offline lobby as it was, never the home page.
+    expect(net.current()).toBe(was);
     expect(sockets()).toBe(1);
     last().open();
     expect(last().sent.filter((m) => m.t !== 'deck')).toEqual([expect.objectContaining({ t: 'create', name: 'Ada' }), ...company]);
@@ -881,9 +882,9 @@ describe('Play offline and Play online, in the menu', () => {
     prefs.setPrefs({ offline: true });
     net.create('Ada');
     await told();
-    const lobby = net.current().room;
+    const was = net.current();
     net.playOnline();
-    expect(net.current().room).toBe(lobby);
+    expect(net.current()).toBe(was);
     last().closed();
     expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', offline: false });
     expect(net.unreachable(net.current())).toBe(true);
