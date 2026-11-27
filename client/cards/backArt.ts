@@ -680,6 +680,17 @@ function lightcone(small: boolean): string {
 }
 
 /**
+ * The Enterprise delta (the owner's own choice of emblem): a sharp arrowhead, its two long edges bowed outward and
+ * its underside a deep arch with a rounded peak, traced from the owner's picture (918 by 1486) and fitted into the
+ * middle of the card.
+ */
+function enterprise(small: boolean): string {
+  const d = 'M484 67C270 340 70 900 22 1553C150 1330 400 1060 630 1005C670 1005 730 1050 770 1105C830 1190 895 1340 940 1440C870 900 700 380 484 67Z';
+  const k = Math.min((F.w * (small ? 0.96 : 0.9)) / 918, (F.h * 0.94) / 1486);
+  return frame(`<g transform="translate(${n(W / 2 - (918 * k) / 2)} ${n(H / 2 - (1486 * k) / 2)}) scale(${Math.round(k * 100000) / 100000}) translate(-22 -67)"><path d="${d}" fill="#fff" stroke="none"/></g>`, 1, small);
+}
+
+/**
  * The Arbor mark (the owner's own organisation's logo): a binary tree of seven round nodes, as it is in the logo's
  * file (253 by 228), fitted into the middle of the card.
  */
@@ -1847,6 +1858,7 @@ export const BACK_ART: Record<Exclude<Back, 'plain'>, BackArt> = {
   lightcone: figure(lightcone),
   arbor: figure(arbor),
   earth: figure(earth),
+  enterprise: figure(enterprise),
   fans: pattern(fans),
   tripods: pattern(tripods),
   paisley: pattern(paisley),
