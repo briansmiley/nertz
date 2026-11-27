@@ -68,8 +68,13 @@ the card. A small full moon sits above the top wings*. That gave clean but flat 
 2. Shadow, from that draft alone: "sink [the eye] deep into shadow… mostly swallowed by solid navy: no bright white
    eyeball. Only its outline, a few fine carved strokes on the lids, the rim of the iris and a small bright glint…"
 
+3. Eye back up, from the shadowed draft alone: "Only make the eye itself read clearly at a small size: bold bright
+   white upper and lower lids drawn with thick carved strokes, a clear bright ring round the iris… a larger bright
+   glint… while the shadow around it stays." Sunk fully into shadow, the eye was lost at card size.
+
 - **One of our own backs is a fine reference for texture.** Aster's woodcut strokes carried over without any of the cat.
-- About $0.13 in all (`--issue` was not given; see the usage log for 27 Nov).
+- **Check the centre at card size.** A dark hollow reads in the full image and vanishes in a pile.
+- About $0.17 in all (`--issue` was not given; see the usage log for 27 Nov).
 
 ## Making a back from an image
 
