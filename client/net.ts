@@ -236,7 +236,7 @@ const SEAT_KEY = 'nertz.seat';
 
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
- * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
+ * us the code of the table we asked it to open. It ends only in `end`: whichever way the window leaves (`stop`), or as another takes its place (`open`).
  * `local`: the table is this window's own, and so is its line: the settings said offline as the session began, or the
  * table was taken offline since (`carry`, the one place that happens). Never the other way: once local, until it ends.
  * `company`: the bots a table it asks the server to open is opened with (`playOnline`).
@@ -396,8 +396,15 @@ export function resume(): void {
   else peek(); // (the boot this page was served by, to know a later one by)
 }
 
-/** The one way out of a session: leaving, sent away, replaced, refused. */
+/** The one way out of a session but another taking its place (`open`): leaving, sent away, refused. Home at once. */
 function stop(error: string | null): void {
+  end();
+  show({ status: 'idle', error });
+  renew(); // (the table may be gone because the server was put up anew: then so is this page)
+}
+
+/** The session is over, its line and all it had of the table with it. What is on screen is left to whoever ends it: `stop` goes home, `open` keeps it until its own table is there. */
+function end(): void {
   clearTimeout(retry);
   clearInterval(watch);
   if (!session?.local) keep(null);
@@ -409,8 +416,6 @@ function stop(error: string | null): void {
   last = null;
   dealing = freshDealing;
   timed(null);
-  show({ status: 'idle', error });
-  renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
 /**
@@ -470,7 +475,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
   state: (msg) => {
     attempts = 0;
     const updated = state.status === 'updating';
-    if (session && !state.room) {
+    if (session && !last) {
       session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
       if (!session.local) keep({ room: session.room, name: session.name });
     }
@@ -549,8 +554,9 @@ function dropped(update = false): void {
   sync = { ...sync, pending: [] };
   timed(null);
   const status = update || state.status === 'updating' ? 'updating' : 'reconnecting';
-  if (sync.server) show({ status, error: null });
-  else set({ status, error: state.room ? null : 'Cannot reach the game server. Still trying…' });
+  // (Not yet at its table, a session is not at one it replaced either: that goes with the line.)
+  if (sync.server || !last) show({ status, error: last ? null : 'Cannot reach the game server. Still trying…' });
+  else set({ status, error: null });
   clearTimeout(step);
   clearTimeout(retry);
   retry = setTimeout(() => connect(), Math.min(5000, 250 * 2 ** attempts++));
@@ -654,12 +660,17 @@ function probe(): void {
 }
 if (typeof window !== 'undefined') window.addEventListener('online', () => (relink(), probe(), peek()));
 
-/** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
+/**
+ * `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code,
+ * or sat back down at after a reload) is the server's. A session it replaces at a table (`playOnline`) leaves that table on
+ * screen as it was until the new one's first snapshot takes its place, or the line is lost on the way (`dropped`): never
+ * the home page in between.
+ */
 function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false, company?: readonly Bot[]): void {
-  if (session) stop(null);
+  if (session) end();
   session = { room, name, local, ...(company && { company }) };
   attempts = 0;
-  set({ status, error: null });
+  if (!state.room) set({ status, error: null });
   connect();
   watch = setInterval(check, PING_MS);
 }
