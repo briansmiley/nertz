@@ -396,8 +396,15 @@ export function resume(): void {
   else peek(); // (the boot this page was served by, to know a later one by)
 }
 
-/** The one way out of a session: leaving, sent away, replaced, refused. */
+/** The one way out of a session but another taking its place (`open`): leaving, sent away, refused. Home at once. */
 function stop(error: string | null): void {
+  end();
+  show({ status: 'idle', error });
+  renew(); // (the table may be gone because the server was put up anew: then so is this page)
+}
+
+/** The session is over, its line and all it had of the table with it. What is on screen is left to whoever ends it: `stop` goes home, `open` keeps it until its own table is there. */
+function end(): void {
   clearTimeout(retry);
   clearInterval(watch);
   if (!session?.local) keep(null);
@@ -409,8 +416,6 @@ function stop(error: string | null): void {
   last = null;
   dealing = freshDealing;
   timed(null);
-  show({ status: 'idle', error });
-  renew(); // (the table may be gone because the server was put up anew: then so is this page)
 }
 
 /**
@@ -470,7 +475,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
   state: (msg) => {
     attempts = 0;
     const updated = state.status === 'updating';
-    if (session && !state.room) {
+    if (session && !last) {
       session.room = msg.room.code; // a reconnect rejoins this table instead of opening another
       if (!session.local) keep({ room: session.room, name: session.name });
     }
@@ -549,8 +554,9 @@ function dropped(update = false): void {
   sync = { ...sync, pending: [] };
   timed(null);
   const status = update || state.status === 'updating' ? 'updating' : 'reconnecting';
-  if (sync.server) show({ status, error: null });
-  else set({ status, error: state.room ? null : 'Cannot reach the game server. Still trying…' });
+  // (Not yet at its table, a session is not at one it replaced either: that goes with the line.)
+  if (sync.server || !last) show({ status, error: last ? null : 'Cannot reach the game server. Still trying…' });
+  else set({ status, error: null });
   clearTimeout(step);
   clearTimeout(retry);
   retry = setTimeout(() => connect(), Math.min(5000, 250 * 2 ** attempts++));
@@ -654,9 +660,13 @@ function probe(): void {
 }
 if (typeof window !== 'undefined') window.addEventListener('online', () => (relink(), probe(), peek()));
 
-/** `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code, or sat back down at after a reload) is the server's. */
+/**
+ * `local`: at a table of this window's own. Only a table it opens can be: one that is there already (come to by its code,
+ * or sat back down at after a reload) is the server's. A session it replaces (`playOnline`) leaves its table on screen
+ * until the new one's first snapshot takes its place: never the home page in between.
+ */
 function open(room: string | null, name: string, status: 'connecting' | 'rejoining' = 'connecting', local = false, company?: readonly Bot[]): void {
-  if (session) stop(null);
+  if (session) end();
   session = { room, name, local, ...(company && { company }) };
   attempts = 0;
   set({ status, error: null });

@@ -224,6 +224,7 @@ describe('the connection', () => {
     vi.useFakeTimers();
     const net = await seated();
     const old = last();
+    const shown = net.current().room;
     net.join('WXYZ', 'Ada'); // another table
     expect(old.shut).toBe(true);
     last().open();
@@ -233,7 +234,8 @@ describe('the connection', () => {
     old.closed(1005);
     vi.advanceTimersByTime(10_000);
     expect(sockets()).toBe(2);
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
+    expect(net.current()).toMatchObject({ status: 'connecting', error: null, offline: false });
+    expect(net.current().room).toBe(shown); // (the table it left, on screen until the new one is there)
   });
 
   it('a socket that opens only after the window has moved on says nothing, on it or on the socket that took its place', async () => {
@@ -835,14 +837,21 @@ describe('Play offline and Play online, in the menu', () => {
     expect(company.map((b) => b.level).sort()).toEqual(['fast', 'medium', 'medium']);
     expect(company.map((b) => b.name)).toContain('Bot Zed');
 
-    actions.press('online', net.current().room);
+    const lobby = net.current().room;
+    const shown: (string | null)[] = [];
+    const unheard = net.subscribe(() => shown.push(net.current().room?.code ?? null));
+    actions.press('online', lobby);
     expect(prefs.getPrefs().offline).toBe(false);
-    expect(net.current()).toEqual({ status: 'connecting', room: null, error: null, offline: false });
+    // The offline table stays on screen until the server's is there: nothing of the home page in between.
+    expect(net.current()).toEqual({ status: 'connecting', room: lobby, error: null, offline: false });
     expect(sockets()).toBe(1);
     last().open();
     expect(last().sent.filter((m) => m.t !== 'deck')).toEqual([expect.objectContaining({ t: 'create', name: 'Ada' }), ...company]);
     last().deliver(at('ABCD'));
     expect(net.current()).toMatchObject({ status: 'online', offline: false, room: { code: 'ABCD' } });
+    expect(shown).not.toContain(null);
+    unheard();
+    expect(address()).toBe('?room=ABCD'); // (kept for a reload from its first snapshot, as any table of the server's)
     // A line that drops and comes back sits down again: nobody is seated twice.
     last().closed();
     net.leave();
@@ -864,6 +873,22 @@ describe('Play offline and Play online, in the menu', () => {
     expect(sockets()).toBe(before);
     expect(net.returnable({ ...net.current().room!, phase: 'results' })).toBe(false);
     net.leave();
+  });
+
+  it('Play online where the server cannot be reached: the offline table goes with the line, and the window is home, told so', async () => {
+    const net = await reload();
+    const prefs = await import('./prefs');
+    prefs.setPrefs({ offline: true });
+    net.create('Ada');
+    await told();
+    const lobby = net.current().room;
+    net.playOnline();
+    expect(net.current().room).toBe(lobby);
+    last().closed();
+    expect(net.current()).toEqual({ status: 'reconnecting', room: null, error: 'Cannot reach the game server. Still trying…', offline: false });
+    expect(net.unreachable(net.current())).toBe(true);
+    net.playOffline();
+    expect(net.current()).toEqual({ status: 'idle', room: null, error: null, offline: true });
   });
 });
 
