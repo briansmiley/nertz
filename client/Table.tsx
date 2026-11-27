@@ -111,12 +111,6 @@ interface Handle {
   settle(): void;
 }
 
-/** A card tilted `rot` degrees and turned `turn` degrees about its own upright, as a flat transform (no third dimension: see `CardView`). */
-const flat = (rot: number, turn: number): string => {
-  const w = Math.abs(Math.cos((turn * Math.PI) / 180));
-  return `${rot ? `rotate(${rot}deg) ` : ''}${w > 0.9995 ? '' : `scaleX(${w < 0.001 ? 0.001 : w})`}` || 'none';
-};
-
 /** A card that is still in the deck when it first appears: where the deck is, how many cards under it are dealt after it, and how long until it is dealt. */
 interface Dealt {
   x: number;
@@ -185,38 +179,6 @@ const CardView = memo(function CardView(p: CardProps) {
   useMotionValueEvent(s, 'change', (v) => setMini((was) => drawnMini(v * CARD_W, was)));
   const el = useRef<HTMLDivElement>(null);
   const first = useRef(true);
-  /**
-   * How far it is turned over, degrees (0 face-up, 180 face-down). With no perspective on the table a card turned
-   * about its own upright is just that card drawn narrower, so it is drawn flat: one side at a time, as wide as the
-   * turn leaves it (`flat`). Written to the element directly; React does not hear of it.
-   */
-  const turn = useMotionValue(turnedTo(p.face));
-  const flipEl = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const write = () => {
-      const f = flipEl.current;
-      if (!f) return;
-      const t = turn.get();
-      f.style.transform = flat(r.get(), t);
-      const side = t > 90 ? 'back' : 'front';
-      if (f.dataset.side !== side) f.dataset.side = side;
-    };
-    write();
-    const offs = [r.on('change', write), turn.on('change', write)];
-    return () => offs.forEach((off) => off());
-  }, [r, turn]);
-  // A turn starts when the face changes and runs to the end: `slow` only picks its pace at the start, so a change of
-  // `slow` alone neither restarts nor stops a turn that is under way.
-  const turnedWas = useRef(p.face);
-  const slow = useRef(p.slow);
-  slow.current = p.slow;
-  useEffect(() => {
-    if (turnedWas.current === p.face) return;
-    const was = turnedWas.current;
-    turnedWas.current = p.face;
-    const move = animate(turn, turnedTo(p.face), turnOf(was, p.face, slow.current));
-    return () => move.stop();
-  }, [p.face, turn]);
   /** When this card leaves the deck (performance clock), if it is in one. */
   const leaves = useRef(dealt ? performance.now() + dealt.wait : 0).current;
 
@@ -335,10 +297,10 @@ const CardView = memo(function CardView(p: CardProps) {
 
   return (
     <motion.div ref={el} className={p.cls} data-id={p.id} style={{ x, y, scale: s, zIndex: z, '--o': o } as unknown as CSSProperties}>
-      <div className="flip" ref={flipEl} data-side={turn.get() > 90 ? 'back' : 'front'} style={{ transform: flat(r.get(), turn.get()) }}>
+      <motion.div className="flip" initial={false} style={{ rotate: r }} animate={{ rotateY: turnedTo(p.face) }} transition={turnOf(faceWas.current, p.face, p.slow)}>
         <div className="front">{p.suit && p.rank ? <Face suit={p.suit} rank={p.rank} mini={mini} deck={p.deck} night={p.night} /> : null}</div>
         <div {...backOf(backColour(p.owner), p.back, p.bare, mini)} />
-      </div>
+      </motion.div>
     </motion.div>
   );
 });
@@ -355,10 +317,10 @@ const Ghost = memo(function Ghost({ c, off, look, gone }: { c: Placed; off: Pt; 
       transition={REBURY_OUT()}
       onAnimationComplete={gone}
     >
-      <div className="flip" data-side="back" style={{ transform: flat(c.rot, 180) }}>
+      <motion.div className="flip" style={{ rotate: c.rot, rotateY: 180 }}>
         <div className="front" />
         <div {...backOf(backColour(c.card.owner), shownBack(look.backs), look.bare, mini)} />
-      </div>
+      </motion.div>
     </motion.div>
   );
 });

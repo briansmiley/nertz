@@ -120,25 +120,10 @@
   }
 }
 
-/* Drawn flat, one side at a time (Table.tsx `flat`): no third dimension, so a card is one layer, not four. */
 .card .flip {
   position: absolute;
   inset: 0;
-}
-
-.card .flip > .front,
-.card .flip > .back {
-  backface-visibility: visible;
-  -webkit-backface-visibility: visible;
-}
-
-.card .flip > .back {
-  transform: none;
-}
-
-.card .flip[data-side='back'] > .front,
-.card .flip[data-side='front'] > .back {
-  display: none;
+  transform-style: preserve-3d;
 }
 
 .card.grab {
