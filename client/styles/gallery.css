@@ -647,22 +647,22 @@
   }
 }
 
-/* A phone held sideways (wider than 720px, but not tall): the piles and the cards dealt out below them smaller, so every pile and its name stands in the one row. */
-@media (max-height: 500px) and (orientation: landscape) {
-  .showroom .shelf .stack {
+/* A phone held sideways (one wider than 720px: a narrower one has the phone's rules above, its piles in two rows): the piles and the cards dealt out below them smaller, so every pile and its name stands in the one row. */
+@media (orientation: landscape) and (max-height: 499px) and (min-width: 721px) {
+  .showroom .stack {
     zoom: 0.42;
     margin-bottom: 12px;
   }
 
-  .showroom .shelf .pile {
+  .showroom .pile {
     padding: 10px 0 8px;
   }
 
-  .showroom .shelf .pile b {
+  .showroom .pile b {
     font: 700 12px/1.1 var(--ui);
   }
 
-  .showroom .shelf .pile i {
+  .showroom .pile i {
     font-size: 11px;
   }
 
