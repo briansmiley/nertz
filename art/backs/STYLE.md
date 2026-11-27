@@ -71,6 +71,41 @@ the middle from side to side, so the heads are large and the bodies run off the 
 - **A woman's head and chest on an animal's body is refused** by the image API's filter. "A calm human face" on "a
   lion's furry body" is not.
 
+## Panda, elephant, wolf, whale, seahorse, raccoon, otters
+
+Made the same day with the hand-cut sentence, each subject naming what to cut (fur tufts, wrinkles, bony plates,
+throat grooves) and a few large things around the animal.
+
+- **panda**: in profile, sitting hunched among bamboo, head lowered, chewing a stalk and looking down at it, "a real
+  wild animal with a heavy bear's body, a long bear's muzzle and small dark eyes almost lost inside its eye patches".
+- **elephant**: head and shoulders seen close from the front at a slight angle, ears running off both sides, trunk
+  curled up, cropped by the bottom edge; a few deep wrinkles, ragged ear edges.
+- **wolf**: sitting on a rocky ledge, head thrown back, howling, in profile; a crescent moon in a top corner and the
+  tips of pine trees at the bottom; a thick winter coat as ragged tufts. Cut to 88% of the width, from the top.
+- **whale**: a humpback "twisting freely underwater, seen close, its body bent in a strong S-curve as it rolls onto its
+  side", one long fin sweeping up across the card, fins and flukes cropped by the edges, a swirl of bubbles.
+- **seahorse**: in profile, tail curled round a strand of seagrass; bony armour as ridged plates and rings, small
+  spines along its back and crown. Cut to 76% of the width, from the top.
+- **raccoon**: standing up on its hind legs on a fallen log, hands held up, masked face and ringed tail; a shaggy coat
+  as many tapered tufts. It looked at us, on a log, so it was edited twice: "turn the raccoon's head to one side in
+  three-quarter profile, so it looks away at something off the edge of the card", then "replace the fallen log with a
+  thick oak tree branch high in a tree… remove the fern", each keeping the rest exactly. Cut to 86% of the width, from
+  the top.
+- **otters**: first one sea otter "floating on its back, seen from above and a little to one side, its long body
+  running diagonally up the tall card, head near the top turned aside in profile, holding a clam shell on its chest",
+  a ribbon of kelp with round floats across its belly; then two, "side by side on the same diagonal with a clear strip
+  of open water between them so each has its own whole outline", one reaching a paw across. They came out as pups, so
+  that draft was redrawn from itself "as full-grown adults instead of pups: longer, heavier bodies, broad flat heads
+  with blunt muzzles, smaller eyes… and zoom in", their lower bodies running off the bottom edge.
+
+- **Say "few, bold and thick" when it comes out as an engraving.** A whole elephant in grass, or otters in kelp, was
+  all fine lines; "keep the cuts few, bold and thick, with large areas of solid white between them… no fine hatching,
+  no thin hair lines", with the animal seen close, mended it.
+- **Looking at us with round eyes is cute, or human.** A panda facing us read as a person in a suit; in profile,
+  looking at its food, it is a bear. An aye-aye was either a toy or a horror, and was dropped.
+- **About one in five comes out as a white glow on black.** Nothing in the prompt explains it; draw it again. "Hard,
+  sharp edges everywhere: no glow, no blur, no haze" helps but does not always prevent it.
+
 ## Damask
 
 `damask` (in the Ornate group, 26 Nov 2026) is the one ornament made this way, after the owner's phone photo of a

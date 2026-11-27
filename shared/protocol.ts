@@ -136,6 +136,13 @@ export const CARD_BACKS = {
   giraffes: 'Giraffes',
   python: 'Python',
   sphinx: 'Sphinx',
+  panda: 'Panda',
+  elephant: 'Elephant',
+  wolf: 'Wolf',
+  whale: 'Whale',
+  seahorse: 'Seahorse',
+  raccoon: 'Raccoon',
+  otters: 'Otters',
   'tarot-star-tint': 'Medallion',
   'tarot-eye-tint': 'Vision',
 } as const;
@@ -147,7 +154,7 @@ export const BACK_GROUPS: readonly { name: string; backs: readonly Back[] }[] = 
   { name: 'Maths', backs: ['hilbert', 'tree', 'dragon', 'koch', 'mandelbrot', 'walk', 'life', 'pulsar', 'penrose-triangle'] },
   { name: 'Plants', backs: ['acanthus', 'fern', 'ginkgo', 'ginkgo-ring', 'ginkgo-scatter', 'fronds', 'daisy', 'tulip', 'poppies', 'rose', 'iris', 'lily', 'sunflower', 'thistle', 'clover', 'clover-2', 'waterlily', 'lotus', 'lilypads', 'oak', 'maple', 'dandelion-1', 'sequoia', 'birch'] },
   { name: 'Ornate', backs: ['damask', 'guilloche', 'bicycle', 'ornate', 'rosette', 'piatnik', 'atlas', 'lion', 'cobble', 'carpet-tint', 'tarot-star-tint', 'tarot-eye-tint'] },
-  { name: 'Animals', backs: ['fox', 'owl', 'loong', 'rabbit', 'crane', 'phoenix', 'deer', 'koi', 'falcon', 'swallowtail', 'butterflies', 'ants', 'aster', 'giraffes', 'python', 'sphinx'] },
+  { name: 'Animals', backs: ['fox', 'owl', 'loong', 'rabbit', 'crane', 'phoenix', 'deer', 'koi', 'falcon', 'swallowtail', 'butterflies', 'ants', 'aster', 'giraffes', 'python', 'sphinx', 'panda', 'elephant', 'wolf', 'whale', 'seahorse', 'raccoon', 'otters'] },
   { name: 'Emblems', backs: ['compass', 'lightcone', 'arbor', 'giglio', 'earth', 'enterprise'] },
   { name: 'Celestial', backs: ['mystic-day', 'sunburst', 'mystic-sun', 'mystic-moons', 'mystic-star', 'mystic-eye', 'seraph'] },
 ];
