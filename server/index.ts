@@ -18,6 +18,8 @@ import { openReports } from './reports';
 import { openRounds } from './rounds';
 import { STATS_PATH, statsHandler, USAGE_PATH, usageHandler } from './stats';
 import { feedbackHandler, type FeedbackOptions } from './feedback';
+import { perfLogHandler } from './perflog';
+import { PERF_LOGS_PATH } from '../shared/perf';
 import { guard } from './guard';
 import { Room, type Conn, type Kept, type RoomOptions } from './room';
 import { seatAt, type Tables } from './seat';
@@ -153,6 +155,8 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
   /** Pictures people put up of themselves, likewise (server/pictures.ts). */
   const pictures = reportDir ? openPictures(join(dirname(reportDir), 'pictures')) : null;
   const feedback = feedbackHandler(options.feedback, { reports, who: accounts?.who });
+  /** Frame-rate logs from windows with the readout on (server/perflog.ts), likewise beside the database. */
+  const perfLogs = reportDir ? perfLogHandler(join(dirname(reportDir), 'perf-logs'), process.env.FLY_IMAGE_REF ?? null) : null;
   const stats = accounts && rounds && statsHandler({ accounts, rounds, home });
   const usage = accounts && rounds && usageHandler({ accounts, rounds });
   /** Who each open socket is signed in as: what its cookie said as it opened, for as long as it is open and the account is there. */
@@ -257,6 +261,13 @@ export async function startServer(options: ServerOptions = {}): Promise<NertzSer
         if (!profile) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
         profile(req, res, path).catch((err: unknown) => {
           console.error('profile', err);
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('null');
+        });
+      } else if (path === PERF_LOGS_PATH || path.startsWith(`${PERF_LOGS_PATH}/`)) {
+        if (!perfLogs) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('null');
+        perfLogs(req, res, path).catch((err: unknown) => {
+          console.error('perf-logs', err);
           if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
           res.end('null');
         });
