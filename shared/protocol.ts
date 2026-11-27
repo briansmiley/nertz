@@ -60,7 +60,6 @@ export const CARD_BACKS = {
   'mystic-eye': 'Eye',
   'mystic-day': 'Sun',
   'mystic-star': 'Star',
-  seraph: 'Seraph',
   bathroom: 'Tiles',
   corridor: 'Hexes',
   overlook: 'Overlook',
@@ -133,6 +132,7 @@ export const CARD_BACKS = {
   butterflies: 'Butterflies',
   ants: 'Ants',
   aster: 'Aster',
+  seraph: 'Seraph',
   'tarot-star-tint': 'Medallion',
   'tarot-eye-tint': 'Vision',
 } as const;
