@@ -43,6 +43,9 @@ white-on-nothing pattern that is printed in each player's colour.
   fabric: a new medallion in its spirit, not a copy of the print. How it was made is in `art/backs/STYLE.md`.
 - `lightcone` (drawn in `backArt.ts`) is the logo of Lightcone Infrastructure, taken from the owner's own copy of its
   file. It is their mark, not this project's: the owner's choice to include; check with them before it is deployed publicly.
+- `enterprise` (drawn in `backArt.ts`) is the delta insignia of Star Trek's Starfleet, traced from a picture the owner
+  gave. It is a trademark of CBS Studios (Paramount), not this project's: the owner's choice to include; decide
+  knowingly whether to ship it.
 - `hat` (the aperiodic "einstein" tiling, drawn in `backArt.ts`) is built by the method of Craig S. Kaplan's hatviz,
   https://github.com/isohedral/hatviz (BSD 3-Clause, Copyright (c) 2023 Craig S. Kaplan), rewritten here in TypeScript.
 - `ornate` is made from a picture the owner found; WHERE IT IS FROM AND ITS LICENCE ARE NOT YET KNOWN (it looks like
