@@ -647,6 +647,50 @@
   }
 }
 
+/* A phone held sideways (wider than 720px, but not tall): the piles and the cards dealt out below them smaller, so every pile and its name stands in the one row. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .showroom .shelf .stack {
+    zoom: 0.42;
+    margin-bottom: 12px;
+  }
+
+  .showroom .shelf .pile {
+    padding: 10px 0 8px;
+  }
+
+  .showroom .shelf .pile b {
+    font: 700 12px/1.1 var(--ui);
+  }
+
+  .showroom .shelf .pile i {
+    font-size: 11px;
+  }
+
+  .showroom .dealt {
+    gap: 8px 0;
+    padding: 10px 8px 8px;
+  }
+
+  .showroom .lay {
+    width: 84px;
+    gap: 6px;
+    padding: 8px 2px 6px;
+  }
+
+  .showroom .lay > .mini:first-child {
+    zoom: 0.6;
+  }
+
+  .showroom .lay .mini.small {
+    top: 66px;
+    zoom: 0.24;
+  }
+
+  .showroom .lay em {
+    font-size: 12px;
+  }
+}
+
 /* While one deck's 52 cards are laid out, the other decks are faint: it is plain whose cards those are. */
 .showroom .decks.one article:not(.open) {
   opacity: 0.3;
