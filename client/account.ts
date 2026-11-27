@@ -60,15 +60,25 @@ const PROFILE = '/profile';
 /** A picture's address, if it is one of ours (server/pictures.ts): nothing else is shown as anyone's picture. */
 export const ownPicture = (v: unknown): string | null => (typeof v === 'string' && /^\/pictures\/[0-9a-f]{16}\.webp$/.test(v) ? v : null);
 
+/**
+ * How long the server has to say who is signed in before the first page goes on without it: a line that hangs (a phone
+ * with bars and nothing behind them) never says no, and nobody is to wait on it for a name to write and a table to open.
+ * What it says later still counts.
+ */
+const ASK_MS = 4000;
+
 async function ask(): Promise<void> {
   if (!reach().server) return set('off'); // no server to ask: nobody is signed in, and there is no signing in
-  if (owesSignOut() && (await post('/sign-out', {}).catch(() => null))) signedOut(); // (signed out here while offline: client/record.ts)
+  const late = setTimeout(() => signed === 'unknown' && reach().server && set('off'), ASK_MS);
   try {
+    if (owesSignOut() && (await post('/sign-out', {}).catch(() => null))) signedOut(); // (signed out here while offline: client/record.ts)
     const res = await fetch(PROFILE, { credentials: 'same-origin', cache: 'no-store' });
     const said = read(res.status, await res.json().catch(() => null));
     if (reach().server) set(said);
   } catch {
     if (reach().server) set('off'); // no answer at all: nothing to offer
+  } finally {
+    clearTimeout(late);
   }
 }
 
