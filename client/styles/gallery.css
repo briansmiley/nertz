@@ -27,7 +27,7 @@
 }
 
 /* (A bare chevron, as on the menu's slips; it stands out in the margin so that the title lines up with the page.) */
-.showroom .back {
+.showroom header > .back {
   position: static;
   display: grid;
   place-items: center;
@@ -46,12 +46,12 @@
 }
 
 @media (hover: hover) {
-  .showroom .back:hover {
+  .showroom header > .back:hover {
     background: rgba(241, 234, 216, 0.1);
   }
 }
 
-.showroom .back svg {
+.showroom header > .back svg {
   width: 22px;
   height: 22px;
   fill: none;
@@ -571,7 +571,7 @@
     margin-bottom: 0;
   }
 
-  .showroom .back {
+  .showroom header > .back {
     width: 36px;
     height: 36px;
     margin-left: -10px;
