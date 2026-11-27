@@ -37,14 +37,17 @@ const down = (): never => {
 };
 
 describe('the page', () => {
-  it("is the network's, however long that takes: a slow line after a deploy never gets the old build kept here", async () => {
+  it("is the network's while it answers in time, and the copy kept here once it has not: a line that hangs never says no, and the game comes up all the same", async () => {
     let arrive!: (a: Answer) => void;
     const w = worker(() => new Promise<Answer>((ok) => (arrive = ok)));
     const got = w.get('/', 'navigate');
-    const first = await Promise.race([got, new Promise((ok) => setTimeout(() => ok('still waiting'), 3500))]);
-    expect(first).toBe('still waiting'); // (it used to give up after three seconds, for the copy kept)
-    arrive(answer('the new build'));
-    expect(await got).toEqual(answer('the new build'));
+    const first = await Promise.race([got, new Promise((ok) => setTimeout(() => ok('still waiting'), 3000))]);
+    expect(first).toBe('still waiting'); // (a slow line is waited for: after a deploy the copy kept is the old build)
+    expect(await got).toEqual(answer('kept /'));
+    arrive(answer('the new build')); // too late for this load
+    expect(await got).toEqual(answer('kept /'));
+    const slow = worker(() => new Promise<Answer>((ok) => setTimeout(() => ok(answer('the new build')), 100)));
+    expect(await slow.get('/?room=ABCD', 'navigate')).toEqual(answer('the new build'));
   }, 10_000);
 
   it('is the copy kept here with no network at all, at home, at a table named in the address, or on someone\'s page', async () => {

@@ -4,9 +4,10 @@
 // taken when it is installed, and of the fonts the page asks Google for. The build writes `BUILD` and `FILES` in
 // (vite.config.ts); this file is not run from the dev server.
 //
-// - The page itself is the network's, always, so a window online has the newest however slow its line: the copy kept
-//   here only when the network gives no answer at all, or the server none of its own (a 5xx: it is down, or a proxy
-//   stands there with nothing behind it). Never for being slow: after a deploy the copy kept is the old build.
+// - The page itself is the network's, so a window online has the newest: the copy kept here only when the network gives
+//   no answer at all, or the server none of its own (a 5xx: it is down, or a proxy stands there with nothing behind
+//   it), or neither has come within `PAGE_MS`: a phone with bars and no line behind them never says no, it just never
+//   answers, and the game is to come up all the same. After a deploy that copy is the old build, for that one load.
 // - A file of the app is the copy kept here (those of one build never change), else the network's.
 // - Anything else of the server's (who is signed in, records, pictures, the tables, feedback, the game's socket) is
 //   never touched: it is the network's to answer or not.
@@ -52,16 +53,17 @@ self.addEventListener('activate', (e) =>
 
 const kept = async (path) => (await caches.open(CACHE)).match(path, { ignoreSearch: true });
 
-/** The page: the network's; with no answer from it, or none of the server's own (a 5xx), the one kept here. */
+/** How long the page is waited for from the network before the one kept here is given instead. */
+const PAGE_MS = 4000;
+
+/** The page: the network's; with no answer from it, none of the server's own (a 5xx), or none in time, the one kept here. */
 async function page(request) {
-  let answer;
-  try {
-    answer = await fetch(request);
-    if (answer.status < 500) return answer;
-  } catch {
-    // no network
-  }
-  return (await kept('/')) ?? answer ?? Response.error();
+  const had = await kept('/');
+  const asked = fetch(request).then(
+    (answer) => (answer.status < 500 ? answer : (had ?? answer)),
+    () => had ?? Response.error(),
+  );
+  return had ? Promise.race([asked, new Promise((ok) => setTimeout(() => ok(had), PAGE_MS))]) : asked;
 }
 
 /** A font: the one kept, else the network's (kept from then on). */
