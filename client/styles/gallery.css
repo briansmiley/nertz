@@ -236,7 +236,10 @@
   transition:
     transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1),
     opacity 0.18s ease-out;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
+  /* Each card drawn apart from the page, always: a phone otherwise draws a card apart only while it moves, and so every
+     card of a pile at once as a deal or a putting back starts (a frame it misses) and puts them all back as it ends (with
+     each a pixel off where it was drawn, and a moment's shudder). */
+  will-change: transform, opacity;
 }
 
 /* Under the pointer a pile opens a little, like a hand: enough to see what kind of thing is in it. */
@@ -252,15 +255,16 @@
   }
 }
 
-/* Picked up: its cards go down towards where they are dealt out, and only the outline of the first is left. */
+/* Picked up: its cards are taken up at once (BackShelf deals them out from where they lay), and only the outline of the first is left. */
 .showroom .pile.open .stack {
   translate: 0 0;
   border-color: var(--marigold);
 }
 
 .showroom .pile.open .stack .mini {
-  transform: translate(0, 46px) rotate(0deg) scale(0.8);
+  transform: none;
   opacity: 0;
+  transition: none;
 }
 
 .showroom .pile b {
@@ -322,23 +326,6 @@
   transform: rotate(45deg);
 }
 
-/* Each card comes down from the row of piles, one after another. */
-.showroom .dealt .lay {
-  animation: laid 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-  animation-delay: calc(var(--n) * 24ms);
-}
-
-@keyframes laid {
-  from {
-    opacity: 0;
-    transform: translateY(-34px) rotate(-6deg) scale(0.8);
-  }
-}
-
-.calm .showroom .dealt .lay {
-  animation: none;
-}
-
 .calm .showroom .stack .mini {
   transition: none;
 }
@@ -362,7 +349,7 @@
 .showroom .lay > .mini:first-child {
   transform: rotate(var(--lie));
   transition: transform 0.16s ease-out;
-  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+  will-change: transform, opacity; /* (see .stack .mini) */
 }
 
 .showroom .lay.on > .mini:first-child {
@@ -375,6 +362,26 @@
   }
 }
 
+/* The cards' shadows are their backs' own (box-shadow), not a filter on the card: a phone draws a filtered card over
+   again in every frame it moves, and a pile dealt out moves two dozen of them at once. */
+.showroom .stack .mini > .back {
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 3px 4px rgba(0, 0, 0, 0.32);
+}
+
+.showroom .lay > .mini:first-child > .back {
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 6px 8px rgba(0, 0, 0, 0.35);
+}
+
+.showroom .lay .mini.small > .back {
+  box-shadow:
+    0 0 0 0.6px rgba(20, 30, 40, 0.5),
+    0 4px 5px rgba(0, 0, 0, 0.5);
+}
+
 /* Its small rendition, tucked against the corner. */
 .showroom .lay .mini.small {
   position: absolute;
@@ -382,7 +389,6 @@
   top: 108px;
   zoom: 0.34;
   transform: rotate(8deg);
-  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.5));
 }
 
 .showroom .lay em {
@@ -395,6 +401,7 @@
 
 .showroom .lay.on {
   border-color: var(--marigold);
+  transition: border-color 0.14s ease-out;
 }
 
 .showroom .lay.on em {

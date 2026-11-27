@@ -104,7 +104,7 @@ function Inks({ ink, onInk }: { ink: number; onInk: (ink: number) => void }) {
 /** The sheet for your own backs (and faces): what is picked is yours, at every table. */
 export function YourBackPicker({ colour, onClose }: { colour: string; onClose: () => void }) {
   const prefs = usePrefs();
-  return <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => (setPrefs({ back, random: null }), onClose())} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={onClose} />;
+  return <BackPicker faces title="Deck style" colour={colour} bare={prefs.bare} back={prefs.back} random={prefs.random} onPick={(back) => setPrefs({ back, random: null })} onRandom={(random) => setPrefs({ random })} onBare={(bare) => setPrefs({ bare })} onClose={onClose} />;
 }
 
 /** Your usual backs, as a card to press: a picture of what you have (a question mark, for a back by lot) and, unless only the card is wanted (`compact`), its name; pressed, the sheet of backs to choose another. */
