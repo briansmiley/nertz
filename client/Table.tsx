@@ -24,7 +24,7 @@ import { inHand, levelOf, mover, moving, whoseOf, IN_PILE, type Doing, type Whos
 import { Opening } from './Opening';
 import { ending, handsAt, stageOf, stepAtMount, unrevealed } from './stage';
 import { setBoard, setUnrevealed } from './social';
-import { useFeed } from './feed';
+import { useFeed, useSlide } from './feed';
 import { Dots } from './Dots';
 import { kick, onDrag, onSnipe, pause, playable, playOffline, portable, post, sit, testing, useNet, useReach } from './net';
 import { Clock } from './Settings';
@@ -545,6 +545,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   /** What the table says, as it stacks on the felt while it lasts (feed.ts). Across the middle: the snipes you were in, and the reshuffle. Small along its lower edge: the snipes between others. */
   const [said, tell, saidDone] = useFeed<Said>(room.round);
   const [asides, addAside, asideDone] = useFeed<{ by: number; of: number }>(room.round);
+  const saidBox = useSlide(said.map((s) => s.id).join());
+  const asideBox = useSlide(asides.map((a) => a.id).join());
   useEffect(
     () =>
       onSnipe(({ by, of }) => {
@@ -1153,27 +1155,27 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       )}
       {/* Snipes you were in (who by, or whom) and the reshuffle of a table that was stuck: across the middle, each there and gone in a second or so; more at once stack as a feed does, the newest in the middle and those before it moving up. */}
       {said.length > 0 && !called && !ended && (
-        <div className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
+        <div ref={saidBox} className="gotnertz sniped" style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: `calc(${L.middle.h / 2}px + 0.55em)`, fontSize: clamp(L.middle.w * 0.06, 20, 60) }}>
           {said.map((s) =>
             s.k === 'reshuffle' ? (
-              <motion.span layout="position" key={s.id} className="reshuffle" onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
+              <span key={s.id} className="reshuffle" onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
                 Reshuffle!
-              </motion.span>
+              </span>
             ) : (
-              <motion.span layout="position" key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
+              <span key={s.id} style={{ color: backColour(s.by === you ? s.of : s.by) }} onAnimationEnd={(e) => e.target === e.currentTarget && saidDone(s.id)}>
                 {s.by === you ? `You sniped ${name(s.of)}!` : `Sniped by ${name(s.by)}!`}
-              </motion.span>
+              </span>
             ),
           )}
         </div>
       )}
       {/* Somebody beat somebody else to a pile: the same, small, along the lower edge of the felt, where no pile lies; more at once stack upward. */}
       {asides.length > 0 && !called && !ended && (
-        <div className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
+        <div ref={asideBox} className="gotnertz sniped aside" style={{ left: L.middle.x, top: L.middle.y + L.middle.h - clamp(L.middle.w * 0.026, 13, 24) * 0.9, width: L.middle.w, height: clamp(L.middle.w * 0.026, 13, 24) * 1.8, fontSize: clamp(L.middle.w * 0.026, 13, 24) }}>
           {asides.map((a) => (
-            <motion.span layout="position" key={a.id} onAnimationEnd={(e) => e.target === e.currentTarget && asideDone(a.id)}>
+            <span key={a.id} onAnimationEnd={(e) => e.target === e.currentTarget && asideDone(a.id)}>
               <b style={{ color: nameColour(a.by) }}>{name(a.by)}</b> sniped <b style={{ color: nameColour(a.of) }}>{name(a.of)}</b>
-            </motion.span>
+            </span>
           ))}
         </div>
       )}
