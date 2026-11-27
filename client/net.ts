@@ -236,7 +236,7 @@ const SEAT_KEY = 'nertz.seat';
 
 /**
  * This window's session: the table it is at, or on its way to, and as whom. `room` is null until the server has told
- * us the code of the table we asked it to open. It ends only in `stop`, whichever way the window leaves.
+ * us the code of the table we asked it to open. It ends only in `end`: whichever way the window leaves (`stop`), or as another takes its place (`open`).
  * `local`: the table is this window's own, and so is its line: the settings said offline as the session began, or the
  * table was taken offline since (`carry`, the one place that happens). Never the other way: once local, until it ends.
  * `company`: the bots a table it asks the server to open is opened with (`playOnline`).
