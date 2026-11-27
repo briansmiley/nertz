@@ -54,6 +54,26 @@ bolder and simpler so they read at a small size".
 - **Ask for crisp edges in a second pass.** A busy first draft keeps its fine leaves blurred; redrawing it from itself
   sharpens them.
 
+## Seraph
+
+`seraph` (in the Celestial group, 27 Nov 2026) was made the way Aster was, after an engraving the owner gave: six
+feathered wings mirrored left to right and top to bottom round one open eye, the moon above. Its first draft was an
+edit of the drawing, with the subject *after the winged seraph in this engraving, keeping its arrangement exactly: six
+great feathered wings, mirrored left to right and top to bottom. An upper pair rises with a small full moon between
+their tips; a side pair spreads wide to the left and right; a lower pair reaches down. The inner arms of the wings twist
+over and under each other in a figure-eight braid, crossing above and below one large open eye at the centre of the
+card*, "Bold, clear feather shapes with thin cut-out lines between the feathers", and the style without "loose and
+natural, not symmetrical" and with clouds, mountains and people added to what to leave out. That draft was redrawn
+from itself alone, never the drawing again: "more cleanly, keeping its composition exactly… crisp, sharp, clean edges
+like cut paper… make the feathers slightly bolder and simpler, fewer and larger, so they read at a small size". Then
+it was softened by hand as Aster was.
+
+- **Name every part of the arrangement.** Without the side pair spelled out, drafts lose it and become an X.
+- **Simplify in the second pass, not the first.** A first draft asking the drawing for "few, large feathers" came out
+  lit from behind with a glow; the one asking only for clear feathers came out flat, and simplified cleanly from itself.
+- The figure is taller than 5:7, so its sides were padded with background rather than its wing tips cropped, and it
+  is not zoomed on a small card (`file(1)`): the moon sits at the top edge.
+
 ## Making a back from an image
 
 Crop to 5:7, find the background's tone (the commonest dark value) and the white (the 99.5th percentile), stretch

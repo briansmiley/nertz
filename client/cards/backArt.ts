@@ -1916,6 +1916,7 @@ export const BACK_ART: Record<Exclude<Back, 'plain'>, BackArt> = {
   butterflies: file(1.2),
   ants: file(1.2),
   aster: file(1.2),
+  seraph: file(1),
   fronds: file(1.15),
   oak: file(1.3),
   thistle: file(1.2),
