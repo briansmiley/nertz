@@ -56,23 +56,23 @@ bolder and simpler so they read at a small size".
 
 ## Seraph
 
-`seraph` (in the Celestial group, 27 Nov 2026) was made the way Aster was, after an engraving the owner gave: six
-feathered wings mirrored left to right and top to bottom round one open eye, the moon above. Its first draft was an
-edit of the drawing, with the subject *after the winged seraph in this engraving, keeping its arrangement exactly: six
-great feathered wings, mirrored left to right and top to bottom. An upper pair rises with a small full moon between
-their tips; a side pair spreads wide to the left and right; a lower pair reaches down. The inner arms of the wings twist
-over and under each other in a figure-eight braid, crossing above and below one large open eye at the centre of the
-card*, "Bold, clear feather shapes with thin cut-out lines between the feathers", and the style without "loose and
-natural, not symmetrical" and with clouds, mountains and people added to what to leave out. That draft was redrawn
-from itself alone, never the drawing again: "more cleanly, keeping its composition exactly… crisp, sharp, clean edges
-like cut paper… make the feathers slightly bolder and simpler, fewer and larger, so they read at a small size". Then
-it was softened by hand as Aster was.
+`seraph` (in the Celestial group, 27 Nov 2026) is the engraving the owner gave, itself: six feathered wings mirrored
+left to right and top to bottom round one open eye, the moon above, in clouds. Nothing was generated or redrawn; its
+own lines were kept and only processed (`seraph-scan.mjs` with sharp, from `seraph-scan-src.png`, both in
+`~/nertz-art/backs/`):
 
-- **Name every part of the arrangement.** Without the side pair spelled out, drafts lose it and become an X.
-- **Simplify in the second pass, not the first.** A first draft asking the drawing for "few, large feathers" came out
-  lit from behind with a glow; the one asking only for clear feathers came out flat, and simplified cleanly from itself.
-- The figure is taller than 5:7, so its sides were padded with background rather than its wing tips cropped, and it
-  is not zoomed on a small card (`file(1)`): the moon sits at the top edge.
+- **Mask.** The figure is far darker than the clouds: a copy blurred at σ 8, cut at grey 115, keeps its largest region
+  (dropping cloud shadows, the mountains and the small falling figure below) with its holes filled. That is grown by
+  about 5 px so the feather tips come back, and feathered at σ 3. The moon is its own disc (r 41 at 636, 80 in the
+  source), as its glow runs on below it and no cut holds it.
+- **Polarity: negative.** Ink becomes white on the player's colour, as on the other backs: grey 5 and darker (the 5th
+  percentile inside the figure) is opaque, grey 114 and lighter (the 80th) clear, with a gamma of 0.8 so the
+  mid-tones lean white. The moon is kept positive, light as light, so it shows as a disc.
+- Fitted whole into 360×504 with a 2% margin: the figure is wider than 5:7, so it is padded above and below rather
+  than its wing tips cropped. Not zoomed on a small card (`file(1)`).
+- Also tried: the positive way round (highlights white, ink the card's colour, like the drawing itself), which reads
+  faint and grey at hand size beside the other backs; and a softer stretch (2nd to 98th percentile), which blurs the
+  wings into one white mass. `node seraph-scan.mjs out.png neg 5 80 0.8` makes this one; `pos` the other way round.
 
 ## Making a back from an image
 
