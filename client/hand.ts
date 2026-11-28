@@ -104,6 +104,8 @@ export type Gesture =
   | { k: 'up'; pointer: number; x: number; y: number; touch: boolean }
   | { k: 'cancel'; pointer: number }
   | { k: 'escape' }
+  /** Space: a group off the stock. */
+  | { k: 'draw' }
   /** Not the player's doing: the table changed under the hand (a snapshot came). */
   | { k: 'table' };
 
@@ -371,6 +373,9 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
     case 'escape':
       // Escape puts what was tapped (or clicked) back, as a tap anywhere else would.
       return d?.phase === 'tapped' ? { ...was, hand: null, effects: put(d, null, scene) } : stay;
+    case 'draw':
+      // Looking at the next cards puts what was tapped back first, so a card can't be held on a spot while the stock is cycled.
+      return { ...was, hand: d?.phase === 'tapped' ? null : d, effects: [...(d?.phase === 'tapped' ? put(d, null, scene) : []), { k: 'deal' }] };
     case 'table': {
       // The server can take a card out of your hand: Nertz was called and it has nowhere to go, the grace window
       // closed, or the card was buried. Then it is in hand no more, and goes home.

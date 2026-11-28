@@ -473,7 +473,7 @@ you are now under it, green where it would be sent. Mic at 0 is muting yourself 
 and "Muted", the level you had is kept, and unmuting (or drawing the slider up) brings it back. The same row is at the foot of the voice slip (Chat.tsx).
 Reduce motion follows the system setting until you touch it, then overrules it either way.
 **Tap to play** (`Prefs.tapToMove`, off by default) lets a tap or a click take a card up and the next put it down, on
-every screen alike; off, every card is dragged. Dragging always works. Anyone can tick it, host or not, in a room or
+every screen alike; off, every card is dragged. Dragging always works. Drawing with Space puts a tapped card back. Anyone can tick it, host or not, in a room or
 offline: the table is not told, and the server cannot tell such a move from a drag (the same `hold` and `move`).
 **Card faces** (`Prefs.faces`: **Owner's**, the default, **Mine** or **Big print**) is whose faces every card has on your
 screen: each card in its owner's style, every card in the style you chose for your own deck, or every card in Big print

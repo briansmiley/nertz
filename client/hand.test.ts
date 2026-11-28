@@ -314,6 +314,17 @@ describe('tap to move', () => {
     expect(t.hand?.phase).toBe('carried');
   });
 
+  it('Space draws, and puts a tapped card back first', () => {
+    const t = seatAt(game());
+    t.act({ k: 'draw' });
+    expect(t.did).toEqual([{ k: 'deal' }]);
+    t.tap(t.at('0:H4'));
+    t.act({ k: 'draw' });
+    expect(t.hand).toBeNull();
+    expect(t.sent).toEqual([hold('0:H4'), release]);
+    expect(t.did).toEqual([{ k: 'deal' }, tried('0:H4'), { k: 'deal' }]);
+  });
+
   it('a tapped Ace starts its pile on the very spot of the felt that is tapped next', () => {
     const t = seatAt(game());
     const at = room(t, '0:DA');

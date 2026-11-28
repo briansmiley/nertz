@@ -802,16 +802,6 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
 
   /** A click on the stock, or Space: one draw (or the waste turned back over). Its group comes in one step and is dealt out here, on the round's clock (net.ts). */
   const dealGroup = useCallback(() => send({ k: 'draw' }), []);
-  useEffect(() => {
-    if (frozen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat) return;
-      e.preventDefault();
-      dealGroup();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [frozen, dealGroup]);
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
@@ -878,6 +868,17 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     return d;
   };
 
+  // Space draws like a click on the stock, and puts back a card that stands tapped (hand.ts, 'draw').
+  useEffect(() => {
+    if (frozen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return;
+      e.preventDefault();
+      act({ k: 'draw' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   // The server can take a card out of your hand (hand.ts, 'table'): then the drag is over and the card goes home.
   useEffect(() => void act({ k: 'table' }));
   useEffect(() => {
