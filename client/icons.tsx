@@ -77,11 +77,7 @@ export function Bug() {
 
 /** How much the game is played (an admin's, Usage.tsx): bars on a line. */
 export function Chart() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3.5 19.5h17M7 16.5v-4M12 16.5V7M17 16.5v-6.5" />
-    </svg>
-  );
+  return <img className="art" src="/icons/chart.png" alt="" aria-hidden="true" />;
 }
 
 /** Pausing: two bars. */
