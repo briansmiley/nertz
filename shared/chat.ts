@@ -84,7 +84,7 @@ export type SocialClientMsg =
   | { t: 'signal'; to: number; data: string };
 
 export type SocialServerMsg =
-  /** New lines, or with `history` everything the room remembers (sent once to a connection when it sits down). */
+  /** New lines, or with `history` everything the room remembers since this player first came to the table (sent once to a connection when it sits down). */
   | { t: 'chat'; lines: ChatLine[]; history: boolean }
   /** The switches and who is in voice. Sent when a connection sits down and whenever any of it changes. */
   | ({ t: 'social'; inVoice: VoiceMember[]; ice?: IceServer[] } & SocialSettings)

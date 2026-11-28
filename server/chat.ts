@@ -12,6 +12,8 @@ export interface Member {
   seat: number | null;
   name: string;
   conn: Conn | null;
+  /** The first line of the chat they are shown: the one said next when they first came to the table (`Social.joined`). Nothing said before it is theirs to read. */
+  chatFrom?: number;
 }
 
 /**
@@ -84,10 +86,11 @@ export class Social {
     Object.assign(this, kept);
   }
 
-  /** `member` has a new connection (first time or a reconnect): it gets the history and the switches, once. */
+  /** `member` has a new connection (first time or a reconnect): it gets the history since they first came (`chatFrom`) and the switches, once. */
   joined(member: Member, members: readonly Member[]): void {
     const wasIn = this.inVoice.delete(member);
-    member.conn?.send({ t: 'chat', lines: this.lines, history: true });
+    const from = (member.chatFrom ??= this.nextId);
+    member.conn?.send({ t: 'chat', lines: this.lines.filter((l) => l.id >= from), history: true });
     if (wasIn) this.announce(members);
     else member.conn?.send(this.state());
   }

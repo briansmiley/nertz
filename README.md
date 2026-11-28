@@ -653,7 +653,8 @@ hold a card it fades and lets the pointer through. Keys typed in the panel are n
 - **Text chat.** Enter sends. Plain text, at most 300 characters, shown with the sender's name in their seat colour. The
   server stamps the sender and an id, keeps the last 200 lines per table in memory and allows each player 5 messages per
   5 seconds (the excess is dropped). Chat is not part of the game snapshot: lines arrive as their own message
-  (`{ t: 'chat' }`), and the kept history is sent once to every connection that sits down, reconnects included.
+  (`{ t: 'chat' }`), and the kept history is sent once to every connection that sits down, reconnects included: only the
+  lines from when that player first came to the table, so whoever joins sees nothing said before them.
 - **Voice chat.** Opt-in: the headset opens a slip of who is in voice, and the microphone is asked for only when you
   press **Join** on it. Then: **Mute**, **Leave** (in Join's place; the slip stays open), a list of who is in voice and
   who is muted, a ring around whoever is making sound (your own goes by what is sent), and your microphone's level and

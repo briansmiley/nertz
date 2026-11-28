@@ -111,6 +111,8 @@ interface Player {
   calls?: number;
   /** The faces and backs this player chose; everyone sees their cards drawn so. */
   look: Look;
+  /** Where the chat begins for them: see `Member.chatFrom` (server/chat.ts). Set as they first join, and kept with them. */
+  chatFrom?: number;
   /** What is left of this player's allowance of card-position reports (`drag`), and when it was last topped up. */
   drags?: { left: number; at: number };
   /** Said they are ready for Start, for the round now dealt. */
@@ -151,13 +153,13 @@ const BOT_CONN: Conn = { send: () => {}, close: () => {} };
 const BOT_NAMES = ['Bot Ada', 'Bot Bix', 'Bot Cleo', 'Bot Dot', 'Bot Eli', 'Bot Fay', 'Bot Gus', 'Bot Hal', 'Bot Ivy', 'Bot Jem'];
 
 /** Which `Kept` this server writes and reads. Whatever changes what is in one (a field of the room, of a player, of the engine's `GameState`) puts it up by one: a table kept by a server from before is then not brought back. */
-export const KEPT = 4;
+export const KEPT = 5;
 /**
  * The shape of a `Kept` of each version: its fingerprint, as server/room.test.ts takes it (every path in one, and the
  * kind of value there). That test fails when a table's shape is not the one written here for `KEPT`: then put `KEPT`
  * up by one and add the new shape under it. Never change one already here.
  */
-export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'eb04bb1f703b', 4: '984c1401271b' };
+export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'eb04bb1f703b', 4: '984c1401271b', 5: 'e032cac88e2e' };
 
 /** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
 interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {

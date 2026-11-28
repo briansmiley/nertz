@@ -3,8 +3,8 @@ import { CHAT_HISTORY, CHAT_MAX_LENGTH, CHAT_RATE_COUNT, CHAT_RATE_MS, cleanChat
 import { MAX_MESSAGE_BYTES, parseClientMsg, type ClientMsg } from '../shared/protocol';
 import type { RoundLine } from '../shared/types';
 import { roundOver } from './chat';
-import type { Room } from './room';
-import { FakeConn, roomWith, send } from './testkit';
+import { Room, type Kept } from './room';
+import { FakeConn, roomWith, send, startRound } from './testkit';
 
 afterEach(() => vi.useRealTimers());
 
@@ -82,7 +82,7 @@ describe('text chat', () => {
     expect(b.said.at(-1)).toBe('later');
   });
 
-  it('keeps the last CHAT_HISTORY lines and hands them to a player who joins or reconnects, once', () => {
+  it('keeps the last CHAT_HISTORY lines and hands them to a player who reconnects, once', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2);
     const [a, b] = conns as [FakeConn, FakeConn];
@@ -93,21 +93,51 @@ describe('text chat', () => {
     }
     const kept = Array.from({ length: CHAT_HISTORY }, (_, i) => `m${i + 10}`);
 
-    const c = new FakeConn(); // a newcomer
-    room.join(c, 'P2', 'tok-0002', true);
-    expect(c.of('chat')).toHaveLength(1);
-    expect(c.of('chat')[0]!.history).toBe(true);
-    expect(c.said).toEqual(kept);
-    expect(c.lines[0]!.id).toBe(11);
-
     room.disconnect(b); // a reconnect
     const b2 = new FakeConn();
     room.join(b2, 'P1', 'tok-0001', true);
-    expect(b2.of('chat')).toEqual(c.of('chat'));
+    expect(b2.of('chat')).toHaveLength(1);
+    expect(b2.of('chat')[0]!.history).toBe(true);
+    expect(b2.said).toEqual(kept);
+    expect(b2.lines[0]!.id).toBe(11);
     room.flush();
     send(room, a, { t: 'chat', text: 'after' });
     expect(b2.of('chat')).toHaveLength(2); // only the new line, not the history again
     expect(b2.of('chat')[1]).toMatchObject({ history: false, lines: [{ text: 'after' }] });
+  });
+
+  it('shows whoever comes to the table only what is said (and told) from then on, over their reconnects and a restart of the server', () => {
+    const { room, conns } = roomWith(2);
+    const [a, b] = conns as [FakeConn, FakeConn];
+    send(room, a, { t: 'chat', text: 'before you came' });
+
+    const c = new FakeConn(); // a newcomer
+    room.join(c, 'P2', 'tok-0002', true);
+    expect(c.of('chat')).toEqual([{ t: 'chat', lines: [], history: true }]);
+    send(room, b, { t: 'chat', text: 'hi P2' });
+    startRound(room, a);
+    expect(c.lines.map((l) => (l.k === 'said' ? l.text : l.k))).toEqual(['hi P2', 'started']);
+
+    room.disconnect(c); // their reconnect: what they saw, and nothing from before
+    const c2 = new FakeConn();
+    room.join(c2, 'P2', 'tok-0002', true);
+    expect(c2.lines).toEqual(c.lines);
+
+    // A restart of the server keeps where each one's chat begins.
+    const back = Room.restored(JSON.parse(JSON.stringify(room.kept())) as Kept, { schedule: () => {} })!;
+    room.close();
+    const [a3, c3] = [new FakeConn(), new FakeConn()];
+    back.join(a3, 'P0', 'tok-0000');
+    back.join(c3, 'P2', 'tok-0002');
+    expect(a3.said).toEqual(['before you came', 'hi P2']);
+    expect(c3.lines).toEqual(c.lines);
+
+    // Gone and back, they are someone new: a new join, from now.
+    back.handle(c3, { t: 'leave' });
+    const c4 = new FakeConn();
+    back.join(c4, 'P2', 'tok-0002');
+    expect(c4.lines).toEqual([]);
+    back.close();
   });
 
   it('skips players without a connection', () => {
@@ -183,14 +213,15 @@ describe('the host switches', () => {
     send(room, a, { t: 'chat', text: 'not even the host' });
     expect(a.said).toEqual(['before']);
 
-    const c = new FakeConn();
-    room.join(c, 'P2', 'tok-0002', true);
-    expect(c.said).toEqual(['before']);
-    expect(c.social).toMatchObject({ text: false });
+    room.disconnect(b);
+    const b2 = new FakeConn();
+    room.join(b2, 'P1', 'tok-0001', true);
+    expect(b2.said).toEqual(['before']);
+    expect(b2.social).toMatchObject({ text: false });
 
     send(room, a, { t: 'social', text: true });
-    send(room, b, { t: 'chat', text: 'after' });
-    expect(c.lines.map((l) => [l.id, l.k === 'said' && l.text])).toEqual([[1, 'before'], [2, 'after']]); // prettier-ignore
+    send(room, b2, { t: 'chat', text: 'after' });
+    expect(b2.lines.map((l) => [l.id, l.k === 'said' && l.text])).toEqual([[1, 'before'], [2, 'after']]); // prettier-ignore
   });
 });
 
