@@ -41,7 +41,7 @@
   gap: 6px;
 }
 
-/* What has just been said, while the chat is closed: words on the cloth under the button, each line on a wash of its own, no box round them all, and nothing to press. */
+/* What has just been said, while the chat is closed: words on the cloth under the button, each line on a wash of its own, no box round them all. Only the lines themselves take a tap (it reads them); around them the pointer goes through to the table. */
 .passing {
   position: absolute;
   left: 2px;
@@ -67,6 +67,11 @@
   overflow-wrap: anywhere;
   transform-origin: left center;
   animation: passing 9s linear both;
+}
+
+.chat:not(.aside) .passing:not(.still) li {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .passing b {

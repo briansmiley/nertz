@@ -13,7 +13,7 @@ import { MicLevels } from './Settings';
 import { useCorners } from './fittings';
 import { chatLines } from './layout';
 import { kick, sit } from './net';
-import { PASSING_MS, say, setOpen, useSocial, type Open, type SocialState } from './social';
+import { PASSING_MS, readPassing, say, setOpen, useSocial, type Open, type SocialState } from './social';
 import { useWindow } from './viewport';
 import { joinVoice, leaveVoice, toggleMuted, useVoice } from './voice';
 
@@ -74,7 +74,7 @@ function Line({ line, colour }: { line: ChatLine; colour: Colour }) {
   return <em className="notice">{notice}</em>;
 }
 
-/** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while, and never in the way of the pointer. */
+/** What has just been said, under the buttons while you are not typing: plain words over the table, gone again after a while. Only the words take the pointer: a tap on one reads them all and sends them away. */
 function Passing({ lines, colour, most }: { lines: SocialState['passing']; colour: Colour; most: number }) {
   const [, tick] = useState(0);
   const now = Date.now();
@@ -89,7 +89,7 @@ function Passing({ lines, colour, most }: { lines: SocialState['passing']; colou
   return (
     <ol className="passing" aria-live="polite">
       {shown.map(({ line }) => (
-        <li key={line.id}>
+        <li key={line.id} onClick={readPassing}>
           <Line line={line} colour={colour} />
         </li>
       ))}
