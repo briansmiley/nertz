@@ -11,6 +11,7 @@ import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
+import { written } from './Profile';
 import { useDismiss } from './dismiss';
 import { usePicture } from './picture';
 import { Dots } from './Dots';
@@ -1032,7 +1033,10 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
 }
 
 /** The columns of the score sheet, each of which its lines can be sorted by: `calls` and `total` are the two kept across rounds. */
-type Column = 'name' | 'played' | 'nertz' | 'round' | 'calls' | 'total';
+type Column = 'name' | 'played' | 'nertz' | 'round' | 'calls' | 'total' | 'average';
+
+/** Points per round kept; none for a line with no rounds yet, which goes after every other. */
+const average = (l: { total: number; rounds: number }) => (l.rounds > 0 ? l.total / l.rounds : -Infinity);
 
 /** How each column puts its lines in order, the best first: the most points, the fewest cards left in the nertz pile (so whoever got Nertz), the names from A. */
 const BEST_FIRST: Record<Column, (a: RoundLine, b: RoundLine) => number> = {
@@ -1042,6 +1046,7 @@ const BEST_FIRST: Record<Column, (a: RoundLine, b: RoundLine) => number> = {
   round: (a, b) => b.delta - a.delta,
   calls: (a, b) => b.calls - a.calls,
   total: (a, b) => b.total - a.total,
+  average: (a, b) => (average(a) === average(b) ? 0 : average(b) - average(a)),
 };
 
 /** What the sheet is sorted by: a column, its best first, or (`reversed`) the other way round. */
@@ -1089,10 +1094,11 @@ function Results({ room }: { room: RoomView }) {
     <>
     {/* Before it, the other thing kept across rounds: how many of them they ended by calling Nertz. */}
     <td className="total calls">{calls}</td>
-    <td className="total">
+    <td className="total points">
       {score < 0 ? `−${-score}` : score}
       {rounds > 0 && rounds < room.round && <small data-tip={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
+    <td className="total">{rounds > 0 ? written(score / rounds, 1) : '–'}</td>
     </>
   );
 
@@ -1109,11 +1115,12 @@ function Results({ room }: { room: RoomView }) {
               {heading('played', 'Played', { rowSpan: 2 })}
               {heading('nertz', 'Nertz', { rowSpan: 2 })}
               {heading('round', 'Round', { rowSpan: 2 })}
-              <th scope="colgroup" colSpan={2} className="over">Total</th>
+              <th scope="colgroup" colSpan={3} className="over">Total</th>
             </tr>
             <tr>
               {heading('calls', 'Nertz')}
               {heading('total', 'Points')}
+              {heading('average', 'Avg')}
             </tr>
           </thead>
           <tbody>

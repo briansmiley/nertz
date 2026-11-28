@@ -11,7 +11,7 @@ import { PictureCrop } from './PictureCrop';
 import { usePicture } from './picture';
 
 /** A figure as it is written: a true minus sign, and no "-0.0". */
-const written = (n: number, places = 0): string => {
+export const written = (n: number, places = 0): string => {
   const text = Math.abs(n).toFixed(places);
   return n < 0 && Number(text) !== 0 ? `−${text}` : text;
 };

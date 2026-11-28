@@ -192,6 +192,12 @@
   padding-right: 1.3rem;
 }
 
+/* The average, after the points: room before it for the count of rounds that stands after them. */
+.scores thead tr + tr th:last-child,
+.scores td.total:last-child {
+  padding-left: 1.2rem;
+}
+
 .scores thead tr + tr th {
   height: auto;
 }
@@ -350,7 +356,16 @@
 
   .scores thead tr + tr th,
   .scores td.total {
-    padding: 0 0.25rem;
+    padding: 0 0.2rem;
+  }
+
+  .scores thead tr + tr th:last-child,
+  .scores td.total:last-child {
+    padding-left: 0.65rem;
+  }
+
+  .scores td.total:last-child {
+    font-size: 0.9rem;
   }
 
   .scores .called {

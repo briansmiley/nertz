@@ -253,7 +253,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   nobody else has taken it) and the same cards, and whoever takes a seat someone left has the cards dealt there. Only **Restart round** shuffles again.)
   The score sheet lists the round's best first; pressing a column's heading sorts it by that column instead (again,
   the other way round), in your window only. It says of how many rounds a total is the
-  sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
+  sum, where that is fewer than the table has played, and gives each total's average per round. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
   On that sheet the line of anyone no longer at the table (stood up to watch, waiting for a seat again, or gone) is
   faint, its name slanted and its chip only the outline of the colour they played in.
