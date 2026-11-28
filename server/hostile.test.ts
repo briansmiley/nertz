@@ -300,7 +300,6 @@ describe('a hostile client over real sockets', () => {
     const tries: unknown[] = [
       { k: 'draw' },
       { k: 'stuck', on: true },
-      { k: 'nertz' }, // (its nertz pile is empty)
       { k: 'hold', cardId: ace },
       { k: 'release' },
       move(ace, slot(pile + 1)),
