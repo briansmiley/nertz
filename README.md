@@ -249,7 +249,8 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   comes back by then is dealt in, and **Stand up** gives your seat up to watch, your cards coming off the table. Neither
   changes anyone else's face-up cards, only how deep they are buried (see Small tables). A hand is its seat's for the round: sit back down and you have the same seat (while
   nobody else has taken it) and the same cards, and whoever takes a seat someone left has the cards dealt there. Only **Restart round** shuffles again.)
-  The score sheet says of how many rounds a total is the
+  The score sheet lists the round's best first; pressing a column's heading sorts it by that column instead (again,
+  the other way round), in your window only. It says of how many rounds a total is the
   sum, where that is fewer than the table has played. Someone who presses Leave is gone from the table, and their seat is
   free: at once, or if their cards are in a round, when it is over; their line of the last score sheet stays.
   On that sheet the line of anyone no longer at the table (stood up to watch, waiting for a seat again, or gone) is
