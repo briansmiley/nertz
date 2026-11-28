@@ -417,19 +417,13 @@ label.check {
 
 .info .tip {
   display: none;
-  position: absolute;
+  position: absolute; /* (where it hangs; as it shows it is fixed there, over what would cut it off: Settings.tsx, lift) */
   z-index: 50;
   left: 0;
   top: calc(100% + 4px);
   width: max-content;
   max-width: min(17rem, 100%);
   cursor: default; /* its look is the tooltip's (tip.css) */
-}
-
-/* (Over the row instead, where there is no room under it: Settings.tsx, Info.) */
-.info.up .tip {
-  top: auto;
-  bottom: calc(100% + 4px);
 }
 
 .info:focus .tip {
