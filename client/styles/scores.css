@@ -382,8 +382,8 @@
   flex: none;
 }
 
-/* A phone on its side: the round, then Next round (or who deals it) and the tools, in one band at the top, as on the
-   lobby's sheet, so the deal is never under the fold; the sheet a little tighter, so more of it is above it. */
+/* A phone on its side: the round, then Next round (or who deals it) and the tools, in one band at the head of the sheet,
+   as on the lobby's sheet, so none of them is under the fold; the sheet a little tighter, so more of it is above it. */
 @media (orientation: landscape) and (max-height: 499px) {
   .pad.results {
     width: min(100%, 48rem);
@@ -413,9 +413,14 @@
     padding: 0.45rem 1.2rem 0.55rem;
   }
 
-  .pad.results > .tools.top {
-    position: static;
+  .pad.results > .tools {
     grid-area: 1 / 4;
+  }
+
+  /* (Up there, a tool's slip opens under it, as the lobby's top corner's do.) */
+  .pad.results > .tools .pop {
+    top: calc(100% + 8px);
+    bottom: auto;
   }
 
   .pad.results .snipes {

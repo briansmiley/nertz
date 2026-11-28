@@ -1099,13 +1099,6 @@ function Results({ room }: { room: RoomView }) {
   return (
     <main className="solo over">
       <Pad wide className="results">
-        {/* The tools in the top corner, as on the lobby's sheet: they stay put however long the sheet is. */}
-        <div className="tools top">
-          <SettingsGear />
-          {me?.isHost && <AddBot room={room} />}
-          <Act id="reset" room={room} />
-          <Act id="leave" room={room} />
-        </div>
         <h2>Round {room.round}</h2>
         {/* Who got Nertz is said in their own lines of the sheet, with the stamp in the Nertz column; only a round that ended some other way gets a sentence. (Not if all who got it were sent away since: a bot that called, then removed.) */}
         {!rows.some((s) => out.includes(s.seat)) && <p className="lead">{end?.by === 'jam' ? 'The table jammed: nobody could move. Scored as it stands.' : end?.by === 'vote' ? (end.voters > 1 ? 'Everyone agreed to end the round. Scored as it stands.' : 'Scored as it stands.') : 'Round over.'}</p>}
@@ -1196,6 +1189,12 @@ function Results({ room }: { room: RoomView }) {
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
         )}
+        <div className="tools">
+          <SettingsGear />
+          {me?.isHost && <AddBot room={room} />}
+          <Act id="reset" room={room} />
+          <Act id="leave" room={room} />
+        </div>
       </Pad>
     </main>
   );
