@@ -783,7 +783,7 @@ describe('table layout', () => {
 
   // Regression: a drop was judged only by the centre of the grabbed card, so a card held by its corner and
   // pointed straight at a pile was refused.
-  it('a release counts for the pile under the pointer, failing that for the pile under the card centre, and failing both for the pile the card covers most', () => {
+  it('a release counts for the pile under the pointer, failing that for the pile under the card centre, and failing both for the pile that lies mostly under the card', () => {
     // Two piles side by side, a gap between them, and a hand-sized card.
     const a: Rect = { x: 300, y: 200, w: 50, h: 70 };
     const b: Rect = { x: 360, y: 200, w: 50, h: 70 };
@@ -799,17 +799,20 @@ describe('table layout', () => {
     expect(dropTarget(targets, pointer, held)?.i).toBe(7);
     // Pointer over no pile: the card's centre decides.
     expect(dropTarget(targets, { x: a.x + a.w / 2, y: a.y - 40 }, about(mid(b)))?.i).toBe(8);
-    // Regression: neither the pointer nor the card's centre is over a pile, but the card lies over one: it goes there.
-    const aside = { x: a.x - 60, y: a.y - 100, ...card }; // its lower right corner over pile 7
+    // Regression: neither the pointer nor the card's centre is over a pile, but most of one lies under the card.
+    const aside = { x: a.x - 55, y: a.y - 75, ...card }; // most of pile 7 under its lower right corner
     const by = { x: aside.x + 10, y: aside.y + 10 };
     expect(inside(hit(a), by.x, by.y) || inside(hit(a), mid(aside).x, mid(aside).y)).toBe(false);
     expect(dropTarget(targets, by, aside)?.i).toBe(7);
-    // Both in the gap between two slots: the pile the card covers more.
+    // With less than half of the pile under it, the card has not been put down on it: it goes back.
+    const touching = { x: a.x - 60, y: a.y - 100, ...card };
+    expect(dropTarget(targets, { x: touching.x + 10, y: touching.y + 10 }, touching)).toBeUndefined();
+    // Both in the gap between two slots, and most of each under the card: the pile it covers more.
     const gap = { x: (a.x + a.w + b.x) / 2, y: a.y + a.h / 2 };
     expect(dropTarget(targets, gap, about({ x: gap.x - 1, y: gap.y }))?.i).toBe(7);
     expect(dropTarget(targets, gap, about({ x: gap.x + 1, y: gap.y }))?.i).toBe(8);
-    // Over no pile with any of it (or with no card, as for a tap): nothing, the card goes back.
-    expect(dropTarget(targets, { x: 100, y: 100 }, about({ x: 100, y: 100 }))).toBeUndefined();
+    // A card no larger than the piles, between the two (or no card, as for a tap): on neither, the card goes back.
+    expect(dropTarget(targets, gap, { x: gap.x - a.w / 2, y: a.y, w: a.w, h: a.h })).toBeUndefined();
     expect(dropTarget(targets, gap, null)).toBeUndefined();
     // Only the targets offered count: a pile that does not take the card is never chosen, wherever the pointer is.
     expect(dropTarget(targets.filter((t) => t.i !== 7), pointer, null)).toBeUndefined();

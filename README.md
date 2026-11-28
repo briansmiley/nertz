@@ -62,8 +62,10 @@ Nothing shows where a card in hand may go: no pile is outlined for it. (A finger
 lands on it. Under a finger the card rises clear of the fingertip as it is carried off, and on a phone comes to one size
 on the way, upright or on its side, whatever size the hand's cards are.) What counts is
 where the pointer is when you let go; only if the pointer is over no pile at all does the centre of the card you grabbed
-decide. Each pile's drop area is the pile plus a small margin (a whole column, for a work pile), neighbouring areas never
-touch, and a card let go between two piles goes back where it came from.
+decide, and failing both, the pile that lies mostly under the card (at a big table a card of your hand is twice the size
+of a pile in the middle). Each pile's drop area is the pile plus a small margin (a whole column, for a work pile),
+neighbouring areas never touch, and a card let go between two piles, neither of them mostly under it, goes back where it
+came from.
 
 At a table that moves without dragging (the table rule "Move without dragging", on by default) a tap or a click also
 takes a card up without carrying it: it stands lifted where it was, and the next tap or click puts it down, on the pile

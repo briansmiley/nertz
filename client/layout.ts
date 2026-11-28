@@ -193,14 +193,18 @@ export const inside = (r: Rect, x: number, y: number): boolean => x >= r.x && x 
 
 /** The middle of `r`. */
 export const middle = (r: Rect): Pt => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+/** How much of `a` and `b` lies over the other, in px². */
+export const overlap = (a: Rect, b: Rect): number =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
 /**
  * The one drop area a release counts for: the area under the pointer, and only if the pointer is over none, the area
  * under the centre of the grabbed card (`card`, where it is drawn). A card picked up by its corner is aimed with the
  * pointer; one flung with the pointer trailing off the pile still lands by where it lies. Failing both, it goes under
- * a finger (`reach`) to the nearest area within reach, and otherwise to the one the card itself covers most (so one
- * let go with its body over a pile lands there, and one between two piles on the one it lies more over). Either way
- * it is one specific pile.
+ * a finger (`reach`) to the nearest area within reach, and otherwise to the area that lies mostly under the card: more
+ * than half of it, or of the card if that is the smaller. (So a card of your hand let go with a far smaller pile of
+ * the middle under it lands there, on the one it covers more if there are two; one that only touches an area has not
+ * been put down on it, and between two piles as large as itself it goes back.) Either way it is one specific pile.
  */
 export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: Pt, card: Rect | null, reach = 0): T | undefined {
   const centre = card && middle(card);
@@ -219,9 +223,8 @@ export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], point
   } else if (card) {
     let most = 0;
     for (const t of targets) {
-      const h = t.hit;
-      const covered = Math.max(0, Math.min(card.x + card.w, h.x + h.w) - Math.max(card.x, h.x)) * Math.max(0, Math.min(card.y + card.h, h.y + h.h) - Math.max(card.y, h.y));
-      if (covered > most) [best, most] = [t, covered];
+      const covered = overlap(card, t.hit);
+      if (covered > most && 2 * covered > Math.min(card.w * card.h, t.hit.w * t.hit.h)) [best, most] = [t, covered];
     }
   }
   return best;

@@ -4,9 +4,9 @@
 // that out (it sends the intents and moves the card elements); it decides nothing.
 //
 // Placement is exact. A card lands only if it is put down on one specific pile (the one under the pointer, else the
-// one under the card's centre, else the one the card lies most over) and fits there; nothing is rerouted. Only an Ace
-// let go on the felt where there is no room for a pile right there starts one at the nearest place that has room, if
-// that is no more than a card away.
+// one under the card's centre, else the one that lies mostly under the card) and fits there; nothing is rerouted. Only
+// an Ace let go on the felt where there is no room for a pile right there starts one at the nearest place that has
+// room, if that is no more than a card away.
 import { canDrop, grab, piled } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, roomNear, type Pt } from '../shared/table';
@@ -192,9 +192,9 @@ const pointOf = (d: Grip, at: Aim): Pt => (d.touch && at.card ? middle(at.card) 
 const reachOf = (d: Grip, L: Layout): number => (d.touch && d.held.k === 'card' ? Math.max(26, L.fs * CARD_W * 0.55) : 0);
 /**
  * The one pile the hand is over: the drop area under the pointer; only if the pointer is over none, the one under the
- * centre of the grabbed card; and failing both, the one the card covers most (under a finger instead, the nearest
- * within reach). (A card held by its corner is aimed with the pointer, not with a centre that is half a card away.) So a card
- * let go between two piles goes to the one it lies more over, and one over neither goes back.
+ * centre of the grabbed card; and failing both, the one that lies mostly under the card (under a finger instead, the
+ * nearest within reach). (A card held by its corner is aimed with the pointer, not with a centre that is half a card
+ * away.) Drop areas never overlap, and a card that only touches one is not over it.
  */
 const pileUnder = <T extends { hit: Rect }>(d: Grip, at: Aim, piles: readonly T[], L: Layout): T | undefined => dropTarget(piles, pointOf(d, at), at.card, reachOf(d, L));
 /**
@@ -302,8 +302,8 @@ function take(d: Pressed, phase: 'carried' | 'tapped', p: Pt, scene: Scene): { h
 
 /**
  * Puts down what is in hand. Only the pile `at` points to counts: one that takes the card (failing the pointer and
- * the card's centre, the one it lies most over; the nearest, if a finger is a little off), or for an Ace the spot of
- * the felt `feltUnder` shows; for a finished pile, the tray. Anywhere else, and with
+ * the card's centre, the one that lies mostly under it; the nearest, if a finger is a little off), or for an Ace the
+ * spot of the felt `feltUnder` shows; for a finished pile, the tray. Anywhere else, and with
  * no `at`, it is put back. If the move is refused by the server a moment later (someone got there first) the card
  * goes home just the same, and the server takes it out of the hand by itself.
  */

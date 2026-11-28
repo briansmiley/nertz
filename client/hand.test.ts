@@ -99,19 +99,21 @@ describe('carrying a card (a mouse)', () => {
     expect(t.sent).toEqual([hold('0:S2'), move('0:S2', slot(0))]);
   });
 
-  // Regression (SMI-369): only the pointer and the card's middle counted, so a card let go lying over a pile was put back.
-  it('let go lying over a pile that takes it, with neither the pointer nor its middle over that pile, the card goes there', () => {
-    const t = seatAt(game());
+  // Regression (SMI-369): only the pointer and the card's middle counted, so at a big table, where a card of your hand
+  // is twice the size of a pile in the middle, one let go with its pile under it was put back.
+  it('let go with a pile that takes it mostly under it, and neither the pointer nor its middle over that pile, the card goes there', () => {
+    const t = seatAt(table([{ waste: 'S2' }, ...Array.from({ length: 9 }, () => ({}))], { slots: [pile('S1', 1)] }), { W: 1636, H: 948 });
     const lay = t.card('0:S2');
     const [w, h] = [lay.s * CARD_W, lay.s * CARD_H];
     const hit = t.L.slotHit[0]!;
     const grip = { x: lay.x + 5, y: lay.y + 5 }; // by its corner
-    const p = { x: hit.x - w / 2, y: hit.y + hit.h / 2 - h / 2 + 5 }; // its middle just left of the pile, its right half over it
+    const p = { x: hit.x - w / 2, y: hit.y + hit.h / 2 - h / 2 + 5 }; // its middle just left of the pile, which lies under its right half
     t.down(grip);
     t.move(by(grip, 30, -40));
     t.move(p);
     expect(inside(hit, p.x, p.y)).toBe(false);
     expect(inside(hit, centre(t).x, centre(t).y)).toBe(false);
+    expect(w / 2 - 5).toBeGreaterThan(hit.w / 2); // (most of the pile)
     t.up(p);
     expect(t.sent).toEqual([hold('0:S2'), move('0:S2', slot(0))]);
   });
