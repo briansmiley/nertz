@@ -186,7 +186,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King
   drags it to the **tray** at the side. Its place is then free for a new Ace. Tray piles still count for scoring.
 - **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in
-  the tray they cannot move a card, or deal from the stock or say they are stuck. Calling Nertz (with an empty nertz pile) is never held up by it. (At a real table you have to
+  the tray they cannot move a card, deal from the stock or say they are stuck. Calling Nertz (with an empty nertz pile) is never held up by it. (At a real table you have to
   get the pile out of the way too; nothing is automated here.) Nobody else is held up, and the place stays taken
   meanwhile. If somebody else calls Nertz before the pile is cleared, the round ends as usual and the pile scores where
   it lies. It cannot meet the held-card grace window: placing the King emptied that player's hand and they could not
