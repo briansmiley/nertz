@@ -22,6 +22,12 @@ describe('the score sheet', () => {
     expect(names(sheetOrder(lines, { by: 'calls', reversed: false }))).toBe('Cy Bo Al Di');
   });
 
+  it("sorts by the total's average per round, whoever has played the fewest rounds, and a line with none last", () => {
+    const some = [{ ...line('Al', 5, 1, 12), rounds: 3 }, { ...line('Bo', 14, 0, 20), rounds: 2 }, line('Cy', 6, 4, 18), { ...line('Di', 9, 3, 0), rounds: 0 }];
+    // Al 4, Bo 10, Cy 9, Di none.
+    expect(names(sheetOrder(some, { by: 'average', reversed: false }))).toBe('Bo Cy Al Di');
+  });
+
   it('turns over, ties and all, the other way round', () => {
     expect(names(sheetOrder(lines, { by: 'total', reversed: true }))).toBe('Di Al Bo Cy');
     expect(names(sheetOrder(lines, { by: 'calls', reversed: true }))).toBe('Di Al Bo Cy');

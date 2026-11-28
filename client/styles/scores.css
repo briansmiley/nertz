@@ -92,13 +92,13 @@
   color: var(--ink-soft);
 }
 
-/* On the score sheet, in the Nertz column of whoever called it (where their 0 would be): the stamp that lay across
-   their hand, small. It is written in, so the column is as wide as it and it covers none of the figures beside it. */
+/* On the score sheet, in the Nertz column of whoever called it: their 0, written as the stamp that lay across their
+   hand, small. It is written in, so it covers none of the figures beside it. The Nertz columns' headings, an N, are
+   written so too. */
 .scores .called {
   display: inline-block;
-  vertical-align: 0.3em; /* (not middle: that is half the figures' x-height, below the middle of their digits) */
   margin-right: -0.15em;
-  font: 400 0.8rem/1 var(--display);
+  font: 400 1.05rem/1 var(--display);
   text-transform: uppercase;
   letter-spacing: 0.01em;
   color: var(--marigold);
@@ -106,6 +106,22 @@
   paint-order: stroke fill;
   text-shadow: 0 0.06em 0 var(--ink);
   rotate: -5deg;
+}
+
+/* The Played heading: two cards, one played over the other. */
+.scores .played {
+  width: 1.6em;
+  height: 1.6em;
+  vertical-align: -0.4em;
+  fill: var(--card);
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.scores .played .pip {
+  fill: var(--red);
+  stroke: none;
 }
 
 /* A heading is what sorts the sheet: written as the heading, nothing of a button about it. The one it is sorted by is in
@@ -164,7 +180,7 @@
   }
 }
 
-/* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
+/* "Total" stands over its columns, what is kept across rounds: the rounds called, the points, and their average. */
 .scores thead th.over {
   height: auto;
   font-weight: 700;
@@ -179,7 +195,7 @@
   border-left: 1.5px solid rgba(207, 34, 51, 0.45);
 }
 
-/* The totals: each figure under the middle of its heading, the two columns no wider than those headings (the sheet's
+/* The totals: each figure under the middle of its heading, the columns no wider than those headings (the sheet's
    spare width goes to the names). The rule stands midway between the round's figures and the count after it. */
 .scores thead tr + tr th,
 .scores td.total {
@@ -200,13 +216,6 @@
 .scores thead tr + tr th:first-child {
   padding-left: 0.4rem;
   text-align: right;
-}
-
-/* How many cards were left in the nertz pile, small and grey before what they cost. */
-.scores td .left {
-  margin-right: 0.45em;
-  font: 500 0.78em/1 var(--num);
-  color: var(--ink-soft);
 }
 
 /* A line of someone no longer at the table (they stood up since the round, or left): the whole of it faint, the name
@@ -286,11 +295,11 @@
 }
 
 .scores td.total {
-  position: relative; /* (the count of rounds stands after it, outside the column: the totals stay in line) */
+  position: relative; /* (the count of rounds stands after the average, outside the column: the totals stay in line) */
   color: var(--ink-soft);
 }
 
-/* After a total that is the sum of fewer rounds than the table has played: how many, in brackets. */
+/* After an average that is the sum of fewer rounds than the table has played: how many, in brackets. */
 .scores td.total small {
   position: absolute;
   left: 100%;
@@ -354,7 +363,7 @@
   }
 
   .scores .called {
-    font-size: 0.62rem;
+    font-size: 0.9rem;
   }
 }
 

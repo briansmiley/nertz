@@ -11,6 +11,7 @@ import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
 import { Chat, signed } from './Chat';
+import { written } from './Profile';
 import { useDismiss } from './dismiss';
 import { usePicture } from './picture';
 import { Dots } from './Dots';
@@ -1032,7 +1033,10 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
 }
 
 /** The columns of the score sheet, each of which its lines can be sorted by: `calls` and `total` are the two kept across rounds. */
-type Column = 'name' | 'played' | 'nertz' | 'round' | 'calls' | 'total';
+type Column = 'name' | 'played' | 'nertz' | 'round' | 'calls' | 'total' | 'average';
+
+/** Points per round kept; none for a line with no rounds yet, which goes after every other. */
+const average = (l: { total: number; rounds: number }) => (l.rounds > 0 ? l.total / l.rounds : -Infinity);
 
 /** How each column puts its lines in order, the best first: the most points, the fewest cards left in the nertz pile (so whoever got Nertz), the names from A. */
 const BEST_FIRST: Record<Column, (a: RoundLine, b: RoundLine) => number> = {
@@ -1042,6 +1046,7 @@ const BEST_FIRST: Record<Column, (a: RoundLine, b: RoundLine) => number> = {
   round: (a, b) => b.delta - a.delta,
   calls: (a, b) => b.calls - a.calls,
   total: (a, b) => b.total - a.total,
+  average: (a, b) => (average(a) === average(b) ? 0 : average(b) - average(a)),
 };
 
 /** What the sheet is sorted by: a column, its best first, or (`reversed`) the other way round. */
@@ -1059,13 +1064,13 @@ function Results({ room }: { room: RoomView }) {
   const [sort, setSort] = useState<Sort>({ by: 'round', reversed: false });
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
   const rows = sheetOrder((round?.scores ?? []).filter((s) => !s.gone), sort);
-  /** A column's heading, which sorts the sheet by it. */
-  const heading = (by: Column, label: string, span?: { rowSpan: number }) => {
+  /** A column's heading, which sorts the sheet by it. (Where it is drawn, or cut short, `tip` is the word for it.) */
+  const heading = (by: Column, label: ReactNode, span?: { rowSpan: number }, tip?: string) => {
     // The names go up (A first); every other column's best is its largest figure (or, of cards left, its smallest), so down.
     const up = (by === 'name') !== sort.reversed;
     return (
       <th scope="col" {...span} aria-sort={sort.by === by ? (up ? 'ascending' : 'descending') : undefined}>
-        <button type="button" className="sort" onClick={() => setSort((was) => ({ by, reversed: was.by === by && !was.reversed }))}>
+        <button type="button" className="sort" aria-label={tip} data-tip={tip} onClick={() => setSort((was) => ({ by, reversed: was.by === by && !was.reversed }))}>
           {label}
         </button>
       </th>
@@ -1084,13 +1089,14 @@ function Results({ room }: { room: RoomView }) {
   const tally = new Map<number, number>();
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
   const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
-  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
+  /** The totals, with, after the average, how many rounds they are the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
   const total = (score: number, rounds: number, calls: number) => (
     <>
     {/* Before it, the other thing kept across rounds: how many of them they ended by calling Nertz. */}
     <td className="total calls">{calls}</td>
+    <td className="total">{score < 0 ? `−${-score}` : score}</td>
     <td className="total">
-      {score < 0 ? `−${-score}` : score}
+      {rounds > 0 ? written(score / rounds, 1) : '–'}
       {rounds > 0 && rounds < room.round && <small data-tip={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
     </>
@@ -1106,14 +1112,26 @@ function Results({ room }: { room: RoomView }) {
           <thead>
             <tr>
               {heading('name', 'Player', { rowSpan: 2 })}
-              {heading('played', 'Played', { rowSpan: 2 })}
-              {heading('nertz', 'Nertz', { rowSpan: 2 })}
-              {heading('round', 'Round', { rowSpan: 2 })}
-              <th scope="colgroup" colSpan={2} className="over">Total</th>
+              {heading(
+                'played',
+                // (Two cards, one played over the other.)
+                <svg className="played" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="4.5" width="11" height="15" rx="1.8" transform="rotate(-14 8.5 12)" />
+                  <rect x="10" y="4" width="11" height="15" rx="1.8" transform="rotate(9 15.5 11.5)" />
+                  <path className="pip" d="M15.5 8.6 17.6 11.5 15.5 14.4 13.4 11.5Z" transform="rotate(9 15.5 11.5)" />
+                </svg>,
+                { rowSpan: 2 },
+                'Played',
+              )}
+              {/* The nertz pile's: an N, written as the stamp is. */}
+              {heading('nertz', <span className="called">N</span>, { rowSpan: 2 }, 'Nertz')}
+              {heading('round', 'Rnd', { rowSpan: 2 }, 'Round')}
+              <th scope="colgroup" colSpan={3} className="over">Total</th>
             </tr>
             <tr>
-              {heading('calls', 'Nertz')}
-              {heading('total', 'Points')}
+              {heading('calls', <span className="called">N</span>, undefined, 'Nertz')}
+              {heading('total', 'Pts', undefined, 'Points')}
+              {heading('average', 'Avg')}
             </tr>
           </thead>
           <tbody>
@@ -1135,19 +1153,14 @@ function Results({ room }: { room: RoomView }) {
                   </span>
                 </th>
                 <td>{signed(s.played)}</td>
-                {/* Whoever got Nertz has no cards left in that pile: where the 0 would be, the stamp that lay across their hand. */}
+                {/* Whoever got Nertz has no cards left in that pile: their 0, written as the stamp that lay across their hand. */}
                 <td>
                   {out.includes(s.seat) ? (
                     <span className="called" data-tip={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
-                      Nertz!
+                      0
                     </span>
-                  ) : s.nertzLeft ? (
-                    <>
-                      <small className="left" data-tip={`${s.nertzLeft} left in the nertz pile`}>{s.nertzLeft}</small>
-                      {signed(-2 * s.nertzLeft)}
-                    </>
                   ) : (
-                    '0'
+                    signed(-2 * s.nertzLeft)
                   )}
                 </td>
                 <td className="round">{signed(s.delta)}</td>
