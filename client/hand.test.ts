@@ -349,6 +349,23 @@ describe('tap to move', () => {
 });
 
 describe('a finger', () => {
+  it('with tap to play, a tap that slips a few px is still a tap; further, and it is carried; without, the slop is a mouse\'s', () => {
+    const t = seatAt(game(), phone);
+    t.down(t.at('0:H4'));
+    t.move(by(t.at('0:H4'), 7, 7));
+    expect(t.hand?.phase).toBe('pressed');
+    t.up(by(t.at('0:H4'), 7, 7));
+    expect(t.hand?.phase).toBe('tapped');
+    const far = seatAt(game(), phone);
+    far.down(far.at('0:H4'));
+    far.move(by(far.at('0:H4'), 12, 0));
+    expect(far.hand?.phase).toBe('carried');
+    const drags = seatAt(game(), { ...phone, scene: { tapToMove: false } });
+    drags.down(drags.at('0:H4'));
+    drags.move(by(drags.at('0:H4'), 7, 0));
+    expect(drags.hand?.phase).toBe('carried');
+  });
+
   it('the card comes up as it is carried off, until its lower edge is just above the fingertip', () => {
     const t = seatAt(game(), phone);
     const from = t.at('0:H4');
