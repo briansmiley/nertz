@@ -192,8 +192,8 @@ const pointOf = (d: Grip, at: Aim): Pt => (d.touch && at.card ? middle(at.card) 
 const reachOf = (d: Grip, L: Layout): number => (d.touch && d.held.k === 'card' ? Math.max(26, L.fs * CARD_W * 0.55) : 0);
 /**
  * The one pile the hand is over: the drop area under the pointer; only if the pointer is over none, the one under the
- * centre of the grabbed card; and failing both, the one that lies mostly under the card (under a finger instead, the
- * nearest within reach). (A card held by its corner is aimed with the pointer, not with a centre that is half a card
+ * centre of the grabbed card; failing both, the one that lies mostly under the card; and last, under a finger only,
+ * the nearest within reach. (A card held by its corner is aimed with the pointer, not with a centre that is half a card
  * away.) Drop areas never overlap, and a card that only touches one is not over it.
  */
 const pileUnder = <T extends { hit: Rect }>(d: Grip, at: Aim, piles: readonly T[], L: Layout): T | undefined => dropTarget(piles, pointOf(d, at), at.card, reachOf(d, L));

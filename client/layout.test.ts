@@ -1331,3 +1331,22 @@ describe('the lines under the chat', () => {
     expect(chatLines(at, 393, { ...board, x: 393 * 0.78 + 20 }, false, 5)).toBe(5);
   });
 });
+
+describe('dropTarget, one chain for a mouse and a finger', () => {
+  const near = { hit: { x: 0, y: 0, w: 20, h: 28 } };
+  const under = { hit: { x: 60, y: 0, w: 20, h: 28 } };
+  // A card whose middle is over neither: `under` lies wholly beneath its right side, `near` is closer to its middle.
+  const card = { x: 22, y: -20, w: 60, h: 84 };
+  const off = { x: -500, y: -500 };
+
+  it('a pile mostly under the card is where it goes, with or without a finger\'s reach, before the nearest within reach', () => {
+    expect(dropTarget([near, under], off, card)).toBe(under);
+    expect(dropTarget([near, under], off, card, 40)).toBe(under);
+  });
+
+  it('with none mostly under it, only a finger reaches the nearest', () => {
+    const clear = { x: 22, y: 40, w: 30, h: 42 };
+    expect(dropTarget([near, under], off, clear)).toBeUndefined();
+    expect(dropTarget([near, under], off, clear, 40)).toBe(near);
+  });
+});

@@ -200,32 +200,33 @@ export const overlap = (a: Rect, b: Rect): number =>
 /**
  * The one drop area a release counts for: the area under the pointer, and only if the pointer is over none, the area
  * under the centre of the grabbed card (`card`, where it is drawn). A card picked up by its corner is aimed with the
- * pointer; one flung with the pointer trailing off the pile still lands by where it lies. Failing both, it goes under
- * a finger (`reach`) to the nearest area within reach, and otherwise to the area that lies mostly under the card: more
- * than half of it, or of the card if that is the smaller. (So a card of your hand let go with a far smaller pile of
- * the middle under it lands there, on the one it covers more if there are two; one that only touches an area has not
- * been put down on it, and between two piles as large as itself it goes back.) Either way it is one specific pile.
+ * pointer; one flung with the pointer trailing off the pile still lands by where it lies. Failing both, it goes to the
+ * area that lies mostly under the card: more than half of it, or of the card if that is the smaller. (So a card of
+ * your hand let go with a far smaller pile of the middle under it lands there, on the one it covers more if there are
+ * two; one that only touches an area has not been put down on it, and between two piles as large as itself it goes
+ * back.) Last, under a finger only (`reach`), the nearest area within reach. One chain for every hand, and always one
+ * specific pile.
  */
 export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: Pt, card: Rect | null, reach = 0): T | undefined {
   const centre = card && middle(card);
   const over = targets.find((t) => inside(t.hit, pointer.x, pointer.y)) ?? (centre ? targets.find((t) => inside(t.hit, centre.x, centre.y)) : undefined);
   if (over) return over;
+  // Neither is over an area: the one that lies mostly under the card (more than half of the area, or of the card if
+  // that is the smaller: a card that only touches an area is not over it).
   let best: T | undefined;
-  if (reach > 0) {
-    // Under a finger nothing is aimed to the pixel: a release that is over no area goes to the nearest one within
-    // `reach` of where it points. (Only areas that would take the card are ever asked about, so nothing is misplaced.)
-    const at = centre ?? pointer;
-    let least = reach;
-    for (const t of targets) {
-      const d = Math.hypot(Math.max(t.hit.x - at.x, 0, at.x - t.hit.x - t.hit.w), Math.max(t.hit.y - at.y, 0, at.y - t.hit.y - t.hit.h));
-      if (d <= least) [best, least] = [t, d];
-    }
-  } else if (card) {
-    let most = 0;
-    for (const t of targets) {
-      const covered = overlap(card, t.hit);
-      if (covered > most && 2 * covered > Math.min(card.w * card.h, t.hit.w * t.hit.h)) [best, most] = [t, covered];
-    }
+  let most = 0;
+  for (const t of card ? targets : []) {
+    const covered = overlap(card!, t.hit);
+    if (covered > most && 2 * covered > Math.min(card!.w * card!.h, t.hit.w * t.hit.h)) [best, most] = [t, covered];
+  }
+  if (best) return best;
+  // Under a finger nothing is aimed to the pixel: failing all of that, the nearest area within `reach` of where it
+  // points (a mouse has no reach). (Only areas that would take the card are ever asked about, so nothing is misplaced.)
+  const at = centre ?? pointer;
+  let least = reach;
+  for (const t of reach > 0 ? targets : []) {
+    const d = Math.hypot(Math.max(t.hit.x - at.x, 0, at.x - t.hit.x - t.hit.w), Math.max(t.hit.y - at.y, 0, at.y - t.hit.y - t.hit.h));
+    if (d <= least) [best, least] = [t, d];
   }
   return best;
 }
