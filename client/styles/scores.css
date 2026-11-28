@@ -164,7 +164,7 @@
   }
 }
 
-/* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
+/* "Total" stands over its columns, what is kept across rounds: the rounds called, the points, and their average. */
 .scores thead th.over {
   height: auto;
   font-weight: 700;
@@ -179,7 +179,7 @@
   border-left: 1.5px solid rgba(207, 34, 51, 0.45);
 }
 
-/* The totals: each figure under the middle of its heading, the two columns no wider than those headings (the sheet's
+/* The totals: each figure under the middle of its heading, the columns no wider than those headings (the sheet's
    spare width goes to the names). The rule stands midway between the round's figures and the count after it. */
 .scores thead tr + tr th,
 .scores td.total {
@@ -356,16 +356,13 @@
 
   .scores thead tr + tr th,
   .scores td.total {
-    padding: 0 0.2rem;
+    padding: 0 0.25rem;
   }
 
+  /* (No average here: a column more would leave the names no room. A phone on its side has it.) */
   .scores thead tr + tr th:last-child,
   .scores td.total:last-child {
-    padding-left: 0.65rem;
-  }
-
-  .scores td.total:last-child {
-    font-size: 0.9rem;
+    display: none;
   }
 
   .scores .called {

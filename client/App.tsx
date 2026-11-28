@@ -1094,7 +1094,7 @@ function Results({ room }: { room: RoomView }) {
     <>
     {/* Before it, the other thing kept across rounds: how many of them they ended by calling Nertz. */}
     <td className="total calls">{calls}</td>
-    <td className="total points">
+    <td className="total">
       {score < 0 ? `−${-score}` : score}
       {rounds > 0 && rounds < room.round && <small data-tip={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
