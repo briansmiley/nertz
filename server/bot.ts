@@ -51,8 +51,8 @@ const top = <T>(pile: readonly T[]): T | undefined => pile[pile.length - 1];
  * noticed with a probability, and the highest-priority noticed one is taken. While its draw is in flight it does
  * nothing but a and b: it waits to see what comes up (the Room has it look again when the group is down).
  *
- *   a. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
- *   b. nertz pile empty: call Nertz (always noticed)
+ *   a. nertz pile empty: call Nertz (always noticed), finished pile or not
+ *   b. carry one of its finished centre piles to the tray (always noticed: until it has, the engine lets it do nothing else)
  *   c. nertz top to the middle (it scores there, and is off the nertz pile all the same)
  *   d. nertz top to a work pile (an empty pile only if it builds down nowhere)
  *   e. waste top or a work pile's top to the middle
@@ -106,10 +106,10 @@ export function chooseIntent(view: GameState, seat: number, memory: BotMemory, r
   };
 
   // a
+  if (!nertz) return acted({ k: 'nertz' });
+  // b
   const finished = view.slots.findIndex((pile) => completedBy(pile) === seat);
   if (finished >= 0) return acted({ k: 'clear', slot: finished });
-  // b
-  if (!nertz) return acted({ k: 'nertz' });
   if (me.draw) return null;
   // c
   const out = slotFor(nertz);

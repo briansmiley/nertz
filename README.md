@@ -401,8 +401,8 @@ looks again: nothing it does is a reaction quicker than one pause, as with a per
 move it. If the table moved on meanwhile and the move is refused, it simply looks again. What it notices at a look is
 the first of these that applies:
 
-1. Carry a centre pile it finished (it placed the King) to the tray: before everything, as the rules demand.
-2. Its nertz pile is empty: call Nertz.
+1. Its nertz pile is empty: call Nertz, even with a finished pile still to clear.
+2. Carry a centre pile it finished (it placed the King) to the tray: before everything else, as the rules demand.
 3. Nertz top to the middle (anything but an Ace to the exact pile). An Ace starts its pile anywhere there is room: of
    a handful of places it glances at all over the felt, the clear one nearest the middle, and if none of them is
    clear, wherever the engine says there is room.
