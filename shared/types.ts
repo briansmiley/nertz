@@ -41,7 +41,7 @@ export interface PlayerState {
    * STOCK_CARD_MS apart, and turned up together one step after the last: so the draw is over, and its top card can be
    * played, once that clock reads `at + n * STOCK_CARD_MS` (the engine's `landed`). Until then the card under the group
    * can be taken (`hold`, `move`), which calls the draw off: the group goes back on the stock as it came off, and
-   * there is no draw under way. Each window deals the cards out
+   * there is no draw under way. So it does if the round is over first. Each window deals the cards out
    * on its own clock. `off` is only ever on screen: how many of the group this window has dealt off the stock so
    * far (client/net.ts `dealtBy`), the rest lying on the stock yet; without it, all `n` are off. `down`, on screen
    * only too: the group is down here and gliding onto the waste, its top already playable, while the card it is

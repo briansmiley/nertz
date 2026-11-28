@@ -407,10 +407,15 @@ function calledOff(state: GameState, index: number, take: Extract<Intent, { k: '
   const p = state.players[index]!;
   const n = callable(state, p, take.callsOff, now);
   if (n === null) return state;
+  const next = { ...state, players: state.players.map((q, i) => (i === index ? undrawn(q, n) : q)) };
+  return grab(next, p.seat, take.cardId)?.from.k === 'waste' ? next : state;
+}
+
+/** `p` with the latest `n` cards dealt off its stock back on it as they came off, and no draw under way: the draw undone. */
+function undrawn(p: PlayerState, n: number): PlayerState {
   const undone: PlayerState = { ...p, stock: [...p.stock, ...p.waste.slice(p.waste.length - n).reverse()], waste: p.waste.slice(0, p.waste.length - n), draw: null };
   delete undone.drew;
-  const next = { ...state, players: state.players.map((q, i) => (i === index ? undone : q)) };
-  return grab(next, p.seat, take.cardId)?.from.k === 'waste' ? next : state;
+  return undone;
 }
 
 /** When a group in flight is down, on the round's clock: a step for each of its cards, the last of them the turning up. */
@@ -420,7 +425,7 @@ export const landsAt = (draw: NonNullable<PlayerState['draw']>): number => draw.
  * How a draw ends, unless it is called off first (`calledOff`): every group in flight whose time has come by `now` (the
  * round's clock) is down, and its top card can be played. It is kept as `drew` a moment longer, to be called off yet by
  * a take made while it was in flight on its window. Only while the round is live: a group in flight at a call stays as
- * it is. The SAME state object if there is none.
+ * it is, and goes back on the stock when the round is over (`endRound`). The SAME state object if there is none.
  */
 export function landed(state: GameState, now: number): GameState {
   const down = (p: PlayerState): p is PlayerState & { draw: NonNullable<PlayerState['draw']> } => !!p.draw && now >= landsAt(p.draw);
@@ -428,9 +433,13 @@ export function landed(state: GameState, now: number): GameState {
   return isLive(state) && state.players.some(down) ? { ...state, players: state.players.map(land) } : state;
 }
 
-/** The round is over, in the one way every round ends: whatever is in anyone's hand goes back, and nothing changes after. */
+/**
+ * The round is over, in the one way every round ends: whatever is in anyone's hand goes back (a card held, and a group
+ * still in flight off the stock, onto the stock as it came off), and nothing changes after.
+ */
 function endRound(state: GameState, end: RoundEnd): GameState {
-  return { ...state, status: { at: 'over', end }, players: state.players.map((p) => (p.holding === null ? p : { ...p, holding: null })) };
+  const back = (p: PlayerState): PlayerState => (p.draw ? undrawn(p, dealt(p)) : p);
+  return { ...state, status: { at: 'over', end }, players: state.players.map((p) => back(p.holding === null ? p : { ...p, holding: null })) };
 }
 
 /** The end of grace: the round is over by the call, and whoever has an empty nertz pile then got Nertz. */

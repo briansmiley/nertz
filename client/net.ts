@@ -159,7 +159,7 @@ export interface Dealing {
   led: number | null;
   /** This connection has had the table on screen: a draw first seen from now on is seen as it is made. */
   looking: boolean;
-  /** What the round's clock read when the groups in flight were last dealt on: they stay there once the round is not live (a group in flight at a call stays as it lies). */
+  /** What the round's clock read when the groups in flight were last dealt on: they stay there once the round is not live (a group in flight at a call stays as it lies, until the round is over and it is back on the stock). */
   at: number | null;
 }
 

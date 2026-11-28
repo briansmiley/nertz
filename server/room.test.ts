@@ -2601,11 +2601,12 @@ describe('a draw is one intent and one step, and the server holds it to its time
     expect(me().waste).toHaveLength(6);
   });
 
-  it('a call freezes a group in flight as it is: it does not land, then or after', () => {
+  it('a call freezes a group in flight as it is: it does not land, and once the round is over it is back on the stock', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
     startRound(room, a);
+    const before = room.game!.players[1]!;
     sendIntent(room, b, 0, { k: 'draw' });
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(room.game!.status.at).not.toBe('play');
@@ -2613,7 +2614,7 @@ describe('a draw is one intent and one step, and the server holds it to its time
     expect(frozen.draw).toMatchObject({ n: 3 });
     vi.advanceTimersByTime(GRACE_MS + 10 * STOCK_CARD_MS);
     expect(room.phase).toBe('results');
-    expect(room.game!.players[1]).toEqual(frozen);
+    expect(room.game!.players[1]).toMatchObject({ draw: null, waste: [], stock: before.stock });
     expect(vi.getTimerCount()).toBe(0);
   });
 

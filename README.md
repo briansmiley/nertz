@@ -227,7 +227,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   If the card has nowhere to go, or loses its last spot to another player's grace move, the drag is cancelled. Letting go
   anywhere is that one move: if the spot was taken a moment earlier, the card goes back and that player is done. The round
   is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A group in flight at the call
-  is not such a card: its time stops there, and it stays as it lies, face-down.
+  is not such a card: its time stops there, and once the round is over it goes back on the stock as it came off.
   "The moment of the call" is when it reaches your screen, not the server: a card you take up while the call is on its
   way to you (or whose taking up is on its way to the server as the call is made) was in your hand at the call. So the
   round waits for each player's window to say it has the call, a round trip, at most 1 second (`HEAR_MS`); a window that
