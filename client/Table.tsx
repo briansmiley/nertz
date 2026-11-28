@@ -1240,11 +1240,12 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // Level with the menu's button, on every screen (so clear of what the screen keeps at its bottom, as that is). On
-        // a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the menu's on its side.
+        // a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the menu's on its
+        // side, and after the clock when that stands in line there.
         <button
           type="button"
           className={`skip${phone ? ' aside' : ''}`}
-          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? (L.clock && !L.clock.small && L.clock.y < L.at.knobs.y + L.at.knobs.h && L.clock.y + L.clock.h > L.at.knobs.y ? L.clock.x + L.clock.w : L.at.knobs.x + L.at.knobs.w) + 8 : undefined }}
           aria-label="Skip to the scores"
           data-tip="Skip to the scores"
           onClick={skip}
