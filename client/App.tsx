@@ -16,11 +16,11 @@ import { usePicture } from './picture';
 import { Dots } from './Dots';
 import { Dropdown } from './Dropdown';
 import { Name } from './Host';
-import { Back, ICONS, openCorner, Sure, useCorner } from './Menu';
+import { Back, ICONS, Sure } from './Menu';
 import { openAction, press, type ActionId } from './actions';
 import { addBot, botBack, create, join, kick, nameBot, passHost, removeBot, roomInUrl, pickSeat, playOffline, portable, reachOf, sit, start, unreachable, useNet, useReach, useRtt, type Reach, type Status } from './net';
 import { Corner, Pop, Robot, RobotPlus, TableRules } from './Settings';
-import { Chair, Check, Gear, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
+import { Chair, Check, LinkIcon, Riffle, RobotBroken, RobotFixed, SignInDoor, Sit } from './icons';
 import { useSounds } from './sound';
 import { Spread } from './Spread';
 import { Table } from './Table';
@@ -986,16 +986,6 @@ function Sitters({ room }: { room: RoomView }) {
   );
 }
 
-/** On the score sheet: your settings, which is to say the corner's menu opened there (they head it), and if you host, the table's at the bottom of them. */
-function SettingsGear() {
-  const open = useCorner() === 'menu';
-  return (
-    <button type="button" className={`icon${open ? ' on' : ''}`} aria-expanded={open} aria-controls={open ? 'menu' : undefined} aria-label="Settings" data-tip="Settings" onClick={() => openCorner('menu')}>
-      <Gear />
-    </button>
-  );
-}
-
 /** The round's snipes, kept small: one line for the top sniper, and behind a button who did it to whom, the most first. */
 function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView['lastRound']>['snipes']>; top: { by: number; n: number }; who: (seat: number) => string }) {
   const [all, setAll] = useState(false);
@@ -1184,16 +1174,14 @@ function Results({ room }: { room: RoomView }) {
         {round?.snipes && top && <Snipes snipes={round.snipes} top={top} who={who} />}
         {me?.isHost ? (
           <button className="go" disabled={!enoughToDeal(room)} onClick={start} aria-label={enoughToDeal(room) ? 'Next round' : undefined}>
-            {enoughToDeal(room) ? <><span className="full">Next round</span><span className="brief">→</span></> : <Short />}
+            {enoughToDeal(room) ? <><span className="full">Next round</span><span className="brief">Next</span></> : <Short />}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
         )}
         <div className="tools">
-          <SettingsGear />
           {me?.isHost && <AddBot room={room} />}
           <Act id="reset" room={room} />
-          <Act id="leave" room={room} />
         </div>
       </Pad>
     </main>
