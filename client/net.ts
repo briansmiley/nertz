@@ -22,6 +22,7 @@ import type { SocialServerMsg } from '../shared/chat';
 import { CLOSE_OVER, CLOSE_UPDATE, hasSeat, isRoomCode, PING_MS, SET_UPS, SILENT_MS, STOCK_CARD_MS, type Backs, type ClientMsg, type ServerMsg, type SetUp } from '../shared/protocol';
 import type { AnyCard, BotLevel, GameState, Intent, PlayerState, RoomView } from '../shared/types';
 import type { Kept } from '../server/room';
+import { perfMessage, perfOn, perfStatus } from './perf';
 
 // ---------------------------------------------------------------- pure reconciliation
 
@@ -481,6 +482,7 @@ const receive: { [T in ServerMsg['t']]: (msg: Extract<ServerMsg, { t: T }>) => v
     }
     sync = onSnapshot(sync, msg);
     last = sync.server;
+    perfStatus(msg.room.game?.status.at ?? 'lobby');
     show({ status: 'online', error: null });
     // Nertz has been called, and this window has it now: the table is told at once, for the round waits to hear it
     // (a card taken up before this went is in hand at the call; one after it, too late).
@@ -526,7 +528,9 @@ function connect(carried?: Carried): void {
       } catch {
         return;
       }
+      const began = perfOn ? performance.now() : 0;
       if (Object.hasOwn(receive, msg.t)) (receive[msg.t] as (msg: ServerMsg) => void)(msg);
+      if (perfOn) perfMessage(msg.t, text.length, performance.now() - began);
     },
     close: (code, reason) => {
       if (socket !== line) return;
