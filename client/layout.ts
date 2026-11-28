@@ -426,7 +426,12 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   // Nertz pile: lower cards peek out underneath so the pile shows its thickness.
   const lean = LEAN * s;
   const { nertzX: nx, rowY: ny, workX, stockX, wasteX } = pilesOf(h); // (`ny`: the row the nertz pile, the stock and the waste lie on)
-  p.nertz.forEach((c, i) => put(c, nx, ny + (p.nertz.length - 1 - i) * lean, i, 'nertz', h.open.nertz && i === p.nertz.length - 1));
+  // Someone else's pile is drawn small, and its count says how high it is: only its top two cards are drawn (the top,
+  // and the one that comes up when it goes). The rest are not on the table at all, so there are fewer cards to draw.
+  p.nertz.forEach((c, i) => {
+    const under = p.nertz.length - 1 - i;
+    if (h.mine || under < 2) put(c, nx, ny + under * lean, i, 'nertz', h.open.nertz && under === 0);
+  });
 
   // Work piles fan downwards; the face-down cards at the bottom of the pile take a narrower strip each.
   const margin = h.gap * 0.4;
@@ -453,8 +458,10 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
     return rect(x, h.y - rise + (at.at(-1) ?? 0));
   });
 
-  // Every third card shows an edge, and so does the top one. A card's height in the stack depends only on how many
-  // cards lie under it, so taking cards off the top never moves the ones that stay: the stack just gets lower.
+  // Every third card shows an edge (every twelfth in someone else's, which is drawn small: fewer cards to draw), and so
+  // does the top one. A card's height in the stack depends only on how many cards lie under it, so taking cards off
+  // the top never moves the ones that stay: the stack just gets lower. The top is always drawn, so each card of a
+  // draw is on the table, on top, before it lifts off.
   //
   // A group in flight (this window deals its cards one at a time: net.ts `dealtBy`) is counted off the stock into the
   // hand, as with real cards: each card, as it is dealt, lifts off by itself onto a small face-down stack held just
@@ -464,7 +471,7 @@ function placeHand(p: PlayerState, h: HandSpec, out: Placed[]): Seat {
   const top = p.stock.length - 1;
   const stockLow = stockDrop(h.w); // where the bottom card of the stock lies, below the row
   p.stock.forEach((c, j) => {
-    if (j % STOCK_PER_EDGE === 0 || j === top) put(c, stockX, ny + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock', false);
+    if (j % (h.mine ? STOCK_PER_EDGE : 4 * STOCK_PER_EDGE) === 0 || j === top) put(c, stockX, ny + Math.max(0, STOCK_FULL_EDGES - j / STOCK_PER_EDGE) * lean * 2, 20 + j, 'stock', false);
   });
 
   const n = p.waste.length - lifted;
