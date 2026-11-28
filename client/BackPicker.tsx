@@ -11,6 +11,7 @@ import { BackShelf } from './BackShelf';
 import { BACKS, backOf } from './cards/Face';
 import { useDismiss } from './dismiss';
 import { FaceShelf, Night } from './FaceShelf';
+import { Back as MenuBack } from './Menu';
 import { calm, setPrefs, usePrefs } from './prefs';
 
 const PANELS = { backs: 'Backs', faces: 'Faces' } as const;
@@ -35,11 +36,7 @@ export function BackPicker({ title, colour, bare, back, random, onPick, onRandom
     <div className="picker" role="dialog" aria-modal="true" aria-label={title}>
       <div className="showroom">
         <header>
-          <button type="button" className="back-to" aria-label="Back" data-tip="Back" onClick={onClose}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M14.5 5.5L8 12l6.5 6.5" />
-            </svg>
-          </button>
+          <MenuBack onClick={onClose} />
           <h1>{title}</h1>
           {/* A back drawn by lot for a table, from all of them: up here, apart from how the backs are shown below. (From one kind only: the first card of that kind's spread.) */}
           <button type="button" className={`edge${random === 'all' ? ' on' : ''}`} aria-pressed={random === 'all'} data-tip="Any back at all, drawn by lot when a table's first round is dealt, and kept for that table" onClick={() => onRandom(random === 'all' ? null : 'all')}>
