@@ -1159,13 +1159,8 @@ function Results({ room }: { room: RoomView }) {
                     <span className="called" data-tip={`${s.id === room.me ? 'You' : s.name} got Nertz`}>
                       0
                     </span>
-                  ) : s.nertzLeft ? (
-                    <>
-                      <small className="left" data-tip={`${s.nertzLeft} left in the nertz pile`}>{s.nertzLeft}</small>
-                      {signed(-2 * s.nertzLeft)}
-                    </>
                   ) : (
-                    '0'
+                    signed(-2 * s.nertzLeft)
                   )}
                 </td>
                 <td className="round">{signed(s.delta)}</td>

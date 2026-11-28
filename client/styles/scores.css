@@ -208,11 +208,6 @@
   padding-right: 1.3rem;
 }
 
-/* The Nertz heading stands over the middle of its column: the count of cards left and the figure after it together. */
-.scores thead tr:first-child th:nth-child(3) {
-  text-align: center;
-}
-
 .scores thead tr + tr th {
   height: auto;
 }
@@ -221,13 +216,6 @@
 .scores thead tr + tr th:first-child {
   padding-left: 0.4rem;
   text-align: right;
-}
-
-/* How many cards were left in the nertz pile, small and grey before what they cost. */
-.scores td .left {
-  margin-right: 0.45em;
-  font: 500 0.78em/1 var(--num);
-  color: var(--ink-soft);
 }
 
 /* A line of someone no longer at the table (they stood up since the round, or left): the whole of it faint, the name
@@ -307,7 +295,7 @@
 }
 
 .scores td.total {
-  position: relative; /* (the count of rounds stands after it, outside the column: the totals stay in line) */
+  position: relative; /* (the count of rounds stands after the average, outside the column: the totals stay in line) */
   color: var(--ink-soft);
 }
 
