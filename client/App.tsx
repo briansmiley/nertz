@@ -1183,8 +1183,8 @@ function Results({ room }: { room: RoomView }) {
         <Watching room={room} />
         {round?.snipes && top && <Snipes snipes={round.snipes} top={top} who={who} />}
         {me?.isHost ? (
-          <button className="go" disabled={!enoughToDeal(room)} onClick={start}>
-            {enoughToDeal(room) ? 'Next round' : <Short />}
+          <button className="go" disabled={!enoughToDeal(room)} onClick={start} aria-label={enoughToDeal(room) ? 'Next round' : undefined}>
+            {enoughToDeal(room) ? <><span className="full">Next round</span><span className="brief">→</span></> : <Short />}
           </button>
         ) : (
           <p className="wait">Waiting for {host?.name ?? 'the host'} to deal the next round.</p>
