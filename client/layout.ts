@@ -191,24 +191,36 @@ const RATIO = CARD_H / CARD_W;
 const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 export const inside = (r: Rect, x: number, y: number): boolean => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
+export const middle = (r: Rect): Pt => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+
 /**
- * The one drop area a release counts for: the area under the pointer, and
- * only if the pointer is over none, the area under the centre of the grabbed
- * card. A card picked up by its corner is aimed with the pointer; one flung
- * with the pointer trailing off the pile still lands by where it lies. Either
- * way it is one specific pile, and areas never overlap.
+ * The one drop area a release counts for: the area under the pointer, and only if the pointer is over none, the area
+ * under the centre of the grabbed card (`card`, where it is drawn). A card picked up by its corner is aimed with the
+ * pointer; one flung with the pointer trailing off the pile still lands by where it lies. Failing both, a card let go
+ * with its body over an area goes to the one it covers most (so between two piles, the one it lies more over), and
+ * under a finger (`reach`) to the nearest one within reach. Either way it is one specific pile.
  */
-export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: { x: number; y: number }, centre: { x: number; y: number } | null, reach = 0): T | undefined {
+export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: Pt, card: Rect | null, reach = 0): T | undefined {
+  const centre = card && middle(card);
   const over = targets.find((t) => inside(t.hit, pointer.x, pointer.y)) ?? (centre ? targets.find((t) => inside(t.hit, centre.x, centre.y)) : undefined);
-  if (over || reach <= 0) return over;
-  // Under a finger nothing is aimed to the pixel: a release that is over no area goes to the nearest one within
-  // `reach` of where it points. (Only areas that would take the card are ever asked about, so nothing is misplaced.)
-  const at = centre ?? pointer;
+  if (over) return over;
   let best: T | undefined;
-  let least = reach;
-  for (const t of targets) {
-    const d = Math.hypot(Math.max(t.hit.x - at.x, 0, at.x - t.hit.x - t.hit.w), Math.max(t.hit.y - at.y, 0, at.y - t.hit.y - t.hit.h));
-    if (d <= least) [best, least] = [t, d];
+  if (reach > 0) {
+    // Under a finger nothing is aimed to the pixel: a release that is over no area goes to the nearest one within
+    // `reach` of where it points. (Only areas that would take the card are ever asked about, so nothing is misplaced.)
+    const at = centre ?? pointer;
+    let least = reach;
+    for (const t of targets) {
+      const d = Math.hypot(Math.max(t.hit.x - at.x, 0, at.x - t.hit.x - t.hit.w), Math.max(t.hit.y - at.y, 0, at.y - t.hit.y - t.hit.h));
+      if (d <= least) [best, least] = [t, d];
+    }
+  } else if (card) {
+    let most = 0;
+    for (const t of targets) {
+      const h = t.hit;
+      const covered = Math.max(0, Math.min(card.x + card.w, h.x + h.w) - Math.max(card.x, h.x)) * Math.max(0, Math.min(card.y + card.h, h.y + h.h) - Math.max(card.y, h.y));
+      if (covered > most) [best, most] = [t, covered];
+    }
   }
   return best;
 }

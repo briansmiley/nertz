@@ -4,14 +4,15 @@
 // that out (it sends the intents and moves the card elements); it decides nothing.
 //
 // Placement is exact. A card lands only if it is put down on one specific pile (the one under the pointer, else the
-// one under the card's centre) and fits there; nothing is rerouted. Only an Ace let go on the felt where there is no
-// room for a pile right there starts one at the nearest place that has room, if that is no more than a card away.
+// one under the card's centre, else the one the card lies most over) and fits there; nothing is rerouted. Only an Ace
+// let go on the felt where there is no room for a pile right there starts one at the nearest place that has room, if
+// that is no more than a card away.
 import { canDrop, grab, piled } from '../shared/engine';
 import { DRAG_HZ, type DragAt } from '../shared/protocol';
 import { cardSize, offFelt, roomNear, type Pt } from '../shared/table';
 import type { GameState, Intent, PileRef } from '../shared/types';
 import { CARD_H, CARD_W } from './cards/Face';
-import { dropTarget, landingAt, toScreen, toTable, type Layout, type Placed, type Rect } from './layout';
+import { dropTarget, landingAt, middle, toScreen, toTable, type Layout, type Placed, type Rect } from './layout';
 import { clamp, round3 } from '../shared/numbers';
 
 const DRAG_SLOP = 6; // px of travel before a press becomes a carry
@@ -127,8 +128,10 @@ export interface Step extends Grasp {
 
 const gripOf = ({ held, ids, lead, sx, sy, base, home, touch, tops }: Grip): Grip => ({ held, ids, lead, sx, sy, base, home, touch, tops });
 const leadBase = (d: Grip): Pt => d.base[d.ids.indexOf(d.lead)]!;
+/** The grabbed card, where it is drawn. */
+const cardOf = (d: InHand): Rect => ({ x: d.at.x, y: d.at.y, w: d.s * CARD_W, h: d.s * CARD_H });
 /** The middle of the grabbed card, where it is drawn. */
-const centreOf = (d: InHand): Pt => ({ x: d.at.x + (d.s * CARD_W) / 2, y: d.at.y + (d.s * CARD_H) / 2 });
+const centreOf = (d: InHand): Pt => middle(cardOf(d));
 /** Where card `i` of what is in hand is drawn (its corner): the grabbed one where the hand has it, the others as they lay about it, at its scale. */
 export const drawnAt = (d: InHand, i: number): Pt => {
   const k = d.s / d.home;
@@ -178,21 +181,22 @@ function pilesFor(id: string, { game, you, L }: Scene): Target[] {
   return out;
 }
 
-/** Where the hand points to put down: the pointer, and the middle of the card it carried there (none for one that stood tapped: it goes where the tap is). */
+/** Where the hand points to put down: the pointer, and the card it carried there, where it is drawn (none for one that stood tapped: it goes where the tap is). */
 interface Aim {
   pointer: Pt;
-  centre: Pt | null;
+  card: Rect | null;
 }
 /** What the hand points with: the pointer, or under a finger (which hides what is beneath it) the middle of the card it carries. */
-const pointOf = (d: Grip, at: Aim): Pt => (d.touch && at.centre ? at.centre : at.pointer);
+const pointOf = (d: Grip, at: Aim): Pt => (d.touch && at.card ? middle(at.card) : at.pointer);
 /** How far from a pile a finger may let go and still be taken to mean it: about half a card of the middle, and never less than a fingertip. */
 const reachOf = (d: Grip, L: Layout): number => (d.touch && d.held.k === 'card' ? Math.max(26, L.fs * CARD_W * 0.55) : 0);
 /**
- * The one pile the hand is over: the drop area under the pointer, and only if the pointer is over none, the one under
- * the centre of the grabbed card. (A card held by its corner is aimed with the pointer, not with a centre that is half
- * a card away.) Drop areas never overlap, so between two piles is neither.
+ * The one pile the hand is over: the drop area under the pointer; only if the pointer is over none, the one under the
+ * centre of the grabbed card; and failing both, the one the card covers most (under a finger, the nearest within
+ * reach). (A card held by its corner is aimed with the pointer, not with a centre that is half a card away.) So a card
+ * let go between two piles goes to the one it lies more over, and one over neither goes back.
  */
-const pileUnder = <T extends { hit: Rect }>(d: Grip, at: Aim, piles: readonly T[], L: Layout): T | undefined => dropTarget(piles, pointOf(d, at), at.centre, reachOf(d, L));
+const pileUnder = <T extends { hit: Rect }>(d: Grip, at: Aim, piles: readonly T[], L: Layout): T | undefined => dropTarget(piles, pointOf(d, at), at.card, reachOf(d, L));
 /**
  * An Ace that is over no pile of yours aims at the felt under `centre`: that very point if a pile may start there,
  * else the nearest point no more than a card's width away that has room. So one let go a little too near a pile (or
@@ -272,7 +276,7 @@ export interface Sight {
 export function sight(d: InHand, scene: Scene): Sight {
   const centre = centreOf(d);
   const over = offFelt(toTable(scene.L.felt, centre.x, centre.y), scene.game.players.length) < 0;
-  const at: Aim | null = d.phase === 'carried' ? { pointer: { x: d.px, y: d.py }, centre } : null;
+  const at: Aim | null = d.phase === 'carried' ? { pointer: { x: d.px, y: d.py }, card: cardOf(d) } : null;
   if (d.held.k === 'pile') return { over, tray: !!at && !!pileUnder(d, at, [{ hit: scene.L.trayHit }], scene.L), felt: undefined, report: null };
   const piles = pilesFor(d.held.id, scene);
   const felt = at && !pileUnder(d, at, piles, scene.L) ? feltUnder(d, centre, scene) : undefined;
@@ -297,8 +301,9 @@ function take(d: Pressed, phase: 'carried' | 'tapped', p: Pt, scene: Scene): { h
 }
 
 /**
- * Puts down what is in hand. Only the pile `at` points to counts: one that takes the card (the nearest, if a finger
- * is a little off), or for an Ace the spot of the felt `feltUnder` shows; for a finished pile, the tray. Anywhere else, and with
+ * Puts down what is in hand. Only the pile `at` points to counts: one that takes the card (failing the pointer and
+ * the card's centre, the one it lies most over; the nearest, if a finger is a little off), or for an Ace the spot of
+ * the felt `feltUnder` shows; for a finished pile, the tray. Anywhere else, and with
  * no `at`, it is put back. If the move is refused by the server a moment later (someone got there first) the card
  * goes home just the same, and the server takes it out of the hand by itself.
  */
@@ -308,7 +313,7 @@ function put(d: InHand, at: Aim | null, scene: Scene): Effect[] {
   // One card put back, wherever: perhaps someone else's same card reached a pile in the middle while it was in hand.
   const back: Effect[] = [...(d.ids.length === 1 ? [{ k: 'tried' as const, card: d.held.id, seen: d.tops.map((top) => top ?? null) }] : []), send({ k: 'release' })];
   if (!at) return back;
-  const felt = feltUnder(d, at.centre ?? at.pointer, scene);
+  const felt = feltUnder(d, at.card ? middle(at.card) : at.pointer, scene);
   const to = pileUnder(d, at, pilesFor(d.held.id, scene), L)?.to ?? (felt?.ok ? felt.to : undefined);
   const move: Intent | undefined = to && { k: 'move', cardId: d.held.id, count: d.ids.length, to };
   return move && scene.plays(move) ? [send(move)] : back;
@@ -340,7 +345,7 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
       // What was tapped (or clicked) is in your hand, and this tap says where it goes. A tap anywhere else puts it
       // back and does nothing more, exactly as letting go of it there would: it does not deal from the stock, nor
       // take up another card.
-      if (d?.phase === 'tapped' && g.main) return { hand: null, spent: true, effects: put(d, { pointer: g, centre: null }, scene) };
+      if (d?.phase === 'tapped' && g.main) return { hand: null, spent: true, effects: put(d, { pointer: g, card: null }, scene) };
       if (scene.frozen || d || !g.main || !g.on) return stay;
       const placed = g.on === 'stock' ? undefined : scene.byId.get(g.on.card);
       if (scene.waiting >= 0 && (g.on === 'stock' || placed?.mine)) return { ...was, effects: [{ k: 'nag' }] };
@@ -363,7 +368,7 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
       const fan: Effect[] = g.touch && (!d || d.phase === 'pressed') && scene.live && !scene.frozen && !was.spent ? [{ k: 'fan', x: g.x, y: g.y }] : [];
       if (!d || d.phase === 'tapped' || g.pointer !== d.pointer) return { hand: d, spent: false, effects: fan };
       if (d.phase === 'pressed') return { hand: null, spent: false, effects: fan };
-      return { hand: null, spent: false, effects: put(d, { pointer: g, centre: centreOf(d) }, scene) };
+      return { hand: null, spent: false, effects: put(d, { pointer: g, card: cardOf(d) }, scene) };
     }
     case 'cancel':
       if (!d || d.phase === 'tapped' || g.pointer !== d.pointer) return stay;
