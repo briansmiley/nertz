@@ -1044,17 +1044,21 @@ const BEST_FIRST: Record<Column, (a: RoundLine, b: RoundLine) => number> = {
   total: (a, b) => b.total - a.total,
 };
 
+/** What the sheet is sorted by: a column, its best first, or (`reversed`) the other way round. */
+type Sort = { by: Column; reversed: boolean };
+
+/** The sheet's lines in that order. A tie goes by the round's points, then the total. */
+export const sheetOrder = (lines: readonly RoundLine[], { by, reversed }: Sort): RoundLine[] =>
+  [...lines].sort((a, b) => (reversed ? -1 : 1) * (BEST_FIRST[by](a, b) || BEST_FIRST.round(a, b) || BEST_FIRST.total(a, b)));
+
 function Results({ room }: { room: RoomView }) {
   const round = room.lastRound;
   const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
   /** What this viewer has the sheet sorted by: the round's points, the best first, until they press another heading (or the same one again, which turns it over). */
-  const [sort, setSort] = useState<{ by: Column; reversed: boolean }>({ by: 'round', reversed: false });
+  const [sort, setSort] = useState<Sort>({ by: 'round', reversed: false });
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
-  // A tie goes by the round's points, then the total.
-  const rows = (round?.scores ?? [])
-    .filter((s) => !s.gone)
-    .sort((a, b) => (sort.reversed ? -1 : 1) * (BEST_FIRST[sort.by](a, b) || BEST_FIRST.round(a, b) || BEST_FIRST.total(a, b)));
+  const rows = sheetOrder((round?.scores ?? []).filter((s) => !s.gone), sort);
   /** A column's heading, which sorts the sheet by it. */
   const heading = (by: Column, label: string, span?: { rowSpan: number }) => {
     // The names go up (A first); every other column's best is its largest figure (or, of cards left, its smallest), so down.

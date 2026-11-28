@@ -109,8 +109,9 @@
 }
 
 /* A heading is what sorts the sheet: written as the heading, nothing of a button about it. The one it is sorted by is in
-   ink and underlined, with a small arrow beside it: down for the best first, up once pressed again. The arrow takes no
-   room of its own (it stands in the space between two headings), so the columns stay as wide as they were. */
+   ink and underlined, with a small arrow beside it: down where the figures fall from the top (the best first), up where
+   they rise, as the names do from A. The arrow takes no room of its own (it stands in the space between two headings),
+   so the columns stay as wide as they were. */
 .scores .sort {
   position: relative;
   margin: 0;
@@ -122,6 +123,13 @@
   text-align: inherit;
   background: none;
   cursor: pointer;
+}
+
+/* (It is pressed anywhere in its cell over the word, too: the word alone is a small thing for a finger to find.) */
+.scores .sort::before {
+  content: '';
+  position: absolute;
+  inset: -1.2rem -0.25rem 0;
 }
 
 .scores th[aria-sort] {
