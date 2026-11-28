@@ -334,7 +334,16 @@ describe('tap to move', () => {
     expect(t.hand?.phase).toBe('carried');
   });
 
-  it('Space draws, and puts a tapped card back first', () => {
+  it('Space with a card tapped plays it where the mouse rests, if that pile takes it, then draws', () => {
+    const t = seatAt(game());
+    t.tap(t.at('0:S2'));
+    t.act({ k: 'draw', mouse: middleOf(t.L.slotHit[0]!) });
+    expect(t.hand).toBeNull();
+    expect(t.sent).toEqual([hold('0:S2'), move('0:S2', slot(0))]);
+    expect(t.did.at(-1)).toEqual({ k: 'deal' });
+  });
+
+  it('Space draws, and puts a tapped card back first with the mouse off the table or over nothing it goes on', () => {
     const t = seatAt(game());
     t.act({ k: 'draw' });
     expect(t.did).toEqual([{ k: 'deal' }]);
@@ -343,6 +352,10 @@ describe('tap to move', () => {
     expect(t.hand).toBeNull();
     expect(t.sent).toEqual([hold('0:H4'), release]);
     expect(t.did).toEqual([{ k: 'deal' }, tried('0:H4'), { k: 'deal' }]);
+    t.tap(t.at('0:H4'));
+    t.act({ k: 'draw', mouse: off });
+    expect(t.hand).toBeNull();
+    expect(t.sent.slice(-2)).toEqual([hold('0:H4'), release]);
   });
 
   it('Space while a card is dragged over a pile that takes it plays it there first, then draws', () => {

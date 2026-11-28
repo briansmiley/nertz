@@ -874,7 +874,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return;
       e.preventDefault();
-      act({ k: 'draw' });
+      act({ k: 'draw', mouse: mouseAt.current });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -921,6 +921,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     peekWait.current = null;
     setPeek(null);
   };
+  /** Where the mouse rests on the table, for Space with a card tapped (hand.ts, 'draw'); none once it has left the table. */
+  const mouseAt = useRef<{ x: number; y: number } | null>(null);
   /** The mouse moved with nothing held: a pile it rests on fans out after a moment; off it, it closes at once. */
   const hover = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || frozen || stage !== 'live') return;
@@ -938,6 +940,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   };
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') mouseAt.current = { x: e.clientX, y: e.clientY };
     const d = grasp.current.hand;
     if (!d || d.phase === 'pressed') hover(e);
     act({ k: 'move', pointer: e.pointerId, x: e.clientX, y: e.clientY });
@@ -1009,7 +1012,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      onPointerLeave={(e) => e.pointerType === 'mouse' && !grasp.current.hand && stopPeek()}
+      onPointerLeave={(e) => { if (e.pointerType !== 'mouse') return; mouseAt.current = null; if (!grasp.current.hand) stopPeek(); }}
     >
       <div className={`felt${placing ? ' placing' : ''}`} style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, borderRadius: TABLE.corner * L.felt.u }} />
       {L.slots.map((slot, i) => {

@@ -108,7 +108,7 @@ export type Gesture =
   | { k: 'cancel'; pointer: number }
   | { k: 'escape' }
   /** Space: a group off the stock. */
-  | { k: 'draw' }
+  | { k: 'draw'; mouse?: Pt | null }
   /** Not the player's doing: the table changed under the hand (a snapshot came). */
   | { k: 'table' };
 
@@ -383,9 +383,15 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
     case 'draw':
     {
       // Looking at the next cards ends what is in hand first, so a card can't be held on a spot while the stock is
-      // cycled: one that stands tapped goes back; one carried is let go where it is (played there if that pile takes
-      // it, else back), and the button still down does nothing more.
-      const done = d?.phase === 'carried' ? put(d, { pointer: { x: d.px, y: d.py }, card: cardOf(d) }, scene) : d?.phase === 'tapped' ? put(d, null, scene) : null;
+      // cycled. It is put down where the hand points, as a release or a tap there would (played if that pile takes it,
+      // else back): a carried card where it is drawn, and the button still down does nothing more; one that stands
+      // tapped where the mouse rests on the table (`mouse`), and with the mouse off the table it goes back.
+      const done =
+        d?.phase === 'carried'
+          ? put(d, { pointer: { x: d.px, y: d.py }, card: cardOf(d) }, scene)
+          : d?.phase === 'tapped'
+            ? put(d, g.mouse ? { pointer: g.mouse, card: null } : null, scene)
+            : null;
       return { ...was, hand: done ? null : d, effects: [...(done ?? []), { k: 'deal' }] };
     }
     case 'table': {
