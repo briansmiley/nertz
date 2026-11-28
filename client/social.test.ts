@@ -165,4 +165,18 @@ describe('the lines unread', () => {
     t.setOpen('chat');
     expect(t.state().unread).toEqual([c.id]);
   });
+
+  it('are read, with every line over the table, when one of those is tapped', async () => {
+    const t = await atTable();
+    const a = said('one');
+    const b = said('two');
+    t.hear([a]);
+    t.hear([b, over(1)]);
+    expect(t.state().unread).toEqual([a.id, b.id]);
+    t.readPassing();
+    expect(t.state().unread).toEqual([]);
+    expect(t.passing()).toEqual([]);
+    // (The lines themselves are kept, for when the chat is opened.)
+    expect(t.shown()).toEqual([a.id, b.id, id]);
+  });
 });

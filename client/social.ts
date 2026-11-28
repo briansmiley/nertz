@@ -17,7 +17,8 @@ export interface SocialState extends SocialSettings {
   inVoice: readonly VoiceMember[];
   /**
    * The lines from other people (their ids) that arrived while the chat was not open. Opening it keeps them, each with
-   * a red mark among the lines, until it is closed again; lines that come while it is open are seen as they come.
+   * a red mark among the lines, until it is closed again; lines that come while it is open are seen as they come. A
+   * tap on a line passing over the table lets them go as well (`readPassing`).
    */
   unread: readonly number[];
   open: Open;
@@ -108,6 +109,8 @@ export function setUnrevealed(round: number | null): void {
 export const say = (text: string): boolean => post({ t: 'chat', text });
 export const setSocial = (change: Partial<SocialSettings>): void => void post({ t: 'social', ...change });
 export const setOpen = (open: Open): void => set({ open, unread: state.open === 'chat' && open !== 'chat' ? [] : state.unread });
+/** A line passing over the table is tapped: it and those passing with it are read, and leave the table at once. */
+export const readPassing = (): void => set({ unread: [], passing: [] });
 
 /** Where the table in this window has its felt (Table.tsx), or null: none shown. */
 export function setBoard(board: Rect | null): void {
