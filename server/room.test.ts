@@ -2601,20 +2601,30 @@ describe('a draw is one intent and one step, and the server holds it to its time
     expect(me().waste).toHaveLength(6);
   });
 
-  it('a call freezes a group in flight as it is: it does not land, then or after', () => {
+  it('a group in flight at the call does not land: the round over, it is back on the stock as it came off, then and after', () => {
     vi.useFakeTimers();
     const { room, conns } = roomWith(2, { deal: rigged([0]) });
     const [a, b] = conns as [FakeConn, FakeConn];
     startRound(room, a);
+    const before = room.game!.players[1]!;
     sendIntent(room, b, 0, { k: 'draw' });
+    expect(room.game!.players[1]!.draw).toMatchObject({ n: 3 });
     sendIntent(room, a, 0, { k: 'nertz' });
     expect(room.game!.status.at).not.toBe('play');
-    const frozen = room.game!.players[1]!;
-    expect(frozen.draw).toMatchObject({ n: 3 });
     vi.advanceTimersByTime(GRACE_MS + 10 * STOCK_CARD_MS);
     expect(room.phase).toBe('results');
-    expect(room.game!.players[1]).toEqual(frozen);
+    expect(room.game!.players[1]).toMatchObject({ draw: null, waste: [], stock: before.stock });
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a group whose time had come when the round ends is down, though nothing was played since: it stays turned up on the waste', () => {
+    const { room, a, b, me } = drawing();
+    sendIntent(room, b, 0, { k: 'end', on: true });
+    sendIntent(room, b, 1, { k: 'draw' });
+    vi.advanceTimersByTime(3 * STOCK_CARD_MS);
+    room.disconnect(a); // the vote is b's alone now, and b has voted: the round is over with no intent since the draw
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    expect(me()).toMatchObject({ draw: null, waste: { length: 3 } });
   });
 
   it('a reconnect mid-group is sent the group whole, with when it was drawn and what the clock reads now', () => {

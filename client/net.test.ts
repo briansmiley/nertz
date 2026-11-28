@@ -242,14 +242,14 @@ describe('prediction', () => {
     const start = inPlay([0, 1], lcg(2));
     const r = applyIntent(start, 1, { k: 'draw' }, 1000);
     if (!r.ok) throw new Error(r.reason);
-    const snap = (rev: number, game: GameState, ms: number, running = true) => ({ rev, ack: -1, room: { ...roomOf(game, 0), clock: { ms, running } } });
+    const snap = (rev: number, game: GameState, ms: number) => ({ rev, ack: -1, room: { ...roomOf(game, 0), clock: { ms, running: true } } });
     let sync = onSnapshot(freshSync, snap(0, r.state, 1000), 1000);
     let out = dealOut(freshDealing, onSnapshot(freshSync, snap(0, start, 1000), 1000), 1000);
     out = dealOut(out.dealing, sync, 1000);
     expect(out.room!.game!.players[1]!.draw!.off).toBe(1);
-    // The round ends: the clock stops, and the group stays as it lies however long the window looks.
-    const over: GameState = { ...r.state, status: { at: 'over', end: { by: 'jam' } } };
-    sync = onSnapshot(sync, snap(1, over, 1000 + 2 * STOCK_CARD_MS, false), 1000 + 2 * STOCK_CARD_MS);
+    // Nertz is called: the group stays as it lies however long the window looks (until the round is over, and it is back on the stock).
+    const called: GameState = { ...r.state, status: { at: 'grace', calledBy: 0, unheard: [1] } };
+    sync = onSnapshot(sync, snap(1, called, 1000 + 2 * STOCK_CARD_MS), 1000 + 2 * STOCK_CARD_MS);
     out = dealOut(out.dealing, sync, 60_000);
     expect([out.room!.game!.players[1]!.draw!.off, out.wait, out.dealing.at]).toEqual([1, null, 1000]);
     // No table: nothing in flight and nothing remembered, but that the window was looking.

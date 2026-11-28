@@ -10,7 +10,7 @@ import { PLAIN_LOOK, shownBack, type Back, type Look } from '../shared/protocol'
 import { feltHw, offFelt } from '../shared/table';
 import type { GameState, RoundScore } from '../shared/types';
 import { backArt, backColour, CARD_H, CARD_W } from './cards/Face';
-import { drawnMini, LOW, onCanvas, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
+import { drawnMini, LOW, onCanvas, overlap, revealed, seatDir, slotStack, TAG_H, trayStack, type Layout, type Rect, type Stage } from './layout';
 import { clamp } from '../shared/numbers';
 
 /** How long each step of the end-of-round sequence takes (ms). */
@@ -257,9 +257,6 @@ export interface Plan {
   /** The strip along the middle of the felt that the sorted piles and their labels keep clear of. */
   heap: Rect;
 }
-
-const overlap = (a: Rect, b: Rect): number =>
-  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
 /**
  * Geometry of the whole sequence. Pure, so a resize mid-way just continues with new numbers.

@@ -1219,12 +1219,15 @@ describe('a group in flight, the stuck rotation and the Nertz call', () => {
     expect(ids(flips(r, 0, 3).players[0]!.waste)).toEqual(['0:S2', '0:S3', '0:S4']);
   });
 
-  it("Nertz can be called with a group in flight, and freezes everyone's where it lies", () => {
+  it("Nertz can be called with a group in flight, and the round over puts everyone's back on their stock as it came off", () => {
     const empty = { ...base, players: base.players.map((p, i) => (i === 0 ? { ...p, nertz: [], stock: [...p.nertz, ...p.stock] } : p)) };
     const called = ok(applyIntent(empty, 0, NERTZ));
     expect(isOver(called)).toBe(true);
-    expect(called.players.map((p) => p.draw?.n)).toEqual([3, 3]); // nothing is taken back
-    expect(landed(called, Infinity)).toBe(called); // and no time brings them down: the groups stay in flight
+    expect(called.players.map((p) => p.draw)).toEqual([null, null]);
+    expect(ids(called.players[0]!.waste)).toEqual(['0:SA', '0:S2', '0:S3']); // the group turned up before stays turned up
+    expect(ids(called.players[0]!.stock).slice(-3)).toEqual(['0:S6', '0:S5', '0:S4']); // the one in flight is back, its first card on top
+    for (const [i, p] of called.players.entries()) expect(p.stock).toEqual([...empty.players[i]!.stock, ...empty.players[i]!.waste.slice(-3).reverse()]);
+    expect(landed(called, Infinity)).toBe(called); // and no time brings anything down
     expect(checkInvariants(called)).toBeNull();
     for (const seat of [0, 1]) rejected(applyIntent(called, seat, FLIP));
     expect(resolveStuck(called, [0, 1])).toBe(called);
@@ -1244,7 +1247,7 @@ describe('a group in flight, the stuck rotation and the Nertz call', () => {
     expect(inGrace(holding)).toEqual([0]);
     rejected(applyIntent(holding, 0, FLIP)); // in grace only the held card may be played
     const put = ok(applyIntent(holding, 0, move('0:D2', slot(0))));
-    expect([isOver(put), put.players[0]!.draw]).toEqual([true, { n: 3, at: 0 }]);
+    expect([isOver(put), put.players[0]!.draw, ids(put.players[0]!.waste)]).toEqual([true, null, ['0:HA']]); // the round is over: the group in flight is back on the stock
     expect(checkInvariants(put)).toBeNull();
   });
 
