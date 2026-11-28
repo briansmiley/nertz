@@ -1089,16 +1089,16 @@ function Results({ room }: { room: RoomView }) {
   const tally = new Map<number, number>();
   for (const s of round?.snipes ?? []) tally.set(s.by, (tally.get(s.by) ?? 0) + s.n);
   const top = [...tally].map(([by, n]) => ({ by, n })).sort((a, b) => b.n - a.n)[0];
-  /** A total with, under it, how many rounds it is the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
+  /** The totals, with, after the average, how many rounds they are the sum of: said only where that is fewer than the table has played (someone who came later, or was away). */
   const total = (score: number, rounds: number, calls: number) => (
     <>
     {/* Before it, the other thing kept across rounds: how many of them they ended by calling Nertz. */}
     <td className="total calls">{calls}</td>
+    <td className="total">{score < 0 ? `−${-score}` : score}</td>
     <td className="total">
-      {score < 0 ? `−${-score}` : score}
+      {rounds > 0 ? written(score / rounds, 1) : '–'}
       {rounds > 0 && rounds < room.round && <small data-tip={`over ${rounds} of the table's ${room.round} rounds`}>({rounds})</small>}
     </td>
-    <td className="total">{rounds > 0 ? written(score / rounds, 1) : '–'}</td>
     </>
   );
 

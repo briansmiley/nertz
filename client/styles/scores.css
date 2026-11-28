@@ -208,10 +208,9 @@
   padding-right: 1.3rem;
 }
 
-/* The average, after the points: room before it for the count of rounds that stands after them. */
-.scores thead tr + tr th:last-child,
-.scores td.total:last-child {
-  padding-left: 1.2rem;
+/* The Nertz heading stands over the middle of its column: the count of cards left and the figure after it together. */
+.scores thead tr:first-child th:nth-child(3) {
+  text-align: center;
 }
 
 .scores thead tr + tr th {
@@ -312,7 +311,7 @@
   color: var(--ink-soft);
 }
 
-/* After a total that is the sum of fewer rounds than the table has played: how many, in brackets. */
+/* After an average that is the sum of fewer rounds than the table has played: how many, in brackets. */
 .scores td.total small {
   position: absolute;
   left: 100%;
@@ -373,12 +372,6 @@
   .scores thead tr + tr th,
   .scores td.total {
     padding: 0 0.25rem;
-  }
-
-  /* (The average's room before it is only as wide as a count of rounds.) */
-  .scores thead tr + tr th:last-child,
-  .scores td.total:last-child {
-    padding-left: 0.9rem;
   }
 
   .scores .called {
