@@ -69,7 +69,7 @@ At a table that moves without dragging (the table rule "Move without dragging", 
 takes a card up without carrying it: it stands lifted where it was, and the next tap or click puts it down, on the pile
 it points at (or, for an Ace, that spot of the felt). A pile you finished is taken up the same way, and the next tap or
 click on the tray clears it. Anywhere else, or Escape, puts it back and does nothing more: a click on the stock with a
-card taken up does not deal. A mouse does exactly what a finger does. A card moved so is never seen crossing the table. With the rule off, every card is dragged, on a touch
+card taken up does not deal. Space puts it back and then draws. A mouse does exactly what a finger does. A card moved so is never seen crossing the table. With the rule off, every card is dragged, on a touch
 screen too.
 
 What you see around a round:
@@ -473,7 +473,7 @@ you are now under it, green where it would be sent. Mic at 0 is muting yourself 
 and "Muted", the level you had is kept, and unmuting (or drawing the slider up) brings it back. The same row is at the foot of the voice slip (Chat.tsx).
 Reduce motion follows the system setting until you touch it, then overrules it either way.
 **Tap to play** (`Prefs.tapToMove`, off by default) lets a tap or a click take a card up and the next put it down, on
-every screen alike; off, every card is dragged. Dragging always works. Drawing with Space puts a tapped card back. Anyone can tick it, host or not, in a room or
+every screen alike; off, every card is dragged. Dragging always works. Anyone can tick it, host or not, in a room or
 offline: the table is not told, and the server cannot tell such a move from a drag (the same `hold` and `move`).
 **Card faces** (`Prefs.faces`: **Owner's**, the default, **Mine** or **Big print**) is whose faces every card has on your
 screen: each card in its owner's style, every card in the style you chose for your own deck, or every card in Big print
