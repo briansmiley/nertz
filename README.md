@@ -229,7 +229,7 @@ To try the production shape locally: `npm run build && npm start`, then open htt
   If the card has nowhere to go, or loses its last spot to another player's grace move, the drag is cancelled. Letting go
   anywhere is that one move: if the spot was taken a moment earlier, the card goes back and that player is done. The round
   is over as soon as every such player has let go, or after 4 seconds. Grace moves count. A group in flight at the call
-  is not such a card: its time stops there, and it stays as it lies, face-down.
+  is not such a card: its time stops there, and once the round is over it goes back on the stock as it came off.
   "The moment of the call" is when it reaches your screen, not the server: a card you take up while the call is on its
   way to you (or whose taking up is on its way to the server as the call is made) was in your hand at the call. So the
   round waits for each player's window to say it has the call, a round trip, at most 1 second (`HEAR_MS`); a window that
@@ -607,7 +607,8 @@ left) on the waste and records the group in flight: `PlayerState.draw` is `{ n, 
 was made on the round's clock (`RoomView.clock`, which a pause stops). The group counts as dealt one card every
 `STOCK_CARD_MS` and turned up one step after the last, so it is down at `at + n * STOCK_CARD_MS` (`landsAt`). There is
 no timer for it: `applyIntent` is handed the clock, and first takes down every group whose time has come (`landed`, how
-a draw ends unless it is called off, and only while the round is live: a group in flight at a call stays as it lies).
+a draw ends unless it is called off, and only while the round is live: a group in flight at a call stays as it lies,
+and when the round is over `endRound` puts whatever is still in flight back on its stock).
 Until then another draw is refused, and `grab` refuses the group's cards and gives the card under them: a `hold` or
 `move` of that one calls the draw off (the group goes back on the stock, and `draw` is null). A window has its own group
 down a round trip later, so a take it makes while the group is in flight there, or gliding onto the waste after
@@ -867,7 +868,6 @@ would still need one of the options above, and serving both from one origin is s
   label higher or lower beside it, instead of level with it; each has its player's colour chip. Label placement is
   checked for 2 to 6 players at 1280 x 720 and 1440 x 900; in a smaller window labels may overlap something. The
   NERTZ! stamp across your own hand is large and stays up through the sequence.
-- **Face-down cards of a group in flight** at the call stay face-down on the waste through the end of the round.
 - **The wash is a canvas.** At the end of a round up to ~300 card backs move at once, so they are drawn on one canvas
   rather than as elements. Measured in Chromium with 6 players and 222 cards in the middle: a steady 60 frames a second at
   1x and 2x pixel density with a GPU, and at 1x without one. Without a GPU at 2x it misses frames, notices (five late
