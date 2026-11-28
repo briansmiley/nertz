@@ -374,8 +374,12 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
       // Escape puts what was tapped (or clicked) back, as a tap anywhere else would.
       return d?.phase === 'tapped' ? { ...was, hand: null, effects: put(d, null, scene) } : stay;
     case 'draw':
-      // Looking at the next cards puts what was tapped back first, so a card can't be held on a spot while the stock is cycled.
-      return { ...was, hand: d?.phase === 'tapped' ? null : d, effects: [...(d?.phase === 'tapped' ? put(d, null, scene) : []), { k: 'deal' }] };
+    {
+      // Looking at the next cards puts back what is in hand first, tapped or carried, so a card can't be held on a spot
+      // while the stock is cycled. (A carried card goes home as if let go off every pile; the button still down does nothing more.)
+      const back = d?.phase === 'tapped' || d?.phase === 'carried';
+      return { ...was, hand: back ? null : d, effects: [...(back ? put(d, null, scene) : []), { k: 'deal' }] };
+    }
     case 'table': {
       // The server can take a card out of your hand: Nertz was called and it has nowhere to go, the grace window
       // closed, or the card was buried. Then it is in hand no more, and goes home.

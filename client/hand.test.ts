@@ -325,6 +325,22 @@ describe('tap to move', () => {
     expect(t.did).toEqual([{ k: 'deal' }, tried('0:H4'), { k: 'deal' }]);
   });
 
+  it('Space while a card is dragged puts it back first, and the button let go after does nothing more', () => {
+    const t = seatAt(game());
+    const from = t.at('0:H4');
+    t.down(from);
+    t.move(by(from, 30, -40));
+    expect(t.hand?.phase).toBe('carried');
+    t.act({ k: 'draw' });
+    expect(t.hand).toBeNull();
+    expect(t.did.at(-1)).toEqual({ k: 'deal' });
+    const sent = t.sent.length;
+    t.move(by(from, 60, -80));
+    t.up(by(from, 60, -80));
+    expect(t.hand).toBeNull();
+    expect(t.sent.length).toBe(sent);
+  });
+
   it('a tapped Ace starts its pile on the very spot of the felt that is tapped next', () => {
     const t = seatAt(game());
     const at = room(t, '0:DA');
