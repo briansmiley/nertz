@@ -563,8 +563,8 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  * group stays in flight until `landed` says otherwise.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
- * (`mustClear`) may only `clear` it; every other intent is refused until it has.
- * Nobody else is affected. It cannot coincide with grace: the King was that
+ * (`mustClear`) may only `clear` it, or call Nertz (with an empty nertz pile); every other intent is refused until
+ * it has. Nobody else is affected. It cannot coincide with grace: the King was that
  * seat's last move, which emptied its hand, and it has not been able to pick
  * anything up since. If somebody else calls Nertz first the pile simply stays
  * where it is and scores as it lies.
@@ -595,7 +595,7 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent, n
       break;
     }
     case 'play':
-      if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
+      if (intent.k !== 'clear' && intent.k !== 'end' && intent.k !== 'nertz' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   }
   const next = play(state, index, intent, now);
   if (typeof next === 'string') return fail(next);

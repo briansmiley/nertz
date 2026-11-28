@@ -42,7 +42,7 @@ describe('chooseIntent', () => {
     // Out of nertz cards AND a pile waiting: the pile first, then the call.
     const out = table({ nertz: [], work: [['S1'], ['H2'], [], []] }, [{ owner: 0, suit: 'C', upTo: 13 }]);
     expect(look(out)?.intent).toEqual({ k: 'clear', slot: 0 });
-    expect(applyIntent(out, 0, { k: 'nertz' })).toEqual({ ok: false, reason: CLEAR_FIRST });
+    expect(applyIntent(out, 0, { k: 'nertz' }).ok).toBe(true); // the call is not held up by the pile; the bot still clears first
     const cleared = applyIntent(out, 0, look(out)!.intent);
     expect(cleared.ok && look(cleared.state)?.intent).toEqual({ k: 'nertz' });
     const theirs = table({ nertz: ['S5'], work: DEAD }, [{ owner: 1, suit: 'C', upTo: 13 }], { nertz: ['D13'] });

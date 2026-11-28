@@ -628,7 +628,6 @@ describe('clear first: a finished pile must go to the tray before its player doe
     { intent: { k: 'draw' }, fine: true },
     { intent: { k: 'stuck', on: true }, fine: true },
     { intent: { k: 'stuck', on: false }, fine: true },
-    { intent: NERTZ, fine: false },
     { intent: RELEASE, fine: false },
     { intent: hold(`${seat}:C4`), fine: true },
     { intent: hold(`${seat}:D3`), fine: true },
@@ -660,10 +659,10 @@ describe('clear first: a finished pile must go to the tray before its player doe
     }
     expect(canDrop(done, 0, '0:C4', work(0))).toBe(false);
     expect(legalDrops(done, 0, '0:C4')).toEqual([work(0)]); // the cards have not changed, only what the seat may do
-    // Calling Nertz too: with an empty nertz pile the pile still comes first.
+    // Calling Nertz is not held up: with an empty nertz pile the call goes through, and the pile scores where it lies.
     const out = emptyNertz(done, 0);
-    expect(applyIntent(out, 0, NERTZ)).toEqual({ ok: false, reason: CLEAR_FIRST });
-    ok(applyIntent(run(out, [0, { k: 'clear', slot: 2 }]), 0, NERTZ));
+    const called = ok(applyIntent(out, 0, NERTZ));
+    expect(called.slots[2]).toEqual(out.slots[2]);
   });
 
   it('nobody else is held up, and the slot stays taken until the pile is cleared', () => {
