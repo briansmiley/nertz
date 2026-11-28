@@ -1026,6 +1026,8 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   const sideL = Math.max(8, keep.l);
   const sideR = Math.max(8, keep.r);
   const col = { u: 0, w: 0, topL: LOW.top, botL: H - LOW.knobs, topR: 6, botR: ownTop - 6 };
+  /** Where the tray begins, when the middle's cards are `fh` high: beside your hand; watching, as high as its piles need. */
+  const trayTopAt = (fh: number) => (mine ? ownTop : H - 12 - fh * 2.6);
   // Where a column that stops above your hand ends: above the count on your nertz pile too, which may stand at the
   // pile's top corner.
   const ends = Math.min(H - LOW.knobs, col.botR - (mine ? (0.5 + COUNT_OUT) * countD(ow) + 2 : 0));
@@ -1034,6 +1036,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   if (low) {
     const most = W - sideL - sideR - 2 * (LOW.col + CLEAR);
     col.u = Math.max(40, Math.min(most / (2 * hw), (ownTop - CLEAR - 4 - 6) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
+    col.botR = Math.min(col.botR, trayTopAt(size.w * col.u * RATIO) - 6); // (the right one stops above the tray)
     const wide = (W - 2 * hw * col.u) / 2 - CLEAR - Math.max(sideL, sideR);
     const width = (botL: number) => Math.min(wide / OPP_UNITS, each(botL - col.topL, round.left), each(col.botR - col.topR, round.right), mine ? ow * 0.62 : OPP_MAX);
     // The left column runs down to the menu's button only beside your hand, clear of it (a phone's hand is narrow and
@@ -1085,6 +1088,45 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
   // (In a U the row has what is between the two columns, and the corners, from end to end.)
   const between = W / 2 - Math.max(CORNER, Math.max(sideL, sideR) + handW + 18);
   const spread = Math.max(Number.isFinite(closest) ? (handW + 18) / closest : 0, cols ? between : Math.min(W * 0.3, (W / 2 - CORNER - handW / 2) / widest));
+
+  // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than
+  // makes its cards the size of your own.
+  const room = tall ? feltRoom : W - 2 * (cols ? Math.max(sideL, sideR) + handW + CLEAR : sides ? edge + handH + CLEAR : edge);
+  const u = low ? col.u : Math.max(40, Math.min(room / (2 * hw), (bandBottom - bandTop) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
+  const felt: Felt = { cx: W / 2, cy, u };
+  const fw = size.w * u;
+  const fh = fw * RATIO;
+  const fs = fw / CARD_W;
+  const middle: Rect = { x: felt.cx - hw * u, y: cy - u, w: 2 * hw * u, h: 2 * u };
+  const slots = game.slots.map((pile): SlotRect | null => {
+    if (!pile) return null;
+    const c = toScreen(felt, pile.at);
+    return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: pile.at.r };
+  });
+
+  // The tray lies beside your hand, off the right edge: piles cascade down it, face-down, a strip of each showing
+  // while there is room for that. (A window too narrow for it: the tray gives way, not your hand.)
+  // Its piles are drawn a little larger than in the middle when the middle's cards are small: they lie next to your own.
+  // (Watching, with no hand: at the foot of the right edge all the same, and the hands at the right stop above it.)
+  const tw = Math.max(fw, ow * 0.6);
+  const th = tw * RATIO;
+  const pad = tw * TRAY_PAD;
+  const gapT = ow * TALL.gap;
+  const trayIn = tall ? clamp(W - (handX + 4 * ow + 3 * gapT) - 8, tw * 0.3, tw * TRAY_IN) : clamp(W - (handX + OWN_UNITS * ow) - 18, tw * 0.3, tw * TRAY_IN);
+  const trayTop = trayTopAt(fh);
+  const at = corners(W, fullH, keep, fit);
+  // (Upright: beside the work piles, and no lower: the stock and the waste are under it. Otherwise down to the
+  // bottom, or to the way to feedback where that stands under it.)
+  const tray: Rect = { x: W - trayIn, y: trayTop, w: 2 * trayIn, h: (tall && mine ? rowY - 8 : at.feedback ? at.feedback.y - 8 : H - 10) - trayTop };
+  const trayH = tray.h;
+  // Dropping a finished pile is not a precision job: anywhere from a little short of the tray to past the edge of the screen.
+  const trayHit: Rect = { x: tray.x - fw * 0.9, y: tray.y - fh * 0.4, w: fw * 0.9 + tray.w + W, h: tray.h + fh * 0.4 + H };
+  const trays = game.tray.length;
+  const trayStep = trays > 1 ? Math.min(th * 0.36, (trayH - 2 * pad - th) / (trays - 1)) : 0;
+  // End of round: the tray piles walk out to a row across the middle of the table.
+  const outStep = trays > 1 ? Math.min(fw * 1.15, (middle.w * 0.8 - fw) / (trays - 1)) : 0;
+  const out = game.tray.map((_, k): Rect => ({ x: W / 2 - (outStep * (trays - 1) + fw) / 2 + k * outStep, y: middle.y + (middle.h - fh) / 2, w: fw, h: fh }));
+
   const span = OPP_UNITS * mw; // a side hand, turned, runs this far down the window
   const opponents = seats.map(({ p, dir, nth, where, x }, i) => {
     const spec: HandSpec = {
@@ -1106,8 +1148,9 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     };
     if (sides && (where === 'left' || where === 'right')) {
       // A neighbour sits beside the felt, their hand turned to face it: level with its middle if they are straight to
-      // one side, lower down the nearer they are to you. Clear of the chat button above and your hand below.
-      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, ownTop - 8 - span);
+      // one side, lower down the nearer they are to you. Clear of the chat button above and your hand below (and on
+      // the right, of the tray).
+      const y = clamp(cy + dir.y * (bandBottom - bandTop) * 0.8 - span / 2, Math.max(bandTop, 48) + TAG_H, (where === 'right' ? Math.min(ownTop, tray.y) : ownTop) - 8 - span);
       const local: Placed[] = [];
       const seat = placeHand(p, spec, local);
       const turned = turnHand(seat, local, where === 'left' ? 90 : -90, where === 'left' ? edge : W - edge - handH, y);
@@ -1119,7 +1162,7 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
       const left = where === 'left';
       const count = left ? round.left : round.right;
       const k = left ? round.left - 1 - nth : nth - round.left - round.top; // from the top
-      const [top, bottom] = left ? [col.topL, col.botL] : [col.topR, col.botR];
+      const [top, bottom] = left ? [col.topL, col.botL] : [col.topR, Math.min(col.botR, tray.y - 6)]; // (the right one above the tray too)
       // (More of them than the column holds at the smallest cards: they lie over each other a little, and stay in it.)
       const share = (bottom - top) / count;
       const tight = share < TAG_H + handH && count > 1;
@@ -1136,43 +1179,6 @@ export function computeLayout(W: number, fullH: number, game: GameState, you: nu
     }
     return placeHand(p, { ...spec, x: W / 2 + (where === 'top' ? x * spread : 0) - handW / 2, y: where === 'top' ? topY : ownTop - handH }, cards);
   });
-
-  // The felt: centred in the band, as large as fits in it and between the hands at the sides, but no larger than
-  // makes its cards the size of your own.
-  const room = tall ? feltRoom : W - 2 * (cols ? Math.max(sideL, sideR) + handW + CLEAR : sides ? edge + handH + CLEAR : edge);
-  const u = low ? col.u : Math.max(40, Math.min(room / (2 * hw), (bandBottom - bandTop) / 2, (mine ? ow * CENTRE_MAX : 90) / size.w));
-  const felt: Felt = { cx: W / 2, cy, u };
-  const fw = size.w * u;
-  const fh = fw * RATIO;
-  const fs = fw / CARD_W;
-  const middle: Rect = { x: felt.cx - hw * u, y: cy - u, w: 2 * hw * u, h: 2 * u };
-  const slots = game.slots.map((pile): SlotRect | null => {
-    if (!pile) return null;
-    const c = toScreen(felt, pile.at);
-    return { x: c.x - fw / 2, y: c.y - fh / 2, w: fw, h: fh, rot: pile.at.r };
-  });
-
-  // The tray lies beside your hand, off the right edge: piles cascade down it, face-down, a strip of each showing
-  // while there is room for that. (A window too narrow for it: the tray gives way, not your hand.)
-  // Its piles are drawn a little larger than in the middle when the middle's cards are small: they lie next to your own.
-  const tw = Math.max(fw, ow * 0.6);
-  const th = tw * RATIO;
-  const pad = tw * TRAY_PAD;
-  const gapT = ow * TALL.gap;
-  const trayIn = tall ? clamp(W - (handX + 4 * ow + 3 * gapT) - 8, tw * 0.3, tw * TRAY_IN) : clamp(W - (handX + OWN_UNITS * ow) - 18, tw * 0.3, tw * TRAY_IN);
-  const trayTop = mine ? ownTop : H - 12 - fh * 2.6;
-  const at = corners(W, fullH, keep, fit);
-  // (Upright: beside the work piles, and no lower: the stock and the waste are under it. Otherwise down to the
-  // bottom, or to the way to feedback where that stands under it.)
-  const tray: Rect = { x: W - trayIn, y: trayTop, w: 2 * trayIn, h: (tall && mine ? rowY - 8 : at.feedback ? at.feedback.y - 8 : H - 10) - trayTop };
-  const trayH = tray.h;
-  // Dropping a finished pile is not a precision job: anywhere from a little short of the tray to past the edge of the screen.
-  const trayHit: Rect = { x: tray.x - fw * 0.9, y: tray.y - fh * 0.4, w: fw * 0.9 + tray.w + W, h: tray.h + fh * 0.4 + H };
-  const trays = game.tray.length;
-  const trayStep = trays > 1 ? Math.min(th * 0.36, (trayH - 2 * pad - th) / (trays - 1)) : 0;
-  // End of round: the tray piles walk out to a row across the middle of the table.
-  const outStep = trays > 1 ? Math.min(fw * 1.15, (middle.w * 0.8 - fw) / (trays - 1)) : 0;
-  const out = game.tray.map((_, k): Rect => ({ x: W / 2 - (outStep * (trays - 1) + fw) / 2 + k * outStep, y: middle.y + (middle.h - fh) / 2, w: fw, h: fh }));
 
   // Your hand is placed last: a long work pile may rise into what cloth there is between the row and the felt.
   const own: HandSpec = {

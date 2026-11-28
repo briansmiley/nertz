@@ -387,6 +387,23 @@ describe('table layout', () => {
     }
   });
 
+  it('keeps everyone\'s hand and its count off the tray: seated, come in mid-round, or watching without a seat (SMI-380)', () => {
+    const bad: string[] = [];
+    for (const [W, H] of [[734, 224], [734, 340], [667, 375], [844, 390], [800, 520], [1280, 600], [1280, 800], [1920, 1080], [393, 609]] as const) {
+      for (let n = 2; n <= 8; n++) {
+        const game = aced(inPlay(seats(n), lcg(n)));
+        for (const keep of [{ l: 0, r: 0, b: 0 }, { l: 47, r: 47, b: 21 }]) {
+          for (const [who, L] of [['seated', computeLayout(W, H, game, 0, 'live', null, keep)], ['sitting', computeLayout(W, H, game, n, 'live', null, keep, [n])], ['watching', computeLayout(W, H, game, -1, 'live', null, keep)]] as const) {
+            const tray = { ...L.tray, w: W - L.tray.x };
+            const hit = L.opponents.filter((o) => overlap(tray, tagged(o)) || overlap(tray, countBox(o.count, W, H, keep)));
+            if (hit.length) bad.push(`${W}x${H}, ${n} playing${keep.l ? ', notched' : ''}, ${who}: ${hit.map((o) => o.seat).join(', ')}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('maps table space to the screen and back exactly, on the felt and off it, the same from every chair', () => {
     const game = inPlay(seats(5), lcg(5));
     const L = computeLayout(1280, 720, game, 3);
