@@ -92,13 +92,13 @@
   color: var(--ink-soft);
 }
 
-/* On the score sheet, in the Nertz column of whoever called it (where their 0 would be): the stamp that lay across
-   their hand, small. It is written in, so the column is as wide as it and it covers none of the figures beside it. */
+/* On the score sheet, in the Nertz column of whoever called it: their 0, written as the stamp that lay across their
+   hand, small. It is written in, so it covers none of the figures beside it. The Nertz columns' headings, an N, are
+   written so too. */
 .scores .called {
   display: inline-block;
-  vertical-align: 0.3em; /* (not middle: that is half the figures' x-height, below the middle of their digits) */
   margin-right: -0.15em;
-  font: 400 0.8rem/1 var(--display);
+  font: 400 1.05rem/1 var(--display);
   text-transform: uppercase;
   letter-spacing: 0.01em;
   color: var(--marigold);
@@ -106,6 +106,22 @@
   paint-order: stroke fill;
   text-shadow: 0 0.06em 0 var(--ink);
   rotate: -5deg;
+}
+
+/* The Played heading: two cards, one played over the other. */
+.scores .played {
+  width: 1.6em;
+  height: 1.6em;
+  vertical-align: -0.4em;
+  fill: var(--card);
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.scores .played .pip {
+  fill: var(--red);
+  stroke: none;
 }
 
 /* A heading is what sorts the sheet: written as the heading, nothing of a button about it. The one it is sorted by is in
@@ -359,14 +375,14 @@
     padding: 0 0.25rem;
   }
 
-  /* (No average here: a column more would leave the names no room. A phone on its side has it.) */
+  /* (The average's room before it is only as wide as a count of rounds.) */
   .scores thead tr + tr th:last-child,
   .scores td.total:last-child {
-    display: none;
+    padding-left: 0.9rem;
   }
 
   .scores .called {
-    font-size: 0.62rem;
+    font-size: 0.9rem;
   }
 }
 
