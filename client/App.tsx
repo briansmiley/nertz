@@ -173,7 +173,7 @@ export function App() {
       : !me.queued
         ? 'You are Spectating'
         : ahead < free
-          ? nextRound
+          ? 'Spectating - You are queued for a seat next round'
           : ahead === free
             ? 'Spectating - the table is full. You get the first seat that frees up'
             : 'Spectating - the table is full. You are in the queue for a seat';
