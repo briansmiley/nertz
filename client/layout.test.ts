@@ -783,7 +783,7 @@ describe('table layout', () => {
 
   // Regression: a drop was judged only by the centre of the grabbed card, so a card held by its corner and
   // pointed straight at a pile was refused.
-  it('a release counts for the pile under the pointer, and only failing that for the pile under the card centre', () => {
+  it('a release counts for the pile under the pointer, failing that for the pile under the card centre, and failing both for the pile that lies mostly under the card', () => {
     // Two piles side by side, a gap between them, and a hand-sized card.
     const a: Rect = { x: 300, y: 200, w: 50, h: 70 };
     const b: Rect = { x: 360, y: 200, w: 50, h: 70 };
@@ -792,15 +792,27 @@ describe('table layout', () => {
     const mid = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
     // Grabbed 5px inside its top-left corner and pointed well inside pile 7: the card's centre is most of a card away.
     const card = { w: 95, h: 133 };
+    const about = (c: { x: number; y: number }): Rect => ({ x: c.x - card.w / 2, y: c.y - card.h / 2, ...card });
     const pointer = { x: a.x + a.w * 0.7, y: a.y + a.h * 0.7 };
-    const centre = { x: pointer.x - 5 + card.w / 2, y: pointer.y - 5 + card.h / 2 };
-    expect(inside(hit(a), centre.x, centre.y)).toBe(false); // the old rule: refused
-    expect(dropTarget(targets, pointer, centre)?.i).toBe(7);
+    const held = { x: pointer.x - 5, y: pointer.y - 5, ...card };
+    expect(inside(hit(a), mid(held).x, mid(held).y)).toBe(false); // the old rule: refused
+    expect(dropTarget(targets, pointer, held)?.i).toBe(7);
     // Pointer over no pile: the card's centre decides.
-    expect(dropTarget(targets, { x: a.x + a.w / 2, y: a.y - 40 }, mid(b))?.i).toBe(8);
-    // Neither over a pile (here: both in the gap between two slots): nothing, the card goes back.
+    expect(dropTarget(targets, { x: a.x + a.w / 2, y: a.y - 40 }, about(mid(b)))?.i).toBe(8);
+    // Regression: neither the pointer nor the card's centre is over a pile, but most of one lies under the card.
+    const aside = { x: a.x - 55, y: a.y - 75, ...card }; // most of pile 7 under its lower right corner
+    const by = { x: aside.x + 10, y: aside.y + 10 };
+    expect(inside(hit(a), by.x, by.y) || inside(hit(a), mid(aside).x, mid(aside).y)).toBe(false);
+    expect(dropTarget(targets, by, aside)?.i).toBe(7);
+    // With less than half of the pile under it, the card has not been put down on it: it goes back.
+    const touching = { x: a.x - 60, y: a.y - 100, ...card };
+    expect(dropTarget(targets, { x: touching.x + 10, y: touching.y + 10 }, touching)).toBeUndefined();
+    // Both in the gap between two slots, and most of each under the card: the pile it covers more.
     const gap = { x: (a.x + a.w + b.x) / 2, y: a.y + a.h / 2 };
-    expect(dropTarget(targets, gap, gap)).toBeUndefined();
+    expect(dropTarget(targets, gap, about({ x: gap.x - 1, y: gap.y }))?.i).toBe(7);
+    expect(dropTarget(targets, gap, about({ x: gap.x + 1, y: gap.y }))?.i).toBe(8);
+    // A card no larger than the piles, between the two (or no card, as for a tap): on neither, the card goes back.
+    expect(dropTarget(targets, gap, { x: gap.x - a.w / 2, y: a.y, w: a.w, h: a.h })).toBeUndefined();
     expect(dropTarget(targets, gap, null)).toBeUndefined();
     // Only the targets offered count: a pile that does not take the card is never chosen, wherever the pointer is.
     expect(dropTarget(targets.filter((t) => t.i !== 7), pointer, null)).toBeUndefined();
@@ -1317,5 +1329,24 @@ describe('the lines under the chat', () => {
 
   it('may run on past the top of a felt that is not under them', () => {
     expect(chatLines(at, 393, { ...board, x: 393 * 0.78 + 20 }, false, 5)).toBe(5);
+  });
+});
+
+describe('dropTarget, one chain for a mouse and a finger', () => {
+  const near = { hit: { x: 0, y: 0, w: 20, h: 28 } };
+  const under = { hit: { x: 60, y: 0, w: 20, h: 28 } };
+  // A card whose middle is over neither: `under` lies wholly beneath its right side, `near` is closer to its middle.
+  const card = { x: 22, y: -20, w: 60, h: 84 };
+  const off = { x: -500, y: -500 };
+
+  it('a pile mostly under the card is where it goes, with or without a finger\'s reach, before the nearest within reach', () => {
+    expect(dropTarget([near, under], off, card)).toBe(under);
+    expect(dropTarget([near, under], off, card, 40)).toBe(under);
+  });
+
+  it('with none mostly under it, only a finger reaches the nearest', () => {
+    const clear = { x: 22, y: 40, w: 30, h: 42 };
+    expect(dropTarget([near, under], off, clear)).toBeUndefined();
+    expect(dropTarget([near, under], off, clear, 40)).toBe(near);
   });
 });
