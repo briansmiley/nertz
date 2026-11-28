@@ -44,16 +44,32 @@ const FACES_SAID: Record<Faces, [string, string]> = {
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
  * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box. Its empty
- * `data-tip` keeps the tip of what it sits in (the locked table rules) from showing over its own.
+ * `data-tip` keeps the tip of what it sits in (the locked table rules) from showing over its own. As it shows, its tip
+ * is lifted out to lie where it hangs under the row, so the menu's scrolling settings don't cut it off: it lies over the
+ * menu's foot instead. A scroll puts a tapped tip away; one pointed at or tabbed to (which can scroll) goes along with
+ * its row.
  */
 function Info({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const info = ref.current!;
+    const scroll = () => {
+      if (info.matches(':focus:not(:focus-visible)')) info.blur();
+      if (info.matches(':focus, :hover')) lift(info);
+    };
+    addEventListener('scroll', scroll, true);
+    return () => removeEventListener('scroll', scroll, true);
+  }, []);
   return (
     <span
+      ref={ref}
       className="info"
       data-tip=""
       role="button"
       tabIndex={0}
       aria-label="More about this"
+      onFocus={(e) => lift(e.currentTarget)}
+      onMouseEnter={(e) => lift(e.currentTarget)}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -63,6 +79,20 @@ function Info({ children }: { children: ReactNode }) {
       i<span className="tip" role="tooltip">{children}</span>
     </span>
   );
+}
+
+/** Puts an (i)'s tip, fixed, where it hangs under its row: out of any scrolling box that would cut it off. */
+function lift(info: HTMLElement) {
+  const tip = info.querySelector<HTMLElement>('.tip')!;
+  tip.style.cssText = 'display: block';
+  const want = tip.getBoundingClientRect();
+  tip.style.cssText = `position: fixed; left: 0; top: 0; width: ${getComputedStyle(tip).width}`;
+  // (Twice: the slip it is in is turned a little, so one step leaves it a few pixels off.)
+  for (let i = 0; i < 2; i++) {
+    const at = tip.getBoundingClientRect();
+    tip.style.left = `${parseFloat(tip.style.left) + want.left - at.left}px`;
+    tip.style.top = `${parseFloat(tip.style.top) + want.top - at.top}px`;
+  }
 }
 
 /** A robot's head. */

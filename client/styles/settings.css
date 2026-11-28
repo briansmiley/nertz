@@ -417,7 +417,7 @@ label.check {
 
 .info .tip {
   display: none;
-  position: absolute;
+  position: absolute; /* (where it hangs; as it shows it is fixed there, over what would cut it off: Settings.tsx, lift) */
   z-index: 50;
   left: 0;
   top: calc(100% + 4px);
