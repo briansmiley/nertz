@@ -806,6 +806,9 @@ interface Furniture {
 
 const meets = (a: Rect, b: Rect, m = 0): boolean => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
 
+/** The end of what stands from the left in the row of the menu's button: the button, and the clock where it is in line after it. */
+export const rowEnd = (at: Corners, clock: ClockAt | null): number => (clock && clock.y < at.knobs.y + at.knobs.h && clock.y + clock.h > at.knobs.y ? clock.x + clock.w : at.knobs.x + at.knobs.w);
+
 /**
  * Places what stands by your own hand, given where its piles are (`h`), the buttons in the corners (`at`) and where
  * the tray begins (`trayX`). Then says how far each work pile may fan: down to the first of these things under it.
@@ -865,9 +868,7 @@ function furnish(W: number, H: number, keep: Insets, at: Corners, clock: ClockAt
   }
 
   const roomy = at.shape === 'wide';
-  const knobsR = at.knobs.x + at.knobs.w;
-  // The end of what stands from the left in the row of the menu's button: the button, and the clock where it is in line after it.
-  const rowR = clock && clock.y < at.knobs.y + at.knobs.h && clock.y + clock.h > at.knobs.y ? clock.x + clock.w : knobsR;
+  const rowR = rowEnd(at, clock);
   const right = Math.min(trayX, at.feedback?.x ?? W, W - keep.r) - 8; // nothing of this goes further right
   const boxR = h.x + 7 * ow + 4 * h.gap + 2 * h.wide + 2 * h.fan;
   const padBase = base + stockDrop(ow); // the bottom of the stock's lowest card

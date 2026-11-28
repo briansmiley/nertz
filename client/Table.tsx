@@ -15,7 +15,7 @@ import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, MOTION, onCanvas, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, MOTION, onCanvas, rowEnd, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -1245,7 +1245,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
         <button
           type="button"
           className={`skip${phone ? ' aside' : ''}`}
-          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? (L.clock && !L.clock.small && L.clock.y < L.at.knobs.y + L.at.knobs.h && L.clock.y + L.clock.h > L.at.knobs.y ? L.clock.x + L.clock.w : L.at.knobs.x + L.at.knobs.w) + 8 : undefined }}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? rowEnd(L.at, L.clock) + 8 : undefined }}
           aria-label="Skip to the scores"
           data-tip="Skip to the scores"
           onClick={skip}
