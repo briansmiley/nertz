@@ -109,7 +109,7 @@ export function setUnrevealed(round: number | null): void {
 export const say = (text: string): boolean => post({ t: 'chat', text });
 export const setSocial = (change: Partial<SocialSettings>): void => void post({ t: 'social', ...change });
 export const setOpen = (open: Open): void => set({ open, unread: state.open === 'chat' && open !== 'chat' ? [] : state.unread });
-/** A line passing over the table is tapped: it and those passing with it are read, and leave the table at once. */
+/** A line passing over the table is tapped: nothing is unread any more (whether or not it is still passing), and the lines over the table leave it at once. */
 export const readPassing = (): void => set({ unread: [], passing: [] });
 
 /** Where the table in this window has its felt (Table.tsx), or null: none shown. */
