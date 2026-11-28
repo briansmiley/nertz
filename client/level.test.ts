@@ -14,15 +14,24 @@ describe('a card\'s level', () => {
   });
 
   it('only a card that changes pile is travelling, and it is whoever moves it: yours, else someone else\'s, else the table\'s', () => {
-    expect(moving('work 2', 'work 2', 'yours')).toBe(IN_PILE);
-    expect(moving('stock 0', 'stock 0', 'theirs')).toBe(IN_PILE);
-    expect(moving('work 2', 'work 3', 'yours')).toEqual(travelling('yours'));
-    expect(moving('stock 0', 'waste 0', 'theirs')).toEqual(travelling('theirs'));
+    expect(moving('work 2', 'work 2', 'yours', IN_PILE)).toBe(IN_PILE);
+    expect(moving('stock 0', 'stock 0', 'theirs', IN_PILE)).toBe(IN_PILE);
+    expect(moving('work 2', 'work 3', 'yours', IN_PILE)).toEqual(travelling('yours'));
+    expect(moving('stock 0', 'waste 0', 'theirs', IN_PILE)).toEqual(travelling('theirs'));
     expect(mover('yours', 'table')).toBe('yours');
     expect(mover('table', 'yours')).toBe('yours');
     expect(mover('theirs', 'table')).toBe('theirs');
     expect(mover('table', 'theirs')).toBe('theirs');
     expect(mover('table', 'table')).toBe('table');
+  });
+
+  it('a card laid out anew within the pile it is on its way to (the round ends as it lands) goes on travelling, by whoever was moving it', () => {
+    for (const by of ['yours', 'theirs'] as const) {
+      expect(moving('slot 2', 'slot 2', 'table', travelling(by))).toEqual(travelling(by));
+      expect(moving('slot 2', 'slot 2', 'table', turning(by))).toEqual(travelling(by));
+      // Still over everything lying still in the middle, at its new place in the pile as much as at its old one.
+      expect(levelOf(5028, moving('slot 2', 'slot 2', 'table', travelling(by)))).toBeGreaterThan(Math.max(...LYING.filter((z) => z < 6000)));
+    }
   });
 
   it('travelling, your card or the table\'s is over everything lying still, and travelling cards keep their order', () => {

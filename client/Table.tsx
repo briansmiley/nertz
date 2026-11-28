@@ -294,7 +294,7 @@ const CardView = memo(function CardView(p: CardProps) {
       return;
     }
     if (was.x === p.x && was.y === p.y && was.s === p.s && was.rot === p.rot) return be(doing.current); // (the level it lies at may be another)
-    const on = moving(from, p.pile, by);
+    const on = moving(from, p.pile, by, doing.current);
     go(by === 'yours');
     // Turning face-up on the way (a group off the stock going over onto the waste): see `levelOf`.
     if (faceWas.current === 'down' && p.face !== 'down' && !calm()) {
