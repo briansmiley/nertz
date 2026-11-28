@@ -802,16 +802,6 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
 
   /** A click on the stock, or Space: one draw (or the waste turned back over). Its group comes in one step and is dealt out here, on the round's clock (net.ts). */
   const dealGroup = useCallback(() => send({ k: 'draw' }), []);
-  useEffect(() => {
-    if (frozen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat) return;
-      e.preventDefault();
-      dealGroup();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [frozen, dealGroup]);
 
   /** While a finished pile is in hand the tray comes a little way in from the edge to meet it. */
   const trayOpen: Rect = { ...L.tray, x: L.tray.x - L.tray.w * 0.18, w: L.tray.w * 1.18 };
@@ -878,6 +868,17 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     return d;
   };
 
+  // Space draws like a click on the stock, and puts back a card that stands tapped (hand.ts, 'draw').
+  useEffect(() => {
+    if (frozen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return;
+      e.preventDefault();
+      act({ k: 'draw', mouse: mouseAt.current });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   // The server can take a card out of your hand (hand.ts, 'table'): then the drag is over and the card goes home.
   useEffect(() => void act({ k: 'table' }));
   useEffect(() => {
@@ -920,6 +921,8 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
     peekWait.current = null;
     setPeek(null);
   };
+  /** Where the mouse rests on the table, for Space with a card tapped (hand.ts, 'draw'); none once it has left the table. */
+  const mouseAt = useRef<{ x: number; y: number } | null>(null);
   /** The mouse moved with nothing held: a pile it rests on fans out after a moment; off it, it closes at once. */
   const hover = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || frozen || stage !== 'live') return;
@@ -937,6 +940,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
   };
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') mouseAt.current = { x: e.clientX, y: e.clientY };
     const d = grasp.current.hand;
     if (!d || d.phase === 'pressed') hover(e);
     act({ k: 'move', pointer: e.pointerId, x: e.clientX, y: e.clientY });
@@ -1008,7 +1012,7 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      onPointerLeave={(e) => e.pointerType === 'mouse' && !grasp.current.hand && stopPeek()}
+      onPointerLeave={(e) => { if (e.pointerType !== 'mouse') return; mouseAt.current = null; if (!grasp.current.hand) stopPeek(); }}
     >
       <div className={`felt${placing ? ' placing' : ''}`} style={{ left: L.middle.x, top: L.middle.y, width: L.middle.w, height: L.middle.h, borderRadius: TABLE.corner * L.felt.u }} />
       {L.slots.map((slot, i) => {
