@@ -1,6 +1,6 @@
 // Clear-first, on the client. The rule itself is the engine's (`mustClear`): a
-// player who put a King on a centre pile may do nothing else until they have
-// carried the pile to the tray. Here is what the player is shown of it. The
+// player who put a King on a centre pile may do nothing else but call Nertz until
+// they have carried the pile to the tray. Here is what the player is shown of it. The
 // finished pile glows and gives a small nod. It says nothing until they need
 // telling: they try something else (nothing moves, the pile shakes, the tray
 // flashes, there is a soft tap), or a few seconds go by. Then it says "Drag to

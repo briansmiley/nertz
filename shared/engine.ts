@@ -62,7 +62,7 @@ const hears = (state: GameState, seat: number): GameState =>
 const finishedOn = (state: GameState, seat: number): boolean => state.slots.some((pile) => completedBy(pile) === seat);
 /**
  * Clear-first: `seat` put a King on a centre pile and has not carried the pile to the tray yet. Until they do,
- * `applyIntent` refuses everything else from them. (While the round is live: once it is called or over nothing can be cleared.)
+ * `applyIntent` refuses everything else from them but the Nertz call. (While the round is live: once it is called or over nothing can be cleared.)
  */
 export const mustClear = (state: GameState, seat: number): boolean => isLive(state) && finishedOn(state, seat);
 export const CLEAR_FIRST = 'Move your finished pile to the tray first';
@@ -563,11 +563,11 @@ const CLOSED = { dealing: 'The cards are still being dealt', ready: 'Waiting for
  * group stays in flight until `landed` says otherwise.
  *
  * Clear-first: a seat with a finished centre pile of its own still on the table
- * (`mustClear`) may only `clear` it; every other intent is refused until it has.
- * Nobody else is affected. It cannot coincide with grace: the King was that
+ * (`mustClear`) may only `clear` it, or call Nertz (with an empty nertz pile); every other intent is refused until
+ * it has. Nobody else is affected. It cannot coincide with grace: the King was that
  * seat's last move, which emptied its hand, and it has not been able to pick
- * anything up since. If somebody else calls Nertz first the pile simply stays
- * where it is and scores as it lies.
+ * anything up since. If Nertz is called first (by that seat or another) the pile
+ * simply stays where it is and scores as it lies.
  */
 export function applyIntent(state: GameState, seat: number, rawIntent: Intent, now = 0): Result {
   const intent = parseIntent(rawIntent);
@@ -595,7 +595,7 @@ export function applyIntent(state: GameState, seat: number, rawIntent: Intent, n
       break;
     }
     case 'play':
-      if (intent.k !== 'clear' && intent.k !== 'end' && mustClear(state, seat)) return fail(CLEAR_FIRST);
+      if (intent.k !== 'clear' && intent.k !== 'end' && intent.k !== 'nertz' && mustClear(state, seat)) return fail(CLEAR_FIRST);
   }
   const next = play(state, index, intent, now);
   if (typeof next === 'string') return fail(next);

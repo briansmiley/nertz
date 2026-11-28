@@ -47,7 +47,7 @@ Controls:
 | Drag a card (or a run from a work pile) onto the exact pile it fits | move it there. Anywhere else, it goes back |
 | ...or tap or click it, then the pile (if the table moves without dragging) | the same, without carrying it |
 | Let an Ace go anywhere on the felt in the middle where there is room for the card | start a centre pile right there (or at the nearest room, if that is within a card's width) |
-| Drag a finished pile (one you put the King on) to the tray, bottom right (or tap or click it, then the tray, if the table moves without dragging) | clear it and free its place. Until you have, you can do nothing else |
+| Drag a finished pile (one you put the King on) to the tray, bottom right (or tap or click it, then the tray, if the table moves without dragging) | clear it and free its place. Until you have, you can do nothing else but call Nertz |
 | **Start**, or Space or Enter (the dealer, once the cards are dealt) | count "1, 2, 3, NERTZ!" and open play |
 | Click the empty stock | turn the waste back over into the stock |
 | Click the stock, or press Space | draw a group of three: they come off one at a time, a sixth of a second apart, and turn up together |
@@ -120,10 +120,10 @@ What you see around a round:
   it stops above your hand, as the right one does. Too many for a column even at the smallest cards, they lie a
   little over each other; never over your hand.
 - **A pile you finished** (you placed its King) glows and gives a small nod; other people's finished piles are dimmed and
-  ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space, "I'm stuck" or
-  NERTZ! first, or try to deal from the stock or to start a pile on the felt, nothing moves, the pile shakes, the tray
+  ticked. Carrying it to the tray is the next thing you have to do: if you press a card, the stock, Space or "I'm stuck"
+  first, or try to deal from the stock or to start a pile on the felt, nothing moves, the pile shakes, the tray
   flashes and there is a soft tap. From then on the pile says "Drag to tray"; left alone, it says so after four seconds.
-  Your cards do not look grabbable meanwhile.
+  Your cards do not look grabbable meanwhile. NERTZ! is the one thing it does not hold up.
   The **tray** runs off the right edge of the window beside your hand: finished piles are pushed half
   off-screen there, the near side of every King peeking out from under the next. While you carry a finished pile it
   lights up and comes a little way in; let go anywhere from just short of it to the edge of the screen.
@@ -186,9 +186,10 @@ To try the production shape locally: `npm run build && npm start`, then open htt
 - **Completed piles.** A pile with its King takes nothing more and stays where it is until the player who placed the King
   drags it to the **tray** at the side. Its place is then free for a new Ace. Tray piles still count for scoring.
 - **Clear first.** Clearing the pile away is the very next thing the player who placed the King must do: until it is in
-  the tray they cannot move a card, deal from the stock, say they are stuck or call Nertz. (At a real table you have to
-  get the pile out of the way too; nothing is automated here.) Nobody else is held up, and the place stays taken
-  meanwhile. If somebody else calls Nertz before the pile is cleared, the round ends as usual and the pile scores where
+  the tray they cannot move a card, deal from the stock or say they are stuck. (At a real table you have to get the pile
+  out of the way too; nothing is automated here.) Only calling Nertz does not wait for it: with their nertz pile empty
+  they can call with the pile still on the felt. Nobody else is held up, and the place stays taken meanwhile. If Nertz
+  is called before the pile is cleared, by them or by anybody else, the round ends as usual and the pile scores where
   it lies. It cannot meet the held-card grace window: placing the King emptied that player's hand and they could not
   pick anything up since.
 - You can play: the top of your nertz pile or of your waste to a work pile or the middle; the top of a work pile to the
@@ -400,8 +401,8 @@ looks again: nothing it does is a reaction quicker than one pause, as with a per
 move it. If the table moved on meanwhile and the move is refused, it simply looks again. What it notices at a look is
 the first of these that applies:
 
-1. Carry a centre pile it finished (it placed the King) to the tray: before everything, as the rules demand.
-2. Its nertz pile is empty: call Nertz.
+1. Its nertz pile is empty: call Nertz, even with a finished pile still to clear.
+2. Carry a centre pile it finished (it placed the King) to the tray: before everything else, as the rules demand.
 3. Nertz top to the middle (anything but an Ace to the exact pile). An Ace starts its pile anywhere there is room: of
    a handful of places it glances at all over the felt, the clear one nearest the middle, and if none of them is
    clear, wherever the engine says there is room.
@@ -594,7 +595,7 @@ arrives late (a reload or reconnect mid-deal) puts the cards already dealt in pl
 later snapshots, reconnects, the end of the round and coming back from the score sheet never replay it. Disconnecting during the deal changes nothing: the deal ends on time.
 
 **Clear-first is a rule of the reducer.** `mustClear(state, seat)` is "some centre pile was completed by this seat and
-the round is live". While it holds, `applyIntent` refuses every intent from that seat except `clear` (carrying a
+the round is live". While it holds, `applyIntent` refuses every intent from that seat except `nertz` and `clear` (carrying a
 pile to the tray is a single intent; it never used `hold`). The client's replay applies the same rule, so after a
 predicted King nothing else is even sent; `client/clearFirst.tsx` only turns such a refusal into the shake and the words on the pile.
 

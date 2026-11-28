@@ -33,23 +33,21 @@ const move = (face: string, to: Intent & { k: 'move' } extends { to: infer T } ?
 // ---------------------------------------------------------------- chooseIntent
 
 describe('chooseIntent', () => {
-  it('a. carries a pile it finished to the tray before anything else, calling Nertz included, and leaves other people\'s finished piles alone', () => {
+  it('b. carries a pile it finished to the tray before any move, and leaves other people\'s finished piles alone', () => {
     const mine = table({ nertz: ['S5'], work: [['H6'], [], [], []] }, [{ owner: 1, suit: 'D', upTo: 2 }, { owner: 0, suit: 'C', upTo: 13 }]);
     expect(look(mine)?.intent).toEqual({ k: 'clear', slot: 1 });
     expect(look(mine, freshMemory(), 0)?.intent).toEqual({ k: 'clear', slot: 1 }); // always noticed: nothing else is allowed
     // Everything else it might have wanted to do is refused by the engine until the pile is gone.
     for (const intent of [{ k: 'draw' }, { k: 'stuck', on: true }, move('S5', work(0))] as Intent[]) expect(applyIntent(mine, 0, intent)).toEqual({ ok: false, reason: CLEAR_FIRST });
-    // Out of nertz cards AND a pile waiting: the pile first, then the call.
+    // Out of nertz cards AND a pile waiting: the call, without clearing.
     const out = table({ nertz: [], work: [['S1'], ['H2'], [], []] }, [{ owner: 0, suit: 'C', upTo: 13 }]);
-    expect(look(out)?.intent).toEqual({ k: 'clear', slot: 0 });
-    expect(applyIntent(out, 0, { k: 'nertz' })).toEqual({ ok: false, reason: CLEAR_FIRST });
-    const cleared = applyIntent(out, 0, look(out)!.intent);
-    expect(cleared.ok && look(cleared.state)?.intent).toEqual({ k: 'nertz' });
+    expect(look(out)?.intent).toEqual({ k: 'nertz' });
+    expect(applyIntent(out, 0, look(out)!.intent).ok).toBe(true);
     const theirs = table({ nertz: ['S5'], work: DEAD }, [{ owner: 1, suit: 'C', upTo: 13 }], { nertz: ['D13'] });
     expect(look(theirs)?.intent).toEqual({ k: 'draw' });
   });
 
-  it('b. calls Nertz when its nertz pile is empty, before any move', () => {
+  it('a. calls Nertz when its nertz pile is empty, before any move', () => {
     const state = table({ nertz: [], work: [['S1'], ['H2'], [], []] });
     expect(look(state)?.intent).toEqual({ k: 'nertz' });
     expect(look(state, freshMemory(), 0)?.intent).toEqual({ k: 'nertz' }); // always noticed

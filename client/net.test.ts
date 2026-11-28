@@ -101,7 +101,7 @@ describe('prediction', () => {
     expect(blocked.slots[0]!.cards).toHaveLength(13);
     // What `net.send` asks: everything but the clear is refused on the predicted table, before the server has said a word.
     const nertzTop = blocked.players[0]!.nertz.at(-1)!.id;
-    for (const intent of [{ k: 'draw' }, { k: 'stuck', on: true }, { k: 'hold', cardId: nertzTop }, { k: 'nertz' }] as Intent[]) expect(applyIntent(blocked, 0, intent).ok).toBe(false);
+    for (const intent of [{ k: 'draw' }, { k: 'stuck', on: true }, { k: 'hold', cardId: nertzTop }] as Intent[]) expect(applyIntent(blocked, 0, intent).ok).toBe(false);
     expect(applyIntent(blocked, 0, { k: 'clear', slot: 0 }).ok).toBe(true);
     // King and clear in flight together; a flip sent between them (a stale client) is dropped by both sides.
     sync = send(send(sync, { k: 'draw' }), { k: 'clear', slot: 0 });
