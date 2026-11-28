@@ -159,7 +159,7 @@ export const KEPT = 5;
  * kind of value there). That test fails when a table's shape is not the one written here for `KEPT`: then put `KEPT`
  * up by one and add the new shape under it. Never change one already here.
  */
-export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'eb04bb1f703b', 4: '984c1401271b', 5: 'tbd' };
+export const KEPT_SHAPES: Readonly<Record<number, string>> = { 2: '54d987844e44', 3: 'eb04bb1f703b', 4: '984c1401271b', 5: 'e032cac88e2e' };
 
 /** Someone in the room as they are kept: all of a `Player` but what goes with a connection, and of a bot only how quick it is. */
 interface KeptPlayer extends Omit<Player, 'conn' | 'ack' | 'dirty' | 'drags' | 'bot'> {
