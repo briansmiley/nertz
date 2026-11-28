@@ -426,6 +426,12 @@ label.check {
   cursor: default; /* its look is the tooltip's (tip.css) */
 }
 
+/* (Over the row instead, where there is no room under it: Settings.tsx, Info.) */
+.info.up .tip {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
 .info:focus .tip {
   display: block;
 }

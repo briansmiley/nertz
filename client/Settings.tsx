@@ -44,9 +44,27 @@ const FACES_SAID: Record<Faces, [string, string]> = {
 /**
  * A small (i) beside a setting: its explanation shows on hover, on keyboard focus, or on a tap (which focuses it; a
  * tap anywhere else puts it away). Inside a checkbox's label, so a click on it must not tick the box. Its empty
- * `data-tip` keeps the tip of what it sits in (the locked table rules) from showing over its own.
+ * `data-tip` keeps the tip of what it sits in (the locked table rules) from showing over its own. Where what it is
+ * seen through (the menu's scrolling settings, the window) cuts the tip off below its row and there is more room above,
+ * it opens over the row instead.
  */
 function Info({ children }: { children: ReactNode }) {
+  const place = (info: HTMLElement) => {
+    info.classList.remove('up');
+    const tip = info.querySelector<HTMLElement>('.tip');
+    const row = tip?.offsetParent;
+    if (!tip || !row) return;
+    let top = 0;
+    let bottom = innerHeight;
+    for (let el = row.parentElement; el; el = el.parentElement) {
+      if (getComputedStyle(el).overflowY === 'visible') continue;
+      const r = el.getBoundingClientRect();
+      top = Math.max(top, r.top);
+      bottom = Math.min(bottom, r.bottom);
+    }
+    const r = row.getBoundingClientRect();
+    if (tip.getBoundingClientRect().bottom > bottom && r.top - top > bottom - r.bottom) info.classList.add('up');
+  };
   return (
     <span
       className="info"
@@ -54,6 +72,8 @@ function Info({ children }: { children: ReactNode }) {
       role="button"
       tabIndex={0}
       aria-label="More about this"
+      onFocus={(e) => place(e.currentTarget)}
+      onMouseEnter={(e) => place(e.currentTarget)}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
