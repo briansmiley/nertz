@@ -24,6 +24,7 @@ const release: Intent = { k: 'release' };
 /** What the server is asked when the one card `card` is put back: was it sniped while in hand? (With every pile's top as it was taken up.) */
 const tried = (card: string, of: GameState = game()) => ({ k: 'tried', card, seen: of.slots.map((p) => p?.cards.at(-1)?.id ?? null) });
 const by = (p: Pt, dx: number, dy: number): Pt => ({ x: p.x + dx, y: p.y + dy });
+const middleOf = (r: Rect): Pt => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 const off: Pt = { x: 40, y: 300 }; // nothing lies there
 /** The middle of the card in hand, where it is drawn. */
 const centre = (t: Seated): Pt => {
@@ -344,7 +345,19 @@ describe('tap to move', () => {
     expect(t.did).toEqual([{ k: 'deal' }, tried('0:H4'), { k: 'deal' }]);
   });
 
-  it('Space while a card is dragged puts it back first, and the button let go after does nothing more', () => {
+  it('Space while a card is dragged over a pile that takes it plays it there first, then draws', () => {
+    const t = seatAt(game());
+    const from = t.at('0:S2');
+    t.down(from);
+    t.move(by(from, 30, -40));
+    t.move(middleOf(t.L.slotHit[0]!));
+    t.act({ k: 'draw' });
+    expect(t.hand).toBeNull();
+    expect(t.sent).toEqual([hold('0:S2'), move('0:S2', slot(0))]);
+    expect(t.did.at(-1)).toEqual({ k: 'deal' });
+  });
+
+  it('Space while a card is dragged over nothing puts it back first, and the button let go after does nothing more', () => {
     const t = seatAt(game());
     const from = t.at('0:H4');
     t.down(from);
