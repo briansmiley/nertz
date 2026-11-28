@@ -178,7 +178,7 @@ describe('Room', () => {
     expect(told(got)).toEqual(lines);
     // Kept with what was said, for whoever was there to read them when they are back.
     const late: ServerMsg[] = [];
-    room.join({ send: (m) => void late.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc');
+    room.join({ send: (m) => void late.push(wire(m)), close: () => {} }, 'P1', 'tok-0001');
     expect(told(late, true)).toEqual(lines);
     // With text chat switched off there is nowhere to read them: neither told nor kept.
     room.handle(a, { t: 'social', text: false });
@@ -186,7 +186,7 @@ describe('Room', () => {
     opening(room, a);
     expect(told(got)).toEqual(lines);
     const later: ServerMsg[] = [];
-    room.join({ send: (m) => void later.push(wire(m)), close: () => {} }, 'Cy', 'tok-cccc');
+    room.join({ send: (m) => void later.push(wire(m)), close: () => {} }, 'P1', 'tok-0001');
     expect(told(later, true)).toEqual(lines);
     room.close();
   });
