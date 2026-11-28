@@ -108,6 +108,48 @@
   rotate: -5deg;
 }
 
+/* A heading is what sorts the sheet: written as the heading, nothing of a button about it. The one it is sorted by is in
+   ink, with a small arrow beside it that takes no room of its own (the columns stay as wide as their headings): down
+   for the best first, up once pressed again. */
+.scores .sort {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.scores th[aria-sort] {
+  color: var(--ink);
+}
+
+.scores th[aria-sort] .sort::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  bottom: 0.32em;
+  margin-left: 2px;
+  border: 0.24em solid transparent;
+  border-top: 0.3em solid currentColor;
+  border-bottom: 0;
+}
+
+.scores th[aria-sort='ascending'] .sort::after {
+  border-top: 0;
+  border-bottom: 0.3em solid currentColor;
+}
+
+@media (hover: hover) {
+  .scores .sort:hover {
+    color: var(--ink);
+  }
+}
+
 /* "Total" stands over its two columns, what is kept across rounds: the rounds called, and the points. */
 .scores thead th.over {
   height: auto;

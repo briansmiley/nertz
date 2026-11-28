@@ -6,7 +6,7 @@ import { Follow, FollowingList, Profile, Theirs } from './Profile';
 import { useAnimate } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { BOT_LEVELS, cleanName, freeSeats, hasSeat, isRoomCode, MAX_NAME_LENGTH, MAX_PLAYERS, MIN_PLAYERS, ROOM_CODE_LENGTH, shownBack, type Look } from '../shared/protocol';
-import type { BotLevel, OpenTables, PlayerView, RoomView, TableSummary } from '../shared/types';
+import type { BotLevel, OpenTables, PlayerView, RoomView, RoundLine, TableSummary } from '../shared/types';
 import { backColour, backOf, BACKS, Face } from './cards/Face';
 import { BackPicker, YourBackPicker, YourBacks } from './BackPicker';
 import { calm, lookOf, usePrefs } from './prefs';
@@ -1031,12 +1031,42 @@ function Snipes({ snipes, top, who }: { snipes: NonNullable<NonNullable<RoomView
   );
 }
 
+/** The columns of the score sheet, each of which its lines can be sorted by: `calls` and `total` are the two kept across rounds. */
+type Column = 'name' | 'played' | 'nertz' | 'round' | 'calls' | 'total';
+
+/** How each column puts its lines in order, the best first: the most points, the fewest cards left in the nertz pile (so whoever got Nertz), the names from A. */
+const BEST_FIRST: Record<Column, (a: RoundLine, b: RoundLine) => number> = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  played: (a, b) => b.played - a.played,
+  nertz: (a, b) => a.nertzLeft - b.nertzLeft,
+  round: (a, b) => b.delta - a.delta,
+  calls: (a, b) => b.calls - a.calls,
+  total: (a, b) => b.total - a.total,
+};
+
 function Results({ room }: { room: RoomView }) {
   const round = room.lastRound;
   const me = room.players.find((p) => p.id === room.me);
   const host = room.players.find((p) => p.isHost);
+  /** What this viewer has the sheet sorted by: the round's points, the best first, until they press another heading (or the same one again, which turns it over). */
+  const [sort, setSort] = useState<{ by: Column; reversed: boolean }>({ by: 'round', reversed: false });
   // The sheet goes by the round's own lines (name and total included), so it stays right when someone has left since.
-  const rows = (round?.scores ?? []).filter((s) => !s.gone).sort((a, b) => b.total - a.total || b.delta - a.delta);
+  // A tie goes by the round's points, then the total.
+  const rows = (round?.scores ?? [])
+    .filter((s) => !s.gone)
+    .sort((a, b) => (sort.reversed ? -1 : 1) * (BEST_FIRST[sort.by](a, b) || BEST_FIRST.round(a, b) || BEST_FIRST.total(a, b)));
+  /** A column's heading, which sorts the sheet by it. */
+  const heading = (by: Column, label: string, span?: { rowSpan: number }) => {
+    // The names go up (A first); every other column's best is its largest figure (or, of cards left, its smallest), so down.
+    const up = (by === 'name') !== sort.reversed;
+    return (
+      <th scope="col" {...span} aria-sort={sort.by === by ? (up ? 'ascending' : 'descending') : undefined}>
+        <button type="button" className="sort" onClick={() => setSort((was) => ({ by, reversed: was.by === by && !was.reversed }))}>
+          {label}
+        </button>
+      </th>
+    );
+  };
   const end = round?.end;
   /** The seats that got Nertz: each has the stamp in their line. */
   const out = end?.by === 'nertz' ? end.out : [];
@@ -1071,15 +1101,15 @@ function Results({ room }: { room: RoomView }) {
         <table className="scores">
           <thead>
             <tr>
-              <th scope="col" rowSpan={2}>Player</th>
-              <th scope="col" rowSpan={2}>Played</th>
-              <th scope="col" rowSpan={2}>Nertz</th>
-              <th scope="col" rowSpan={2}>Round</th>
+              {heading('name', 'Player', { rowSpan: 2 })}
+              {heading('played', 'Played', { rowSpan: 2 })}
+              {heading('nertz', 'Nertz', { rowSpan: 2 })}
+              {heading('round', 'Round', { rowSpan: 2 })}
               <th scope="colgroup" colSpan={2} className="over">Total</th>
             </tr>
             <tr>
-              <th scope="col">Nertz</th>
-              <th scope="col">Points</th>
+              {heading('calls', 'Nertz')}
+              {heading('total', 'Points')}
             </tr>
           </thead>
           <tbody>
