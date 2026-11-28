@@ -15,7 +15,7 @@ import { offFelt, TABLE, type Pt } from '../shared/table';
 import type { GameState, PlayerView, RoomView, Suit } from '../shared/types';
 import { backColour, backOf, nameColour, CARD_H, CARD_W, Face, warm } from './cards/Face';
 import { Finale, finaleSteps, sortings } from './Finale';
-import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, MOTION, onCanvas, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
+import { aloftAt, computeLayout, countBox, inside, COUNTDOWN, countdownTop, DEAL, dealWait, drawnMini, keepOut, MOTION, onCanvas, rowEnd, shapeOf, TAG_H, type Placed, type Rect, type Seat, type Showing, type Stage } from './layout';
 import { useFittings } from './fittings';
 import { useWindow } from './viewport';
 import { nag, send, useClearFirst } from './clearFirst';
@@ -1240,11 +1240,12 @@ export function Table({ room, sheet, seats }: { room: RoomView; sheet: ReactNode
       {/* A button of its own (a tap meant for a card must not throw the end of the round away), in the bar on a phone. */}
       {playingOut && (
         // Level with the menu's button, on every screen (so clear of what the screen keeps at its bottom, as that is). On
-        // a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the menu's on its side.
+        // a phone the middle of the bottom edge is for your own pile: beside the chat button upright, beside the menu's on its
+        // side, and after the clock when that stands in line there.
         <button
           type="button"
           className={`skip${phone ? ' aside' : ''}`}
-          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? L.at.knobs.x + L.at.knobs.w + 8 : undefined }}
+          style={{ top: L.at.knobs.y + L.at.knobs.h / 2, left: L.shape === 'tall' ? L.at.chat.x + L.at.chat.w + 8 : phone ? rowEnd(L.at, L.clock) + 8 : undefined }}
           aria-label="Skip to the scores"
           data-tip="Skip to the scores"
           onClick={skip}
