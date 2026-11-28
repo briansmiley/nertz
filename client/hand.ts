@@ -15,7 +15,7 @@ import { dropTarget, landingAt, toScreen, toTable, type Layout, type Placed, typ
 import { clamp, round3 } from '../shared/numbers';
 
 const DRAG_SLOP = 6; // px of travel before a press becomes a carry
-/** With Tap to play, a finger may wander this far (px) and still tap: a tap that slips a little takes the card up, not off. */
+/** A finger may wander this far (px) and still tap: a tap that slips a little takes the card up (Tap to play) or fans its work pile out, not the card off. */
 const TAP_SLOP = 12;
 /** A card under a finger rises clear of it over this much travel, and ends this far above the fingertip. */
 const TOUCH_RISE_PX = 44;
@@ -354,7 +354,7 @@ export function decide(was: Grasp, g: Gesture, scene: Scene): Step {
     case 'move': {
       if (!d || d.phase === 'tapped' || g.pointer !== d.pointer) return stay;
       if (d.phase === 'carried') return { ...was, hand: carry(d, g, scene), effects: [] };
-      if (Math.hypot(g.x - d.sx, g.y - d.sy) < (d.touch && scene.tapToMove ? TAP_SLOP : DRAG_SLOP)) return stay;
+      if (Math.hypot(g.x - d.sx, g.y - d.sy) < (d.touch ? TAP_SLOP : DRAG_SLOP)) return stay;
       return { spent: was.spent, ...(take(d, 'carried', g, scene) ?? { hand: null, effects: [] }) };
     }
     case 'up': {
