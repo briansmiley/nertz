@@ -836,7 +836,10 @@ export class Room {
     // they sit back down, which a jam no longer waits for. (With nobody left playing it at all, that is at once.)
     const played = this.table.filter(playing);
     const here = played.filter((p) => p.conn);
-    this.state = resolveEndVote(resolveStuck(this.state, here.map((p) => p.seat), played.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
+    // A group whose time has come is down first, as before an intent: nothing may have been played since, and the end
+    // of the round puts back on the stock only what is still in flight.
+    const state = landed(this.state, this.playedMs());
+    this.state = resolveEndVote(resolveStuck(state, here.map((p) => p.seat), played.map((p) => p.seat)), here.filter((p) => !p.bot).map((p) => p.seat));
     const { status } = this.state;
     // (A round ended without a call, by a jam or a vote, is over at once: nobody was in grace.)
     if (status.at !== 'over') return;

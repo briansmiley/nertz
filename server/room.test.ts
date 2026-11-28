@@ -2617,6 +2617,16 @@ describe('a draw is one intent and one step, and the server holds it to its time
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('a group whose time had come when the round ends is down, though nothing was played since: it stays turned up on the waste', () => {
+    const { room, a, b, me } = drawing();
+    sendIntent(room, b, 0, { k: 'end', on: true });
+    sendIntent(room, b, 1, { k: 'draw' });
+    vi.advanceTimersByTime(3 * STOCK_CARD_MS);
+    room.disconnect(a); // the vote is b's alone now, and b has voted: the round is over with no intent since the draw
+    expect(room.lastRound).toMatchObject({ end: { by: 'vote' } });
+    expect(me()).toMatchObject({ draw: null, waste: { length: 3 } });
+  });
+
   it('a reconnect mid-group is sent the group whole, with when it was drawn and what the clock reads now', () => {
     const { room, b, me } = drawing();
     sendIntent(room, b, 0, { k: 'draw' });
