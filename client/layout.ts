@@ -191,14 +191,16 @@ const RATIO = CARD_H / CARD_W;
 const grow = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m });
 export const inside = (r: Rect, x: number, y: number): boolean => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
+/** The middle of `r`. */
 export const middle = (r: Rect): Pt => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
 /**
  * The one drop area a release counts for: the area under the pointer, and only if the pointer is over none, the area
  * under the centre of the grabbed card (`card`, where it is drawn). A card picked up by its corner is aimed with the
- * pointer; one flung with the pointer trailing off the pile still lands by where it lies. Failing both, a card let go
- * with its body over an area goes to the one it covers most (so between two piles, the one it lies more over), and
- * under a finger (`reach`) to the nearest one within reach. Either way it is one specific pile.
+ * pointer; one flung with the pointer trailing off the pile still lands by where it lies. Failing both, it goes under
+ * a finger (`reach`) to the nearest area within reach, and otherwise to the one the card itself covers most (so one
+ * let go with its body over a pile lands there, and one between two piles on the one it lies more over). Either way
+ * it is one specific pile.
  */
 export function dropTarget<T extends { hit: Rect }>(targets: readonly T[], pointer: Pt, card: Rect | null, reach = 0): T | undefined {
   const centre = card && middle(card);
